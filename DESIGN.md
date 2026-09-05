@@ -1,13 +1,14 @@
 # D&D 5e (2024) Combat Simulator — "SimC for D&D"
 
+Founding design document. At the time of writing the repository contained no
+code. [ROADMAP.md](ROADMAP.md) turns this into a dependency-ordered build plan.
+
 ## Context
 
-This is the founding design document for the project; at the time of writing
-the repository contained no code. The goal is a Monte Carlo combat simulator
-for D&D 5e 2024 rules (XPHB) — the D&D equivalent of SimulationCraft: define a
-party in config files, simulate a full adventuring day thousands of times, and
-get statistics about how a build actually performs instead of back-of-envelope
-DPR math.
+A Monte Carlo combat simulator for D&D 5e 2024 rules (XPHB) — the D&D
+equivalent of SimulationCraft: define a party in config files, simulate a full
+adventuring day thousands of times, and get statistics about how a build
+actually performs instead of back-of-envelope DPR math.
 
 It is a **private personal repo, not for distribution**, so it may read the
 5e.tools dataset freely. Bulk rules text still stays out of git (fetched on
@@ -17,6 +18,22 @@ not for licensing reasons.
 **The question v1 answers:** given a party and a sequence of encounters with
 rests between them, *how far into the adventuring day does the party get before
 resources run dry?* Attrition, not single-fight DPR.
+
+## Settled decisions
+
+| Decision | Choice |
+|---|---|
+| Language | Python 3.11+, OOP, library-first with a CLI adapter |
+| Ruleset | XPHB (2024), **levels 1–12** |
+| Positioning | Square grid, 5 ft cells, real distance, opportunity attacks, true AoE templates |
+| Policy | SimC-style Action Priority List in build YAML |
+| v1 output | Adventuring-day attrition |
+| Content order | **Martials first, full vertical slice** (Barbarian/Fighter/Rogue/Monk, 16 subclasses, levels 1–12, masteries, martial feats) |
+| Spells | **Engine built up front, individual spells added on demand** |
+
+Levels 1–12 removes 7th–9th level spells and tier-4 features — the
+hardest-to-model content — from scope. It also caps prepared spell levels at
+6th, which is why `spells/` only needs `level0..level6`.
 
 ## Reconnaissance (done, against live data)
 
@@ -30,7 +47,7 @@ through the proxy; `5e.tools` direct returns 403.
 | Class scaling (`classTableGroups`) | Machine-readable per-level rows (Rages, Rage Damage, Sneak dice…) | **Import directly** |
 | Class/subclass features | Prose in `entries[]`, `refSubclassFeature` indirection | Hand-coded |
 | Spells (391 XPHB) | Skeleton structured (`level`, `savingThrow`, `spellAttack`, `scalingLevelDice`); mechanic is prose | Skeleton imports, behaviour hand-coded |
-| Monsters (503 XMM) | Prose, but a **closed tag vocabulary**: `{@atkr}`, `{@hit}`, `{@h}`, `{@damage}`, `{@actSave}`, `{@dc}`, `{@recharge}` | Parseable — deferred to Phase 5 |
+| Monsters (503 XMM) | Prose, but a **closed tag vocabulary**: `{@atkr}`, `{@hit}`, `{@h}`, `{@damage}`, `{@actSave}`, `{@dc}`, `{@recharge}` | Parseable — deferred to W7 |
 | Feats (77 XPHB) | 2024 fighting styles are feats | Hand-coded |
 
 ### Content inventory — the real cost centre
@@ -41,29 +58,24 @@ through the proxy; `5e.tools` direct returns 403.
 | Subclass features | 309 (48 subclasses) |
 | Feats | 77 |
 | Optional features | 58 (28 invocations, 20 maneuvers, 10 metamagic) |
-| Combat spells | 212 (103 concentration) |
 | Weapon masteries | 8 |
+| **Non-spell entries** | **735** |
+| Combat spells | 212 (103 concentration) |
 
-≈ **670 hand-written implementations** at full coverage. This number drives
-every architectural decision below: the feature API must be learnable from a
-short document, uniform across wildly different mechanics, and **hard to get
-subtly wrong**, because most of these will be written by subagents in parallel
-batches with limited context.
+Not all 735 non-spell entries need code — Ability Score Improvement, Expertise,
+ritual casting, pure exploration utility and the reference-list wrappers (Battle
+Master's "Maneuver Options" is a pointer, not content) drop out. Three numbers
+are used consistently throughout both documents:
 
-## Settled decisions
+- **~400 combat-relevant features** — the non-spell grind, and the number the
+  paper pass classifies.
+- **212 combat spells** — a separate grind, pulled on demand.
+- **~610 implementations** at full coverage.
 
-| | |
-|---|---|
-| Language | Python 3.11+, OOP, CLI only |
-| Ruleset | XPHB (2024), **levels 1–12** |
-| Positioning | Square grid, 5 ft cells, real distance, OA, true AoE templates |
-| Policy | SimC-style Action Priority List in build YAML |
-| v1 output | Adventuring-day attrition |
-| Phase 2 order | **Martials first, full vertical slice** (Barbarian/Fighter/Rogue/Monk, 16 subclasses, 1–12, masteries, martial feats) |
-| Spells | **Engine built up front, individual spells added on demand** |
-
-Levels 1–12 removes 7th–9th level spells and tier-4 features — the
-hardest-to-model content — from scope.
+This drives every architectural decision below: the feature API must be
+learnable from a short document, uniform across wildly different mechanics, and
+**hard to get subtly wrong**, because most of these will be written by subagents
+in parallel batches with limited context.
 
 ## Libraries before reimplementing
 
@@ -77,12 +89,10 @@ does that part.
 
 ---
 
-# Architecture
-
 ## Design patterns at a glance
 
-Named so that batch authors and reviewers share vocabulary. Each is expanded
-at its point of use below.
+Named so that batch authors and reviewers share vocabulary. Each is expanded at
+its point of use below.
 
 | Pattern | Where | Why it earns its place |
 |---|---|---|
@@ -97,7 +107,7 @@ at its point of use below.
 | **State** | `conditions/`, `effects.py` | Prone/Frightened/Raging alter behaviour by being attached |
 | **Mediator** | `engine/world.py` | Creatures never talk to each other directly |
 | **Adapter / Anti-Corruption Layer** | `content/loader.py` | 5etools' schema never leaks into the domain model |
-| **Visitor** | Phase 5 stat-block parser | Walks 5etools entry trees by node type |
+| **Visitor** | W7 stat-block parser | Walks 5etools entry trees by node type |
 | **Builder** | `builds/loader.py` | Assembles a `Character` from YAML in validated steps |
 | **Unit of Work** | `resources.transaction()` | Multi-resource costs commit or roll back atomically |
 | **Facade** | `SpellSlots`, `world.query` | Ergonomic surface over nine pools / spatial queries |
@@ -105,17 +115,18 @@ at its point of use below.
 | **Object Pool + Flyweight** | context reuse, shared specs | The performance budget depends on both |
 | **Null Object** | APL default policy, empty dispatch list | Absent config behaves predictably, never crashes |
 | **Template Method** | `HookSource.__init_subclass__` | Fixed validation skeleton subclasses cannot skip |
+| **Ports & Adapters** | `api.py` vs `cli.py` | A UI added later is another adapter, not a rewrite |
 | **Inversion of Control** | the whole feature API | The engine calls features; features never drive the engine |
 
 Two patterns are **deliberately rejected**, and the reasons are the design's
-load-bearing arguments — see below: **Observer / Event Aggregator** (the
-pub-sub bus) and **Template Method via mixin inheritance** for feature
-composition.
+load-bearing arguments: **Observer / Event Aggregator** (the pub-sub bus) and
+**Template Method via mixin inheritance** for feature composition. Both are
+argued immediately below.
 
 ## Hook system: typed pipelines over attribute-locked contexts
 
 Rejected the **Observer / Event Aggregator** pattern (a pub-sub bus) —
-`bus.subscribe("on_hitt", fn)` is a silent no-op, and with 400 features written
+`bus.subscribe("on_hitt", fn)` is a silent no-op, and with ~400 features written
 by agents that can't read each other's code, an invisible typo is the likeliest
 failure. Observer also has no natural ordering story, and "publish returns
 nothing" gives an author no channel for *changing* an attack in flight, so they
@@ -132,54 +143,53 @@ Responsibility veto.** Each hook is a named pipeline stage with exactly one
 registration; the framework builds a per-creature dispatch table and runs
 handlers in phase order over one shared mutable context. It reads like a method
 override and composes like a pipeline. `EARLY` and `FINAL` handlers may call
-`ctx.veto(...)`, which is the Chain of Responsibility element — the only place
-a handler halts the chain rather than contributing to it.
+`ctx.veto(...)`, which is the Chain of Responsibility element — the only place a
+handler halts the chain rather than contributing to it.
 
-The whole feature API is **Inversion of Control** (the Hollywood Principle):
-the engine calls features at defined points; features never drive the engine.
-That is what allows 400 independently-authored units to coexist.
+The whole feature API is **Inversion of Control** (the Hollywood Principle): the
+engine calls features at defined points; features never drive the engine. That
+is what allows ~400 independently-authored units to coexist.
 
 Four properties make it safe for parallel low-context authors:
 
-1. **Hook names validated at import time** against a closed **Registry** —
-   typos are `ImportError`, not silence.
+1. **Hook names validated at import time** against a closed **Registry** — typos
+   are `ImportError`, not silence.
 2. **Handler signatures validated at class creation** via `__init_subclass__` —
    a **Template Method** used the way it works well here: a fixed validation
    skeleton subclasses cannot skip or forget to call. Wrong context annotation
    or missing return annotation is `ImportError`.
 3. **Contexts are attribute-locked.** Features never assign fields; they call
    mutator methods (`ctx.grant_advantage()`, `ctx.damage.add(...)`). This is
-   **Encapsulation enforced at runtime** rather than by convention — two
+   **encapsulation enforced at runtime** rather than by convention — two
    features cannot clobber each other because nobody writes a field.
 4. **Provenance is automatic.** The dispatcher stamps the current source before
    each call — an **Ambient Context** scoped to one handler invocation — so
    every modifier is attributed with no author effort, giving the per-feature
    damage breakdown for free.
 
-### Scope — the single biggest learnability lever
+### Hook scope — the single biggest learnability lever
 
-Every hook declares `Scope`: `SELF` (owner is the actor), `TARGET` (owner is
-the one being hit), `OBSERVER` (owner merely perceives it), `GLOBAL`. In an
-`on_incoming_damage` handler `self.owner` is *the victim*, with no prose
-needed. No feature ever writes `if ctx.attacker is self.owner`.
+Every hook declares `Scope`: `SELF` (owner is the actor), `TARGET` (owner is the
+one being hit), `OBSERVER` (owner merely perceives it), `GLOBAL`. In an
+`on_incoming_damage` handler `self.owner` is *the victim*, with no prose needed.
+No feature ever writes `if ctx.attacker is self.owner`.
 
-### The closed hook list (~30 points)
+### The closed hook list — 34 points
 
-Timeline: `on_encounter_start/end`, `on_round_start/end`, `on_turn_start/end`,
-`on_short_rest`, `on_long_rest`.
-Attack: `on_declare_attack`, `on_incoming_attack_declared`, `on_attack_rolled`,
-`on_hit`, `on_hit_taken`, `on_miss`, `on_attack_resolved`.
-Damage: `on_damage_roll`, `on_incoming_damage`, `on_damage_taken`,
-`on_reduced_to_zero`, `on_kill`.
-Other: `on_ability_check`, `on_saving_throw`, `on_save_resolved`,
-`on_forced_save`, `on_cast_spell`, `on_concentration_start/check`,
-`on_condition_gained/lost`, `on_effect_applied/expired`, `on_move`,
-`on_leave_reach`, `on_resource_spent`.
+| Group | Hooks | Count |
+|---|---|---|
+| Timeline | `on_encounter_start` / `_end`, `on_round_start` / `_end`, `on_turn_start` / `_end`, `on_short_rest`, `on_long_rest` | 8 |
+| Attack | `on_declare_attack`, `on_incoming_attack_declared`, `on_attack_rolled`, `on_hit`, `on_hit_taken`, `on_miss`, `on_attack_resolved` | 7 |
+| Damage | `on_damage_roll`, `on_incoming_damage`, `on_damage_taken`, `on_reduced_to_zero`, `on_kill` | 5 |
+| Checks & saves | `on_ability_check`, `on_saving_throw`, `on_save_resolved`, `on_forced_save` | 4 |
+| Casting | `on_cast_spell`, `on_concentration_start`, `on_concentration_check` | 3 |
+| Effects | `on_condition_gained` / `_lost`, `on_effect_applied` / `_expired` | 4 |
+| Movement & resources | `on_move`, `on_leave_reach`, `on_resource_spent` | 3 |
 
 The registry is **frozen** to feature-batch authors; CI fails any batch PR
-touching `hooks/`, `engine/` or `core/`. A closed, frozen extension point is
-the **Open/Closed Principle** applied literally: features extend behaviour
-without modifying the engine, and the CI rule makes that structural rather than
+touching `hooks/`, `engine/` or `core/`. A closed, frozen extension point is the
+**Open/Closed Principle** applied literally: features extend behaviour without
+modifying the engine, and the CI rule makes that structural rather than
 aspirational.
 
 An unregistered hook returns an empty handler list rather than raising — the
@@ -215,8 +225,8 @@ order-sensitive handlers in the codebase — it should stay under ~30.
 ## Structural prevention over testing
 
 The rules an author *cannot* get wrong, because the data model decides. Every
-item here is a **Value Object** — frozen, self-describing, safely shared —
-doing work that would otherwise be procedural code an author could misplace:
+item here is a **Value Object** — frozen, self-describing, safely shared — doing
+work that would otherwise be procedural code an author could misplace:
 
 - **Crit doubling.** `DamagePart` carries `dice` and `flat` as separate fields;
   `ctx.damage.add(dice="2d6")` doubles on a crit, `add(flat=3)` never does.
@@ -227,21 +237,21 @@ doing work that would otherwise be procedural code an author could misplace:
   falls out of the derived `had_advantage`. Two features granting advantage is
   idempotent, so ordering cannot matter.
 - **Resistance.** `_resist` is a `set`, so a type can't be resisted twice.
-- **Damage resolution order** lives in exactly one file, `engine/damage.py` —
-  a **Policy/Strategy object owned by the engine, not by features**:
-  immunity → vulnerability → resistance → flat reductions → halvings (Uncanny
-  Dodge) → temp HP → HP. Documented verbatim in the skill doc.
+- **Damage resolution order** lives in exactly one file, `engine/damage.py` — a
+  **Policy object owned by the engine, not by features**: immunity →
+  vulnerability → resistance → flat reductions → halvings (Uncanny Dodge) →
+  temp HP → HP. Documented verbatim in the skill doc.
 
 This is *"make illegal states unrepresentable"* rather than *"test for illegal
 states"*. Every rule made structural is one that never needs a test — the
-highest-leverage move available when 670 units are written by different hands.
+highest-leverage move available when ~610 units are written by different hands.
 
 ## Durations: one mechanism, three shapes
 
-A totally ordered clock, `TimeKey(round, initiative_index, phase)` where phase
-is `START`(0) or `END`(1) — a **Value Object** whose natural ordering *is* the
-timeline, so expiry is a comparison rather than bespoke arithmetic. `Duration`
-is a declarative **Value Object** too, with named constructors
+A totally ordered clock, `TimeKey(round, initiative_index, phase)` where phase is
+`START`(0) or `END`(1) — a **Value Object** whose natural ordering *is* the
+timeline, so expiry is a comparison rather than bespoke arithmetic. `Duration` is
+a declarative **Value Object** too, with named constructors
 (`until_end_of_next_turn_of(c)`) acting as **Factory Methods** that keep D&D's
 timing vocabulary out of feature code. It resolves to an absolute `TimeKey` at
 application time. The load-bearing field is `through_phase`:
@@ -257,18 +267,18 @@ That one flag covers all three hard cases:
 | Effect | Expression |
 |---|---|
 | **Rage** | `until_end_of_next_turn_of(self)`, plus `refresh()` from `on_declare_attack` / `on_damage_taken` / `on_forced_save` — recomputes against the current clock, so "next turn" slides forward |
-| **Reckless** | `until_start_of_next_turn_of(self)` |
+| **Reckless Attack** | `until_start_of_next_turn_of(self)` |
 | **Vex** | `until_end_of_next_turn_of(self)` **plus `charges=1`** keyed to a target id — whichever runs out first removes it |
 
-`Effect`, `Condition`, `Feature` and magic items are all `HookSource`
-subclasses carrying hooks identically. **One API shape for all four** — an
-agent who has read Rage can write Frightened without reading anything else.
+`Effect`, `Condition`, `Feature` and magic items are all `HookSource` subclasses
+carrying hooks identically. **One API shape for all four** — an agent who has
+read Rage can write Frightened without reading anything else.
 
-`Effect` and `Condition` are the **State** pattern: Raging, Prone and
-Frightened change a creature's behaviour by being *attached objects with their
-own handlers*, not by flags the engine branches on. There is no
-`if creature.is_raging` anywhere in the engine — which is precisely why adding
-a new condition never requires touching engine code. Stacking policy
+`Effect` and `Condition` are the **State** pattern: Raging, Prone and Frightened
+change a creature's behaviour by being *attached objects with their own
+handlers*, not by flags the engine branches on. There is no
+`if creature.is_raging` anywhere in the engine — which is precisely why adding a
+new condition never requires touching engine code. Stacking policy
 (`REFRESH | STACK | UNIQUE_PER_SOURCE | REJECT`) is a **Strategy** on the
 effect, so "does a second casting stack?" is declared, not re-implemented.
 
@@ -279,6 +289,8 @@ immutable **Value Object / Flyweight** — one spec instance is shared by every
 creature that has the resource, while the mutable `ResourcePool` holds only the
 current count. `maximum` may be a literal, a class-table column, or a callable,
 and `recovery` is a tuple of `Recovery(trigger, amount)`.
+
+Seven shapes cover every resource in the game:
 
 | Thing | Spec |
 |---|---|
@@ -300,24 +312,23 @@ Quickened Fireball spends 2 sorcery points *and* a 3rd-level slot, committing
 both or rolling back both, so a half-paid ability can never exist even if a
 later step raises.
 
-Every spend is appended to the structured event log, so the resource-spend
-report is a group-by over that log rather than per-feature reporting code — the
-log is the single **audit record**, which is also what makes seeded runs
-diffable.
+Every spend is appended to the structured event log, so the resource-spend report
+is a group-by over that log rather than per-feature reporting code — the log is
+the single **audit record**, which is also what makes seeded runs diffable.
 
 ## APL and mid-attack decisions
 
 The APL as a whole is a **Strategy**: the creature's decision-making is a
-pluggable policy object. That is what makes build-vs-build comparison possible
-at all — swap the policy, hold everything else fixed. A built-in scoring
-heuristic can later be dropped in as an alternative `Policy` implementation
-without the engine noticing.
+pluggable policy object. That is what makes build-vs-build comparison possible at
+all — swap the policy, hold everything else fixed. A built-in scoring heuristic
+can later be dropped in as an alternative `Policy` implementation without the
+engine noticing.
 
-**The unifying idea:** a turn action, a reaction, and a mid-attack rider are
-all "the engine has an offer; does the APL take it?" One flat ordered list; the
+**The unifying idea:** a turn action, a reaction, and a mid-attack rider are all
+"the engine has an offer; does the APL take it?" One flat ordered list; the
 engine filters to currently-offered ids and takes the first passing entry.
-Individual actions are **Command** objects (`is_legal()` / `execute()`), which
-is what lets the turn loop re-poll after every action — and is why Action Surge
+Individual actions are **Command** objects (`is_legal()` / `execute()`), which is
+what lets the turn loop re-poll after every action — and is why Action Surge
 needs no special case: it simply grants another action slot and the loop asks
 again.
 
@@ -332,25 +343,25 @@ apl:
   - { action: attack }
 ```
 
-**Default policy: riders and reactions are OFF when unmentioned** — a
-**Null Object** standing in for the absent entry, so adding a feature never
-silently changes every existing build's numbers. If a turn falls through with
-no legal entry the creature ends its turn and an `APL_FALLTHROUGH` counter is
-surfaced in the report — a build falling through 40% of turns is misconfigured
-and you want to see it.
+**Default policy: riders and reactions are OFF when unmentioned** — a **Null
+Object** standing in for the absent entry, so adding a feature never silently
+changes every existing build's numbers. If a turn falls through with no legal
+entry the creature ends its turn and an `APL_FALLTHROUGH` counter is surfaced in
+the report — a build falling through 40% of turns is misconfigured and you want
+to see it.
 
-**Condition language: the Interpreter pattern, over an AST whitelist.** The
-`if:` clauses are a small expression grammar with its own compile step, not
-`eval` of source: parse, walk, reject any node outside an allowlist (no
-comprehensions, lambdas, imports, dunder access, assignment), reject private
-attributes, then resolve every dotted path against a declared
-`NamespaceSchema` at **load time** with `difflib` suggestions. `self.ragging`
-fails when the party loads — not silently as `False` at simulation-minute-nine.
+**Condition language: the Interpreter pattern, over an AST whitelist.** The `if:`
+clauses are a small expression grammar with its own compile step, not `eval` of
+source: parse, walk, reject any node outside an allowlist (no comprehensions,
+lambdas, imports, dunder access, assignment), reject private attributes, then
+resolve every dotted path against a declared `NamespaceSchema` at **load time**
+with `difflib` suggestions. `self.ragging` fails when the party loads — not
+silently as `False` at simulation-minute-nine.
 
-Each compiled condition is a **Specification**: a reusable boolean predicate
-over domain objects, composable with `and`/`or`, and — because the compiler
-records which paths each one reads — introspectable, which is what lets the
-loader prove an APL never references state a build doesn't have.
+Each compiled condition is a **Specification**: a reusable boolean predicate over
+domain objects, composable with `and`/`or`, and — because the compiler records
+which paths each one reads — introspectable, which is what lets the loader prove
+an APL never references state a build doesn't have.
 
 The namespace roots (`self`, `target`, `trigger`, `enemies`, …) are **Proxy**
 objects built once per creature holding weak references to live state, so
@@ -358,25 +369,25 @@ evaluation is attribute access rather than object construction.
 
 ## Failing loudly — layered
 
-This is **Design by Contract** with **Fail-Fast** escalation: each layer states
-a precondition and refuses to continue when it is violated, as early as the
-information exists to check it. `FeatureContractError` is named for exactly
-that — a handler that returns the wrong type has broken its contract, and the
-run stops rather than absorbing it.
+This is **Design by Contract** with **Fail-Fast** escalation: each layer states a
+precondition and refuses to continue when it is violated, as early as the
+information exists to check it. `FeatureContractError` is named for exactly that
+— a handler that returns the wrong type has broken its contract, and the run
+stops rather than absorbing it.
 
-**Import time:** unknown hook name; bad handler signature or context
-annotation; missing return annotation; duplicate/malformed feature id; missing
-`source_ref` rulebook citation.
+**Import time:** unknown hook name; bad handler signature or context annotation;
+missing return annotation; duplicate/malformed feature id; missing `source_ref`
+rulebook citation.
 
 **Load time:** unknown feature id (with suggestions); APL action id no attached
-feature provides; unparseable condition or unknown namespace path; `with:`
-params not matching the feature's declared `params`; declared features
-cross-checked against the class progression table, warning on omissions.
+feature provides; unparseable condition or unknown namespace path; `with:` params
+not matching the feature's declared `params`; declared features cross-checked
+against the class progression table, warning on omissions.
 
 **Runtime invariants (cheap, always on):** non-`HookResult` return; mutator
-called in the wrong context phase (`grant_advantage` after the roll);
-direct field assignment on a context; resource going negative or spent during a
-legality query; two reactions in a round; attack chain depth > 3.
+called in the wrong context phase (`grant_advantage` after the roll); direct
+field assignment on a context; resource going negative or spent during a legality
+query; two reactions in a round; attack chain depth > 3.
 
 **Golden tests — the real net.** Every feature ships one, enforced by a
 collection test that diffs `FEATURE_REGISTRY` against tests found on disk.
@@ -384,15 +395,16 @@ Goldens run on a `ScriptedRng` returning a fixed sequence, so assertions are
 exact integers rather than distributions:
 
 ```python
+# level-5 rogue, +3 DEX, dagger, with advantage
 with scripted_rng([18, 3, 4, 5, 6]):          # d20, d4 dagger, 3d6 sneak
     result = rogue.attack(dummy, advantage=True)
-assert result.total_damage == 3 + 3 + 15
+assert result.total_damage == 3 + 3 + 15      # dagger + DEX + sneak
 assert result.parts_by_source["rogue.sneak_attack"] == 15
 ```
 
 **No-op detector.** After the golden suite, any feature whose hooks never once
-returned `APPLIED` is reported. This catches the most common agent bug by far:
-a condition that can never be true (wrong enum member, inverted check).
+returned `APPLIED` is reported. This catches the most common agent bug by far: a
+condition that can never be true (wrong enum member, inverted check).
 
 **Interaction matrix.** ~50 hand-computed combos maintained by a human, not by
 batch agents — Rage + Uncanny Dodge + vulnerability, Sneak Attack + crit + GWM,
@@ -400,46 +412,119 @@ Cleave + Vex, Smite on a crit. This is the regression net for ordering changes,
 and the defence against "every feature is individually right, the total is 8%
 off".
 
-**Statistical harness (nightly).** Features declare an analytic expectation;
-200k simulated attacks are compared inside a Wilson interval. Catches the
-"compiles, tests pass, numbers wrong" class.
+**Statistical harness (nightly).** Features declare an analytic expectation and
+200k simulated attacks are compared against it — a Wilson interval for rates
+(hit chance, crit rate, save failure) and a Student-t interval for means (damage
+per round). Catches the "compiles, tests pass, numbers wrong" class.
 
-**Linter** (`tools/check_features.py`): `LATE`/`FINAL` without a `# PHASE:`
-comment, access to `_`-prefixed attributes, `import random` outside
-`core/rng.py`, missing XPHB citation.
+**Linter** (`dndsim check`): `LATE`/`FINAL` without a `# PHASE:` comment, access
+to `_`-prefixed attributes, `import random` outside `core/rng.py`, missing XPHB
+citation.
 
 ## Performance
 
 ~10k iterations × 5 encounters × 5 rounds × 5 creatures × 3 attacks ≈ **4M
 attack resolutions** per build comparison. Budget: **≥50k attack
-resolutions/sec/core**, measured on a stub in week one — before 400 features
-are written against the architecture.
+resolutions/sec/core**, measured on a stub in W0 — before any content is written
+against the architecture.
 
 Levers: per-creature precomputed dispatch tables (never scan a global bus);
 `__slots__` on every hot object; **Object Pool** for contexts — `AttackContext`
-instances are reset and reused per attack rather than allocated, which matters
-at 4M resolutions; **Flyweight** for the immutable specs (`ResourceSpec`,
+instances are reset and reused per attack rather than allocated, which matters at
+4M resolutions; **Flyweight** for the immutable specs (`ResourceSpec`,
 `Duration`, weapon definitions) shared across every creature; APL compiled once
 per build; structured tuple logging with string formatting deferred to the
 reporter — a **Lazy Evaluation** boundary worth ~2–3× on its own
-(`--log-level=summary`); multiprocessing across iterations with one seeded
-stream per worker; **adaptive stopping** on confidence-interval width rather
-than a fixed count.
+(`--log-level=summary`); multiprocessing across iterations with one seeded stream
+per worker; **adaptive stopping** on confidence-interval width rather than a
+fixed count.
 
 Note the tension worth naming: Object Pool and mutable shared contexts are in
-direct conflict with the Value Object discipline above. The split is
-deliberate — **contexts are pooled and mutable** (hot path, engine-owned),
-**everything a feature stores is frozen** (cold path, author-owned). The
-attribute lock is what keeps authors on the safe side of that line.
+direct conflict with the Value Object discipline above. The split is deliberate —
+**contexts are pooled and mutable** (hot path, engine-owned), **everything a
+feature stores is frozen** (cold path, author-owned). The attribute lock is what
+keeps authors on the safe side of that line.
+
 A CI benchmark gate fails the build on a >10% sims/sec regression — performance
 decays one feature at a time.
 
 ---
 
-# Module layout
+## Interfaces: library, CLI, and files
+
+**Ports & Adapters (Hexagonal Architecture).** The simulator is a *library* with
+a stable programmatic API; the CLI is a thin adapter over it. A web UI added
+later is another adapter against the same API — never a scraper of CLI output,
+and never a reimplementation.
+
+```python
+from dndsim import run_sim, run_day, SimConfig, SimResult
+
+result: SimResult = run_sim(SimConfig(build=..., dummy=..., iterations=10_000, seed=42))
+```
+
+`SimResult` is a frozen, serialisable dataclass. Everything the CLI prints is
+derived from it, so a renderer cannot report something the API doesn't expose.
+
+### What is a file, and what is not
+
+| Artefact | Location & format | Why |
+|---|---|---|
+| Builds, parties, encounters | `builds/*.yaml`, **in git** | You author and edit these. Diffable, reviewable. |
+| Fetched rules data | `data/`, **gitignored** | Third-party, bulky, reproducible from `dndsim content fetch`. |
+| Results | JSON (`SimResult`) | The machine contract a UI consumes. Schema-versioned. |
+| Terminal output | rendered from that JSON | A **Strategy** (`--format text\|json`), so text and JSON cannot disagree. |
+| Event trace | JSONL, opt-in | Huge — one run's blow-by-blow, for debugging, never part of a report. |
+| Runtime objects | **never serialised** | See below. |
+
+**Runtime objects are deliberately not persisted.** A mid-simulation `Creature`
+is not a document: dumping and reloading it would create a second source of truth
+that drifts from the YAML that produced it, and invites "resume from a saved
+state" semantics the engine does not support. Determinism removes the need
+entirely — **seed + build hash + engine version + content version reproduces any
+run exactly**, so a result file carries *provenance*, not state. Every
+`SimResult` embeds those four fields; without them, comparing two runs months
+apart is meaningless.
+
+### CLI surface
+
+Installed as a console script. `python -m dndsim <cmd>` is equivalent.
+
+```bash
+dndsim content fetch                                  # populate gitignored data/
+dndsim sim BUILD --dummy ac=16 -n 10000 [--format text|json] [-o result.json]
+dndsim day PARTY --encounters 6 --short-rests 2
+dndsim compare A B --sweep dummy.ac=10:22
+dndsim inspect BUILD                                  # resolved character, readable
+dndsim validate BUILD                                 # schema + APL check; exit code
+dndsim trace BUILD --seed 42                          # replay one fight, blow by blow
+dndsim check                                          # feature linter + no-op detector
+dndsim bench                                          # asserts the sims/sec budget
+```
+
+Global options: `--seed`, `--log-level=summary|full`, `--jobs`.
+
+Three of these exist because of decisions made elsewhere in this document:
+
+- **`inspect`** dumps the *resolved* build — every feature actually attached,
+  every resource with its recovery rule, the APL as parsed, and which entries are
+  unreachable. This is how you debug a build without reading engine code, and it
+  is a report *about* objects rather than a serialisation *of* them.
+- **`trace`** replays a single deterministic fight in readable text, each line
+  attributed to the handler that produced it (provenance is stamped automatically
+  by the dispatcher). It is how a wrong number gets chased down to the feature
+  responsible. Only possible because runs are reproducible.
+- **`validate`** applies the load-time failures above as a fast exit code, so CI
+  and batch authors can check a build without simulating it.
+
+---
+
+## Module layout
 
 ```
 src/dndsim/
+  api.py            # public surface: run_sim, run_day, SimConfig, SimResult
+  cli.py            # thin Typer adapter over api.py — no simulation logic
   core/       rng.py dice.py geometry.py log.py errors.py timeline.py
   rules/      enums.py constants.py
   hooks/      registry.py definitions.py decorator.py source.py
@@ -457,156 +542,155 @@ src/dndsim/
   engine/     world.py query.py attack.py damage.py saves.py turn.py
               encounter.py adventuring_day.py reactions.py
   content/    fetch.py loader.py refs.py tables.py weapons.py
-  reporting/  collect.py stats.py report.py
-  tools/      check_features.py noop_report.py
-  cli.py
-data/                      # gitignored: fetched 5etools JSON + builds/encounters
-tests/  contract/ golden/ interaction/ statistical/ bench/
-docs/   hooks.md apl.md    # GENERATED from the registries
-.claude/skills/feature-authoring/  statblock-import/
+  sim/        runner.py day.py compare.py sweep.py
+  reporting/  result.py collect.py stats.py render_text.py render_json.py
+  tools/      check_features.py noop_report.py gen_docs.py
+
+builds/     # hand-authored YAML: characters, parties, encounters — in git
+data/       # gitignored: fetched 5etools JSON
+docs/       # hooks.md + apl.md GENERATED; feature-hook-map.md authored
+tests/      contract/ golden/ interaction/ statistical/ bench/
+.claude/skills/  feature-authoring/  statblock-import/
 ```
 
 Patterns by package, so the layout is self-explaining:
 
+- `api.py` vs `cli.py` — **Ports & Adapters**. The boundary that makes a future
+  UI a client rather than a rewrite.
 - `engine/world.py` — **Mediator**. Creatures never reference each other
   directly; targeting, line of sight and reaction audiences all go through the
-  world. This is what keeps `Creature` from accumulating knowledge of the
-  whole battlefield. `world.query` is a **Facade** over the spatial index.
+  world. This keeps `Creature` from accumulating knowledge of the whole
+  battlefield. `world.query` is a **Facade** over the spatial index.
 - `content/loader.py` — **Adapter**, and more precisely an **Anti-Corruption
   Layer** (DDD). 5etools' vocabulary (`dmg1`, `atkr`, `classTableGroups`,
   `refSubclassFeature`) stops at this boundary and never reaches the domain
-  model. Since the dataset is a third-party artefact that changes without
-  notice, this is the difference between "a schema change breaks the importer"
-  and "a schema change breaks everything".
+  model. Since the dataset is a third-party artefact that changes without notice,
+  this is the difference between "a schema change breaks the importer" and "a
+  schema change breaks everything".
 - `content/tables.py` — **Repository**, the single read interface for imported
   reference data, so `table_value("Rage Damage")` is the only way features see
   scaling numbers.
-- `builds/loader.py` — **Builder**. A `Character` is assembled in validated
-  steps (abilities → class levels → features → equipment → APL), each able to
-  fail loudly with a useful message, rather than via a constructor with
-  twenty arguments.
+- `builds/loader.py` — **Builder**. A `Character` is assembled in validated steps
+  (abilities → class levels → features → equipment → APL), each able to fail
+  loudly with a useful message, rather than via a constructor with twenty
+  arguments.
 - `core/rng.py` — **Strategy**. `PcgRng` in production, `ScriptedRng` in golden
   tests. The linter bans `import random` everywhere else, so determinism is
   structurally guaranteed rather than merely intended.
-- Phase 5 stat-block parser — **Visitor** over 5etools entry trees, dispatching
-  on node type (`{@atkr}`, `{@actSave}`, `{@recharge}`). The closed tag
-  vocabulary is exactly the "stable element hierarchy, growing set of
-  operations" situation Visitor is for.
+- W7 stat-block parser — **Visitor** over 5etools entry trees, dispatching on
+  node type (`{@atkr}`, `{@actSave}`, `{@recharge}`). The closed tag vocabulary
+  is exactly the "stable element hierarchy, growing set of operations" situation
+  Visitor is for.
 
 `docs/hooks.md` and `docs/apl.md` are **generated** from the registries —
-**Single Source of Truth** applied to documentation. Hand-maintained docs
-drift, and a drifted doc is how you get 40 wrong features in one batch.
+**Single Source of Truth** applied to documentation. Hand-maintained docs drift,
+and a drifted doc is how you get 40 wrong features in one batch.
 
-# The feature-authoring skill
+## The feature-authoring skill
 
 The user's explicit direction — *"we design skills for subagents to use in
-crawling 5e.tools and parsing the prose into code"* — and the leverage that
-makes 670 implementations tractable. It is a first-class deliverable, and if it
-needs more than ~3 pages the API is too complicated and gets simplified rather
-than documented harder.
+crawling 5e.tools and parsing the prose into code"* — and the leverage that makes
+~610 implementations tractable. It is a first-class deliverable, and if it needs
+more than ~3 pages the API is too complicated and gets simplified rather than
+documented harder.
 
 `.claude/skills/feature-authoring/SKILL.md`:
 
 1. The uniform shape (10 lines).
 2. The generated hook table, **with the scope column**.
-3. The five mutator families: `grant_advantage`, `damage.add`,
-   `add_resistance`, `apply_effect`, `resources.spend`.
+3. The five mutator families: `grant_advantage`, `damage.add`, `add_resistance`,
+   `apply_effect`, `resources.spend`.
 4. `once_per` vs `costs` vs `gate` — a paragraph each.
 5. **The three gotchas, stated as rules:**
    - `Reset.TURN` (any turn boundary in initiative — real D&D "once per turn",
-     which is why Sneak Attack works on an OA *and* again on your turn) vs
-     `Reset.OWN_TURN` ("once on your turn"). The likeliest subtle bug; two
-     distinct enum members, covered by a contract test.
+     which is why Sneak Attack works on an opportunity attack *and* again on your
+     turn) vs `Reset.OWN_TURN` ("once on your turn"). The likeliest subtle bug;
+     two distinct enum members, covered by a contract test.
    - `dice` doubles on crits, `flat` does not.
    - **The snapshot rule:** the handler list is snapshotted per event, so an
      effect applied during a hook does not fire for that same event — Reckless
-     Attack must both apply its effect *and* call `ctx.grant_advantage()` for
-     the triggering attack.
+     Attack must both apply its effect *and* call `ctx.grant_advantage()` for the
+     triggering attack.
 6. Rage, Sneak Attack and Uncanny Dodge verbatim as the three exemplars —
    passive+duration+resource, on-hit rider with once-per-turn, reaction with an
    APL gate.
 7. Where numbers come from: `table_value(...)` reading imported
    `classTableGroups`. **Hardcoding a scaling number is a review failure.**
-8. How to resolve `refSubclassFeature` / `refOptionalfeature` indirection in
-   the source data.
+8. How to resolve `refSubclassFeature` / `refOptionalfeature` indirection in the
+   source data.
 9. **The escape valve:** a feature that cannot be expressed declares
-   `NEEDS_HOOK = "on_X: <description>"` and returns `SKIPPED`; a collection
-   test fails listing all of them. Hook additions are batched into a deliberate
-   core change. Blocked-and-visible beats improvised-and-wrong.
-10. Checklist: `source_ref`, golden test, run the linter.
+   `NEEDS_HOOK = "on_X: <description>"` and returns `SKIPPED`; a collection test
+   fails listing all of them. Hook additions are batched into a deliberate core
+   change. Blocked-and-visible beats improvised-and-wrong.
+10. Checklist: `source_ref`, golden test, `dndsim check`.
 
-The skill deliberately teaches **the five shapes, not the pattern names** —
-an author needs "append a source, don't set a flag", not "this is a Parameter
-Object". The pattern vocabulary belongs in `docs/` and in review, where it
-helps maintainers argue about the design; putting it in the skill would spend
-scarce context on nomenclature instead of mechanics.
+The skill deliberately teaches **the five shapes, not the pattern names** — an
+author needs "append a source, don't set a flag", not "this is a Parameter
+Object". The pattern vocabulary belongs in `docs/` and in review, where it helps
+maintainers argue about the design; putting it in the skill would spend scarce
+context on nomenclature instead of mechanics.
 
-`features/TEMPLATE.py` is a **Prototype** to copy — the fastest possible way to
-get an author onto the happy path without them internalising the whole API.
+`features/TEMPLATE.py` is a **Prototype** to copy — the fastest way to get an
+author onto the happy path without them internalising the whole API.
 
-`.claude/skills/statblock-import/` covers the Phase 5 monster parser against
-the closed tag vocabulary.
+`.claude/skills/statblock-import/` covers the W7 monster parser against the
+closed tag vocabulary.
 
-# The target dummy
+## The target dummy
 
-The only "monster" in Phases 1–3, fully configurable in YAML: `ac`, `hp`,
-`count`, size, speed, grid placement; per-ability save bonuses and its own
-`save_dc`; a scripted `damage_per_round` routine (to-hit, dice, targets, type)
-so the party actually takes attrition damage; resistances / immunities /
-vulnerabilities; `legendary_resistances`; regeneration; and a `threat_profile`
-driving target selection.
+The only "monster" until W7, fully configurable in YAML: `ac`, `hp`, `count`,
+size, speed, grid placement; per-ability save bonuses and its own `save_dc`; a
+scripted `damage_per_round` routine (to-hit, dice, targets, type) so the party
+actually takes attrition damage; resistances / immunities / vulnerabilities;
+`legendary_resistances`; regeneration; and a `threat_profile` driving target
+selection.
 
 It is a **Test Double** in the precise xUnit sense — a configurable stand-in
 implementing the full `Creature` interface, so the engine cannot tell it from a
 real monster and no code path is special-cased for testing. That is what lets
-Phases 1–3 proceed with zero bestiary work and still exercise the real turn
-loop.
+everything before W7 proceed with zero bestiary work while still exercising the
+real turn loop.
 
 This makes the dummy the **experimental control**: sweep AC 10–22 and see where
 Great Weapon Master stops being worth it, exactly as a WoW sim would.
 
 ---
 
-# Phasing
+## Build order
 
-- **Phase 0 — Skeleton + performance proof.** Package, CI, `core/rng.py`,
-  dice, the hook registry and dispatcher, a stub attack loop. *Exit:* the
-  ≥50k attacks/sec/core budget is measured and met.
-- **Phase 1 — Engine core.** `Creature`, grid, timeline, action economy,
-  conditions, resources, effects, damage/attack resolution, target dummy, CLI,
-  stats. *Exit:* a level-5 Fighter with a greatsword kills a dummy and every
-  number is reproduced by a hand-computed golden test.
-- **Phase 2 — Paper pass, then the martial slice.** First classify all ~400
-  features into the hook each needs — a day of work that decides whether the
-  other 400 succeed, and the only reliable way to avoid hook drift. Then write
-  the authoring skill, then grind Barbarian/Fighter/Rogue/Monk 1–12 with 16
-  subclasses, 8 masteries, martial feats and the 20 maneuvers. **The API is
-  frozen only after this slice passes.**
-- **Phase 3 — Spell engine + casters.** Concentration, slots, upcasting, AoE
-  templates; then Paladin/Ranger, then full casters, spells added on demand.
-- **Phase 4 — Adventuring day.** Encounter chaining, rests, attrition
-  reporting, APL tuning, the build-comparison harness.
-- **Phase 5 — Monsters.** The 5etools stat-block parser, then the bestiary.
+Eight waves, `W0`–`W7`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
+51 tasks, their dependency edges, delegation modes and the task-packet template.
 
-Phases 0–2 are the commitment being made now; 3–5 are sketched to prove the
-architecture doesn't paint itself into a corner.
+| Wave | Content | Exit |
+|---|---|---|
+| **W0** | Scaffold, rules vocabulary, RNG/dice, timeline, hook registry, contexts, dispatch, performance spike | **M0:** ≥50k attack resolutions/sec/core measured |
+| **W1** | `Creature`, resources, effects, grid, damage + attack resolution, saves, conditions, event log | interfaces importable |
+| **W2** | Content importers, actions, turn/encounter loop, target dummy, APL, build loader, runner, API + CLI | **M1:** a level-5 Fighter kills a dummy, golden-verified |
+| **W3** | Golden harness, linter, doc generators, reference exemplars, **the paper pass**, hook gap resolution, authoring skill, interaction matrix | **M2:** API frozen |
+| **W4** | The martial grind — Barbarian/Fighter/Rogue/Monk 1–12, 16 subclasses, 8 masteries, martial feats, 20 maneuvers | **M3:** martial slice complete |
+| **W5** | Spell engine, then Paladin/Ranger, then full casters; spells on demand | casters playable |
+| **W6** | Rests, encounter chaining, attrition metrics, compare + sweep | **M4:** attrition v1 — the project's stated goal |
+| **W7** | Stat-block parser, bestiary import | real monsters |
 
-**[ROADMAP.md](ROADMAP.md)** expands this into a dependency-ordered Gantt chart
-with 51 tasks, marking which are serial architect work and which fan out to
-parallel agent batches, plus the task-packet template for delegating them.
+W0–W4 are the commitment being made now; W5–W7 are sketched to prove the
+architecture doesn't paint itself into a corner. **W6 depends only on W4**, not
+on W5 — attrition against target dummies is reachable with martials alone, so
+M4 does not wait for casters.
 
-# Verification
+## Verification
 
 ```bash
 pip install -e ".[dev]"
-python -m dndsim content fetch          # populate gitignored data/ from 5etools
+dndsim content fetch
 pytest tests/contract tests/golden tests/interaction
-python -m dndsim.tools.check_features   # linter + no-op detector + coverage
-python -m dndsim bench                  # asserts the sims/sec budget
+dndsim check
+dndsim bench
 
-python -m dndsim sim builds/fighter_gwm_l5.yaml --dummy ac=16 --iterations 10000
-python -m dndsim day builds/party.yaml --encounters 6 --short-rests 2
-python -m dndsim compare builds/a.yaml builds/b.yaml --sweep dummy.ac=10:22
+dndsim validate builds/fighter_gwm_l5.yaml
+dndsim sim builds/fighter_gwm_l5.yaml --dummy ac=16 -n 10000
+dndsim trace builds/fighter_gwm_l5.yaml --seed 42
+dndsim day builds/party.yaml --encounters 6 --short-rests 2
+dndsim compare builds/a.yaml builds/b.yaml --sweep dummy.ac=10:22
 ```
 
 Determinism is the backbone: identical seed + identical build ⇒ byte-identical
@@ -614,19 +698,19 @@ event log, so every bug is reproducible and every regression diff is readable.
 `compare` and `--sweep` are what make this a sim rather than a calculator, and
 are the primary manual check that results are sane.
 
-# Biggest risks
+## Biggest risks
 
 1. **Hook drift** — feature #340 needs a hook that doesn't exist, and an agent
    improvises by mutating private state or picking a wrong hook that happens to
-   fire. *Mitigated by:* the paper pass in Phase 2, the frozen registry with a
-   CI diff check, the loud `NEEDS_HOOK` escape valve, and a linter banning
-   private access and stray `random` imports.
-2. **Interaction correctness** — features individually right, combinations
-   wrong; grows quadratically while features grow linearly. *Mitigated by:*
-   structural prevention first, one resolution order in one file, the
-   human-maintained interaction matrix, and property tests (damage never
-   negative, HP conservation, one reaction per round, effect count returns to
-   baseline after every encounter).
-3. **Performance** — a simulator too slow to run is one nobody uses.
-   *Mitigated by:* the Phase 0 budget proof before the content grind, and a CI
-   benchmark gate per PR.
+   fire. *Mitigated by:* the paper pass in W3, the frozen registry with a CI diff
+   check, the loud `NEEDS_HOOK` escape valve, and a linter banning private access
+   and stray `random` imports.
+2. **Interaction correctness** — features individually right, combinations wrong;
+   grows quadratically while features grow linearly. *Mitigated by:* structural
+   prevention first, one resolution order in one file, the human-maintained
+   interaction matrix, and property tests (damage never negative, HP
+   conservation, one reaction per round, effect count returns to baseline after
+   every encounter).
+3. **Performance** — a simulator too slow to run is one nobody uses. *Mitigated
+   by:* the W0 budget proof before the content grind, and a CI benchmark gate per
+   PR.
