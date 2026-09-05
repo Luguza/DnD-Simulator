@@ -19,6 +19,28 @@ not for licensing reasons.
 rests between them, *how far into the adventuring day does the party get before
 resources run dry?* Attrition, not single-fight DPR.
 
+**What "runs dry" means, precisely.** A metric this vague is a metric that
+cannot be implemented, so the stop condition is settled here rather than
+discovered in W6:
+
+- A PC reduced to 0 HP falls unconscious and **rolls death saves** under the
+  normal rules. Death saves are a hook (`on_death_save`), so Relentless
+  Endurance and similar features attach to them like anything else.
+- **Healing is an APL action, not engine special-casing.** Healing Word,
+  Cure Wounds, potions, Second Wind and the Medicine-check stabilise are
+  ordinary actions the APL may take, gated by ordinary conditions
+  (`ally.down`, `ally.hp_pct < 0.3`). The healing-word yo-yo therefore falls
+  out of policy rather than being modelled — and is directly comparable
+  between builds, which is the point.
+- The day ends on a **TPK**, or when the party's declared **retreat
+  threshold** is met (`party.retreat_when: "allies.down >= 2"` in the party
+  YAML). The threshold is a build-file knob, so `--sweep` over it is a
+  legitimate experiment rather than a hardcoded assumption.
+
+Everything in the v1 headline number is downstream of these three choices;
+changing any of them changes every reported result, which is why they are
+settled decisions and not implementation detail.
+
 ## Settled decisions
 
 | Decision | Choice |
@@ -26,14 +48,40 @@ resources run dry?* Attrition, not single-fight DPR.
 | Language | Python 3.11+, OOP, library-first with a CLI adapter |
 | Ruleset | XPHB (2024), **levels 1–12** |
 | Positioning | Square grid, 5 ft cells, real distance, opportunity attacks, true AoE templates |
+| Movement | **An APL decision, not an engine heuristic** — a `move:` clause, same grammar as `if:` |
+| Targeting | **An APL decision** — a `target:` selector expression per entry |
 | Policy | SimC-style Action Priority List in build YAML |
 | v1 output | Adventuring-day attrition |
+| Death & stop condition | Death saves rolled; healing is an APL action; day ends on TPK or a declared retreat threshold |
 | Content order | **Martials first, full vertical slice** (Barbarian/Fighter/Rogue/Monk, 16 subclasses, levels 1–12, masteries, martial feats) |
+| Species | **In scope** — the ~18 combat-relevant 2024 species traits |
 | Spells | **Engine built up front, individual spells added on demand** |
+| **Out of v1 scope** | **Multiclassing, magic items and attunement** — see below |
 
 Levels 1–12 removes 7th–9th level spells and tier-4 features — the
 hardest-to-model content — from scope. It also caps prepared spell levels at
 6th, which is why `spells/` only needs `level0..level6`.
+
+**The two explicit exclusions.** Both are cheap to state now and expensive to
+argue about mid-grind, which is the only reason they appear in a settled-decisions
+table at all:
+
+- **Multiclassing is out.** The build loader accepts a single class with levels,
+  not a list. The multiclass spell-slot table, non-stacking Extra Attack and
+  competing Unarmored Defense variants all complicate `builds/loader.py` and
+  `content/tables.py` for a v1 question — attrition — that a single-classed party
+  answers perfectly well. A batch that meets a multiclass-only interaction
+  declares `NEEDS_HOOK` rather than approximating it.
+- **Magic items and attunement are out.** `HookSource` is already the right shape
+  for them, so this is a scope decision rather than an architectural one, and v2
+  adds them without an engine change. Until then a build cannot express a `+1`
+  weapon, and comparisons are between unequipped builds only. This is worth
+  re-examining at M4, because it is the most common question a sim gets asked.
+
+**Species are in.** Relentless Endurance, Breath Weapon, Savage Attacks and
+Large Form are combat-relevant, fit the existing feature API with no new
+machinery, and are roughly 18 implementations — small enough to batch alongside
+the martial grind.
 
 ## Reconnaissance (done, against live data)
 
@@ -64,13 +112,15 @@ through the proxy; `5e.tools` direct returns 403.
 
 Not all 735 non-spell entries need code — Ability Score Improvement, Expertise,
 ritual casting, pure exploration utility and the reference-list wrappers (Battle
-Master's "Maneuver Options" is a pointer, not content) drop out. Three numbers
+Master's "Maneuver Options" is a pointer, not content) drop out. Four numbers
 are used consistently throughout both documents:
 
 - **~400 combat-relevant features** — the non-spell grind, and the number the
   paper pass classifies.
+- **~18 species traits** — not part of the 735 (they live in `species.json`),
+  small enough to ride along with the martial batches.
 - **212 combat spells** — a separate grind, pulled on demand.
-- **~610 implementations** at full coverage.
+- **~630 implementations** at full coverage.
 
 This drives every architectural decision below: the feature API must be
 learnable from a short document, uniform across wildly different mechanics, and
@@ -89,34 +139,40 @@ does that part.
 
 ---
 
-## Design patterns at a glance
+## The five load-bearing ideas
 
-Named so that batch authors and reviewers share vocabulary. Each is expanded at
-its point of use below.
+Everything else in this document is consequence. If you read only one section,
+read this one — and if a later decision contradicts one of these five, the later
+decision is wrong.
 
-| Pattern | Where | Why it earns its place |
-|---|---|---|
-| **Intercepting Filter / Pipeline** | `hooks/dispatch.py` | Ordered handlers over one shared context — the core mechanism |
-| **Chain of Responsibility** (veto variant) | `Phase.EARLY` / `FINAL` handlers | Any handler may veto an attack or a cast |
-| **Parameter Object** | `hooks/contexts.py` | Contexts bundle the in-flight state features are allowed to touch |
-| **Registry + Factory Method** | `HOOKS`, `FEATURE_REGISTRY` | id → class resolution; closed registries make typos import errors |
-| **Command** | `actions/base.py` | `is_legal()` / `execute()`; lets the economy queue and re-poll actions |
-| **Strategy** | `apl/`, `core/rng.py` | Swappable decision policy; `PcgRng` vs `ScriptedRng` |
-| **Interpreter** | `apl/expr.py` | APL conditions are a small expression grammar compiled to an AST |
-| **Specification** | APL `if:` clauses | Composable boolean predicates over domain objects |
-| **State** | `conditions/`, `effects.py` | Prone/Frightened/Raging alter behaviour by being attached |
-| **Mediator** | `engine/world.py` | Creatures never talk to each other directly |
-| **Adapter / Anti-Corruption Layer** | `content/loader.py` | 5etools' schema never leaks into the domain model |
-| **Visitor** | W7 stat-block parser | Walks 5etools entry trees by node type |
-| **Builder** | `builds/loader.py` | Assembles a `Character` from YAML in validated steps |
-| **Unit of Work** | `resources.transaction()` | Multi-resource costs commit or roll back atomically |
-| **Facade** | `SpellSlots`, `world.query` | Ergonomic surface over nine pools / spatial queries |
-| **Value Object** | `DamagePart`, `Modifier`, `TimeKey`, `Duration`, `ResourceSpec` | Frozen, comparable, safely shared |
-| **Object Pool + Flyweight** | context reuse, shared specs | The performance budget depends on both |
-| **Null Object** | APL default policy, empty dispatch list | Absent config behaves predictably, never crashes |
-| **Template Method** | `HookSource.__init_subclass__` | Fixed validation skeleton subclasses cannot skip |
-| **Ports & Adapters** | `api.py` vs `cli.py` | A UI added later is another adapter, not a rewrite |
-| **Inversion of Control** | the whole feature API | The engine calls features; features never drive the engine |
+1. **The engine calls features; features never drive the engine.** Every
+   extension point is a named hook the dispatcher invokes with one context
+   object. ~630 independently-authored units can coexist only because none of
+   them is in control.
+2. **Contexts are attribute-locked; features call mutators, never assign
+   fields.** Two features cannot clobber each other because nobody writes a
+   field. This is encapsulation enforced at runtime rather than by convention,
+   and it is what makes parallel low-context authoring survivable.
+3. **Make illegal states unrepresentable rather than tested.** `DamagePart`
+   splits `dice` from `flat` so crits cannot be got wrong; advantage is a
+   collection of sources so stacking cannot be got wrong; `_resist` is a set so
+   double resistance cannot happen. Every rule made structural is a rule that
+   never needs a test.
+4. **Fail at the earliest moment the information exists.** Unknown hook name at
+   import; unknown feature id or unparseable APL path at load; contract
+   violations at runtime. Silence is the enemy, not verbosity.
+5. **Determinism is structural, not intended.** One RNG protocol, a linter ban
+   on `import random`, and per-iteration seeding. Seed plus build reproduces a
+   run byte for byte, which is what makes every bug reproducible and every
+   regression diff readable.
+
+The full pattern-name catalogue — which GoF pattern each module corresponds to,
+and why — lives in [docs/patterns.md](docs/patterns.md). It is a vocabulary for
+maintainers arguing about the design, deliberately kept **out of this document
+and out of every batch agent's context**: an author needs "append a source,
+don't set a flag", not "this is a Parameter Object", and pattern names in a
+batch prompt produce code that is consistent with the vibe and wrong about the
+rule.
 
 Two patterns are **deliberately rejected**, and the reasons are the design's
 load-bearing arguments: **Observer / Event Aggregator** (the pub-sub bus) and
@@ -174,17 +230,25 @@ one being hit), `OBSERVER` (owner merely perceives it), `GLOBAL`. In an
 `on_incoming_damage` handler `self.owner` is *the victim*, with no prose needed.
 No feature ever writes `if ctx.attacker is self.owner`.
 
-### The closed hook list — 34 points
+### The closed hook list — 38 points
 
 | Group | Hooks | Count |
 |---|---|---|
 | Timeline | `on_encounter_start` / `_end`, `on_round_start` / `_end`, `on_turn_start` / `_end`, `on_short_rest`, `on_long_rest` | 8 |
 | Attack | `on_declare_attack`, `on_incoming_attack_declared`, `on_attack_rolled`, `on_hit`, `on_hit_taken`, `on_miss`, `on_attack_resolved` | 7 |
 | Damage | `on_damage_roll`, `on_incoming_damage`, `on_damage_taken`, `on_reduced_to_zero`, `on_kill` | 5 |
+| Healing & dying | `on_heal`, `on_temp_hp_gained`, `on_death_save`, `on_stabilize` | 4 |
 | Checks & saves | `on_ability_check`, `on_saving_throw`, `on_save_resolved`, `on_forced_save` | 4 |
 | Casting | `on_cast_spell`, `on_concentration_start`, `on_concentration_check` | 3 |
 | Effects | `on_condition_gained` / `_lost`, `on_effect_applied` / `_expired` | 4 |
 | Movement & resources | `on_move`, `on_leave_reach`, `on_resource_spent` | 3 |
+
+The **Healing & dying** group exists because the v1 metric is attrition, and
+attrition is HP in versus HP out. Without it Second Wind, hit dice on a short
+rest, Cure Wounds, potions, Song of Rest and Relentless Endurance have nowhere
+to attach, and `on_temp_hp_gained` is needed because temp HP appears in the
+damage resolution order below with nothing able to observe it. Cheap now,
+impossible after the W3 freeze.
 
 The registry is **frozen** to feature-batch authors; CI fails any batch PR
 touching `hooks/`, `engine/` or `core/`. A closed, frozen extension point is the
@@ -244,7 +308,7 @@ work that would otherwise be procedural code an author could misplace:
 
 This is *"make illegal states unrepresentable"* rather than *"test for illegal
 states"*. Every rule made structural is one that never needs a test — the
-highest-leverage move available when ~610 units are written by different hands.
+highest-leverage move available when ~630 units are written by different hands.
 
 ## Durations: one mechanism, three shapes
 
@@ -337,18 +401,51 @@ apl:
   - { action: rage,            if: "not self.raging and enemies.within(30) >= 1" }
   - { action: reckless_attack, if: "self.hp_pct > 0.4 or target.ac >= 17" }
   - action: divine_smite
-    if:   "trigger.crit or (self.slots.highest >= 3 and target.hp > 25)"
-    with: { slot_level: "3 if trigger.crit else self.slots.highest" }
+    if:     "trigger.crit or (self.slots.highest >= 3 and target.hp > 25)"
+    with:   { slot_level: "3 if trigger.crit else self.slots.highest" }
   - { action: uncanny_dodge,   if: "trigger.damage_estimate >= self.hp * 0.25" }
-  - { action: attack }
+  - action: healing_word
+    if:     "allies.down >= 1"
+    target: "first(allies.down)"
+  - action: attack
+    target: "lowest_hp of enemies.in_reach"
+    move:   "toward lowest_hp of enemies until in_reach"
 ```
+
+**Three clauses, one grammar.** `if:` decides *whether*, `target:` decides *on
+whom*, `move:` decides *from where* — all three compile through the same AST
+whitelist against the same namespace schema, so an author learns one language
+and a typo in any of them fails at load.
+
+- **`target:`** is a selector expression returning one creature or an ordered
+  list: `lowest_hp of enemies.in_reach`, `nearest of enemies`,
+  `first(allies.down)`. Omitted, it defaults to the engine's current offer —
+  which for a rider or reaction is the creature that triggered it, and for an
+  attack is the nearest enemy in reach. Without this clause the APL cannot
+  express focus-fire versus spread damage, and those differ by more than most
+  feats do.
+- **`move:`** is why the grid is not decorative. The turn loop offers movement
+  the same way it offers actions, and the APL takes it or does not:
+  `toward <selector> until in_reach`, `away_from <selector> to_max_range`,
+  `hold`. Opportunity attacks, Cleave adjacency, Monk mobility, ranged kiting
+  and every AoE template only mean something once somebody decides where to
+  stand, and that decision belongs in the policy rather than in an engine
+  heuristic nobody can compare against.
+
+Movement is a **decision, not a pathfinding problem**: the selector picks a
+destination and the engine walks the shortest legal route to it, provoking on
+the way out of reach as normal. There is no tactical pathing, and none is
+planned — an APL that wants a specific route says so with a sequence of `move:`
+entries.
 
 **Default policy: riders and reactions are OFF when unmentioned** — a **Null
 Object** standing in for the absent entry, so adding a feature never silently
 changes every existing build's numbers. If a turn falls through with no legal
 entry the creature ends its turn and an `APL_FALLTHROUGH` counter is surfaced in
 the report — a build falling through 40% of turns is misconfigured and you want
-to see it.
+to see it. Movement is the one exception to OFF-by-default: a build with no
+`move:` clause anywhere closes to reach of its nearest enemy, because the
+alternative is a melee build that stands still and reports zero damage.
 
 **Condition language: the Interpreter pattern, over an AST whitelist.** The `if:`
 clauses are a small expression grammar with its own compile step, not `eval` of
@@ -387,24 +484,52 @@ against the class progression table, warning on omissions.
 **Runtime invariants (cheap, always on):** non-`HookResult` return; mutator
 called in the wrong context phase (`grant_advantage` after the roll); direct
 field assignment on a context; resource going negative or spent during a legality
-query; two reactions in a round; attack chain depth > 3.
+query; **a second reaction spent before the creature's own turn has begun**;
+attack chain depth > 3.
 
-**Golden tests — the real net.** Every feature ships one, enforced by a
-collection test that diffs `FEATURE_REGISTRY` against tests found on disk.
-Goldens run on a `ScriptedRng` returning a fixed sequence, so assertions are
-exact integers rather than distributions:
+> The reaction invariant is stated on the **turn** boundary, not the round
+> boundary, because 2024's rule is that you regain your reaction *at the start of
+> each of your turns*. A creature high in initiative may legitimately react on an
+> enemy's turn, take its own turn, and react again later in the same round.
+> Accounting per round raises on that legal sequence and misses a genuinely
+> illegal one — it is the kind of invariant that would halt correct simulations.
+
+**Golden tests — necessary, and not sufficient.** Every feature ships one,
+enforced by a collection test that diffs `FEATURE_REGISTRY` against tests found
+on disk. Goldens run on a `ScriptedRng` returning a fixed sequence, so
+assertions are exact integers rather than distributions:
 
 ```python
 # level-5 rogue, +3 DEX, dagger, with advantage
+# XPHB Sneak Attack, level 5: 3d6. Expected damage:
+#   dagger 1d4 -> 3  +  DEX 3  +  sneak 3d6 (4+5+6) -> 15  =  21
 with scripted_rng([18, 3, 4, 5, 6]):          # d20, d4 dagger, 3d6 sneak
     result = rogue.attack(dummy, advantage=True)
-assert result.total_damage == 3 + 3 + 15      # dagger + DEX + sneak
+assert result.total_damage == 21
 assert result.parts_by_source["rogue.sneak_attack"] == 15
 ```
 
-**No-op detector.** After the golden suite, any feature whose hooks never once
-returned `APPLIED` is reported. This catches the most common agent bug by far: a
-condition that can never be true (wrong enum member, inverted check).
+**Be honest about what a golden proves.** The agent that writes the feature
+writes its test, so a green golden suite is evidence that the code is
+self-consistent, not that it matches the rulebook. Three rules turn goldens back
+into a real check, and all three are enforced rather than encouraged:
+
+1. **The expected number is written out as arithmetic in a comment**, derived
+   from the rules text and not from the implementation — as above. An author who
+   cannot produce that line does not understand the feature, and the comment is
+   what makes review a five-second read instead of a re-derivation.
+2. **`source_ref` carries the quoted rules sentence**, not just a citation (see
+   § The feature-authoring skill). A reviewer compares the quote to the
+   assertion with no book open.
+3. **A read-only reviewer pass per batch** — an agent that sees the quoted rules
+   text and the code but not the author's reasoning, and reports discrepancies
+   only. This is the check goldens structurally cannot be, and it is cheap
+   precisely because rules 1 and 2 put everything it needs in the file.
+
+**No-op detector.** After the golden suite — and on **every batch PR**, not only
+nightly — any feature whose hooks never once returned `APPLIED` is reported.
+This catches the most common agent bug by far: a condition that can never be
+true (wrong enum member, inverted check).
 
 **Interaction matrix.** ~50 hand-computed combos maintained by a human, not by
 batch agents — Rage + Uncanny Dodge + vulnerability, Sneak Attack + crit + GWM,
@@ -412,41 +537,109 @@ Cleave + Vex, Smite on a crit. This is the regression net for ordering changes,
 and the defence against "every feature is individually right, the total is 8%
 off".
 
-**Statistical harness (nightly).** Features declare an analytic expectation and
-200k simulated attacks are compared against it — a Wilson interval for rates
-(hit chance, crit rate, save failure) and a Student-t interval for means (damage
-per round). Catches the "compiles, tests pass, numbers wrong" class.
+**Statistical harness — per batch, not nightly.** Features declare an analytic
+expectation and 200k simulated attacks are compared against it — a Wilson
+interval for rates (hit chance, crit rate, save failure) and a Student-t
+interval for means (damage per round). Catches the "compiles, tests pass,
+numbers wrong" class, and it is the **only oracle in the project an author
+cannot fake**, which is why it runs against each batch rather than overnight.
 
-**Linter** (`dndsim check`): `LATE`/`FINAL` without a `# PHASE:` comment, access
-to `_`-prefixed attributes, `import random` outside `core/rng.py`, missing XPHB
-citation.
+That property has to be defended: an expectation computed by calling the engine
+passes forever and means nothing. So an expectation **must be a literal number
+or a closed-form expression of declared inputs** (AC, ability modifier,
+proficiency bonus, level) — any import from `dndsim` inside an expectation is a
+linter error, not a review comment.
+
+**Linter** (`dndsim check`), enforcing the rules above plus the rules that keep
+agent-authored content from drifting:
+
+| Rule | Why |
+|---|---|
+| `LATE`/`FINAL` without a `# PHASE:` comment | Keeps the order-sensitive set enumerable by `rg` |
+| Access to `_`-prefixed attributes | The attribute lock is worthless if features reach around it |
+| `import random` outside `core/rng.py` | Determinism is structural |
+| Missing `source_ref`, or one without a quoted rules sentence | Makes review mechanical |
+| `dndsim` imports inside an analytic expectation | Stops the oracle from becoming a tautology |
+| `try`/`except` anywhere in `features/` or `spells/` | Defensive blocks swallow the fail-loud design |
+| `hasattr` / `getattr` / `isinstance` chains on domain objects | The same routing-around, differently spelled |
+| A feature file over **60 lines** | A feature needing more is a design smell; it goes back to the architect |
+| A batch PR touching `hooks/`, `engine/`, `core/`, or any file outside its packet's allowlist | The freeze is structural or it is nothing |
+| A new third-party dependency in a content batch | — |
+
+The file-size cap is the least conventional rule here and the most useful. It
+costs an occasional argument about a genuinely large feature, and in exchange it
+kills speculative generality before it is written — which is the single most
+common shape of agent-authored slop.
 
 ## Performance
 
 ~10k iterations × 5 encounters × 5 rounds × 5 creatures × 3 attacks ≈ **4M
 attack resolutions** per build comparison. Budget: **≥50k attack
-resolutions/sec/core**, measured on a stub in W0 — before any content is written
-against the architecture.
+resolutions/sec/core**, measured in W0 — before any content is written against
+the architecture.
 
-Levers: per-creature precomputed dispatch tables (never scan a global bus);
-`__slots__` on every hot object; **Object Pool** for contexts — `AttackContext`
-instances are reset and reused per attack rather than allocated, which matters at
-4M resolutions; **Flyweight** for the immutable specs (`ResourceSpec`,
-`Duration`, weapon definitions) shared across every creature; APL compiled once
-per build; structured tuple logging with string formatting deferred to the
-reporter — a **Lazy Evaluation** boundary worth ~2–3× on its own
-(`--log-level=summary`); multiprocessing across iterations with one seeded stream
-per worker; **adaptive stopping** on confidence-interval width rather than a
-fixed count.
+### The spike must be pessimistic, or M0 proves nothing
 
-Note the tension worth naming: Object Pool and mutable shared contexts are in
-direct conflict with the Value Object discipline above. The split is deliberate —
-**contexts are pooled and mutable** (hot path, engine-owned), **everything a
-feature stores is frozen** (cold path, author-owned). The attribute lock is what
-keeps authors on the safe side of that line.
+The obvious way to run `w0h` is against a stub creature and an attack loop. That
+measurement is worthless: a stub has ~0 attached handlers, no APL evaluation, no
+effect-expiry scan and no geometry query. It will clear 50k/s comfortably, M0
+gets declared, and the real number arrives in W4 with 400 features already
+written against a dispatch design nobody can now afford to change. **M0 exists
+to be the cheap moment to revise; a stub spends that moment on nothing.**
+
+So the spike benchmarks a deliberately hostile synthetic creature:
+
+- **~25 attached `HookSource`s** spread across the hot hooks — at least 15 of
+  them on `on_hit`, which is what a level-12 Barbarian actually looks like.
+- **An 8-condition APL** re-evaluated per action, plus a `target:` selector and
+  a `move:` clause, since all three run every turn.
+- **Real movement on a real grid**, so distance and reach queries are in the
+  measurement rather than optimised away.
+- **Worker startup measured separately.** Windows uses `spawn`, not `fork`:
+  every worker re-imports the package and rebuilds every character from YAML.
+  At 10k iterations that amortises to nothing; at `compare --sweep dummy.ac=10:22`
+  it is paid 13 times over, and it is the cost most likely to be missed by a
+  benchmark that only times the inner loop.
+
+If that configuration misses the budget, the architecture is revised in W0. That
+is the whole point of the milestone.
+
+### Levers
+
+Per-creature precomputed dispatch tables (never scan a global bus); `__slots__`
+on every hot object; contexts reset and reused per attack rather than allocated,
+which matters at 4M resolutions; immutable specs (`ResourceSpec`, `Duration`,
+weapon definitions) shared across every creature; APL compiled once per build;
+structured tuple logging with string formatting deferred to the reporter — worth
+~2–3× on its own (`--log-level=summary`); multiprocessing across iterations;
+**adaptive stopping** on confidence-interval width rather than a fixed count.
+
+**Seeding is per iteration, never per worker.** `rng = PcgRng(mix(master_seed,
+iteration_index))`, so iteration 4,271 draws the same stream whether it ran on
+worker 0 of 1 or worker 6 of 8. Seeding per worker would make every result
+depend on `--jobs` and on scheduling, quietly breaking the reproducibility
+guarantee below — the cost is one RNG init per iteration, which is nothing
+against a whole encounter.
+
+Note the tension worth naming: pooled mutable contexts are in direct conflict
+with the frozen-value discipline above. The split is deliberate — **contexts are
+pooled and mutable** (hot path, engine-owned), **everything a feature stores is
+frozen** (cold path, author-owned). The attribute lock is what keeps authors on
+the safe side of that line.
+
+### The benchmark gate
 
 A CI benchmark gate fails the build on a >10% sims/sec regression — performance
-decays one feature at a time.
+decays one feature at a time. Two details decide whether that gate survives
+contact with a shared CI runner:
+
+- **Median of N runs with a warmup**, never a single timing.
+- **Compared against a same-run microbenchmark baseline**, not an absolute
+  number, so a slow runner scales both sides.
+
+A gate that fires on noise gets disabled within a month, at which point
+performance decays exactly as predicted. Run it tracked-but-non-blocking until
+its variance is known, then turn on the failure.
 
 ---
 
@@ -485,6 +678,11 @@ entirely — **seed + build hash + engine version + content version reproduces a
 run exactly**, so a result file carries *provenance*, not state. Every
 `SimResult` embeds those four fields; without them, comparing two runs months
 apart is meaningless.
+
+Note what is *not* in that list: `--jobs`. Reproduction is independent of worker
+count only because seeding is per iteration rather than per worker (§
+Performance). If that ever changes, this guarantee silently becomes false, and
+every archived result becomes incomparable with no error anywhere.
 
 ### CLI surface
 
@@ -548,39 +746,22 @@ src/dndsim/
 
 builds/     # hand-authored YAML: characters, parties, encounters — in git
 data/       # gitignored: fetched 5etools JSON
-docs/       # hooks.md + apl.md GENERATED; feature-hook-map.md authored
+docs/       # hooks.md + apl.md GENERATED; feature-hook-map.md + patterns.md authored
 tests/      contract/ golden/ interaction/ statistical/ bench/
 .claude/skills/  feature-authoring/  statblock-import/
 ```
 
-Patterns by package, so the layout is self-explaining:
+The pattern-name rationale for each package lives in
+[docs/patterns.md](docs/patterns.md), not here. Two boundaries are load-bearing
+enough to restate in place:
 
-- `api.py` vs `cli.py` — **Ports & Adapters**. The boundary that makes a future
-  UI a client rather than a rewrite.
-- `engine/world.py` — **Mediator**. Creatures never reference each other
-  directly; targeting, line of sight and reaction audiences all go through the
-  world. This keeps `Creature` from accumulating knowledge of the whole
-  battlefield. `world.query` is a **Facade** over the spatial index.
-- `content/loader.py` — **Adapter**, and more precisely an **Anti-Corruption
-  Layer** (DDD). 5etools' vocabulary (`dmg1`, `atkr`, `classTableGroups`,
-  `refSubclassFeature`) stops at this boundary and never reaches the domain
-  model. Since the dataset is a third-party artefact that changes without notice,
-  this is the difference between "a schema change breaks the importer" and "a
-  schema change breaks everything".
-- `content/tables.py` — **Repository**, the single read interface for imported
-  reference data, so `table_value("Rage Damage")` is the only way features see
-  scaling numbers.
-- `builds/loader.py` — **Builder**. A `Character` is assembled in validated steps
-  (abilities → class levels → features → equipment → APL), each able to fail
-  loudly with a useful message, rather than via a constructor with twenty
-  arguments.
-- `core/rng.py` — **Strategy**. `PcgRng` in production, `ScriptedRng` in golden
-  tests. The linter bans `import random` everywhere else, so determinism is
-  structurally guaranteed rather than merely intended.
-- W7 stat-block parser — **Visitor** over 5etools entry trees, dispatching on
-  node type (`{@atkr}`, `{@actSave}`, `{@recharge}`). The closed tag vocabulary
-  is exactly the "stable element hierarchy, growing set of operations" situation
-  Visitor is for.
+- **`api.py` vs `cli.py`.** The CLI holds no simulation logic. A UI added later
+  is another adapter against the same API, never a scraper of CLI output.
+- **`content/loader.py`.** 5etools' vocabulary (`dmg1`, `atkr`,
+  `classTableGroups`, `refSubclassFeature`) stops at this boundary and never
+  reaches the domain model. The dataset is a third-party artefact that changes
+  without notice, so this is the difference between "a schema change breaks the
+  importer" and "a schema change breaks everything".
 
 `docs/hooks.md` and `docs/apl.md` are **generated** from the registries —
 **Single Source of Truth** applied to documentation. Hand-maintained docs drift,
@@ -590,7 +771,7 @@ and a drifted doc is how you get 40 wrong features in one batch.
 
 The user's explicit direction — *"we design skills for subagents to use in
 crawling 5e.tools and parsing the prose into code"* — and the leverage that makes
-~610 implementations tractable. It is a first-class deliverable, and if it needs
+~630 implementations tractable. It is a first-class deliverable, and if it needs
 more than ~3 pages the API is too complicated and gets simplified rather than
 documented harder.
 
@@ -618,17 +799,38 @@ documented harder.
    `classTableGroups`. **Hardcoding a scaling number is a review failure.**
 8. How to resolve `refSubclassFeature` / `refOptionalfeature` indirection in the
    source data.
-9. **The escape valve:** a feature that cannot be expressed declares
-   `NEEDS_HOOK = "on_X: <description>"` and returns `SKIPPED`; a collection test
-   fails listing all of them. Hook additions are batched into a deliberate core
-   change. Blocked-and-visible beats improvised-and-wrong.
-10. Checklist: `source_ref`, golden test, `dndsim check`.
+9. **The two escape valves.** A feature that cannot be expressed at all
+   declares `NEEDS_HOOK = "on_X: <description>"` and returns `SKIPPED`. A
+   feature that *can* be expressed but only approximately declares
+   `APPROXIMATED = "<what is lost, and why>"` and implements the approximation.
+   A collection test fails listing both sets. Hook additions are batched into a
+   deliberate core change.
+
+   The second marker exists because the first one alone hides the more common
+   failure. Most content that does not fit is not impossible — it is *lossy*:
+   keyed on creature type, on illumination, on a condition not yet modelled, on
+   a multiclass interaction that is out of scope. Without `APPROXIMATED` that
+   lands as "implemented", passes its golden, and is quietly wrong. Neither
+   marker is a failure: **blocked-and-visible beats improvised-and-wrong, and
+   lossy-and-declared beats lossy-and-silent.**
+10. **`source_ref` carries the quoted rules sentence**, not just a page
+    citation. `source_ref = ("XPHB 51", "If you're able to make an Attack roll
+    with Advantage and the attack uses Dexterity...")`. This is what makes
+    review a side-by-side read rather than 630 trips to the book, and it is what
+    the reviewer pass needs to work at all. A citation without a quote is a
+    linter error.
+11. Checklist: quoted `source_ref`, golden test with the arithmetic written out,
+    `dndsim check`, disposition row.
 
 The skill deliberately teaches **the five shapes, not the pattern names** — an
 author needs "append a source, don't set a flag", not "this is a Parameter
-Object". The pattern vocabulary belongs in `docs/` and in review, where it helps
-maintainers argue about the design; putting it in the skill would spend scarce
-context on nomenclature instead of mechanics.
+Object". The pattern vocabulary lives in [docs/patterns.md](docs/patterns.md)
+and in review, where it helps maintainers argue about the design; putting it in
+the skill would spend scarce context on nomenclature instead of mechanics. For
+the same reason, **DESIGN.md is not a batch agent's reading list** — the packet
+points at the skill, the generated `docs/hooks.md` and `docs/apl.md`, and the
+exemplars. Prose-heavy architecture in a batch context window produces features
+that are consistent with the vibe and wrong about the rule.
 
 `features/TEMPLATE.py` is a **Prototype** to copy — the fastest way to get an
 author onto the happy path without them internalising the whole API.
@@ -642,8 +844,16 @@ The only "monster" until W7, fully configurable in YAML: `ac`, `hp`, `count`,
 size, speed, grid placement; per-ability save bonuses and its own `save_dc`; a
 scripted `damage_per_round` routine (to-hit, dice, targets, type) so the party
 actually takes attrition damage; resistances / immunities / vulnerabilities;
-`legendary_resistances`; regeneration; and a `threat_profile` driving target
-selection.
+`legendary_resistances`; regeneration; a `threat_profile` driving its target
+selection; and a **`movement_profile`** — `static`, `closes_to_melee`, or
+`kites_at(range)`.
+
+The movement profile is not a detail. A dummy that never moves makes the grid
+decorative: opportunity attacks never provoke, Cleave adjacency is whatever the
+starting placement happened to be, and a Monk's mobility measures identically to
+a Fighter standing still. `closes_to_melee` is the default because it is the
+condition most martial content is balanced against; `kites_at` is what makes
+ranged builds and Slow/Push masteries measurable.
 
 It is a **Test Double** in the precise xUnit sense — a configurable stand-in
 implementing the full `Creature` interface, so the engine cannot tell it from a
@@ -659,15 +869,15 @@ Great Weapon Master stops being worth it, exactly as a WoW sim would.
 ## Build order
 
 Eight waves, `W0`–`W7`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
-51 tasks, their dependency edges, delegation modes and the task-packet template.
+57 tasks, their dependency edges, delegation modes and the task-packet template.
 
 | Wave | Content | Exit |
 |---|---|---|
-| **W0** | Scaffold, rules vocabulary, RNG/dice, timeline, hook registry, contexts, dispatch, performance spike | **M0:** ≥50k attack resolutions/sec/core measured |
-| **W1** | `Creature`, resources, effects, grid, damage + attack resolution, saves, conditions, event log | interfaces importable |
+| **W0** | Scaffold, rules vocabulary, RNG/dice, timeline, hook registry, contexts, dispatch, **walking skeleton + pessimistic spike** | **M0:** ≥50k attack resolutions/sec/core on a 25-feature creature |
+| **W1** | `Creature`, resources, effects, grid, damage + attack resolution, saves, conditions, death saves, event log | interfaces importable |
 | **W2** | Content importers, actions, turn/encounter loop, target dummy, APL, build loader, runner, API + CLI | **M1:** a level-5 Fighter kills a dummy, golden-verified |
-| **W3** | Golden harness, linter, doc generators, reference exemplars, **the paper pass**, hook gap resolution, authoring skill, interaction matrix | **M2:** API frozen |
-| **W4** | The martial grind — Barbarian/Fighter/Rogue/Monk 1–12, 16 subclasses, 8 masteries, martial feats, 20 maneuvers | **M3:** martial slice complete |
+| **W3** | Golden harness, linter, doc generators, reference exemplars, **the paper pass**, hook gap resolution, authoring skill, interaction matrix, **the canary batch** | **M2:** API frozen — *by a real batch, not by inspection* |
+| **W4** | The martial grind — Barbarian/Fighter/Rogue/Monk 1–12, 16 subclasses, 8 masteries, martial feats, 20 maneuvers, ~18 species traits | **M3:** martial slice complete |
 | **W5** | Spell engine, then Paladin/Ranger, then full casters; spells on demand | casters playable |
 | **W6** | Rests, encounter chaining, attrition metrics, compare + sweep | **M4:** attrition v1 — the project's stated goal |
 | **W7** | Stat-block parser, bestiary import | real monsters |
@@ -676,6 +886,13 @@ W0–W4 are the commitment being made now; W5–W7 are sketched to prove the
 architecture doesn't paint itself into a corner. **W6 depends only on W4**, not
 on W5 — attrition against target dummies is reachable with martials alone, so
 M4 does not wait for casters.
+
+Two of the exits above changed shape after review, and both changes are the same
+argument: **a milestone that can be met by inspection has not been met.** M0 on
+a stub proves the benchmark harness runs, not that the architecture is fast
+enough. M2 on three hand-built exemplars proves the exemplars compile, not that
+the API survives an author who has never seen it. Each therefore has a real
+adversary attached — a hostile synthetic creature, and one disposable batch.
 
 ## Verification
 
@@ -700,17 +917,49 @@ are the primary manual check that results are sane.
 
 ## Biggest risks
 
-1. **Hook drift** — feature #340 needs a hook that doesn't exist, and an agent
+Ordered by expected cost, which is not the same as by likelihood. The first three
+share a shape worth naming: **each is a check that passes while proving nothing**,
+and that is a far more dangerous failure than a check that fails.
+
+1. **The performance spike passes on a stub.** M0 is the designated cheap moment
+   to revise dispatch, and a stub benchmark spends it on nothing — the real
+   number then arrives in W4 with 400 features already written against a design
+   nobody can afford to change. *Mitigated by:* the hostile-configuration spike
+   in § Performance, a benchmark gate built to survive CI noise, and the walking
+   skeleton that makes W0's measurement an integrated one.
+2. **Goldens grade their own homework.** The agent that writes the feature writes
+   its test; a green suite is evidence of self-consistency, not of correctness.
+   *Mitigated by:* hand-computed arithmetic in the golden, quoted `source_ref`, a
+   read-only reviewer pass per batch, and — the only oracle an author cannot fake
+   — the statistical harness, with expectations the linter forbids computing from
+   engine code.
+3. **The API freezes on an untested contract.** M2 rests on three hand-built
+   exemplars and a paper exercise; a wrong API discovered in the sixth parallel
+   batch costs six times the rework of one discovered in the first. *Mitigated
+   by:* the canary batch in W3 — one small, semi-disposable slice authored
+   against the frozen API before anything fans out.
+4. **The paper pass degrades quietly.** Classifying ~400 prose features to hooks
+   is the highest-leverage task in the project and the most tedious, and nothing
+   downstream detects a sloppy classification until features are written against
+   it. *Mitigated by:* batching the classification against a strict row schema
+   with a confidence column, human triage of the low-confidence and gap rows
+   only, and the additive-vs-structural split that makes the hook-gap budget
+   honest.
+5. **Review capacity, not agent throughput, is the constraint.** Roughly 130
+   nominal agent-days funnel through one person; every parallelism gain lands on
+   the same desk. *Mitigated by:* designing artefacts to be reviewable in minutes
+   — disposition tables, quoted citations, arithmetic in goldens, the file-size
+   cap — and by sizing batches for a review sitting rather than for agent
+   capacity.
+6. **Hook drift** — feature #340 needs a hook that doesn't exist, and an agent
    improvises by mutating private state or picking a wrong hook that happens to
-   fire. *Mitigated by:* the paper pass in W3, the frozen registry with a CI diff
-   check, the loud `NEEDS_HOOK` escape valve, and a linter banning private access
-   and stray `random` imports.
-2. **Interaction correctness** — features individually right, combinations wrong;
+   fire. Ranked below the others because it is the risk this design already
+   defends best. *Mitigated by:* the paper pass in W3, the frozen registry with a
+   CI diff check, both escape valves, and a linter banning private access and
+   stray `random` imports.
+7. **Interaction correctness** — features individually right, combinations wrong;
    grows quadratically while features grow linearly. *Mitigated by:* structural
    prevention first, one resolution order in one file, the human-maintained
    interaction matrix, and property tests (damage never negative, HP
-   conservation, one reaction per round, effect count returns to baseline after
-   every encounter).
-3. **Performance** — a simulator too slow to run is one nobody uses. *Mitigated
-   by:* the W0 budget proof before the content grind, and a CI benchmark gate per
-   PR.
+   conservation, reaction economy per turn, effect count returns to baseline
+   after every encounter).

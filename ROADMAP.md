@@ -4,28 +4,41 @@ Companion to [DESIGN.md](DESIGN.md). This document sequences the build so that
 **decisions with the widest blast radius are made first**, and every interface a
 later agent depends on exists — in code, not prose — before that agent starts.
 
-51 tasks across 8 waves, `W0`–`W7`. DESIGN.md § Build order is the one-table
+57 tasks across 8 waves, `W0`–`W7`. DESIGN.md § Build order is the one-table
 summary; this is the operational detail.
 
 ## Sequencing principles
 
 1. **Vocabulary before everything.** `rules/enums.py` and the hook registry are
-   imported by all ~610 content implementations. A rename after the grind begins
+   imported by all ~630 content implementations. A rename after the grind begins
    is a mass edit; a rename in W0 is free.
 2. **Interfaces are code, not documents.** A wave is only "done" when its public
    types exist and are importable, so the next wave's agents can write against a
    real signature instead of a description of one.
-3. **Prove the expensive constraint early.** The performance budget is validated
-   on a stub in W0, before any content is written against an architecture that
-   might not hit it.
+3. **Prove the expensive constraint against a hostile case.** The performance
+   budget is validated in W0 on a creature with ~25 attached features, an
+   8-condition APL and real movement — never on a stub. A stub clears the budget
+   trivially and proves only that the harness runs, which spends the one
+   milestone whose whole purpose is to make revision cheap.
 4. **The paper pass gates the grind.** All ~400 combat-relevant features are
    classified to a hook *before* any batch authoring starts. This is what
-   prevents hook drift — the #1 risk — and it is cheap only if it happens before
-   the API is frozen.
-5. **Serialise the risky, parallelise the repetitive.** W0 and W3 are
+   prevents hook drift, and it is cheap only if it happens before the API is
+   frozen.
+5. **Nothing is frozen until an outsider has used it.** M2 is not reached by
+   inspecting three hand-built exemplars; it is reached when a canary batch —
+   one small, semi-disposable slice authored by an agent that has never seen the
+   API — comes back needing no correction. A wrong API found in the sixth
+   parallel batch costs six times a wrong API found in the first.
+6. **Serialise the risky, parallelise the repetitive.** W0 and W3 are
    single-owner; W1–W2 are delegable but tightly sequenced. W4 onward fans out to
    many agents with near-zero coordination cost, because by then the contract is
    fixed and the work is mechanical.
+7. **The reviewer is the bottleneck, not the agents.** Roughly 130 nominal
+   agent-days funnel through one person, so every deliverable is designed to be
+   *reviewable in minutes* — disposition tables, quoted citations, arithmetic
+   written out in goldens, a hard file-size cap. Batches are sized for a review
+   sitting (15–25 features), not for agent capacity. A batch nobody has the
+   attention left to check is worth less than half the batch, checked.
 
 ## Delegation modes
 
@@ -37,106 +50,66 @@ summary; this is the operational detail.
 
 ---
 
-## Gantt
+## Wave dependencies
 
-Calendar dates are **nominal** — a nominal day is one focused agent-session's
-worth of work, not an estimate. The ordering and the dependency edges are the
-real content; do not read a finish date off this chart.
+The per-wave tables below carry the complete edge list in their **Depends**
+columns; this is the shape those edges make. There are deliberately no dates:
+effort is quoted in **nominal days** — one focused agent-session's worth of work
+— and a nominal day is not a calendar day, so a chart with an axis of calendar
+dates reads as wrong within a week and gets discounted along with everything
+else on it.
 
 ```mermaid
-gantt
-    title D&D Combat Simulator — build order
-    dateFormat YYYY-MM-DD
-    axisFormat %b %d
-    excludes weekends
+flowchart TD
+    W0["<b>W0 · Foundations</b><br/>scaffold, enums, RNG,<br/>timeline, hooks, contexts,<br/>dispatch, walking skeleton<br/><i>~14 nominal days · solo</i>"]
+    M0{{"<b>M0</b> — architecture proven<br/>≥50k res/s on a 25-feature creature"}}
+    W1["<b>W1 · Domain core</b><br/>creature, resources, effects,<br/>grid, damage, attack, saves,<br/>conditions, dying, log<br/><i>~18 nominal days</i>"]
+    W2["<b>W2 · Orchestration</b><br/>importers, actions, turn loop,<br/>dummy, APL, builds,<br/>runner, API, CLI<br/><i>~18 nominal days</i>"]
+    M1{{"<b>M1</b> — a level-5 Fighter<br/>kills a dummy, golden-verified"}}
+    W3["<b>W3 · Freeze gate</b><br/>goldens, linter, docs, exemplars,<br/>paper pass, hook gaps, skill,<br/>interaction matrix, <b>canary batch</b><br/><i>~20 nominal days · mostly solo</i>"]
+    M2{{"<b>M2</b> — API frozen<br/>by a real batch, not by inspection"}}
+    W4["<b>W4 · Martial grind</b><br/>Barbarian, Fighter, Rogue, Monk,<br/>masteries, feats, maneuvers, species<br/><i>~28 nominal days · fully parallel</i>"]
+    M3{{"<b>M3</b> — martial slice complete"}}
+    W5["<b>W5 · Spells + casters</b><br/>engine, then 8 classes,<br/>spells on demand<br/><i>~29 nominal days</i>"]
+    W6["<b>W6 · Adventuring day</b><br/>rests, chaining, attrition,<br/>compare + sweep<br/><i>~6 nominal days</i>"]
+    M4{{"<b>M4</b> — attrition v1<br/><b>the project's stated goal</b>"}}
+    W7["<b>W7 · Monsters</b><br/>statblock parser, bestiary<br/><i>~7 nominal days</i>"]
 
-    section W0 Foundations
-    Repo scaffold + CI            :        w0a, 2026-09-07, 1d
-    Rules vocabulary (enums)      :crit,   w0b, after w0a, 1d
-    RNG + dice                    :        w0c, after w0a, 1d
-    Timeline + Duration           :crit,   w0d, after w0b, 2d
-    Hook registry + definitions   :crit,   w0e, after w0b, 2d
-    Contexts (Parameter Objects)  :crit,   w0f, after w0e, 3d
-    Dispatch + HookSource         :crit,   w0g, after w0f, 2d
-    Performance spike             :crit,   w0h, after w0g, 2d
-    M0 Architecture proven        :milestone, m0, after w0h, 0d
+    W0 --> M0 --> W1 --> W2 --> M1 --> W3 --> M2 --> W4 --> M3
+    M3 --> W5
+    M3 --> W6 --> M4
+    M3 --> W7
 
-    section W1 Domain core
-    Creature + stats + economy    :        w1a, after w0g, 3d
-    Resources + SpellSlots        :        w1b, after w0g, 2d
-    Effects + stacking            :        w1c, after w0d, 2d
-    Geometry + grid               :        w1d, after w0c, 2d
-    Damage resolution order       :crit,   w1e, after w0f, 2d
-    Attack pipeline               :crit,   w1f, after w1e, 2d
-    Saving throws                 :        w1g, after w1f, 1d
-    Conditions (15 core)          :        w1h, after w1c, 2d
-    Structured event log          :        w1i, after w0c, 1d
-
-    section W2 Orchestration
-    Content ACL + importers       :        w2a, after w0b, 3d
-    Actions (Command)             :        w2b, after w1f, 2d
-    Turn + encounter + reactions  :crit,   w2c, after w2b, 3d
-    Target dummy                  :        w2d, after w1a, 1d
-    APL interpreter + namespace   :crit,   w2e, after w2b, 3d
-    Build loader (Builder)        :        w2f, after w2a w2e, 2d
-    Runner + SimResult + api.py   :        w2g, after w2c, 2d
-    CLI adapter                   :        w2h, after w2g, 1d
-    M1 Fighter kills dummy        :milestone, m1, after w2h, 0d
-
-    section W3 Freeze gate
-    Golden harness + fixtures     :        w3a, after w2c, 2d
-    Linter + no-op detector       :        w3b, after w3a, 2d
-    Doc generators                :        w3c, after w0e, 1d
-    Reference exemplars           :crit,   w3d, after w2e, 3d
-    Paper pass (classify ~400)    :crit,   w3e, after w3d, 4d
-    Hook gap resolution           :crit,   w3f, after w3e, 2d
-    Authoring skill               :crit,   w3g, after w3f, 2d
-    Interaction matrix v1         :        w3h, after w3d, 2d
-    CI benchmark gate             :        w3i, after w0h, 1d
-    M2 API frozen                 :milestone, m2, after w3g, 0d
-
-    section W4 Martial grind
-    Weapon masteries (8)          :        w4a, after w3g, 2d
-    Styles + martial feats        :        w4b, after w3g, 3d
-    Barbarian + 4 subclasses      :        w4c, after w3g, 4d
-    Fighter + 4 sub + maneuvers   :        w4d, after w3g, 5d
-    Rogue + 4 subclasses          :        w4e, after w3g, 4d
-    Monk + 4 subclasses           :        w4f, after w3g, 4d
-    Slice integration + review    :crit,   w4g, after w4a w4b w4c w4d w4e w4f, 3d
-    M3 Martial slice complete     :milestone, m3, after w4g, 0d
-
-    section W5 Spells + casters
-    Spell engine                  :crit,   w5a, after w4g, 4d
-    Paladin + Ranger              :        w5b, after w5a, 4d
-    Cleric + Druid                :        w5c, after w5b, 4d
-    Bard + Sorcerer + metamagic   :        w5d, after w5b, 4d
-    Warlock + invocations + Wiz   :        w5e, after w5b, 5d
-    Spell implementations         :        w5f, after w5a, 8d
-
-    section W6 Adventuring day
-    Rests + chaining + attrition  :        w6a, after w4g, 3d
-    Compare + sweep + stopping    :        w6b, after w6a, 3d
-    M4 Attrition v1               :milestone, m4, after w6b, 0d
-
-    section W7 Monsters
-    Statblock parser + skill      :        w7a, after w4g, 4d
-    Bestiary import + validation  :        w7b, after w7a, 3d
+    classDef gate fill:#1b5e45,stroke:#123f2f,color:#ffffff;
+    classDef goal fill:#7f3f12,stroke:#5c2d0d,color:#ffffff;
+    class M0,M1,M2,M3 gate;
+    class M4 goal;
 ```
+
+**Nothing in W4 or later may start before M2**, and that is the single most
+important scheduling constraint in the project. Once M3 lands, three branches run
+independently: **W6 depends only on W4, not on W5**, so attrition against target
+dummies — the v1 goal — is reachable with martials alone and does not wait for
+casters. W7 likewise forks from W4. Given enough agents, W5, W6 and W7 proceed
+concurrently.
 
 ### The critical path
 
-`enums → hook registry → contexts → dispatch → perf spike → damage → attack →
-turn loop → APL → exemplars → paper pass → hook gaps → authoring skill → the
-grind → spell engine`
+`enums → hook registry → contexts → dispatch → walking skeleton → perf spike →
+damage → attack → turn loop → APL → exemplars → paper pass → hook gaps →
+authoring skill → canary batch → the grind → spell engine`
 
-Everything on it is a decision that is expensive to revisit later. Everything off
-it can slip without blocking anyone. **Nothing in W4 or later may start before
-M2**, and that is the single most important scheduling constraint in the project.
+Everything on it is a decision that is expensive to revisit later; everything off
+it can slip without blocking anyone. Two entries were added to the chain after
+review, and both for the same reason — they are the points at which a milestone
+stops being self-certified:
 
-Two branches run independently once M3 lands: **W6 depends only on W4, not on
-W5**, so attrition against target dummies — the project's stated v1 goal — is
-reachable with martials alone and does not wait for casters. W7 likewise forks
-from W4. W5, W6 and W7 can proceed concurrently given enough agents.
+- **The walking skeleton** (inside `w0h`) puts a featureless creature through the
+  real dispatch path and real damage pipeline before resources, effects or grid
+  exist. Without it, 25 tasks complete before anything runs end to end, and
+  integration bugs surface at the most expensive possible moment.
+- **The canary batch** (`w3j`) is the outsider that turns M2 from an assertion
+  into a measurement.
 
 ---
 
@@ -149,15 +122,23 @@ afterwards.
 |---|---|---|---|---|---|
 | w0a | Repo scaffold: `pyproject.toml`, ruff, mypy, pytest layout, `.gitignore` (`data/`), GitHub Actions | 🔒 | — | package importable, CI green | `pip install -e ".[dev]"` + `pytest` pass on an empty suite |
 | w0b | **Rules vocabulary**: `Ability`, `DamageType`, `Condition`, `Mastery`, `WeaponProperty`, `Size`, `School`, `Outcome`, PB table, slot table | 🔒 | w0a | `rules/enums.py`, `rules/constants.py` | every 2024 damage type, condition and mastery present; no string literals anywhere downstream |
-| w0c | RNG protocol + `PcgRng` + `ScriptedRng`; dice tokeniser | 🔒 | w0a | `core/rng.py`, `core/dice.py` | same seed ⇒ identical stream; `ScriptedRng` raises on over-draw |
+| w0c | RNG protocol + `PcgRng` + `ScriptedRng`; dice tokeniser; **per-iteration seeding** `mix(master_seed, iteration_index)` | 🔒 | w0a | `core/rng.py`, `core/dice.py` | same seed ⇒ identical stream; `ScriptedRng` raises on over-draw; **a run reproduces byte-for-byte across different `--jobs` values** |
 | w0d | Timeline: `TimeKey`, `TurnPhase`, `Duration` + named constructors, `ResetManager`, `Reset` scopes | 🔒 | w0b | `core/timeline.py` | `TURN` vs `OWN_TURN` semantics covered by tests; `through_phase` proven in both directions |
-| w0e | **Hook registry**: `Scope`, `Phase`, `HookSpec`, `define_hook`, and the 34 `define_hook()` calls | 🔒 | w0b | `hooks/registry.py`, `hooks/definitions.py` | unknown hook name raises; registry frozen and CI-guarded |
+| w0e | **Hook registry**: `Scope`, `Phase`, `HookSpec`, `define_hook`, and the 38 `define_hook()` calls — including `on_heal`, `on_temp_hp_gained`, `on_death_save`, `on_stabilize` | 🔒 | w0b | `hooks/registry.py`, `hooks/definitions.py` | unknown hook name raises; registry frozen and CI-guarded; the healing group exists **before** W6 needs it |
 | w0f | **Contexts**: every `*Context` Parameter Object, attribute-locked, mutator methods only | 🔒 | w0e | `hooks/contexts.py` | direct field assignment raises `AttributeError`; wrong-phase mutation raises `PhaseError` |
 | w0g | `@hook` decorator, `HookResult`, `HookSource.__init_subclass__` validation, `Dispatcher` | 🔒 | w0f | `hooks/decorator.py`, `source.py`, `dispatch.py` | bad signature is an `ImportError`; `once_per`/`costs` consumed only on `APPLIED` |
-| w0h | **Performance spike**: stub creature + attack loop, benchmark harness | 🔒 | w0g | `tests/bench/` | **≥50k attack resolutions/sec/core measured**, or the architecture is revised now |
+| w0h | **Walking skeleton**: a featureless creature attacking another through the *real* dispatch path and *real* damage pipeline, printing a result | 🔒 | w0g | `tests/bench/`, `tools/skeleton.py` | one command runs a fight end to end, before resources, effects or grid exist |
+| w0i | **Pessimistic performance spike**: synthetic creature with ~25 attached `HookSource`s (≥15 on `on_hit`), an 8-condition APL with `target:` and `move:`, real grid movement; worker-startup cost measured separately | 🔒 | w0h | `tests/bench/` | **≥50k attack resolutions/sec/core on that configuration**, or the architecture is revised now |
 
-> **M0 — Architecture proven.** If w0h misses the budget, stop and revise before
+> **M0 — Architecture proven.** If w0i misses the budget, stop and revise before
 > W1. This is the cheapest moment in the project to change the dispatch design.
+>
+> The spike is deliberately hostile. A stub creature clears 50k/s trivially and
+> proves only that the benchmark harness runs — which would spend the one
+> milestone whose entire purpose is to make revision cheap. Measure `spawn`
+> worker startup too: on Windows every worker re-imports the package and rebuilds
+> every character, a cost `compare --sweep dummy.ac=10:22` pays thirteen times
+> and an inner-loop benchmark never sees.
 
 ## W1 — Domain core 👥
 
@@ -170,12 +151,13 @@ trusts.
 | w1a | `Creature` base, `StatBlock`, derived stats, `ActionEconomy` (action/bonus/reaction/movement, grants) | 👥 | w0g | `creatures/creature.py`, `stats.py`, `economy.py` | Action Surge's "grant another action" works via the economy alone |
 | w1b | `ResourceSpec`, `Recovery`, `ResourcePool`, `SpellSlots` facade, `transaction()` unit of work | 👥 | w0g | `creatures/resources.py` | all 7 resource shapes in DESIGN.md expressible; rollback proven |
 | w1c | `Effect`, `EffectStore`, `Stacking`, charge consumption, refresh/expire | 👥 | w0d | `creatures/effects.py` | Rage extend, Vex charge+time, Reckless hard stop all pass |
-| w1d | Grid geometry: `GridPos`, 5 ft distance, LoS, cone/sphere/line templates | 👥 | w0c | `core/geometry.py` | Fireball's 20 ft sphere selects the correct cells |
+| w1d | Grid geometry: `GridPos`, 5 ft distance, LoS, cone/sphere/line templates, **shortest-legal-route resolution** for a movement destination | 👥 | w0c | `core/geometry.py` | Fireball's 20 ft sphere selects the correct cells; a `move:` destination resolves to a route that provokes correctly on the way out of reach |
 | w1e | **Damage resolution order** — immunity → vulnerability → resistance → flat → halvings → temp HP → HP | 🔒 | w0f | `engine/damage.py` | Rage + Uncanny Dodge + vulnerability produces the hand-computed number |
 | w1f | **Attack pipeline** — declare → roll → adv/disadv resolution → hit/crit/miss → damage → resolved | 🔒 | w1e | `engine/attack.py` | crit doubles `dice` and never `flat`; advantage is idempotent |
 | w1g | Saving throws, DC calculation, save-for-half | 👥 | w1f | `engine/saves.py` | legendary resistance expressible |
 | w1h | The 15 combat-relevant conditions as `Effect` subclasses | 👥 | w1c | `conditions/` | no `if creature.is_prone` anywhere in the engine |
 | w1i | Structured event log (tuples; formatting deferred to the reporter) | 👥 | w0c | `core/log.py` | `--log-level=summary` skips per-roll records |
+| w1j | **Dying**: 0 HP, death saves, stabilise, healing application and temp HP, firing `on_death_save` / `on_stabilize` / `on_heal` / `on_temp_hp_gained` | 👥 | w1e | `engine/dying.py`, `engine/healing.py` | a downed PC rolls death saves; a heal at 0 HP restores consciousness; Relentless Endurance is expressible with no engine change |
 
 ## W2 — Orchestration 👥
 
@@ -183,11 +165,11 @@ trusts.
 |---|---|---|---|---|---|
 | w2a | **Content ACL**: fetch script, 5etools loader, `refSubclassFeature`/`refOptionalfeature` resolution, `classTableGroups` → `table_value()`, weapon + mastery import | 👥 | w0b | `content/` | 38 XPHB weapons and every class table import; no 5etools vocabulary escapes this package |
 | w2b | `Action` Command base (`is_legal`/`execute`), Attack, Dash, Dodge, Disengage | 👥 | w1f | `actions/` | legality query provably cannot spend a resource |
-| w2c | Initiative, turn loop, round loop, reaction audience + one-per-round, opportunity attacks | 🔒 | w2b | `engine/turn.py`, `encounter.py`, `reactions.py` | turn loop re-polls after every action |
-| w2d | `TargetDummy` with every knob from DESIGN.md | 👥 | w1a | `creatures/dummy.py` | AC sweep 10–22 configurable from YAML |
-| w2e | **APL**: AST whitelist compiler, `NamespaceSchema`, proxies, `Apl.allows()`, default policy | 🔒 | w2b | `apl/` | `self.ragging` fails at load with a suggestion; unmentioned riders default OFF |
+| w2c | Initiative, turn loop, round loop, reaction audience, **reaction regained at the start of each of your turns**, opportunity attacks, movement offers | 🔒 | w2b | `engine/turn.py`, `encounter.py`, `reactions.py` | turn loop re-polls after every action; a creature may react before its turn and again after it in the same round — the invariant is on the **turn** boundary, never the round |
+| w2d | `TargetDummy` with every knob from DESIGN.md, including `movement_profile` (`static` / `closes_to_melee` / `kites_at`) | 👥 | w1a | `creatures/dummy.py` | AC sweep 10–22 configurable from YAML; a dummy that closes to melee provokes and is provoked, so the grid is exercised rather than decorative |
+| w2e | **APL**: AST whitelist compiler, `NamespaceSchema`, proxies, `Apl.allows()`, default policy, and **all three clauses** — `if:`, `target:` (selector expressions), `move:` (positioning) | 🔒 | w2b | `apl/` | `self.ragging` fails at load with a suggestion; unmentioned riders default OFF; `target: "lowest_hp of enemies.in_reach"` and `move: "toward nearest of enemies until in_reach"` compile through the same whitelist. **All three clauses ship together** — adding a clause after builds exist is a schema migration across every YAML file in git |
 | w2f | Build YAML pydantic schema + `Character` Builder | 👥 | w2a, w2e | `builds/` | unknown feature id fails with difflib suggestions |
-| w2g | Monte Carlo runner, multiprocessing, stats, CIs; **`SimResult` + its JSON schema**; text/json renderers; the public API | 👥 | w2c | `sim/`, `reporting/`, `api.py` | identical seed ⇒ byte-identical event log; text output derived from the JSON, not parallel to it |
+| w2g | Monte Carlo runner, multiprocessing, stats, CIs; **`SimResult` + its JSON schema**; text/json renderers; the public API | 👥 | w2c | `sim/`, `reporting/`, `api.py` | identical seed ⇒ byte-identical event log **at any `--jobs`**; text output derived from the JSON, not parallel to it |
 | w2h | Typer CLI as a **thin adapter** over `api.py`: `sim`, `day`, `compare`, `inspect`, `validate`, `trace`, `check`, `content fetch`, `bench` | 👥 | w2g | `cli.py` | every command in DESIGN.md § Verification runs; no simulation logic lives in `cli.py` |
 
 > **M1 — A level-5 Fighter with a greatsword kills a dummy**, and every number is
@@ -198,41 +180,67 @@ trusts.
 The highest-leverage wave in the project. Skipping or rushing it is how the grind
 produces 400 subtly wrong features.
 
+Two tasks changed shape after review. **`w3e` is batched rather than solo**: 400
+prose features classified by hand, alone, is the most tedious task in the plan
+sitting directly on the crux, and it degrades quietly because nothing downstream
+detects a sloppy classification until features are written against it. Batching
+the rows and triaging only the low-confidence and gap buckets costs a fraction of
+the attention and spends it where it decides something. **`w3j` is new** — see
+M2.
+
 | ID | Task | Mode | Depends | Produces | Done when |
 |---|---|---|---|---|---|
 | w3a | Golden harness, `scripted_rng` fixture, `parts_by_source` assertions | 👥 | w2c | `tests/golden/conftest.py` | exact-integer assertions, no distributions |
-| w3b | Feature linter + no-op detector + golden-coverage collection test, wired to `dndsim check` | 👥 | w3a | `tools/check_features.py`, `noop_report.py` | catches missing `# PHASE:`, private access, stray `import random` |
+| w3b | Feature linter + no-op detector + golden-coverage collection test, wired to `dndsim check` and to **every batch PR** | 👥 | w3a | `tools/check_features.py`, `noop_report.py` | catches missing `# PHASE:`, private access, stray `import random`, `try`/`except` or `hasattr` in `features/`, a feature file over 60 lines, a `source_ref` without a quoted rules sentence, a `dndsim` import inside an analytic expectation, and any write outside a packet's file allowlist |
 | w3c | Generate `docs/hooks.md` and `docs/apl.md` from the registries | 👥 | w0e | `tools/gen_docs.py` | CI fails if generated docs are stale |
 | w3d | **Reference exemplars**: Rage, Sneak Attack, Uncanny Dodge, hand-built | 🔒 | w2e | `features/.../` + `TEMPLATE.py` | all three pass goldens; they become the skill's examples |
-| w3e | **Paper pass**: classify all ~400 combat-relevant features to a hook | 🔒 | w3d | `docs/feature-hook-map.md` | every feature has a hook, a mode, and a batch assignment |
-| w3f | **Hook gap resolution**: add the hooks the paper pass proved missing | 🔒 | w3e | `hooks/definitions.py` (final) | registry frozen; CI guard enabled |
+| w3e | **Paper pass**: classify all ~400 combat-relevant features to a hook. **Batched against a fixed row schema**, then human-triaged | 🚀 → 🔒 | w3d | `docs/feature-hook-map.md` | every feature has a row: `feature_id \| hook \| scope \| phase \| resource \| once_per \| confidence \| gap_kind`. Gaps are classified **additive** (a new hook) or **structural** (a missing context field, or a hook firing at the wrong pipeline point) |
+| w3f | **Hook gap resolution**: add the hooks the paper pass proved missing; fix the structural ones | 🔒 | w3e | `hooks/definitions.py` (final) | registry frozen; CI guard enabled. **Budget against the structural count, not the total** — additive gaps are an append, structural gaps touch `hooks/contexts.py` and `engine/` |
 | w3g | `.claude/skills/feature-authoring/SKILL.md` (≤3 pages) | 🔒 | w3f | the skill | a fresh agent implements a held-out feature correctly from it alone |
 | w3h | Interaction matrix v1 (~50 hand-computed combos) | 🔒 | w3d | `tests/interaction/` | crit+rider, resistance+halving, chained attacks covered |
-| w3i | CI benchmark gate (>10% sims/sec regression fails the build) | 👥 | w0h | CI config | a deliberate slowdown fails CI |
+| w3i | CI benchmark gate: median-of-N with warmup, against a same-run microbenchmark baseline | 👥 | w0i | CI config | a deliberate slowdown fails CI **and a rerun on unchanged code does not**. Tracked-but-non-blocking until its variance is known |
+| w3j | **The canary batch**: Rogue core + Thief only, authored by one agent from the skill alone, treated as semi-disposable | 🚀 | w3g | `features/classes/rogue/`, an API-friction report | the batch lands needing no correction — or the API is revised and the batch is rewritten |
+| w3k | **Reviewer-pass harness**: a read-only review prompt that sees the quoted rules text and the code but not the author's reasoning | 👥 | w3d | `.claude/skills/feature-review/` | run against w3j; it finds at least one real discrepancy or is judged useless and cut |
 
-> **M2 — API frozen.** W4 may not begin before this milestone. Validate w3g by
-> giving one agent a feature *not* in the exemplars and checking the output needs
-> no correction.
+> **M2 — API frozen.** W4 may not begin before this milestone.
+>
+> The freeze is **measured by w3j, not asserted by w3d**. Three hand-built
+> exemplars prove the exemplars compile; they prove nothing about an author who
+> has never seen the API. The canary is one small self-contained slice — the
+> smallest in the project — written by an outsider against the frozen contract,
+> and its job is to be wrong cheaply. Every friction it reports is a friction six
+> parallel batches would otherwise have hit simultaneously, at six times the
+> rework.
+>
+> Arcane Trickster sits inside this slice, which makes w3j the natural place to
+> settle the Eldritch Knight / Arcane Trickster spellcasting question below rather
+> than discovering it when W4 starts.
 
 ## W4 — The martial grind 🚀
 
-Fully parallel. Each batch touches disjoint files; the only shared surface is the
-frozen API. Split any row further by subclass if you want more agents.
+Fully parallel, and only now — the canary batch `w3j` has already run one slice
+through the frozen API and the frictions it found are fixed. Each batch touches
+disjoint files; the only shared surface is the frozen API. Every row is sized for
+one review sitting (15–25 features); split further by subclass if you want more
+agents, never merge rows to get fewer.
 
 | ID | Task | Mode | Depends | Scope |
 |---|---|---|---|---|
-| w4a | Weapon masteries | 🚀 | w3g | Cleave, Graze, Nick, Push, Sap, Slow, Topple, Vex |
-| w4b | Fighting styles + martial feats | 🚀 | w3g | Archery, Defense, Dueling, GWF, + GWM, Sharpshooter, Crossbow Expert, Dual Wielder, Charger, Grappler… |
-| w4c | Barbarian 1–12 | 🚀 | w3g | core + Berserker, Wild Heart, World Tree, Zealot |
-| w4d | Fighter 1–12 | 🚀 | w3g | core + Battle Master (20 maneuvers), Champion, Eldritch Knight, Psi Warrior |
-| w4e | Rogue 1–12 | 🚀 | w3g | core + Arcane Trickster, Assassin, Soulknife, Thief |
-| w4f | Monk 1–12 | 🚀 | w3g | core + Mercy, Shadow, Elements, Open Hand |
-| w4g | Slice integration, `NEEDS_HOOK` triage, no-op sweep, **API freeze review** | 🔒 | w4a–w4f | the API is only *actually* frozen once this passes |
+| w4a | Weapon masteries | 🚀 | w3j | Cleave, Graze, Nick, Push, Sap, Slow, Topple, Vex |
+| w4b | Fighting styles + martial feats | 🚀 | w3j | Archery, Defense, Dueling, GWF, + GWM, Sharpshooter, Crossbow Expert, Dual Wielder, Charger, Grappler… |
+| w4c | Barbarian 1–12 | 🚀 | w3j | core + Berserker, Wild Heart, World Tree, Zealot |
+| w4d | Fighter 1–12 | 🚀 | w3j | core + Champion, Eldritch Knight, Psi Warrior. **Maneuvers are not in this row** |
+| w4d2 | **Battle Master maneuvers** | 🚀 | w3j | the 20 maneuvers + superiority dice. Split out because it is a sub-project, not a subclass: one resource, one rider shape, its own save DC — which also makes it an unusually clean batch on its own |
+| w4e | Rogue 1–12 — *remainder after the canary* | 🚀 | w3j | Arcane Trickster, Assassin, Soulknife (core + Thief already landed in `w3j`) |
+| w4f | Monk 1–12 | 🚀 | w3j | core + Mercy, Shadow, Elements, Open Hand |
+| w4h | **Species traits** | 🚀 | w3j | the ~18 combat-relevant 2024 traits — Relentless Endurance, Breath Weapon, Savage Attacks, Large Form… |
+| w4g | Slice integration, `NEEDS_HOOK` / `APPROXIMATED` triage, no-op sweep, **API freeze review** | 🔒 | w4a–w4f, w4d2, w4h | every disposition row is resolved: implemented, hook queued, or approximation accepted in writing |
 
-Eldritch Knight and Arcane Trickster need minimal spellcasting; either stub their
-spell list behind `NEEDS_HOOK` or pull `w5a` forward for those two. This is the
-one unresolved sequencing question in the plan, and it only becomes live when W4
-starts.
+Eldritch Knight and Arcane Trickster need minimal spellcasting: either stub their
+spell list behind `NEEDS_HOOK` or pull `w5a` forward for those two. **This is
+settled during `w3j`**, not when W4 starts — Arcane Trickster sits inside the
+canary slice, so the canary learns which option is cheaper at the moment that
+information is still free.
 
 ## W5 — Spell engine + casters 🚀
 
@@ -252,12 +260,18 @@ caster exists.
 
 | ID | Task | Mode | Depends | Scope |
 |---|---|---|---|---|
-| w6a | Short/long rests, encounter chaining, attrition metrics | 👥 | w4g | `engine/adventuring_day.py` — the v1 headline output |
+| w6a | Short/long rests, hit dice, encounter chaining, the **stop condition** (TPK or `party.retreat_when`), attrition metrics | 👥 | w4g, w1j | `engine/adventuring_day.py` — the v1 headline output |
 | w6b | `compare` harness, `--sweep`, adaptive stopping on CI width | 👥 | w6a | `sim/compare.py`, `sweep.py` — what makes it a sim rather than a calculator |
 
 > **M4 — Attrition v1.** `dndsim day` reports how far a party gets before
 > resources run dry, with confidence intervals. This is the project's stated
 > goal; W5 and W7 are content expansion beyond it.
+>
+> Note the dependency on `w1j`. The headline number is decided as much by the
+> dying rules and the retreat threshold as by any damage calculation — see
+> DESIGN.md § Context for the settled stop condition. `retreat_when` is a party
+> YAML knob precisely so that `--sweep` over it is an experiment rather than an
+> assumption buried in the engine.
 
 ## W7 — Monsters 👥
 
@@ -278,37 +292,81 @@ paid at review time instead.
 **Wave:** W<n>   **Mode:** 🚀 Batch   **Blocked by:** <ids, all merged>
 
 ### Read first
-- DESIGN.md § <sections>
 - .claude/skills/feature-authoring/SKILL.md
+- docs/hooks.md and docs/apl.md (generated — the authoritative surface)
 - Exemplars: features/classes/barbarian/rage.py, .../rogue/sneak_attack.py
+- Seed feature from THIS batch, already implemented: <path>
+
+NOT DESIGN.md. It is a document for the architect; prose-heavy architecture in a
+batch context window produces features consistent with the vibe and wrong about
+the rule.
 
 ### Scope
-Implement exactly: <explicit list of feature ids>
+Implement exactly: <explicit list of 15-25 feature ids>
 Source data: data/class/class-<x>.json, entries with source == "XPHB"
 Hook assignment: see docs/feature-hook-map.md rows <n–m>
+Files you may write: <explicit allowlist> — CI rejects anything else
 
 ### Out of scope
-Anything under hooks/, engine/, core/ — CI rejects it. If a feature cannot be
-expressed, declare NEEDS_HOOK and move on. Do not approximate.
+Anything under hooks/, engine/, core/, or outside the allowlist above.
+Multiclassing and magic items are out of v1 scope entirely.
+
+### When a feature does not fit
+Two markers, both of which are successes:
+- NEEDS_HOOK = "on_X: <description>"    cannot be expressed at all
+- APPROXIMATED = "<what is lost, why>"  expressible only approximately
+
+In a batch of 20, expect 2-5 of these. **A batch reporting zero will be
+spot-audited**, because the failure mode this project is most exposed to is a
+feature that is expressible-but-lossy landing silently as "implemented".
 
 ### Definition of done
-- [ ] every feature registered with a `source_ref` citation
+- [ ] every feature registered with a `source_ref` carrying the QUOTED rules
+      sentence, not just a page citation
 - [ ] scaling numbers read via `table_value()`, never hardcoded
-- [ ] one golden test per feature, exact integers
+- [ ] one golden test per feature, with the expected number written out as
+      arithmetic in a comment, derived from the rules text and not from your
+      implementation
+- [ ] every feature file under 60 lines
 - [ ] `dndsim check` clean
 - [ ] no feature reported by the no-op detector
 - [ ] `pytest` green
+
+### Report back
+- [ ] **Disposition table**: one row per feature id —
+      implemented | needs_hook | approximated — with the reason for the last two
+- [ ] `dndsim bench` delta
+- [ ] no-op report output
 ```
+
+The disposition table is the artefact that actually gets reviewed. Everything
+else in the checklist is enforced by CI; the table is where a human decides
+whether the batch is honest.
 
 ## Standing rules for every agent
 
-1. **Never touch `hooks/`, `engine/` or `core/`** in a content batch. CI enforces
-   it. A needed change there goes back to the architect.
-2. **`NEEDS_HOOK` is a success, not a failure.** Blocked-and-visible beats
-   improvised-and-wrong. A batch that flags six features is more useful than one
-   that silently approximates them.
+1. **Never touch `hooks/`, `engine/` or `core/`** in a content batch, or any file
+   outside your packet's allowlist. CI enforces it. A needed change there goes
+   back to the architect.
+2. **Both escape valves are successes.** `NEEDS_HOOK` when a feature cannot be
+   expressed; `APPROXIMATED` when it can be expressed only lossily.
+   Blocked-and-visible beats improvised-and-wrong, and lossy-and-declared beats
+   lossy-and-silent. A batch that flags six features is more useful than one that
+   silently approximates them — and a batch that flags none is the one that gets
+   audited.
 3. **Never hardcode a scaling number.** It comes from `table_value()`.
-4. **Never skip a golden test.** The collection test fails the build anyway.
-5. **`dice` doubles on crits, `flat` does not.** `Reset.TURN` is any turn
+4. **Never skip a golden test, and write the arithmetic out.** The collection
+   test fails the build anyway; the comment is what makes the number reviewable
+   without re-deriving it.
+5. **`source_ref` quotes the rules sentence.** A page citation alone is a linter
+   error. It is what lets a reviewer check the feature without opening the book.
+6. **`dice` doubles on crits, `flat` does not.** `Reset.TURN` is any turn
    boundary; `Reset.OWN_TURN` is yours. These two are the likeliest subtle bugs in
    the entire project.
+7. **No `try`/`except`, no `hasattr`/`getattr`, no file over 60 lines.** Defensive
+   blocks swallow the fail-loud design, attribute probing routes around the typed
+   contract, and a feature needing more than 60 lines is a design smell that goes
+   back to the architect rather than getting written.
+8. **Never add a dependency, and never write test harness code.** Test cases
+   against the existing fixture only — otherwise there are six competing
+   `conftest.py` helpers by the end of W4.
