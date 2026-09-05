@@ -81,7 +81,8 @@ table at all:
 **Species are in.** Relentless Endurance, Breath Weapon, Savage Attacks and
 Large Form are combat-relevant, fit the existing feature API with no new
 machinery, and are roughly 18 implementations — small enough to batch alongside
-the martial grind.
+the martial grind. They live in `features/species/` and arrive through the same
+content ACL as everything else, off `species.json`.
 
 ## Reconnaissance (done, against live data)
 
@@ -90,7 +91,7 @@ through the proxy; `5e.tools` direct returns 403.
 
 | Data | State | Verdict |
 |---|---|---|
-| Weapons (`items-base.json`) | Structured: `dmg1`, `dmg2`, `dmgType`, `property`, `mastery`, `range` | **Import directly** |
+| Weapons & armour (`items-base.json`) | Structured: `dmg1`, `dmg2`, `dmgType`, `property`, `mastery`, `range`; armour carries `ac`, `armor`, `strength`, `stealth` | **Import directly** — AC is derived from equipment, never written into a build |
 | Masteries / item properties | `itemMastery`, `itemProperty`; 8 masteries | Numbers import, behaviour hand-coded |
 | Class scaling (`classTableGroups`) | Machine-readable per-level rows (Rages, Rage Damage, Sneak dice…) | **Import directly** |
 | Class/subclass features | Prose in `entries[]`, `refSubclassFeature` indirection | Hand-coded |
@@ -230,11 +231,11 @@ one being hit), `OBSERVER` (owner merely perceives it), `GLOBAL`. In an
 `on_incoming_damage` handler `self.owner` is *the victim*, with no prose needed.
 No feature ever writes `if ctx.attacker is self.owner`.
 
-### The closed hook list — 38 points
+### The closed hook list — 39 points
 
 | Group | Hooks | Count |
 |---|---|---|
-| Timeline | `on_encounter_start` / `_end`, `on_round_start` / `_end`, `on_turn_start` / `_end`, `on_short_rest`, `on_long_rest` | 8 |
+| Timeline | `on_encounter_start` / `_end`, `on_initiative_roll`, `on_round_start` / `_end`, `on_turn_start` / `_end`, `on_short_rest`, `on_long_rest` | 9 |
 | Attack | `on_declare_attack`, `on_incoming_attack_declared`, `on_attack_rolled`, `on_hit`, `on_hit_taken`, `on_miss`, `on_attack_resolved` | 7 |
 | Damage | `on_damage_roll`, `on_incoming_damage`, `on_damage_taken`, `on_reduced_to_zero`, `on_kill` | 5 |
 | Healing & dying | `on_heal`, `on_temp_hp_gained`, `on_death_save`, `on_stabilize` | 4 |
@@ -249,6 +250,13 @@ rest, Cure Wounds, potions, Song of Rest and Relentless Endurance have nowhere
 to attach, and `on_temp_hp_gained` is needed because temp HP appears in the
 damage resolution order below with nothing able to observe it. Cheap now,
 impossible after the W3 freeze.
+
+`on_initiative_roll` is in the list for the same reason and was found the same
+way. Barbarian Feral Instinct (level 7) and Monk Uncanny Metabolism (level 2) are
+both inside the levels 1–12 martial slice and both fire when initiative is
+rolled, as does the Alert origin feat. Without the hook they are three
+`NEEDS_HOOK` rows in W4 against a registry frozen in W3 — the exact failure the
+freeze is supposed to prevent, arriving through the freeze itself.
 
 The registry is **frozen** to feature-batch authors; CI fails any batch PR
 touching `hooks/`, `engine/` or `core/`. A closed, frozen extension point is the
@@ -304,7 +312,12 @@ work that would otherwise be procedural code an author could misplace:
 - **Damage resolution order** lives in exactly one file, `engine/damage.py` — a
   **Policy object owned by the engine, not by features**: immunity →
   vulnerability → resistance → flat reductions → halvings (Uncanny Dodge) →
-  temp HP → HP. Documented verbatim in the skill doc.
+  temp HP → HP. Documented verbatim in the skill doc. Two of those steps are
+  *rulings* rather than quotations — flat reductions applying after resistance,
+  and Uncanny Dodge's halving applying after the flat reduction — so
+  `engine/damage.py` carries the citation for each inline. Both change every
+  reported number, and neither should be re-argued in a code review three years
+  from now with no record of what was decided.
 
 This is *"make illegal states unrepresentable"* rather than *"test for illegal
 states"*. Every rule made structural is one that never needs a test — the
@@ -500,11 +513,11 @@ on disk. Goldens run on a `ScriptedRng` returning a fixed sequence, so
 assertions are exact integers rather than distributions:
 
 ```python
-# level-5 rogue, +3 DEX, dagger, with advantage
+# level-5 rogue, +3 DEX, dagger, attacking with Advantage
 # XPHB Sneak Attack, level 5: 3d6. Expected damage:
 #   dagger 1d4 -> 3  +  DEX 3  +  sneak 3d6 (4+5+6) -> 15  =  21
-with scripted_rng([18, 3, 4, 5, 6]):          # d20, d4 dagger, 3d6 sneak
-    result = rogue.attack(dummy, advantage=True)
+with scripted_rng([18, 11, 3, 4, 5, 6]):      # 2d20 adv, d4 dagger, 3d6 sneak
+    result = rogue.attack(dummy, advantage_from=["test.setup"])
 assert result.total_damage == 21
 assert result.parts_by_source["rogue.sneak_attack"] == 15
 ```
@@ -522,9 +535,12 @@ into a real check, and all three are enforced rather than encouraged:
    § The feature-authoring skill). A reviewer compares the quote to the
    assertion with no book open.
 3. **A read-only reviewer pass per batch** — an agent that sees the quoted rules
-   text and the code but not the author's reasoning, and reports discrepancies
-   only. This is the check goldens structurally cannot be, and it is cheap
-   precisely because rules 1 and 2 put everything it needs in the file.
+   text and the code but not the author's reasoning, **re-derives every expected
+   number from the rules text alone**, and reports discrepancies only. The author
+   still writes the golden, because the author is the one who has to understand
+   the feature; what the author must not be is the only party who has ever
+   computed the number. This is the check goldens structurally cannot be, and it
+   is cheap precisely because rules 1 and 2 put everything it needs in the file.
 
 **No-op detector.** After the golden suite — and on **every batch PR**, not only
 nightly — any feature whose hooks never once returned `APPLIED` is reported.
@@ -677,12 +693,17 @@ state" semantics the engine does not support. Determinism removes the need
 entirely — **seed + build hash + engine version + content version reproduces any
 run exactly**, so a result file carries *provenance*, not state. Every
 `SimResult` embeds those four fields; without them, comparing two runs months
-apart is meaningless.
+apart is meaningless. The content version is the **upstream 5etools commit SHA**
+that `dndsim content fetch` pinned, not a local timestamp — the mirror changes
+without notice, and a date does not identify what was read.
 
 Note what is *not* in that list: `--jobs`. Reproduction is independent of worker
 count only because seeding is per iteration rather than per worker (§
-Performance). If that ever changes, this guarantee silently becomes false, and
-every archived result becomes incomparable with no error anywhere.
+Performance), *and* because worker records are merged back in iteration order
+rather than completion order — the seeding rule alone does not make a log
+byte-identical if the merge is racy. If either ever changes, this guarantee
+silently becomes false, and every archived result becomes incomparable with no
+error anywhere.
 
 ### CLI surface
 
@@ -732,7 +753,7 @@ src/dndsim/
   conditions/
   features/   base.py params.py TEMPLATE.py
               classes/<class>/[subclasses/<subclass>/] feats/ masteries/
-              fighting_styles/
+              fighting_styles/ species/
   actions/    base.py attack.py dash.py dodge.py disengage.py cast_spell.py
   spells/     base.py concentration.py templates.py level0..level6/
   apl/        expr.py schema.py namespace.py apl.py
@@ -742,13 +763,13 @@ src/dndsim/
   content/    fetch.py loader.py refs.py tables.py weapons.py
   sim/        runner.py day.py compare.py sweep.py
   reporting/  result.py collect.py stats.py render_text.py render_json.py
-  tools/      check_features.py noop_report.py gen_docs.py
+  tools/      check_features.py noop_report.py gen_docs.py skeleton.py
 
 builds/     # hand-authored YAML: characters, parties, encounters — in git
 data/       # gitignored: fetched 5etools JSON
 docs/       # hooks.md + apl.md GENERATED; feature-hook-map.md + patterns.md authored
 tests/      contract/ golden/ interaction/ statistical/ bench/
-.claude/skills/  feature-authoring/  statblock-import/
+.claude/skills/  feature-authoring/  feature-review/  statblock-import/
 ```
 
 The pattern-name rationale for each package lives in
@@ -819,8 +840,13 @@ documented harder.
     review a side-by-side read rather than 630 trips to the book, and it is what
     the reviewer pass needs to work at all. A citation without a quote is a
     linter error.
-11. Checklist: quoted `source_ref`, golden test with the arithmetic written out,
-    `dndsim check`, disposition row.
+11. **The analytic expectation.** Every feature declares `expectation` as a
+    literal or a closed-form expression of declared inputs (AC, ability modifier,
+    proficiency bonus, level). It is the one oracle in the project an author
+    cannot fake, and it stays that way only because importing `dndsim` inside one
+    is a linter error rather than a review comment.
+12. Checklist: quoted `source_ref`, declared `expectation`, golden test with the
+    arithmetic written out, `dndsim check`, disposition row.
 
 The skill deliberately teaches **the five shapes, not the pattern names** — an
 author needs "append a source, don't set a flag", not "this is a Parameter
@@ -869,14 +895,14 @@ Great Weapon Master stops being worth it, exactly as a WoW sim would.
 ## Build order
 
 Eight waves, `W0`–`W7`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
-57 tasks, their dependency edges, delegation modes and the task-packet template.
+60 tasks, their dependency edges, delegation modes and the task-packet template.
 
 | Wave | Content | Exit |
 |---|---|---|
-| **W0** | Scaffold, rules vocabulary, RNG/dice, timeline, hook registry, contexts, dispatch, **walking skeleton + pessimistic spike** | **M0:** ≥50k attack resolutions/sec/core on a 25-feature creature |
-| **W1** | `Creature`, resources, effects, grid, damage + attack resolution, saves, conditions, death saves, event log | interfaces importable |
+| **W0** | Scaffold, rules vocabulary, RNG/dice, timeline, hook registry, contexts, dispatch, **spike substrate + walking skeleton + pessimistic spike** | **M0:** ≥50k attack resolutions/sec/core on a 25-feature creature |
+| **W1** | `Creature` and AC derivation, resources, effects, grid, damage + attack resolution, saves, conditions, death saves, event log | interfaces importable |
 | **W2** | Content importers, actions, turn/encounter loop, target dummy, APL, build loader, runner, API + CLI | **M1:** a level-5 Fighter kills a dummy, golden-verified |
-| **W3** | Golden harness, linter, doc generators, reference exemplars, **the paper pass**, hook gap resolution, authoring skill, interaction matrix, **the canary batch** | **M2:** API frozen — *by a real batch, not by inspection* |
+| **W3** | Golden harness, linter, doc generators, reference exemplars, **the paper pass**, hook gap resolution, authoring skill, interaction matrix, statistical harness, **the canary batch** | **M2:** API frozen — *by a real batch, not by inspection* |
 | **W4** | The martial grind — Barbarian/Fighter/Rogue/Monk 1–12, 16 subclasses, 8 masteries, martial feats, 20 maneuvers, ~18 species traits | **M3:** martial slice complete |
 | **W5** | Spell engine, then Paladin/Ranger, then full casters; spells on demand | casters playable |
 | **W6** | Rests, encounter chaining, attrition metrics, compare + sweep | **M4:** attrition v1 — the project's stated goal |
@@ -945,7 +971,7 @@ and that is a far more dangerous failure than a check that fails.
    with a confidence column, human triage of the low-confidence and gap rows
    only, and the additive-vs-structural split that makes the hook-gap budget
    honest.
-5. **Review capacity, not agent throughput, is the constraint.** Roughly 130
+5. **Review capacity, not agent throughput, is the constraint.** Roughly 150
    nominal agent-days funnel through one person; every parallelism gain lands on
    the same desk. *Mitigated by:* designing artefacts to be reviewable in minutes
    — disposition tables, quoted citations, arithmetic in goldens, the file-size

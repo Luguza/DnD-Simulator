@@ -46,7 +46,7 @@ single file.
 
 **Everything hangs off the hook pipeline.** ~630 content implementations (~400
 class/subclass/feat features + ~18 species traits + 212 combat spells) plug
-into a closed registry of 34 hooks. Features never drive the engine; the engine
+into a closed registry of 39 hooks. Features never drive the engine; the engine
 dispatches to them. `Effect`, `Condition`, `Feature` and magic items are all
 `HookSource` subclasses with one identical API shape, so learning one teaches
 all four.
@@ -95,14 +95,17 @@ feature stores is frozen (author-owned, cold path).
 
 ## Sequencing rules
 
-`ROADMAP.md` has 51 tasks across waves W0–W7 with explicit dependency edges.
+`ROADMAP.md` has 60 tasks across waves W0–W7 with explicit dependency edges.
 Two constraints dominate:
 
 - **Nothing in W4 or later may start before M2** (API frozen, authoring skill
   written, paper pass done). The W3 freeze gate is what prevents 400 subtly
   wrong features.
-- W0's performance spike (w0h) is a stop-and-revise gate: missing the budget
-  means changing the dispatch design then, not later.
+- W0's performance spike (w0i) is a stop-and-revise gate: missing the budget
+  means changing the dispatch design then, not later. It runs against the `w0g2`
+  substrate — a first cut of `Creature`, `engine/damage.py` and
+  `core/geometry.py` that W1 completes rather than rewrites — because a spike
+  against stubs measures nothing.
 
 Tasks are tagged 🔒 Solo (high blast radius, serial), 👥 Delegable, or
 🚀 Batch (parallel agents on disjoint files). The task-packet template at the
@@ -114,8 +117,9 @@ end of `ROADMAP.md` is what a delegated agent receives.
 - mypy strict across the whole tree.
 - `LATE`/`FINAL` phase handlers require a `# PHASE:` justification comment
   (linter-enforced); `rg "PHASE:"` should stay under ~30 hits.
-- Every feature needs an XPHB `source_ref` citation and one golden test with
-  exact-integer assertions.
+- Every feature needs an XPHB `source_ref` carrying the quoted rules sentence,
+  one golden test with exact-integer assertions, and a declared analytic
+  `expectation` that never imports `dndsim`.
 - `data/` is gitignored — fetched 5etools JSON, reproducible via
   `dndsim content fetch`. Hand-authored `builds/*.yaml` are in git.
 
@@ -124,6 +128,9 @@ end of `ROADMAP.md` is what a delegated agent receives.
 - Follow the YAGNI principle.
 - Use skills with care: only when you make large changes or when they
   specifically apply.
+- The agent that writes a feature writes its golden, but is never the only party
+  that has computed the number: a separate read-only agent re-derives it from the
+  quoted `source_ref` alone before the batch is accepted (`w3k`).
 - Never let the agent that writes the feature write the tests.
 - Critically review every task specification before implementing it — the task
   packets in `ROADMAP.md`, the contracts in `DESIGN.md`, and any task given in
