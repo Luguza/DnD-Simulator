@@ -897,9 +897,9 @@ adversary attached — a hostile synthetic creature, and one disposable batch.
 ## Verification
 
 ```bash
-pip install -e ".[dev]"
+uv sync
 dndsim content fetch
-pytest tests/contract tests/golden tests/interaction
+uv run pytest tests/contract tests/golden tests/interaction
 dndsim check
 dndsim bench
 

@@ -5,9 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project state
 
 A Monte Carlo D&D 5e (2024 / XPHB) combat simulator — "SimC for D&D". **No
-simulator code exists yet.** The repo currently holds the design (`DESIGN.md`),
-the dependency-ordered build plan (`ROADMAP.md`), the uv/pre-commit toolchain,
-and a placeholder `main.py`. Work is at wave **W0** (foundations).
+simulator code exists yet** beyond the scaffold: the repo holds the design
+(`DESIGN.md`), the dependency-ordered build plan (`ROADMAP.md`), the
+uv/pre-commit toolchain, CI, and an empty `src/dndsim/` package. Work is at wave
+**W0** (foundations); `w0a` (scaffold) is done, `w0b` (rules vocabulary) is
+next.
 
 Both documents are load-bearing: `DESIGN.md` fixes the architecture and the
 vocabulary, `ROADMAP.md` fixes what may be built when and by whom. Read the
@@ -16,8 +18,7 @@ background reading.
 
 ## Commands
 
-The toolchain is **uv**, not pip. `DESIGN.md` § Verification still says
-`pip install -e ".[dev]"`; ignore that and use uv.
+The toolchain is **uv**, not pip.
 
 ```sh
 uv sync                              # create .venv with the dev toolchain
@@ -125,12 +126,20 @@ end of `ROADMAP.md` is what a delegated agent receives.
   specifically apply.
 - Never let the agent that writes the feature write the tests.
 
-## Known inconsistencies to resolve
+## Scaffold facts (w0a)
 
-- `DESIGN.md` says Python 3.11+; `.python-version` and `requires-python` say
-  3.10, and mypy/ruff target py310.
-- `pyproject.toml` has no `[build-system]`, no src layout and no pytest config —
-  w0a scaffolding is incomplete. The planned package root is `src/dndsim/`,
-  which makes the current top-level `main.py` a placeholder to remove.
-- No CI workflow exists yet, though several roadmap gates (frozen-registry diff,
-  benchmark regression, stale generated docs) assume one.
+- Python **3.11+** everywhere: `.python-version`, `requires-python`, and the
+  mypy/ruff targets. `DESIGN.md` § Settled decisions is the source of that
+  number.
+- src layout, hatchling build backend, package root `src/dndsim/`. `uv sync`
+  installs it editable, so `import dndsim` works from tests.
+- `tests/` mirrors `DESIGN.md` § Module layout: `contract/ golden/ interaction/
+  statistical/ bench/`, with pytest rooted at `tests` via `pyproject.toml`.
+- `.github/workflows/ci.yml` runs the same five checks as the pre-commit hook
+  (`uv lock --check`, ruff check, ruff format, mypy, pytest) through
+  `uv run --frozen`. The later roadmap gates — frozen-registry diff, benchmark
+  regression, stale generated docs — get added to this workflow as their tasks
+  land (`w3b`, `w3c`, `w3i`).
+- Ruff excludes `*.md`, so `ruff format` never rewrites the code samples in
+  `DESIGN.md`; that keeps CI and the hook (which only sees `.py`/`.pyi`)
+  in agreement.

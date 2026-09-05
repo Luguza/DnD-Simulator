@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version-file: .python-version
+
+      # The lockfile is the single source of tool versions, so CI, the
+      # pre-commit hook and a local `uv run` all resolve identically.
+      - name: Sync the locked toolchain
+        run: uv sync --frozen
+
+      - name: uv lock is up to date
+        run: uv lock --check
+
+      - name: ruff check
+        run: uv run --frozen ruff check --output-format=github
+
+      - name: ruff format
+        run: uv run --frozen ruff format --check
+
+      - name: mypy
+        run: uv run --frozen mypy .
+
+      - name: pytest
+        run: uv run --frozen pytest
