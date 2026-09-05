@@ -591,6 +591,10 @@ Great Weapon Master stops being worth it, exactly as a WoW sim would.
 Phases 0–2 are the commitment being made now; 3–5 are sketched to prove the
 architecture doesn't paint itself into a corner.
 
+**[ROADMAP.md](ROADMAP.md)** expands this into a dependency-ordered Gantt chart
+with 51 tasks, marking which are serial architect work and which fan out to
+parallel agent batches, plus the task-packet template for delegating them.
+
 # Verification
 
 ```bash
