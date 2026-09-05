@@ -5,31 +5,34 @@ on:
     types: [opened, synchronize, ready_for_review, reopened]
     # Optional: Only run on specific file changes
     # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    #   - "src/**/*.py"
 
 jobs:
   claude-review:
     # Optional: Filter by PR author
     # if: |
     #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
     #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
 
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
-      issues: read
+      # write, not read: posting an inline review comment is a write on the
+      # pulls API, and the action's installation token is scoped to whatever
+      # this block grants. With `read` the review runs, finds nothing it can
+      # post, and the job still reports success.
+      pull-requests: write
+      issues: write
       id-token: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          # 0, not 1: the review's first step is `git diff <base>...HEAD`, which
+          # needs the base branch in the local history. A shallow clone leaves
+          # the agent with no diff to review.
+          fetch-depth: 0
 
       - name: Run Claude Code Review
         id: claude-review
@@ -39,7 +42,11 @@ jobs:
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment"'
+          # The action's base GitHub/file tools are always included; --allowedTools
+          # only adds. Arbitrary Bash is NOT on by default, so the read-only git
+          # commands the review depends on have to be listed explicitly or they
+          # come back as permission denials.
+          claude_args: >-
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git merge-base:*),Bash(git rev-parse:*),Bash(git status:*),Bash(git ls-files:*)"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-
