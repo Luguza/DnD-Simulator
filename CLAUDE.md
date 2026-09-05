@@ -125,6 +125,12 @@ end of `ROADMAP.md` is what a delegated agent receives.
 - Use skills with care: only when you make large changes or when they
   specifically apply.
 - Never let the agent that writes the feature write the tests.
+- Critically review every task specification before implementing it — the task
+  packets in `ROADMAP.md`, the contracts in `DESIGN.md`, and any task given in
+  chat. Check them against the rest of the design for gaps, contradictions and
+  unstated assumptions.
+- Ask the user for clarification when something is ambiguous or looks wrong
+  instead of guessing.
 
 ## Scaffold facts (w0a)
 
