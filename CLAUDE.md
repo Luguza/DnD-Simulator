@@ -128,8 +128,9 @@ end of `ROADMAP.md` is what a delegated agent receives.
 - Critically review every task specification before implementing it — the task
   packets in `ROADMAP.md`, the contracts in `DESIGN.md`, and any task given in
   chat. Check them against the rest of the design for gaps, contradictions and
-  unstated assumptions, and ask the user for clarification when something is
-  ambiguous or looks wrong instead of guessing.
+  unstated assumptions.
+- Ask the user for clarification when something is ambiguous or looks wrong
+  instead of guessing.
 
 ## Scaffold facts (w0a)
 
