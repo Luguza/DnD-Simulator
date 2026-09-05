@@ -131,6 +131,13 @@ end of `ROADMAP.md` is what a delegated agent receives.
 - The agent that writes a feature writes its golden, but is never the only party
   that has computed the number: a separate read-only agent re-derives it from the
   quoted `source_ref` alone before the batch is accepted (`w3k`).
+- Never let the agent that writes the feature write the tests.
+- Critically review every task specification before implementing it — the task
+  packets in `ROADMAP.md`, the contracts in `DESIGN.md`, and any task given in
+  chat. Check them against the rest of the design for gaps, contradictions and
+  unstated assumptions.
+- Ask the user for clarification when something is ambiguous or looks wrong
+  instead of guessing.
 
 ## Scaffold facts (w0a)
 
