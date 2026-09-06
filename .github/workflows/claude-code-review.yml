@@ -47,6 +47,13 @@ jobs:
           # in the Conversation tab instead, so the review just reports, and the
           # step below does the posting.
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # --model opus: with no --model the action runs the review on its
+          # default model, which is Sonnet. A review is the one job here worth
+          # the stronger model — it is the only gate on this repo, it runs once
+          # per push rather than in a loop, and the findings it misses are the
+          # ones nothing else catches. The alias, not a pinned ID, so the
+          # workflow follows the current Opus instead of silently pointing at a
+          # retired model id.
           # The action's base GitHub/file tools are always included; --allowedTools
           # only adds. Arbitrary Bash is NOT on by default, so the read-only git
           # commands the review depends on have to be listed explicitly or they
@@ -59,6 +66,7 @@ jobs:
           # end up being "the four review agents are still running". Forcing a
           # single inline pass trades some breadth for a review that finishes.
           claude_args: >-
+            --model opus
             --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git merge-base:*),Bash(git rev-parse:*),Bash(git status:*),Bash(git ls-files:*)"
             --disallowedTools "Agent,Task"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
