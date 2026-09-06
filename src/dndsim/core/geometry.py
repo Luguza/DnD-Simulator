@@ -157,13 +157,17 @@ def route(
     creature that stands still behind an ally reports zero damage and blames the
     build (DESIGN.md § APL).
 
-    **The greedy walk is trusted only when its length proves it optimal** — when
-    it took exactly `distance_ft(origin, destination)` worth of steps, the
-    Chebyshev floor no route can beat. Arriving is not enough: a body diagonally
-    adjacent can send the sidesteps the long way round, reaching the destination
-    in three squares where two exist, and a square of movement lost to that is a
-    melee creature left one square short of the target it chose. The comparison
-    costs one subtraction on the path that was already going to return.
+    **The greedy walk is trusted only when it arrives and its length proves it
+    optimal** — when it reached the destination in exactly
+    `distance_ft(origin, destination)` worth of steps, the Chebyshev floor no
+    route can beat. Length alone is not enough: a walk that got stuck can
+    coincidentally stop at the Chebyshev floor's step count without ever
+    reaching the destination, and arrival alone is not enough either — a body
+    diagonally adjacent can send the sidesteps the long way round, reaching the
+    destination in three squares where two exist, and a square of movement lost
+    to that is a melee creature left one square short of the target it chose.
+    Both checks cost one comparison and one subtraction on the path that was
+    already going to return.
 
     **A route that does not arrive is a route that got as far as it could.** If
     nothing reaches the destination the greedy walk's partial path is returned,
@@ -189,7 +193,11 @@ def route(
     if origin == destination:
         return ()
     walked = _greedy(origin, destination, blocked)
-    if len(walked) * CELL_SIZE_FT == distance_ft(origin, destination):
+    if (
+        walked
+        and walked[-1] == destination
+        and len(walked) * CELL_SIZE_FT == distance_ft(origin, destination)
+    ):
         return walked
     found = _search(origin, destination, blocked)
     return walked if found is None else found

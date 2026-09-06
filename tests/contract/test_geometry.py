@@ -326,6 +326,25 @@ def test_a_wall_short_enough_to_search_around_is_searched_around() -> None:
     assert arrived(walked, Cell(5, 0))
 
 
+def test_a_greedy_walk_stuck_short_of_the_destination_is_not_trusted() -> None:
+    """A regression for a review finding: the greedy walk can get stuck and stop
+    exactly `distance_ft(origin, destination)` worth of steps short of arriving,
+    which used to be enough on its own to be trusted and returned.
+
+    (0, 0) -> (5, 5) with a wall at x in {1..6}, y = 1 that spans past both
+    edges the greedy walk could sidestep through. The greedy walk climbs to
+    (5, 0) and gets stuck there — five squares, the same length as the
+    Chebyshev floor to (5, 5) — without ever reaching the destination. Length
+    matching the floor is not proof of arrival, so this must fall through to
+    the search rather than hand back a route a creature never completes."""
+    wall = frozenset(
+        {Cell(1, 1), Cell(2, 1), Cell(3, 1), Cell(4, 1), Cell(5, 1), Cell(6, 1)}
+    )
+    walked = route(Cell(0, 0), Cell(5, 5), blocked=wall)
+    assert walked
+    assert walked[-1] == Cell(5, 5)
+
+
 def test_the_same_question_gets_the_same_answer_every_time() -> None:
     """Determinism is the backbone: a seed and a build reproduce a fight byte
     for byte, which a route that depended on a set's iteration history would
