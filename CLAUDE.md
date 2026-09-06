@@ -7,10 +7,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A Monte Carlo D&D 5e (2024 / XPHB) combat simulator — "SimC for D&D". **Almost
 no simulator code exists yet**: the repo holds the design (`DESIGN.md`), the
 dependency-ordered build plan (`ROADMAP.md`), the uv/pre-commit toolchain, CI,
-`src/dndsim/rules/` — the vocabulary every later package imports — and
-`src/dndsim/core/` randomness, dice and the clock. Work is at wave **W0**
-(foundations); `w0a` (scaffold), `w0b` (rules vocabulary), `w0c` (RNG and dice)
-and `w0d` (timeline) are done, `w0e` (the hook registry) is next.
+`src/dndsim/rules/` — the vocabulary every later package imports —
+`src/dndsim/core/` randomness, dice and the clock, and `src/dndsim/hooks/` the
+closed registry of the 39 extension points. Work is at wave **W0**
+(foundations); `w0a` (scaffold), `w0b` (rules vocabulary), `w0c` (RNG and dice),
+`w0d` (timeline) and `w0e` (the hook registry) are done, `w0f` (the contexts) is
+next.
 
 Both documents are load-bearing: `DESIGN.md` fixes the architecture and the
 vocabulary, `ROADMAP.md` fixes what may be built when and by whom. Read the
@@ -215,6 +217,48 @@ end of `ROADMAP.md` is what a delegated agent receives.
 - Recharge on a die roll (a monster's `{@recharge}`) is not a `Reset` member:
   it is a roll, not a boundary, and belongs to `Recovery` with the resources
   (w1b).
+
+## Hook registry facts (w0e)
+
+- `hooks/registry.py` is the machinery (`Scope`, `Phase`, `HookGroup`,
+  `HookSpec`, `HookRegistry`, `define_hook`, `hook_named`) and
+  `hooks/definitions.py` is the 39 `define_hook()` calls. Nothing else defines a
+  hook, and no hook is defined anywhere else.
+- **Importing anything under `dndsim.hooks` defines the hooks**, because
+  `hooks/__init__.py` imports `definitions` for its side effect — the one
+  import of its kind in the project. Without it `hook_named()` would raise or
+  not depending on which module a test happened to import first, which is the
+  opposite of the property the registry exists for.
+- DESIGN.md's "an unregistered hook returns an empty handler list rather than
+  raising" is about *dispatch* — a hook with no handlers attached costs one dict
+  lookup — and does not contradict "unknown hook name raises". Names are
+  validated once, at import, by `hook_named()`; the hot path never sees a
+  string. The error carries `difflib` suggestions, as the APL compiler does for
+  a namespace path.
+- `HookSpec` is `eq=False`: specs are singletons owned by the registry, so
+  identity *is* equality. That makes a dispatch table keyed by spec hash one
+  pointer rather than five fields, and it means a hand-built look-alike is not
+  the hook. Engine code dispatches on the constant (`ON_HIT`), feature authors
+  write the string (`@hook("on_hit")`) — a typo is an `AttributeError` on one
+  side and an `UnknownHookError` on the other, both at import.
+- A spec names its context type as a **string** (`"HitContext"`), not the class:
+  `hooks/contexts.py` (w0f) sits above the registry and imports it, so w0f owns
+  the classes and a contract test there asserts the two sides agree.
+- `Phase` values are ordinals, for the same reason `TurnPhase`'s are — a band is
+  a position, and `"early"` sorts after `"before"` only by luck. Which bands
+  need a `# PHASE:` comment lives on `Phase.requires_justification`, next to the
+  bands, not as a literal inside the w3b linter.
+- **`on_heal` is `TARGET`** — the owner is the creature whose hit points go up,
+  matching `on_temp_hp_gained`. The healer's side (Disciple of Life) has nowhere
+  to attach; that is outside the W1–W3 slice, so it is a known gap for the `w3e`
+  paper pass to confirm and `w3f` to add, not something invented on
+  speculation. Four hook *pairs* describe one moment from both ends
+  (declare/incoming attack, hit/hit_taken, forced_save/saving_throw,
+  damage_roll/incoming_damage); `on_leave_reach` is the project's one
+  `OBSERVER`.
+- The registry is **not sealed here**. It is closed in the sense that content
+  authors may not add to it, but the CI freeze guard is `w3f`'s, after the paper
+  pass has added what the pass proves missing (ROADMAP w0e).
 
 ## Working rules
 
