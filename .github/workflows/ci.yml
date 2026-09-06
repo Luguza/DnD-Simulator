@@ -23,7 +23,7 @@ jobs:
       # Tool versions come from uv.lock, so CI, the pre-commit hook and a local
       # `uv run --frozen` all execute the same ruff and mypy.
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
