@@ -29,6 +29,7 @@ from enum import Enum, unique
 
 __all__ = [
     "Ability",
+    "ActionCost",
     "CasterProgression",
     "Condition",
     "DamageType",
@@ -210,3 +211,23 @@ class CasterProgression(Enum):
     HALF = "half"
     THIRD = "third"
     PACT = "pact"
+
+
+@unique
+class ActionCost(Enum):
+    """Which slot of the action economy something spends.
+
+    Declared by a handler (`@hook("on_hit", costs=ActionCost.REACTION)`) and
+    consumed by the creature's action economy (w1a); it lives here, at the
+    bottom of the stack, because both `hooks/` and `creatures/` need the same
+    three words and neither may import the other.
+
+    There is no `FREE` member: a handler that costs nothing declares
+    `costs=None`, and a second way of spelling the same thing is a second way
+    for an author to get it wrong. Movement is absent for the opposite reason —
+    it is measured in feet, not in slots, so it is not one of these.
+    """
+
+    ACTION = "action"
+    BONUS_ACTION = "bonus_action"
+    REACTION = "reaction"
