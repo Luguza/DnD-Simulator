@@ -8,11 +8,12 @@ A Monte Carlo D&D 5e (2024 / XPHB) combat simulator — "SimC for D&D". **Almost
 no simulator code exists yet**: the repo holds the design (`DESIGN.md`), the
 dependency-ordered build plan (`ROADMAP.md`), the uv/pre-commit toolchain, CI,
 `src/dndsim/rules/` — the vocabulary every later package imports —
-`src/dndsim/core/` randomness, dice and the clock, and `src/dndsim/hooks/` the
-closed registry of the 39 extension points. Work is at wave **W0**
-(foundations); `w0a` (scaffold), `w0b` (rules vocabulary), `w0c` (RNG and dice),
-`w0d` (timeline) and `w0e` (the hook registry) are done, `w0f` (the contexts) is
-next.
+`src/dndsim/core/` randomness, dice, the clock and the error hierarchy, and
+`src/dndsim/hooks/` the closed registry of the 39 extension points together with
+the 31 contexts they hand out. Work is at wave **W0** (foundations); `w0a`
+(scaffold), `w0b` (rules vocabulary), `w0c` (RNG and dice), `w0d` (timeline),
+`w0e` (the hook registry) and `w0f` (the contexts) are done, `w0g` (the `@hook`
+decorator, `HookSource` and the dispatcher) is next.
 
 Both documents are load-bearing: `DESIGN.md` fixes the architecture and the
 vocabulary, `ROADMAP.md` fixes what may be built when and by whom. Read the
@@ -259,6 +260,89 @@ end of `ROADMAP.md` is what a delegated agent receives.
 - The registry is **not sealed here**. It is closed in the sense that content
   authors may not add to it, but the CI freeze guard is `w3f`'s, after the paper
   pass has added what the pass proves missing (ROADMAP w0e).
+
+## Context facts (w0f)
+
+- `hooks/contexts.py` holds **31 context types for 39 hooks**: eight types are
+  named by two hooks each and 23 by one, so 16 + 23 = 39. Six of the eight are
+  the two boundaries of one thing (encounter, round, turn, rest, condition,
+  effect). The other two are a moment seen from both ends, where the *scope*
+  tells the ends apart and the context does not: `on_hit` / `on_hit_taken` and
+  `on_declare_attack` / `on_incoming_attack_declared`. **The other two
+  `SELF`/`TARGET` pairs deliberately do not share** — a save's DC and its roll
+  are different objects, and `on_damage_roll` / `on_incoming_damage` is the
+  sharing this task rejected outright (the victim gets rolled amounts, not the
+  attacker's bag). A contract test pins the eight by name rather than counting
+  them, and checks the registry's `context=` strings against this module in
+  **both** directions — a hook naming a class nobody wrote, and a class no hook
+  hands out, are both failures.
+- A context is a **frozen, slotted, keyword-only dataclass whose `__setattr__`
+  is replaced** after the decorator runs. `frozen=True` is what makes
+  `ctx.damage = x` a mypy error *and* gives the generated `__init__` a path that
+  bypasses the lock; the replacement is what makes the runtime message name the
+  mutators instead of saying "cannot assign to field". `@_context` is a
+  `dataclass_transform`, so mypy still sees a dataclass.
+- **The lock is for features, not for the engine.** `reopen(**fields)` writes
+  through `object.__setattr__` and is the pooling primitive DESIGN.md § Levers
+  asks for; it names every field it is given, so a typo is an `AttributeError`
+  rather than a field left holding the previous attack's value.
+- **`PhaseError` is two mistakes, one type** (`core/errors.py`): a mutator
+  called out of band (`ctx.veto()` from `NORMAL` — only `EARLY` and `FINAL` may
+  halt the chain) and a mutator called after `close()`. The second is what makes
+  pooling survivable: a handler that stashes a context and writes to it later is
+  writing to whichever event owns that object now, and the seal turns that into
+  a raise the first time. It does *not* catch a context already recycled and
+  re-opened; nothing cheap does.
+- **Provenance is stamped, never passed.** `stamp(source, phase)` is the
+  dispatcher's Ambient Context for one handler call, so `ctx.damage.add(...)` is
+  attributed with no author effort. There is deliberately no `source=` argument
+  to get wrong, and a mutation with nothing stamped is a `PhaseError`.
+- **Two contribution types, because two crit rules.** `DamagePart` (dice, flat,
+  damage type) is the only thing that can reach `Dice.doubled()`, through
+  `on_crit()`, and the *predicate* that decides a crit stays on `Outcome`
+  (`Outcome.is_critical`, w0b) rather than being re-spelled by a context.
+  `Modifier` is the same dice/flat split for everything whose dice
+  never double — a D20 Test bonus, healing, temp HP, a save DC. One class with a
+  `doubles: bool` flag would hand the crit rule back to every author who sets it.
+  `damage_type=None` means "the type of the attack this rides on", which is a
+  rule, not a missing value.
+- **Five append-only ledgers** carry what handlers contribute: `DamageBag`,
+  `ModifierBag`, `AdvantageLedger` (two lists, so cancellation and idempotence
+  are derived), `MitigationLedger` (three *sets*, so a type cannot be resisted
+  twice) and `OverrideLedger` (Legendary Resistance, Relentless Endurance). Each
+  is a `_Bag`, which is how `reopen()` knows what to bind and what to clear
+  without being told. **The declaration is the ownership**: a bag declared with
+  a `default_factory` is one the context created, so `reopen()` clears it in
+  place; a bag declared *without* one is a bag the context is handed, so it is
+  a required field, rebound and never cleared. The damage bag belongs to the
+  attack — the damage built at `on_hit` is the damage rolled at
+  `on_damage_roll` — so `HitContext`, `MissContext` and `DamageRollContext` all
+  declare `damage: DamageBag` bare. Giving any of them a `default_factory`
+  would make the pool clear the attack's own damage; a contract test guards it.
+  Rebinding is what keeps provenance and the seal with the context currently
+  dispatching rather than with one that has closed.
+- **`reopen()` demands every field the context does not default** and resets the
+  defaulted ones, so no part of the previous event survives by omission — a
+  pooled `HitContext` rebound with a new attacker and no new defender would
+  otherwise be an attack on the previous target.
+- **Participants are `Protocol`s, not imports.** `hooks/` sits below
+  `creatures/` and w0f runs two tasks before the first `Creature` exists, so
+  `Combatant`, `Weapon`, `Spell`, `Effect` and `Cell` declare only what the
+  design has already settled (`Duration` anchors on `initiative_index`; the log
+  needs a name). They are meant to stay narrow — one that grows to mirror
+  `Creature` is a second domain model — and **w0g2 owes a contract test that its
+  real classes satisfy them**.
+- Nothing here rolls or applies anything: `engine/damage.py` (w1e) owns the
+  resolution order and `engine/attack.py` (w1f) the arithmetic.
+  `IncomingDamageContext` therefore *records* resistance, reduction and halving
+  rather than applying any of it — and it is handed the damage **rolled**, as an
+  amount per type, not as the attacker's `DamageBag`. By that point the dice are
+  thrown and `damage_type=None` ("the type of the attack this rides on") has
+  been resolved, which is exactly what the type-keyed steps of the order need.
+- `core/errors.py` was created here rather than in `w0g` as ROADMAP's table
+  says, because `w0f`'s own done-when names `PhaseError`. `w0g` completes it
+  with `FeatureContractError` — the same "created early, completed later"
+  arrangement the roadmap already uses for `w0g2`'s files.
 
 ## Working rules
 
