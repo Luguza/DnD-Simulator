@@ -13,13 +13,17 @@ errors, and none of them belong here.
 
 `PhaseError` arrives with `hooks/contexts.py` (w0f) because a context is the
 first object in the project with a lifetime shorter than the run.
-`FeatureContractError` — the handler that returns something other than a
-`HookResult` — arrives with the dispatcher (w0g), which is the first code able
-to observe a return value at all.
+`FeatureContractError` and its two companions arrive with the dispatcher (w0g),
+which is the first code able to observe a handler at all — one at the moment the
+handler's class is created, one at the moment it returns, and one for the
+machinery it declared that nobody wired in.
 """
 
 __all__ = [
     "DndSimError",
+    "EngineAssemblyError",
+    "FeatureContractError",
+    "FeatureDeclarationError",
     "PhaseError",
 ]
 
@@ -52,4 +56,52 @@ class PhaseError(DndSimError):
     It is not an `AttributeError`: the attribute exists and the mutator is the
     right one to call, which is precisely why the timing is worth naming
     separately from "you assigned to a field".
+    """
+
+
+class FeatureContractError(DndSimError):
+    """A feature broke the contract every handler signs.
+
+    The named case in DESIGN.md § Failing loudly is the return value: a handler
+    is a function from a context to a `HookResult`, and one that returns `None`
+    — the shape of a handler whose author forgot the `return` — would otherwise
+    be indistinguishable from one that deliberately did nothing. That
+    distinction is what the no-op detector and the `once_per` budget both read,
+    so absorbing it would make two other mechanisms quietly wrong rather than
+    loudly broken.
+    """
+
+
+class FeatureDeclarationError(FeatureContractError, ImportError):
+    """A class said something impossible about itself while being created.
+
+    A bad handler signature, an annotation naming the wrong context, an
+    override that forgot to re-declare its hook, a malformed id: all of them are
+    mistakes visible at class-creation time, which is the earliest moment the
+    information exists (DESIGN.md § Fail at the earliest moment). Raised from
+    `HookSource.__init_subclass__`, it therefore surfaces while the feature
+    module is being imported and nothing has run yet.
+
+    It **is** an `ImportError`, and that is the point rather than a flourish
+    (ROADMAP w0g, "bad signature is an `ImportError`"): a batch of ~630 content
+    modules is loaded by a tool that already distinguishes "this module would
+    not import" from "this module misbehaved", and a declaration mistake belongs
+    on the first side of that line. It is also a `FeatureContractError`, because
+    the contract broken is the same one — only noticed earlier.
+    """
+
+
+class EngineAssemblyError(DndSimError):
+    """A handler declared machinery the engine it is running in does not have.
+
+    `costs=ActionCost.REACTION` needs an action economy to spend from and
+    `gate="apl.id"` needs an action list to ask, and both arrive later than the
+    dispatcher does (w1a, w2f). Until they are wired in, a handler that declares
+    one must raise rather than run: a reaction that fires without being paid for
+    and a gate that is treated as open are both silent corruptions of every
+    number the simulation produces, and silence is the one failure this design
+    refuses everywhere else.
+
+    It is not a `FeatureContractError`: the feature declared something
+    legitimate, and it is the assembly around it that is incomplete.
     """

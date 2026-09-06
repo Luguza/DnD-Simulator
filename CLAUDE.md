@@ -9,11 +9,13 @@ no simulator code exists yet**: the repo holds the design (`DESIGN.md`), the
 dependency-ordered build plan (`ROADMAP.md`), the uv/pre-commit toolchain, CI,
 `src/dndsim/rules/` — the vocabulary every later package imports —
 `src/dndsim/core/` randomness, dice, the clock and the error hierarchy, and
-`src/dndsim/hooks/` the closed registry of the 39 extension points together with
-the 31 contexts they hand out. Work is at wave **W0** (foundations); `w0a`
-(scaffold), `w0b` (rules vocabulary), `w0c` (RNG and dice), `w0d` (timeline),
-`w0e` (the hook registry) and `w0f` (the contexts) are done, `w0g` (the `@hook`
-decorator, `HookSource` and the dispatcher) is next.
+`src/dndsim/hooks/` the closed registry of the 39 extension points, the 31
+contexts they hand out, and the decorator, source base class and dispatcher that
+run them. Work is at wave **W0** (foundations); `w0a` (scaffold), `w0b` (rules
+vocabulary), `w0c` (RNG and dice), `w0d` (timeline), `w0e` (the hook registry),
+`w0f` (the contexts) and `w0g` (the dispatch path) are done, `w0g2` (the spike
+substrate: a minimal `Creature`, the first cut of `engine/damage.py` and of
+`core/geometry.py`) is next.
 
 Both documents are load-bearing: `DESIGN.md` fixes the architecture and the
 vocabulary, `ROADMAP.md` fixes what may be built when and by whom. Read the
@@ -343,6 +345,68 @@ end of `ROADMAP.md` is what a delegated agent receives.
   says, because `w0f`'s own done-when names `PhaseError`. `w0g` completes it
   with `FeatureContractError` — the same "created early, completed later"
   arrangement the roadmap already uses for `w0g2`'s files.
+
+## Dispatch facts (w0g)
+
+- Three modules for three moments: `hooks/decorator.py` marks a function at
+  **decoration**, `hooks/source.py` validates and collects at **class
+  creation**, `hooks/dispatch.py` binds and runs at the **run**. `@hook` returns
+  the function unchanged with a `Handler` attached, so a handler is still an
+  ordinary method — callable in a test, its own name in a traceback.
+- **`HookResult` has two members and no third.** `APPLIED` spends the handler's
+  `once_per` budget and pays its `costs`; `SKIPPED` spends nothing. Halting the
+  chain is `ctx.veto()`, a mutation like any other, and a handler that vetoes
+  has `APPLIED`. `R` is a `TypeAlias` for the same enum, not a second one.
+- `FeatureDeclarationError` **is an `ImportError`** as well as a
+  `FeatureContractError`, which is how ROADMAP's "bad signature is an
+  `ImportError`" is literally true: a batch loader already distinguishes "this
+  module would not import" from "this module misbehaved". `EngineAssemblyError`
+  is the third new error and is deliberately *not* a feature's fault — a
+  handler declaring `costs=` with no economy wired in, or `gate=` with no APL,
+  raises rather than running free, because a reaction nobody paid for and a gate
+  treated as open are silent corruptions of every number.
+- Four declaration mistakes are refused at class creation, and the fourth is the
+  one invisible in a diff: **an override that dropped its `@hook`**, where the
+  base's body would keep running while the author reads their own.
+- The context annotation is checked by **identity** against the class the
+  registry names, so a same-named look-alike in the author's module is not the
+  context. `get_type_hints` resolves it, which is why a context imported only
+  under `TYPE_CHECKING` is an error with a sentence saying so.
+- **`ActionCost` lives in `rules/enums.py`**, not in `creatures/economy.py`: the
+  decorator declares it and w1a's economy consumes it, and neither package may
+  import the other. There is no `FREE` member — that is `costs=None`.
+- The dispatcher takes `Economy` and `Gate` as **`Protocol`s** (the device w0f
+  used for `Combatant`), so `hooks/` still sits below `creatures/` and `apl/`.
+  w1a and w2f owe the contract tests that their real classes satisfy them.
+- **The dispatch table's tuples are the snapshot.** `attach()`/`detach()` build
+  new tuples rather than mutating the ones in the table, so an effect applied
+  mid-hook cannot join the event that applied it — the authoring skill's
+  snapshot rule made structural rather than documented.
+- A `BoundHandler` is created once per (source, declaration) and **survives
+  table rebuilds**, because it is the key its own `once_per` budget is filed
+  under in the creature's `ResetManager`. Rebuilding those objects on every
+  attach would hand a spent Sneak Attack back whenever a condition landed
+  mid-turn.
+- `ctx.stamp(source, phase)` before each call is the whole of provenance;
+  `dispatch()` restores the stamp it found (`Context.stamped()`, added to w0f
+  here) so a dispatch leaves the context's attribution as it was. `stamp(None,
+  ...)` releases it, which is what makes an engine mutation *outside* a handler
+  a `PhaseError` instead of a wrong line in the damage breakdown.
+- Only `EARLY` and `FINAL` handlers can veto, so the loop checks `ctx.vetoed`
+  only after those — the 95% `NORMAL` case pays one slot load, not a property
+  call. A veto also short-circuits the *second* half of a paired dispatch: an
+  `on_hit` veto means `on_hit_taken` does not run either.
+- The dispatcher deliberately does **not** drain `ctx.pending_effects` or
+  `close()` the context: one context is dispatched to two creatures, so the
+  engine that owns the event does both, once, afterwards.
+- **Measured on the CI-class runner**: ~0.3 µs per handler for the dispatch loop
+  itself (call, stamp, budget checks), but ~1.25 µs for one
+  `ctx.damage.add(...)`, of which ~0.9 µs is `DamagePart`'s frozen-dataclass
+  `__init__`. Fifteen on-hit handlers each adding one part is ~19 µs, against a
+  ~20 µs budget for a whole attack resolution. `w0i` is the task that owns that
+  number; the cheap lever if it misses is the shape of `DamagePart` and
+  `Modifier` (a `NamedTuple` constructs in ~0.38 µs, a plain slotted class in
+  ~0.28 µs), not the dispatch design.
 
 ## Working rules
 

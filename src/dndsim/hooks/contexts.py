@@ -637,7 +637,7 @@ class Context:
 
     # -- the dispatcher's side; features never call these --------------------
 
-    def stamp(self, source: str, phase: Phase | None) -> None:
+    def stamp(self, source: str | None, phase: Phase | None) -> None:
         """Name the source about to run, and the band it declared.
 
         The **Ambient Context** of DESIGN.md § Provenance is automatic, scoped
@@ -645,10 +645,27 @@ class Context:
         is attributed to `source`, which is where the per-feature damage
         breakdown comes from. `phase` is `None` for the engine's own seeding of
         a context, which is also why `veto()` refuses when it is.
+
+        A `source` of `None` releases the stamp, and it is how the dispatcher
+        puts back what it found once its last handler has run (`stamped()`).
+        Without that, an engine mutation made after a dispatch would be
+        attributed to whichever feature happened to run last — a wrong number in
+        the damage breakdown rather than the `PhaseError` an unattributed
+        mutation is supposed to be.
         """
         frame = self._frame
         frame.source = source
         frame.phase = phase
+
+    def stamped(self) -> tuple[str | None, Phase | None]:
+        """The stamp currently standing, for a dispatcher to restore afterwards.
+
+        Read once per dispatch rather than once per handler: what it costs is a
+        tuple, and what it buys is that dispatching on a context does not
+        disturb the provenance of whoever was already holding it.
+        """
+        frame = self._frame
+        return frame.source, frame.phase
 
     def close(self) -> None:
         """End the moment. Every mutator raises `PhaseError` from here on."""
