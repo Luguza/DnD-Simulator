@@ -8,9 +8,9 @@ A Monte Carlo D&D 5e (2024 / XPHB) combat simulator — "SimC for D&D". **Almost
 no simulator code exists yet**: the repo holds the design (`DESIGN.md`), the
 dependency-ordered build plan (`ROADMAP.md`), the uv/pre-commit toolchain, CI,
 `src/dndsim/rules/` — the vocabulary every later package imports — and
-`src/dndsim/core/` randomness and dice. Work is at wave **W0** (foundations);
-`w0a` (scaffold), `w0b` (rules vocabulary) and `w0c` (RNG and dice) are done,
-`w0d` (timeline) is next.
+`src/dndsim/core/` randomness, dice and the clock. Work is at wave **W0**
+(foundations); `w0a` (scaffold), `w0b` (rules vocabulary), `w0c` (RNG and dice)
+and `w0d` (timeline) are done, `w0e` (the hook registry) is next.
 
 Both documents are load-bearing: `DESIGN.md` fixes the architecture and the
 vocabulary, `ROADMAP.md` fixes what may be built when and by whom. Read the
@@ -175,6 +175,46 @@ end of `ROADMAP.md` is what a delegated agent receives.
   (~560 ns). That is the number `w0i` is spending against its 50k attack
   resolutions/sec budget; the inlined variant measures the same, so the cost is
   Python call overhead rather than the arithmetic.
+
+## Timeline facts (w0d)
+
+- `core/timeline.py` holds no clock *object*. `TimeKey(round, initiative_index,
+  phase)` is a position and the engine's turn loop (`engine/turn.py`, w1f) owns
+  the current one; a second mutable clock would be a second source of truth for
+  the one fact the simulation is ordered by. Rounds are 1-based and an
+  initiative index is a seat in the order (0 acts first), both validated.
+- `TurnPhase` is the one enum whose values are **ordinals, not lowercase
+  strings** — it is a position on a clock and `"end" < "start"` alphabetically.
+  It is still a plain `Enum`, so `phase == 0` stays a mypy error; the log
+  serialises `phase.name.lower()`.
+- `Duration` (relative, declarative) and `Expiry` (absolute: a `TimeKey` plus
+  `through_phase`) are two types so that a resolved deadline cannot be carried
+  without the flag that decides it. The flag is read through two named sweeps
+  rather than a boolean argument: `expires_before(now)` runs at a boundary
+  before its hooks, `expires_after(now)` once they are done. Rage survives the
+  first and not the second; Reckless Attack fails both.
+- **"Your next turn" is the next turn, not the next boundary of that phase.**
+  Said on your own turn it means a round from now, so `resolve()` counts the
+  anchor's turn in the current round only when it has not begun
+  (`anchor > now.initiative_index`).
+- `Duration` anchors on an initiative **index**, not a creature: `core/` sits
+  below `creatures/` and may not import it. `creatures/effects.py` (w1c) passes
+  `creature.initiative_index` — that is what `DESIGN.md`'s
+  `until_end_of_next_turn_of(c)` spells one layer up.
+- Two deliberate omissions. There is no multi-round anchor (every W1 duration
+  ends one turn ahead; a "1 minute" spell wants an additive `turns` field in
+  W4), and no "permanent" duration — Prone lasts until you stand up, which is
+  no deadline at all, so such an effect carries no `Duration`.
+- `ResetManager` is **one ledger per creature**, which is why `Reset.TURN` vs
+  `Reset.OWN_TURN` needs no creature identity inside it: the turn loop calls
+  `turn_started(own=...)` and already knows whose turn it is. A global ledger
+  keyed by owner would put an encounter-sized lookup on the path every handler
+  of every attack walks. Each boundary clears exactly the scopes it names —
+  a rest does not touch turn budgets, because the next turn boundary hands
+  those back before anything in initiative can ask.
+- Recharge on a die roll (a monster's `{@recharge}`) is not a `Reset` member:
+  it is a roll, not a boundary, and belongs to `Recovery` with the resources
+  (w1b).
 
 ## Working rules
 
