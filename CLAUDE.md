@@ -7,9 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A Monte Carlo D&D 5e (2024 / XPHB) combat simulator — "SimC for D&D". **Almost
 no simulator code exists yet**: the repo holds the design (`DESIGN.md`), the
 dependency-ordered build plan (`ROADMAP.md`), the uv/pre-commit toolchain, CI,
-and `src/dndsim/rules/` — the vocabulary every later package imports. Work is at
-wave **W0** (foundations); `w0a` (scaffold) and `w0b` (rules vocabulary) are
-done, `w0c` (RNG and dice) is next.
+`src/dndsim/rules/` — the vocabulary every later package imports — and
+`src/dndsim/core/` randomness and dice. Work is at wave **W0** (foundations);
+`w0a` (scaffold), `w0b` (rules vocabulary) and `w0c` (RNG and dice) are done,
+`w0d` (timeline) is next.
 
 Both documents are load-bearing: `DESIGN.md` fixes the architecture and the
 vocabulary, `ROADMAP.md` fixes what may be built when and by whom. Read the
@@ -144,6 +145,36 @@ end of `ROADMAP.md` is what a delegated agent receives.
   import against them** rather than picking a winner, so a dataset change is
   caught at the ACL. Per-class scaling (Rage Damage, Sneak Attack dice) is not
   in `constants.py` and never should be — that is `table_value()`.
+
+## RNG and dice facts (w0c)
+
+- `core/rng.py` is the only module allowed to be random, and it does not import
+  `random` either: `PcgRng` is PCG32 (XSH RR 64/32) written out, because the
+  requirement is not "random numbers" but *this* sequence of die faces, still
+  reproducible from an archived `SimResult` years from now. `random.Random`'s
+  bit-stream-to-die-face mapping is a CPython implementation detail and
+  `numpy.random.Generator` costs microseconds per call. A contract test pins the
+  stream against O'Neill's published `pcg32-demo` output — that is the one oracle
+  here the project cannot fudge, and any change to the permutation invalidates
+  every archived run.
+- The `Rng` protocol's primitive is **one die face**, not a raw word, because a
+  die face is what a golden test scripts. `ScriptedRng` consumes faces left to
+  right, raises `ScriptedRngExhausted` on over-draw and `ValueError` on a face
+  the die cannot show; `exhausted` lets a golden pin how many dice were rolled,
+  not just the total.
+- `mix(master_seed, iteration_index)` is two SplitMix64 rounds, not addition:
+  `PcgRng` seeding advances its LCG twice, so `master_seed + i` would hand
+  neighbouring iterations neighbouring streams. It is part of the reproducibility
+  contract — changing it changes what every archived seed means.
+- `Dice.parse` **refuses a flat modifier**: `"1d8+3"` raises, naming where the
+  `+3` belongs. Accepting it would let a string bypass the `DamagePart`
+  dice/flat split, which is what makes the crit rule structural rather than
+  conventional. `Dice.doubled()` is the crit primitive — it doubles the pool, so
+  a crit re-rolls dice instead of multiplying a total.
+- Measured throughput on the CI-class runner is ~1.8M `roll(20)`/sec/core
+  (~560 ns). That is the number `w0i` is spending against its 50k attack
+  resolutions/sec budget; the inlined variant measures the same, so the cost is
+  Python call overhead rather than the arithmetic.
 
 ## Working rules
 
