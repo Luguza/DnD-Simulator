@@ -51,8 +51,16 @@ jobs:
           # only adds. Arbitrary Bash is NOT on by default, so the read-only git
           # commands the review depends on have to be listed explicitly or they
           # come back as permission denials.
+          # --disallowedTools Agent,Task: the review otherwise fans out into
+          # parallel finder subagents, then ends its turn saying it will wait
+          # for their completion notifications. In headless CI there is no next
+          # turn to deliver those, so the run terminates with the subagents
+          # pending and their findings never collected — the review's last words
+          # end up being "the four review agents are still running". Forcing a
+          # single inline pass trades some breadth for a review that finishes.
           claude_args: >-
             --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git merge-base:*),Bash(git rev-parse:*),Bash(git status:*),Bash(git ls-files:*)"
+            --disallowedTools "Agent,Task"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
@@ -117,6 +125,25 @@ jobs:
               return '';
             };
 
+            // Count subagent calls whose result never came back. Matching the
+            // tool_use id against the tool_result ids is exact, so a *denied*
+            // subagent call (which does get a result) is not miscounted as an
+            // abandoned one.
+            const pendingSubagents = (messages) => {
+              const spawned = new Set();
+              const returned = new Set();
+              for (const m of messages) {
+                for (const b of m?.message?.content ?? []) {
+                  if (b?.type === 'tool_use' && (b.name === 'Agent' || b.name === 'Task')) {
+                    spawned.add(b.id);
+                  } else if (b?.type === 'tool_result' && b.tool_use_id) {
+                    returned.add(b.tool_use_id);
+                  }
+                }
+              }
+              return [...spawned].filter((id) => !returned.has(id)).length;
+            };
+
             let verdict;
             if (!process.env.REVIEW_SESSION_ID) {
               // claude-code-action refuses to run when this workflow file is not
@@ -159,9 +186,29 @@ jobs:
                 if (review.length > LIMIT) {
                   review = `${review.slice(0, LIMIT)}\n\n_…truncated; full output in the [run log](${runUrl})._`;
                 }
-                verdict = review
-                  ? `## Claude review of \`${short}\`\n\n${review}\n\n<sub>[run log](${runUrl})</sub>`
-                  : `## ✅ Looks good\n\nClaude reviewed \`${short}\` and found nothing worth flagging. ([run log](${runUrl}))`;
+                // A run can end while subagents it spawned are still pending, in
+                // which case its last words are a progress note and the findings
+                // were never collected. Detect that structurally — a subagent
+                // tool call with no matching tool_result — rather than by
+                // pattern-matching the prose, and never dress it up as a review.
+                const pending = pendingSubagents(messages);
+                if (pending) {
+                  verdict = [
+                    `## ⚠️ The review did not finish on \`${short}\``,
+                    '',
+                    `This is **not** a pass. It spawned ${pending} review subagent${pending === 1 ? '' : 's'}`,
+                    'that never reported back before the run ended, so the findings were',
+                    'never collected. What it managed to say:',
+                    '',
+                    review ? `> ${review.split('\n').join('\n> ')}` : '_(nothing)_',
+                    '',
+                    `[run log](${runUrl})`,
+                  ].join('\n');
+                } else {
+                  verdict = review
+                    ? `## Claude review of \`${short}\`\n\n${review}\n\n<sub>[run log](${runUrl})</sub>`
+                    : `## ✅ Looks good\n\nClaude reviewed \`${short}\` and found nothing worth flagging. ([run log](${runUrl}))`;
+                }
               }
             }
 
