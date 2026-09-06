@@ -28,6 +28,7 @@ from dndsim.core.errors import PhaseError
 from dndsim.core.timeline import TimeKey, TurnPhase
 from dndsim.hooks import contexts as contexts_module
 from dndsim.hooks.contexts import (
+    AbilityCheckContext,
     AttackDeclaredContext,
     Context,
     D20TestContext,
@@ -35,6 +36,7 @@ from dndsim.hooks.contexts import (
     DamageRollContext,
     HitContext,
     IncomingDamageContext,
+    MissContext,
     ReducedToZeroContext,
     RoundContext,
     SaveResolvedContext,
@@ -85,8 +87,18 @@ def context_classes() -> dict[str, type[Context]]:
 
 
 def a_hit(*, outcome: Outcome = Outcome.HIT) -> HitContext:
-    """A live `HitContext` with a source stamped, as a dispatcher would."""
-    ctx = HitContext(attacker=ROGUE, defender=DUMMY, weapon=DAGGER, outcome=outcome)
+    """A live `HitContext` with a source stamped, as a dispatcher would.
+
+    The damage bag is passed in because the attack owns it, not the context —
+    the same bag reaches `on_damage_roll` afterwards.
+    """
+    ctx = HitContext(
+        attacker=ROGUE,
+        defender=DUMMY,
+        weapon=DAGGER,
+        outcome=outcome,
+        damage=contexts_module.DamageBag(),
+    )
     ctx.stamp("rogue.sneak_attack", Phase.NORMAL)
     return ctx
 
@@ -185,7 +197,13 @@ def test_add_takes_no_source_argument() -> None:
 
 def test_mutating_an_unstamped_context_raises() -> None:
     """The engine reaching into a context it has not entered."""
-    ctx = HitContext(attacker=ROGUE, defender=DUMMY, weapon=DAGGER, outcome=Outcome.HIT)
+    ctx = HitContext(
+        attacker=ROGUE,
+        defender=DUMMY,
+        weapon=DAGGER,
+        outcome=Outcome.HIT,
+        damage=contexts_module.DamageBag(),
+    )
     with pytest.raises(PhaseError, match="nothing stamped"):
         ctx.damage.add(dice="1d6")
 
@@ -226,7 +244,13 @@ def test_reopen_rebinds_and_clears() -> None:
     ctx.veto("no")
     ctx.close()
 
-    ctx.reopen(attacker=DUMMY, defender=ROGUE, outcome=Outcome.CRITICAL_HIT)
+    ctx.reopen(
+        attacker=DUMMY,
+        defender=ROGUE,
+        weapon=DAGGER,
+        outcome=Outcome.CRITICAL_HIT,
+        damage=contexts_module.DamageBag(),
+    )
 
     assert len(ctx.damage) == 0
     assert ctx.pending_effects == ()
@@ -242,6 +266,25 @@ def test_reopen_refuses_a_field_that_does_not_exist() -> None:
     ctx = a_hit()
     with pytest.raises(AttributeError, match="no field 'attaker'"):
         ctx.reopen(attaker=DUMMY)
+
+
+def test_reopen_demands_every_field_the_context_does_not_default() -> None:
+    """A pooled context rebound with a new attacker and no new defender would
+    otherwise be an attack on the previous target."""
+    ctx = a_hit()
+    with pytest.raises(AttributeError, match=r"\['defender', 'damage'\]"):
+        ctx.reopen(attacker=DUMMY, weapon=DAGGER, outcome=Outcome.HIT)
+
+
+def test_reopen_resets_a_defaulted_field_that_is_not_named() -> None:
+    """The other half of the same rule: silence means the default, never the
+    previous event's value."""
+    ctx = AbilityCheckContext(
+        creature=ROGUE, ability=Ability.DEXTERITY, skill="stealth", dc=15
+    )
+    ctx.reopen(creature=DUMMY, ability=Ability.STRENGTH)
+    assert ctx.skill is None
+    assert ctx.dc is None
 
 
 # --- Dice double, flat does not ---------------------------------------------
@@ -387,7 +430,8 @@ def test_a_bag_handed_on_follows_the_context_that_is_live() -> None:
 
 def test_reopen_clears_what_it_owns_and_never_what_it_was_handed() -> None:
     """Clearing the caller's freshly built damage would be the pool eating the
-    attack."""
+    attack, so a bag the context does not own is one of the fields `reopen()`
+    demands rather than one it clears."""
     handed = contexts_module.DamageBag()
     roll = DamageRollContext(
         attacker=ROGUE,
@@ -401,11 +445,43 @@ def test_reopen_clears_what_it_owns_and_never_what_it_was_handed() -> None:
     roll.close()
 
     fresh = contexts_module.DamageBag()
-    roll.reopen(damage=fresh, is_critical=True)
-    assert len(handed) == 1, "the bag the previous event owns was cleared"
+    roll.reopen(
+        attacker=DUMMY,
+        defender=ROGUE,
+        weapon=DAGGER,
+        is_critical=True,
+        damage=fresh,
+    )
+    assert len(handed) == 1, "the previous attack's damage was cleared by the pool"
     assert roll.damage is fresh
     roll.stamp("weapon.dagger", Phase.NORMAL)
     assert roll.damage.add(dice="1d4").source == "weapon.dagger"
+
+
+def test_a_bag_a_context_owns_is_cleared_in_place() -> None:
+    """The pool exists so as not to allocate: an owned bag is emptied, not
+    replaced."""
+    check = AbilityCheckContext(creature=ROGUE, ability=Ability.DEXTERITY)
+    check.stamp("rogue.expertise", Phase.NORMAL)
+    check.bonus.add(flat=4)
+    owned = check.bonus
+    check.reopen(creature=DUMMY, ability=Ability.STRENGTH)
+    assert check.bonus is owned
+    assert len(owned) == 0
+
+
+def test_a_context_never_owns_the_attacks_damage() -> None:
+    """The regression guard for the classification itself.
+
+    The damage built at `on_hit` is the damage rolled at `on_damage_roll`, so it
+    belongs to the attack. Declaring it with a `default_factory` on any of these
+    would classify it *owned* and hand `reopen()` a bag to clear that it has no
+    business clearing — and would leave nothing exercising the handed-bag path.
+    """
+    for cls in (HitContext, MissContext, DamageRollContext):
+        assert "damage" in cls._bag_fields
+        assert "damage" not in cls._owned_bags, f"{cls.__name__} claims the damage"
+        assert "damage" in cls._required_fields
 
 
 # --- The veto is EARLY and FINAL only ---------------------------------------

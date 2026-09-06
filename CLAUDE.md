@@ -303,12 +303,20 @@ end of `ROADMAP.md` is what a delegated agent receives.
   are derived), `MitigationLedger` (three *sets*, so a type cannot be resisted
   twice) and `OverrideLedger` (Legendary Resistance, Relentless Endurance). Each
   is a `_Bag`, which is how `reopen()` knows what to bind and what to clear
-  without being told — and the distinction matters: a bag a context **created**
-  is cleared on reuse, while a bag **handed** to it (the damage built at
-  `on_hit` is the damage rolled at `on_damage_roll`) is only rebound, because
-  clearing the caller's freshly built damage would be the pool eating the
-  attack. Rebinding is what keeps provenance and the seal with the context
-  currently dispatching rather than with one that has closed.
+  without being told. **The declaration is the ownership**: a bag declared with
+  a `default_factory` is one the context created, so `reopen()` clears it in
+  place; a bag declared *without* one is a bag the context is handed, so it is
+  a required field, rebound and never cleared. The damage bag belongs to the
+  attack — the damage built at `on_hit` is the damage rolled at
+  `on_damage_roll` — so `HitContext`, `MissContext` and `DamageRollContext` all
+  declare `damage: DamageBag` bare. Giving any of them a `default_factory`
+  would make the pool clear the attack's own damage; a contract test guards it.
+  Rebinding is what keeps provenance and the seal with the context currently
+  dispatching rather than with one that has closed.
+- **`reopen()` demands every field the context does not default** and resets the
+  defaulted ones, so no part of the previous event survives by omission — a
+  pooled `HitContext` rebound with a new attacker and no new defender would
+  otherwise be an attack on the previous target.
 - **Participants are `Protocol`s, not imports.** `hooks/` sits below
   `creatures/` and w0f runs two tasks before the first `Creature` exists, so
   `Combatant`, `Weapon`, `Spell`, `Effect` and `Cell` declare only what the

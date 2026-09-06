@@ -560,18 +560,32 @@ def _context(cls: type[_T]) -> type[_T]:
     made.__setattr__ = _locked_setattr  # type: ignore[method-assign]
     fields = dataclasses.fields(made)  # type: ignore[arg-type]
     made._field_names = frozenset(f.name for f in fields)  # type: ignore[attr-defined]
+    bags: list[str] = []
     owned: list[str] = []
-    shared: list[str] = []
+    required: list[str] = []
+    defaults: list[tuple[str, object]] = []
     for spec in fields:
         # Typed as `object` because `default_factory` is a callable union that
         # mypy narrows past `type` into nothing at all.
         factory: object = spec.default_factory
+        annotation: object = spec.type
         if isinstance(factory, type) and issubclass(factory, _Bag):
+            bags.append(spec.name)
             owned.append(spec.name)
-        elif isinstance(spec.type, type) and issubclass(spec.type, _Bag):
-            shared.append(spec.name)
+        elif isinstance(annotation, type) and issubclass(annotation, _Bag):
+            # A bag with nowhere to come from is one this context does not own.
+            bags.append(spec.name)
+            required.append(spec.name)
+        elif factory is not dataclasses.MISSING:
+            pass  # `_frame` and `_pending`: engine-internal, reset in place.
+        elif spec.default is not dataclasses.MISSING:
+            defaults.append((spec.name, spec.default))
+        else:
+            required.append(spec.name)
+    made._bag_fields = tuple(bags)  # type: ignore[attr-defined]
     made._owned_bags = tuple(owned)  # type: ignore[attr-defined]
-    made._shared_bags = tuple(shared)  # type: ignore[attr-defined]
+    made._required_fields = tuple(required)  # type: ignore[attr-defined]
+    made._defaulted_fields = tuple(defaults)  # type: ignore[attr-defined]
     return made
 
 
@@ -594,8 +608,10 @@ class Context:
     """
 
     _field_names: ClassVar[frozenset[str]] = frozenset()
+    _bag_fields: ClassVar[tuple[str, ...]] = ()
     _owned_bags: ClassVar[tuple[str, ...]] = ()
-    _shared_bags: ClassVar[tuple[str, ...]] = ()
+    _required_fields: ClassVar[tuple[str, ...]] = ()
+    _defaulted_fields: ClassVar[tuple[tuple[str, object], ...]] = ()
 
     _frame: _Frame = field(default_factory=_Frame, repr=False)
     _pending: list[tuple[Combatant, Effect]] = field(default_factory=list, repr=False)
@@ -610,17 +626,14 @@ class Context:
         A bag created by this context's own `default_factory` is bound once and
         never moves. A bag *handed* to it is the interesting case: the damage
         built during `on_hit` is the same damage rolled during `on_damage_roll`,
-        so the bag outlives the context that made it. Rebinding is what keeps
-        provenance and the lifecycle with the context currently dispatching
-        rather than with one that has already closed.
+        so the bag belongs to the attack and outlives every context that sees
+        it. Rebinding is what keeps provenance and the lifecycle with the
+        context currently dispatching rather than with one that has closed.
         """
         frame = self._frame
-        for name in self._owned_bags:
-            owned: _Bag = getattr(self, name)
-            owned._bind(frame)
-        for name in self._shared_bags:
-            shared: _Bag = getattr(self, name)
-            shared._bind(frame)
+        for name in self._bag_fields:
+            bag: _Bag = getattr(self, name)
+            bag._bind(frame)
 
     # -- the dispatcher's side; features never call these --------------------
 
@@ -654,21 +667,39 @@ class Context:
         a typo here is an `AttributeError` rather than a field silently left
         holding the previous attack's value.
 
-        Bags this context created are cleared; a bag handed to it belongs to
-        whoever made it and is only rebound, because clearing the caller's
-        freshly built damage would be the pool eating the attack.
+        Nothing of the previous event survives by omission: it **demands** every
+        field the context does not default — a pooled `HitContext` rebound with
+        a new attacker and no new defender would otherwise be an attack on the
+        previous target — and resets the defaulted ones. Bags this context
+        created are cleared in place, since the point of the pool is not to
+        allocate; a bag it was handed belongs to whoever made it, is therefore
+        one of the fields that must be named, and is rebound rather than
+        cleared. Clearing the caller's freshly built damage would be the pool
+        eating the attack.
         """
+        unknown = sorted(set(fields) - self._field_names)
+        if unknown:
+            raise AttributeError(
+                f"{type(self).__name__} has no field {unknown[0]!r} to rebind"
+            )
+        missing = [name for name in self._required_fields if name not in fields]
+        if missing:
+            raise AttributeError(
+                f"reopening a {type(self).__name__} needs every field it does "
+                f"not default, and {missing} were not given. Whatever is not "
+                "named here would still be the previous event's."
+            )
         for name, value in fields.items():
-            if name not in self._field_names:
-                raise AttributeError(
-                    f"{type(self).__name__} has no field {name!r} to rebind"
-                )
             object.__setattr__(self, name, value)
+        for name, default in self._defaulted_fields:
+            if name not in fields:
+                object.__setattr__(self, name, default)
+        for name in self._owned_bags:
+            if name not in fields:
+                bag: _Bag = getattr(self, name)
+                bag.clear()
         self._frame.reset()
         self._pending.clear()
-        for name in self._owned_bags:
-            bag: _Bag = getattr(self, name)
-            bag.clear()
         self._bind_bags()
 
     # -- what a feature may do -----------------------------------------------
@@ -994,7 +1025,7 @@ class HitContext(Context):
     defender: Combatant
     weapon: Weapon | None
     outcome: Outcome
-    damage: DamageBag = field(default_factory=DamageBag)
+    damage: DamageBag
 
     @property
     def is_critical(self) -> bool:
@@ -1014,7 +1045,7 @@ class MissContext(Context):
     defender: Combatant
     weapon: Weapon | None
     outcome: Outcome
-    damage: DamageBag = field(default_factory=DamageBag)
+    damage: DamageBag
 
 
 @_context
@@ -1048,7 +1079,7 @@ class DamageRollContext(Context):
     defender: Combatant
     weapon: Weapon | None
     is_critical: bool
-    damage: DamageBag = field(default_factory=DamageBag)
+    damage: DamageBag
 
 
 @_context
