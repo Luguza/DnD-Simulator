@@ -1,10 +1,13 @@
 [project]
 name = "dnd-simulator"
 version = "0.1.0"
-description = "Monte Carlo D&D 5e (2024/XPHB) combat simulator"
+description = "A Monte Carlo D&D 5e (2024 / XPHB) combat simulator"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
+
+[project.scripts]
+dndsim = "dndsim.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -25,15 +28,20 @@ dev = [
 minversion = "8.0"
 testpaths = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
+markers = [
+    "bench: performance benchmarks (roadmap w0i)",
+]
 
 [tool.ruff]
 target-version = "py311"
 line-length = 88
+src = ["src", "tests"]
 # Markdown is documentation, not source. Without this, `ruff format` would
 # rewrite the code samples in DESIGN.md and in the skills, while the
 # pre-commit hook (which only ever passes it .py/.pyi files) would not —
-# so hook, CI and a local `ruff format` would disagree.
-extend-exclude = ["*.md"]
+# so hook, CI and a local `ruff format` would disagree. Vendored skills are
+# third-party content and are not ours to reformat at all.
+extend-exclude = [".claude/skills", "*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -42,3 +50,4 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.11"
 strict = true
 warn_unreachable = true
+mypy_path = "src"

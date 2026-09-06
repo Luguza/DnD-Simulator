@@ -5,8 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+# A new push to a PR supersedes the previous run.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -14,33 +15,41 @@ permissions:
 
 jobs:
   check:
+    name: lint, types, tests
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
+      # Tool versions come from uv.lock, so CI, the pre-commit hook and a local
+      # `uv run --frozen` all execute the same ruff and mypy.
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
+          cache-dependency-glob: uv.lock
           python-version-file: .python-version
 
-      # The lockfile is the single source of tool versions, so CI, the
-      # pre-commit hook and a local `uv run` all resolve identically.
-      - name: Sync the locked toolchain
+      - name: Sync the locked environment
         run: uv sync --frozen
 
+      # Every check runs even after an earlier one fails, so a PR author sees
+      # the whole list in one pass instead of one failure per push.
       - name: uv lock is up to date
+        if: ${{ !cancelled() }}
         run: uv lock --check
 
       - name: ruff check
-        run: uv run --frozen ruff check --output-format=github
+        if: ${{ !cancelled() }}
+        run: uv run --frozen ruff check --output-format=github .
 
       - name: ruff format
-        run: uv run --frozen ruff format --check
+        if: ${{ !cancelled() }}
+        run: uv run --frozen ruff format --check .
 
       - name: mypy
+        if: ${{ !cancelled() }}
         run: uv run --frozen mypy .
 
       - name: pytest
+        if: ${{ !cancelled() }}
         run: uv run --frozen pytest

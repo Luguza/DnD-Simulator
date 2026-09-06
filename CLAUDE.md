@@ -366,14 +366,20 @@ end of `ROADMAP.md` is what a delegated agent receives.
   mypy/ruff targets. `DESIGN.md` § Settled decisions is the source of that
   number.
 - src layout, hatchling build backend, package root `src/dndsim/`. `uv sync`
-  installs it editable, so `import dndsim` works from tests.
+  installs it editable, so `import dndsim` works from tests. `__version__` is
+  read from the installed metadata, so the version lives in `pyproject.toml`
+  only.
 - `tests/` mirrors `DESIGN.md` § Module layout: `contract/ golden/ interaction/
   statistical/ bench/`, with pytest rooted at `tests` via `pyproject.toml`.
 - `.github/workflows/ci.yml` runs the same five checks as the pre-commit hook
   (`uv lock --check`, ruff check, ruff format, mypy, pytest) through
-  `uv run --frozen`. The later roadmap gates — frozen-registry diff, benchmark
-  regression, stale generated docs — get added to this workflow as their tasks
-  land (`w3b`, `w3c`, `w3i`).
-- Ruff excludes `*.md`, so `ruff format` never rewrites the code samples in
-  `DESIGN.md`; that keeps CI and the hook (which only sees `.py`/`.pyi`)
-  in agreement.
+  `uv run --frozen`, each guarded by `if: ${{ !cancelled() }}` so one push
+  reports every failure rather than the first. The later roadmap gates —
+  frozen-registry diff, benchmark regression, stale generated docs — get added
+  to this workflow as their tasks land (`w3b`, `w3c`, `w3i`).
+- Ruff excludes `*.md` and `.claude/skills`, so `ruff format` never rewrites the
+  code samples in `DESIGN.md` or touches vendored third-party skills; that keeps
+  CI and the hook (which only sees `.py`/`.pyi`) in agreement.
+- `cli.py` is a placeholder that exits non-zero with a pointer to `w2h`. The
+  `dndsim` entry point resolves to a clear message instead of an ImportError;
+  no simulation logic lives there, now or later.

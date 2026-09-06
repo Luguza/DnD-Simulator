@@ -754,12 +754,13 @@ src/dndsim/
   features/   base.py params.py TEMPLATE.py
               classes/<class>/[subclasses/<subclass>/] feats/ masteries/
               fighting_styles/ species/
-  actions/    base.py attack.py dash.py dodge.py disengage.py cast_spell.py
+  actions/    base.py attack.py opportunity_attack.py dash.py dodge.py
+              disengage.py cast_spell.py
   spells/     base.py concentration.py templates.py level0..level6/
   apl/        expr.py schema.py namespace.py apl.py
   builds/     schema.py loader.py
   engine/     world.py query.py attack.py damage.py saves.py turn.py
-              encounter.py adventuring_day.py reactions.py
+              encounter.py adventuring_day.py triggers.py
   content/    fetch.py loader.py refs.py tables.py weapons.py
   sim/        runner.py day.py compare.py sweep.py
   reporting/  result.py collect.py stats.py render_text.py render_json.py
@@ -773,9 +774,19 @@ tests/      contract/ golden/ interaction/ statistical/ bench/
 ```
 
 The pattern-name rationale for each package lives in
-[docs/patterns.md](docs/patterns.md), not here. Two boundaries are load-bearing
+[docs/patterns.md](docs/patterns.md), not here. Three boundaries are load-bearing
 enough to restate in place:
 
+- **`actions/` vs `engine/triggers.py`.** `actions/` holds every **Command**,
+  *regardless of which economy slot it costs* — action, bonus action or
+  reaction. An opportunity attack is an `attack` Command answering a different
+  offer, so its body lives in `actions/`, not in the engine. `engine/triggers.py`
+  holds only the other half: which event fires an offer, who is in the audience,
+  in what order, and the turn-boundary reaction invariant. The split is *what
+  can be done* versus *when you are asked* — and it is why Action Surge needs no
+  special case, since granting a slot and re-polling touches neither file.
+  The name matches the APL's `trigger.*` namespace root, which this module
+  populates.
 - **`api.py` vs `cli.py`.** The CLI holds no simulation logic. A UI added later
   is another adapter against the same API, never a scraper of CLI output.
 - **`content/loader.py`.** 5etools' vocabulary (`dmg1`, `atkr`,
