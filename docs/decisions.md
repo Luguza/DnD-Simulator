@@ -19,6 +19,7 @@ re-litigated by the next agent through the area.
 | `hooks/contexts.py`, `core/errors.py` | [w0f](#w0f--contexts) |
 | `hooks/decorator.py`, `hooks/source.py`, `hooks/dispatch.py` | [w0g](#w0g--dispatch) |
 | `creatures/`, `engine/damage.py`, `core/geometry.py` | [w0g2](#w0g2--spike-substrate) |
+| `tools/skeleton.py`, `tests/bench/test_skeleton.py` | [w0h](#w0h--walking-skeleton) |
 
 ## w0a — scaffold
 
@@ -428,3 +429,48 @@ re-litigated by the next agent through the area.
   `Cell` protocols `hooks/contexts.py` declares, which is what lets those
   protocols stay narrow instead of growing into a second domain model. `w1a`
   still owes the same for `Economy`, `w2f` for `Gate`.
+
+## w0h — walking skeleton
+
+- **The attack sequence in `tools/skeleton.py` is not `engine/attack.py`.**
+  `w1f` has not landed, so the seven attack hooks and the three damage ones are
+  sequenced by hand here, over the real `Dispatcher` and the real
+  `engine/damage.py` — nothing about *how* an attack is put together is meant
+  to survive `w1f`; what is meant to survive is the proof that the substrate
+  those hooks run on works end to end before 25 more W0/W1 tasks are built on
+  top of it unexercised (ROADMAP § The critical path).
+- **Featureless means zero `HookSource`s, not a stub creature.** Both
+  combatants are the real `Creature`/`StatBlock` from `w0g2`; what is absent is
+  anything attached to their dispatchers. That is what makes this a proof that
+  the Null Object ending of the hook system is cheap (one failed dict lookup
+  per hook, ten times an attack) rather than a proof about a mock.
+- **A natural 1 misses and a natural 20 crits, unconditionally, ahead of any
+  AC comparison** — the ordinary 5e rule, checked in that order in
+  `attack_once()` because a natural 1 that also fails the AC check is not
+  evidence the unconditional rule fired at all. The regression test for it
+  therefore builds a defender whose AC the total would otherwise beat.
+- **Proficiency is unconditional.** There is no proficiency system yet (that is
+  `w1a`'s), and a level-5 fighter swinging its own weapon is proficient with it
+  in every build this project will ever run, so `attack_once()` simply adds
+  `attacker.proficiency_bonus` rather than inventing a flag with one caller.
+- **`in_reach()` gates the attack.** Not asked for by ROADMAP w0h in so many
+  words, but the two creatures the skeleton builds have real positions on a
+  real grid, and an attack that never checked them would be exercising
+  `core/geometry.py`'s type signatures without exercising the query itself —
+  the same gap w0g2's own docstring warns a stub distance query leaves. `w1f`
+  owns the real version of this check, alongside reach from a Reach weapon and
+  from a Large creature's square.
+- **`run_fight()` takes a plain callback, not a formatter.** `main()` passes one
+  that prints; the contract tests pass none. Splitting it this way keeps the
+  reproducibility test (`PcgRng(seed)` twice, same round count) free of
+  `capsys`, and keeps the print format free to change without touching the one
+  thing about a fight this file promises: that it is deterministic.
+- **The safety cap is 50 rounds, not a loop-detection heuristic.** A level-5
+  fighter vs. an AC-15, 40-hp dummy dies in single digits on realistic dice; 50
+  rounds without a kill is this script's own bug, not an unlucky streak worth
+  simulating further. `w1f`'s real turn loop owns actual termination
+  conditions (both sides down, a round limit from the build config).
+
+Sources: DESIGN.md § The closed hook list, § Structural prevention over
+testing; XPHB (2024) "Making an Attack" (natural 1/20); ROADMAP § The critical
+path, w0g2, w0h, w1f.
