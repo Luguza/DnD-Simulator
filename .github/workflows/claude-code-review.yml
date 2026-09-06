@@ -1,0 +1,247 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+    # Optional: Only run on specific file changes
+    # paths:
+    #   - "src/**/*.py"
+
+jobs:
+  claude-review:
+    # Optional: Filter by PR author
+    # if: |
+    #   github.event.pull_request.user.login == 'external-contributor' ||
+    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # write, not read: posting to the PR is a write on the pulls API, and the
+      # action's installation token is scoped to whatever this block grants.
+      # With `read` the review runs, finds nothing it can post, and the job
+      # still reports success.
+      pull-requests: write
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # 0, not 1: the review's first step is `git diff <base>...HEAD`, which
+          # needs the base branch in the local history. A shallow clone leaves
+          # the agent with no diff to review.
+          fetch-depth: 0
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          # Deliberately no --comment: that flag posts one *inline* comment per
+          # finding, anchored to a diff line, and posts nothing at all when the
+          # review is clean. We want the findings as a single top-level comment
+          # in the Conversation tab instead, so the review just reports, and the
+          # step below does the posting.
+          # The trailing `high` is the skill's effort level (low | medium | high
+          # | xhigh | max). Interactively the level is remembered from the last
+          # one typed; a CI run has no such history, so leaving it off means the
+          # review runs at whatever the fallback happens to be rather than at a
+          # level this repo chose. high widens the sweep and admits findings the
+          # review is less than certain about — the right trade for a gate that
+          # runs once per push, where a false positive costs a sentence of reply
+          # and a miss costs a merged bug.
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }} high'
+          # --model opus: with no --model the action runs the review on its
+          # default model, which is Sonnet. A review is the one job here worth
+          # the stronger model — it is the only gate on this repo, it runs once
+          # per push rather than in a loop, and the findings it misses are the
+          # ones nothing else catches. The alias, not a pinned ID, so the
+          # workflow follows the current Opus instead of silently pointing at a
+          # retired model id.
+          # The action's base GitHub/file tools are always included; --allowedTools
+          # only adds. Arbitrary Bash is NOT on by default, so the read-only git
+          # commands the review depends on have to be listed explicitly or they
+          # come back as permission denials.
+          # --disallowedTools Agent,Task: the review otherwise fans out into
+          # parallel finder subagents, then ends its turn saying it will wait
+          # for their completion notifications. In headless CI there is no next
+          # turn to deliver those, so the run terminates with the subagents
+          # pending and their findings never collected — the review's last words
+          # end up being "the four review agents are still running". Forcing a
+          # single inline pass trades some breadth for a review that finishes.
+          # The higher the effort level, the more eagerly it wants to fan out,
+          # so this denial is what `high` above is being bought against: the
+          # extra depth has to come from one pass, not from more agents.
+          claude_args: >-
+            --model opus
+            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git merge-base:*),Bash(git rev-parse:*),Bash(git status:*),Bash(git ls-files:*)"
+            --disallowedTools "Agent,Task"
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://code.claude.com/docs/en/cli-reference for available options
+
+      # The review's own output never reaches the PR by itself — it goes to the
+      # action's execution log, which is hidden. This step posts it as one
+      # top-level comment, and always says something, including "found nothing".
+      # Three separate misconfigurations went unnoticed here precisely because a
+      # clean review and a review that never ran looked identical: both silent.
+      - name: Post review comment
+        if: always() && github.event.pull_request != null
+        uses: actions/github-script@v8
+        env:
+          # Only set when Claude actually executed. Empty when the action
+          # skipped itself (see the workflow-validation note below).
+          REVIEW_SESSION_ID: ${{ steps.claude-review.outputs.session_id }}
+          REVIEW_LOG: ${{ steps.claude-review.outputs.execution_file }}
+        with:
+          script: |
+            const fs = require('fs');
+            const MARKER = '<!-- claude-review-verdict -->';
+            const FOOTER = '\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_';
+            const LIMIT = 60000; // GitHub rejects comment bodies over 65536.
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            const short = pr.head.sha.slice(0, 7);
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            // The execution log is a stream of SDK messages, saved either as one
+            // JSON array or as JSONL depending on version. Accept both.
+            const parseLog = (path) => {
+              const raw = fs.readFileSync(path, 'utf8').trim();
+              if (!raw) return [];
+              try {
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed : [parsed];
+              } catch {
+                return raw.split('\n').flatMap((line) => {
+                  try { return [JSON.parse(line)]; } catch { return []; }
+                });
+              }
+            };
+
+            // Prefer the run's own `result`; fall back to the last thing Claude
+            // said, which is where the skill restates its findings.
+            const finalText = (messages) => {
+              for (let i = messages.length - 1; i >= 0; i--) {
+                const m = messages[i];
+                if (m?.type === 'result' && typeof m.result === 'string' && m.result.trim()) {
+                  return m.result.trim();
+                }
+              }
+              for (let i = messages.length - 1; i >= 0; i--) {
+                const m = messages[i];
+                if (m?.type !== 'assistant') continue;
+                const text = (m.message?.content ?? [])
+                  .filter((b) => b?.type === 'text' && typeof b.text === 'string')
+                  .map((b) => b.text)
+                  .join('\n')
+                  .trim();
+                if (text) return text;
+              }
+              return '';
+            };
+
+            // Count subagent calls whose result never came back. Matching the
+            // tool_use id against the tool_result ids is exact, so a *denied*
+            // subagent call (which does get a result) is not miscounted as an
+            // abandoned one.
+            const pendingSubagents = (messages) => {
+              const spawned = new Set();
+              const returned = new Set();
+              for (const m of messages) {
+                for (const b of m?.message?.content ?? []) {
+                  if (b?.type === 'tool_use' && (b.name === 'Agent' || b.name === 'Task')) {
+                    spawned.add(b.id);
+                  } else if (b?.type === 'tool_result' && b.tool_use_id) {
+                    returned.add(b.tool_use_id);
+                  }
+                }
+              }
+              return [...spawned].filter((id) => !returned.has(id)).length;
+            };
+
+            let verdict;
+            if (!process.env.REVIEW_SESSION_ID) {
+              // claude-code-action refuses to run when this workflow file is not
+              // byte-identical to the copy on the default branch, and it exits
+              // *successfully* when it refuses. Never report that as a pass.
+              verdict = [
+                `## ⚠️ The review did not run on \`${short}\``,
+                '',
+                'This is **not** a pass. The action skips itself when',
+                '`.github/workflows/claude-code-review.yml` differs from the copy on the',
+                'default branch. If this PR edits that file, that is expected and it will',
+                `run once merged; otherwise check the [run log](${runUrl}).`,
+              ].join('\n');
+            } else {
+              // Distinguish "ran and said nothing" from "we could not read what
+              // it said". Only the first is a clean bill of health; reporting
+              // the second as a pass is the exact failure this step exists to
+              // prevent. A real run always emits messages, so zero parsed
+              // messages means the log is unusable, not that the review was
+              // quiet.
+              let messages = null;
+              try {
+                const parsed = parseLog(process.env.REVIEW_LOG);
+                if (parsed.length) messages = parsed;
+                else core.warning('The review log parsed to zero messages.');
+              } catch (err) {
+                core.warning(`Could not read the review log: ${err.message}`);
+              }
+
+              if (messages === null) {
+                verdict = [
+                  `## ⚠️ The review ran, but its output could not be read`,
+                  '',
+                  `This is **not** a pass. Claude reviewed \`${short}\`, but the execution`,
+                  'log was missing or unparseable, so there is nothing to report here.',
+                  `The findings, if any, are in the [run log](${runUrl}).`,
+                ].join('\n');
+              } else {
+                let review = finalText(messages);
+                if (review.length > LIMIT) {
+                  review = `${review.slice(0, LIMIT)}\n\n_…truncated; full output in the [run log](${runUrl})._`;
+                }
+                // A run can end while subagents it spawned are still pending, in
+                // which case its last words are a progress note and the findings
+                // were never collected. Detect that structurally — a subagent
+                // tool call with no matching tool_result — rather than by
+                // pattern-matching the prose, and never dress it up as a review.
+                const pending = pendingSubagents(messages);
+                if (pending) {
+                  verdict = [
+                    `## ⚠️ The review did not finish on \`${short}\``,
+                    '',
+                    `This is **not** a pass. It spawned ${pending} review subagent${pending === 1 ? '' : 's'}`,
+                    'that never reported back before the run ended, so the findings were',
+                    'never collected. What it managed to say:',
+                    '',
+                    review ? `> ${review.split('\n').join('\n> ')}` : '_(nothing)_',
+                    '',
+                    `[run log](${runUrl})`,
+                  ].join('\n');
+                } else {
+                  verdict = review
+                    ? `## Claude review of \`${short}\`\n\n${review}\n\n<sub>[run log](${runUrl})</sub>`
+                    : `## ✅ Looks good\n\nClaude reviewed \`${short}\` and found nothing worth flagging. ([run log](${runUrl}))`;
+                }
+              }
+            }
+
+            const body = `${MARKER}\n${verdict}${FOOTER}`;
+
+            // One sticky comment per PR, rewritten on each push, so a long-running
+            // PR does not accumulate one review per commit.
+            const existing = (await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: pr.number, per_page: 100 },
+            )).find((c) => c.body?.includes(MARKER));
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
+            }

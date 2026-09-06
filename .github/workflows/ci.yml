@@ -27,6 +27,7 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
+          python-version-file: .python-version
 
       - name: Sync the locked environment
         run: uv sync --frozen
@@ -39,7 +40,7 @@ jobs:
 
       - name: ruff check
         if: ${{ !cancelled() }}
-        run: uv run --frozen ruff check .
+        run: uv run --frozen ruff check --output-format=github .
 
       - name: ruff format
         if: ${{ !cancelled() }}

@@ -4,6 +4,8 @@ The public surface is `dndsim.api`; `dndsim.cli` is a thin adapter over it and
 holds no simulation logic. See DESIGN.md § Module layout.
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import version
+
+__version__ = version("dnd-simulator")
 
 __all__ = ["__version__"]

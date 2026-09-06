@@ -6,6 +6,10 @@ repos:
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
+        # The claude-code-action refuses to run when its workflow file
+        # differs from the copy on the default branch, so a stripped
+        # trailing newline silently turns the review job into a no-op.
+        exclude: ^\.github/workflows/claude.*\.yml$
       - id: check-yaml
       - id: check-toml
       - id: check-merge-conflict

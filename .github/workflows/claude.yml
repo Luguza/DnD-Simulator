@@ -1,7 +1,7 @@
 name: Claude
 
 # On-demand: mention @claude in a PR or issue comment to ask a question or
-# request a change. The scheduled reviewer lives in claude-review.yml.
+# request a change. The automated reviewer lives in claude-code-review.yml.
 on:
   issue_comment:
     types: [created]
@@ -12,13 +12,6 @@ on:
   issues:
     types: [opened, assigned]
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
-  id-token: write
-  actions: read
-
 jobs:
   claude:
     name: respond to @claude
@@ -28,13 +21,34 @@ jobs:
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
+    # write, not read: @claude is asked to make changes here, not only to
+    # answer. The action's installation token is scoped to whatever this
+    # block grants.
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read # Required for Claude to read CI results on PRs
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout repository
+        uses: actions/checkout@v7
         with:
+          # 0, not 1: answering a question about a PR usually means diffing it
+          # against its base, which a shallow clone does not have.
           fetch-depth: 0
 
-      - uses: anthropics/claude-code-action@v1
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           trigger_phrase: "@claude"
+
+          # This is an optional setting that allows Claude to read CI results on PRs
+          additional_permissions: |
+            actions: read
+
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://code.claude.com/docs/en/cli-reference for available options
           claude_args: "--model claude-opus-5"
