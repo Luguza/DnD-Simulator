@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-A Monte Carlo D&D 5e (2024 / XPHB) combat simulator — "SimC for D&D". **No
-simulator code exists yet** beyond the scaffold: the repo holds the design
-(`DESIGN.md`), the dependency-ordered build plan (`ROADMAP.md`), the
-uv/pre-commit toolchain, CI, and an empty `src/dndsim/` package. Work is at wave
-**W0** (foundations); `w0a` (scaffold) is done, `w0b` (rules vocabulary) is
-next.
+A Monte Carlo D&D 5e (2024 / XPHB) combat simulator — "SimC for D&D". **Almost
+no simulator code exists yet**: the repo holds the design (`DESIGN.md`), the
+dependency-ordered build plan (`ROADMAP.md`), the uv/pre-commit toolchain, CI,
+and `src/dndsim/rules/` — the vocabulary every later package imports. Work is at
+wave **W0** (foundations); `w0a` (scaffold) and `w0b` (rules vocabulary) are
+done, `w0c` (RNG and dice) is next.
 
 Both documents are load-bearing: `DESIGN.md` fixes the architecture and the
 vocabulary, `ROADMAP.md` fixes what may be built when and by whom. Read the
@@ -122,6 +122,28 @@ end of `ROADMAP.md` is what a delegated agent receives.
   `expectation` that never imports `dndsim`.
 - `data/` is gitignored — fetched 5etools JSON, reproducible via
   `dndsim content fetch`. Hand-authored `builds/*.yaml` are in git.
+
+## Rules vocabulary facts (w0b)
+
+- `rules/` is the bottom of the stack and imports nothing else from `dndsim`.
+  Names are not re-exported from `rules/__init__.py`: one name, one import path.
+- Enums are plain `Enum`, **never `StrEnum`**, and that is load-bearing. Under
+  mypy strict, `damage_type == "fire"` is then a `comparison-overlap` error
+  instead of a comparison that works until someone misspells it — which is what
+  makes "no string literals downstream" structural rather than aspirational.
+  Members still carry lowercase string values for JSON, the log, and parsing at
+  the `content/` boundary (`DamageType("holy")` raises).
+- `rules.enums.Condition` is the **name** of a condition; the *behaviour* is a
+  `HookSource` subclass in `conditions/` (w1h). Two different things, one word —
+  import the enum qualified when both are in scope.
+- `Outcome` is the attack-roll outcome only. 2024 calls attack rolls, checks and
+  saves all "D20 Tests", but a natural 20 only crits on an attack roll, so saves
+  get their own result type in `engine/saves.py` (w1g).
+- The spell-slot tables in `rules/constants.py` overlap what w2a imports from
+  `classTableGroups.rowsSpellProgression`. That is deliberate: w2a **checks the
+  import against them** rather than picking a winner, so a dataset change is
+  caught at the ACL. Per-class scaling (Rage Damage, Sneak Attack dice) is not
+  in `constants.py` and never should be — that is `table_value()`.
 
 ## Working rules
 
