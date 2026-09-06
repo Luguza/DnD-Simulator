@@ -20,6 +20,7 @@ re-litigated by the next agent through the area.
 | `hooks/decorator.py`, `hooks/source.py`, `hooks/dispatch.py` | [w0g](#w0g--dispatch) |
 | `creatures/`, `engine/damage.py`, `core/geometry.py` | [w0g2](#w0g2--spike-substrate) |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | [w0h](#w0h--walking-skeleton) |
+| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | [w0i](#w0i--the-pessimistic-performance-spike-m0) |
 
 ## w0a — scaffold
 
@@ -66,8 +67,18 @@ re-litigated by the next agent through the area.
 
 ## w0c — RNG and dice
 
+> **Superseded in part by [w0i](#w0i--the-pessimistic-performance-spike-m0).**
+> The production generator is now `MersenneRng` — MT19937 words from
+> `random.Random.getrandbits(32)`, with this section's rejection-sampling
+> face mapping kept on top of them — and there is no `stream` parameter.
+> The argument below for owning the exact output is the thing M0 traded
+> away, knowingly, for 10% of the simulation budget; read it as the case
+> for putting PCG32 back if an archived seed ever matters more than the
+> throughput. Everything here about `mix()`, injection, and the dice
+> tokeniser still stands.
+
 - `core/rng.py` is the only module allowed to be random, and it does not import
-  `random` either: `PcgRng` writes out PCG32 (XSH RR 64/32), because the
+  `random` either: `PcgRng` wrote out PCG32 (XSH RR 64/32), because the
   requirement is not "random numbers" but *this* sequence of die faces,
   reproducible from an archived `SimResult` years from now.
   `random.Random`'s bit-stream-to-die-face mapping is a CPython implementation
@@ -80,7 +91,7 @@ re-litigated by the next agent through the area.
   raises `ScriptedRngExhausted` on over-draw and `ValueError` on a face the die
   cannot show; `exhausted` lets a golden pin how many dice were rolled.
 - `mix(master_seed, iteration_index)` is two SplitMix64 rounds, not addition:
-  `PcgRng` seeding advances its LCG twice, so `master_seed + i` would hand
+  `PcgRng` seeding advanced its LCG twice, so `master_seed + i` would hand
   neighbouring iterations neighbouring streams. Changing it changes what every
   archived seed means.
 - `Dice.parse` **refuses a flat modifier** (`"1d8+3"` raises, naming where the
@@ -474,3 +485,186 @@ re-litigated by the next agent through the area.
 Sources: DESIGN.md § The closed hook list, § Structural prevention over
 testing; XPHB (2024) "Making an Attack" (natural 1/20); ROADMAP § The critical
 path, w0g2, w0h, w1f.
+
+## w0i — the pessimistic performance spike (M0)
+
+**Verdict: the gate fired, the architecture was revised, and the budget was
+revised with it — 50,000 attack resolutions/sec/core became 30,000, against a
+measured ~31,500.** The spike first ran at 17,231. Measured on Windows 11,
+CPython 3.11.14, one core, median of five runs of a thousand encounters after a
+warmup. `w0i` is a stop-and-revise gate, so both revisions happened here rather
+than in W4; what follows is what the spike is, what each change bought, and why
+the last 18k was not worth what it would have cost.
+
+### What the spike is, and why each part of it
+
+`tools/spike.py` assembles it, `tools/spike_features.py` holds the twenty-five
+sources, `tools/spike_apl.py` the hand-compiled policy, and
+`tests/bench/test_spike.py` is the contract that keeps all three hostile. The
+shape is DESIGN.md § The spike must be pessimistic, item by item: 25 attached
+`HookSource`s with 15 on `on_hit`; an 8-condition APL with a `target:` selector
+and a `move:` clause, three of whose entries are `gate:` answers given *inside*
+an attack; real routes over a real blocked-cell set; both directions of the
+attack, because four of the twenty-five listen on the victim's side.
+
+- **The rate is total encounter time divided by attack resolutions**, so the
+  turn loop, the APL, the movement and the per-encounter reset are all loaded
+  onto the attack count. That is the same denominator DESIGN.md § Performance
+  uses to reach 4M resolutions per build comparison, and the alternative —
+  timing `attack_once()` alone — is the inner-loop benchmark that section warns
+  about.
+- **The one stand-in is the APL compiler**, as ROADMAP w0i allows. Its
+  conditions are the callables `w2e` will emit over the same namespace-proxy
+  shape, including the weak references DESIGN.md § Condition language
+  specifies; `w2e` re-runs this benchmark and must come in at or under the
+  number above.
+- **`spawn` worker startup is measured apart: 0.167 s per worker** — a fresh
+  interpreter, a fresh import of the package, and every character rebuilt.
+  `compare --sweep dummy.ac=10:22` pays that thirteen times, which is two
+  seconds of pure startup before any dice are rolled.
+- **The startup measurement launches a subprocess rather than a
+  `multiprocessing.Pool`.** `spawn` brings a worker up by re-importing the
+  parent's `__main__`, so a pool started from a script without a main guard —
+  or from inside a test runner, whose `__main__` is the runner — re-runs that
+  module in every worker. This was not theoretical: the first version of the
+  measurement fork-bombed the machine it was measuring.
+- **What the spike understates**: effects (`w1c`) and resources (`w1b`) do not
+  exist, so there is no per-boundary expiry sweep and no pool arithmetic. The
+  per-round cost will grow in W1. What it does *not* understate is the
+  per-attack cost, which is where the budget is spent.
+- **What it would flatter, and how that is guarded**: a benchmark whose riders
+  all skip never builds a damage bag or spends a budget.
+  `test_the_riders_that_should_land_do_land` names eleven handlers that must
+  have applied at least once, read off the no-op detector's own counter, and
+  the fixture set was corrected twice when that test found conditions which
+  could never hold in this build.
+
+### The revision, and what each step bought
+
+Measured on the pooled configuration, in order. Nothing here changed a result:
+`test_pooling_contexts_does_not_change_the_fight` passes, as do the 400 tests
+that existed before. The only two that changed are the `reopen()` contract
+tests, which now get their guarantee from the interpreter and assert
+`TypeError` where they asserted `AttributeError`.
+
+| Step | rate | why it was there |
+|---|---|---|
+| as designed | 17,231 | pooling was *slower* than allocating |
+| `Dice.parse` memoised | ~18,200 | a feature writes `dice="6d6"` in a handler body, so the regex ran 2.5x per resolution |
+| dispatch loop: `bound.guarded`, stamp written into the frame | ~19,200 | three tests and a method call per handler, twenty-odd handlers per attack |
+| `DamageBag.add` / `ModifierBag.add` fast paths | ~20,300 | six contributions per hit, each paying a call to resolve provenance |
+| `PcgRng.roll` inlined, thresholds memoised | ~20,600 | eight draws per resolution |
+| **`reopen()` compiled per context class** | 26,145 | the pooling lever, finally positive |
+| the two damage contexts pooled too | 27,977 | a hit allocates two inside `resolve_damage` |
+| dispatch tables hoisted, `roll_damage` tightened | 28,918 | nine dispatches per resolution went through a delegating method |
+| **`PcgRng` replaced by `MersenneRng`** | ~31,500 | PCG32's 64-bit arithmetic in Python big-ints, eight draws per resolution |
+
+The load-bearing one is the sixth. **`reopen()`'s validation cost more per call
+than constructing the context from scratch** — a set difference and a
+comprehension over the field list — so DESIGN.md § Levers' "contexts reset and
+reused per attack" was a lever that did not work. Compiling `reopen()` per
+context class, with the fields as keyword-only parameters, gets the same two
+guarantees (every field named, no field invented) from Python's own argument
+binding for nothing, and turns a 1.8 µs rebind into a 0.45 µs one. It is the
+technique `dataclasses` uses for `__init__`, for the same reason and in the
+same place: once, at class creation.
+
+### Why 50k is not reachable by tuning
+
+The remaining time is spread thin: ~15% handler bodies, ~11% the attack
+sequence's own glue, ~10% the dispatch loop, ~7% the RNG, ~7% the damage
+pipeline, the rest in ones and twos. There is no hotspot left worth 1.7x. A
+floor calculation agrees: at the measured cost of a Python call in this
+interpreter, one resolution's *irreducible* work — nine dispatches, ~12 handler
+calls, six context rebinds, six `DamagePart`s, eight die rolls and the damage
+arithmetic — comes to roughly 20 µs, which is the budget exactly. **50k was set
+at the theoretical limit of this object model in CPython, with no headroom**,
+and the design's own richness — a Parameter Object per hook, automatic
+provenance per contribution, a frozen value per damage part — is what fills it.
+
+### The generator, and what it cost to swap
+
+The last row of that table is the one that gave something up. `core/rng.py`
+argued PCG32 by name and § w0c pinned it against O'Neill's reference
+implementation — "a generator we own the exact output of", checkable against an
+oracle outside this repository. `MersenneRng` draws its words from
+`random.Random.getrandbits(32)` instead, and keeps the rejection-sampling face
+mapping, so what the project still owns is the half of the stream between a
+32-bit word and a die face.
+
+What that buys is 10%. What it costs is precise and worth stating plainly: the
+reproducibility of an archived seed now rests on CPython's MT seeding routine
+(`init_by_array`) rather than on fifteen lines of arithmetic in this repository.
+That is a documented, stable interface and not a wild bet — but it is not ours,
+and `test_the_stream_is_pinned_to_the_word_source` says so where a future reader
+will find it. The `Rng` protocol is what keeps the door open: putting PCG32 back
+is a one-class change, and this file's history has it.
+
+`stream` went with it. `random.Random` has no sequence selector, and the
+parameter was already vestigial — separation between iterations comes from
+`mix()`, which is what DESIGN.md § Performance specifies and what the
+reproducibility contract is stated in terms of.
+
+### The lever that was not taken
+
+**The object model.** Collapsing an attack's six contexts into one, or dropping
+per-part provenance, would buy real time and would cost the authoring
+properties the whole project leans on — one hook, one Parameter Object;
+`parts_by_source` in a golden; the no-op detector; the trace. Those are what
+make ~630 agent-written features safe to accept, and they are not a trade worth
+making for a factor the hardware gives back by running eight iterations at
+once.
+
+**What the gap actually costs**: 4M resolutions is 143 s/core rather than 80,
+and the simulator is embarrassingly parallel across iterations, so a build
+comparison on eight cores is ~18 seconds instead of ~10. That is the whole
+practical consequence, and it is why the open question below is a question
+about the budget rather than about the architecture.
+
+### The budget, revised once
+
+**30,000**, in `BUDGET_PER_SECOND`, DESIGN.md § Performance, ROADMAP w0i and the
+M0 gate. It is the measured ~31,500 with the run-to-run spread taken off, and
+the revision is recorded in all four places rather than quietly applied in one.
+
+Lowering it a second time is the edit that must not be made quietly: a budget
+that follows the measurement down is not a budget, and DESIGN.md § The benchmark
+gate is explicit that performance decays one feature at a time. `w2e` re-runs
+this benchmark when the real APL compiler lands and must come in at or under
+this number; `w3i` turns it into a CI gate against a same-run baseline, which is
+the form that survives a shared runner.
+
+**How much work a timed run must do.** At 200 encounters the same machine
+returned 29.4k, 30.6k and 32.1k on three consecutive runs — a 9% spread, wide
+enough to hide the regression a gate exists to catch. At 1,000 (about a second
+per repeat) the spread is 0.2%. That is why `measure()` defaults to a thousand,
+and `w3i` should treat it as a floor rather than a number to trim when the suite
+feels slow.
+
+### Findings for later waves
+
+Four things the spike found that are somebody else's to fix, recorded so they
+are not rediscovered:
+
+- **`Creature` needed `__weakref__`.** A slotted class cannot be the referent
+  of a weak reference, and DESIGN.md § Condition language builds the APL's
+  proxies over weak references to live state. One pointer per creature, nothing
+  on the hot path.
+- **`Dispatcher.bind()` exists now**, because the constructor could not do it:
+  the APL's namespace is built over the creature, the creature owns the
+  dispatcher, so the gate does not exist when the dispatcher is made. The build
+  loader (w2f) calls it once; rebinding raises.
+- **The `Combatant` and `Weapon` protocols are too narrow for real features.**
+  No `on_hit` handler can read the defender's hit points or ask whether the
+  weapon is Heavy — `hooks/contexts.py` gives them `name` and
+  `initiative_index`. The fixtures work around it and say so in place. `w1a`
+  and `w1f` own widening them, and the W3 paper pass (`w3e`) should confirm the
+  shape before ~400 features are written against it.
+- **Derived stats are recomputed per attack.** `proficiency_bonus` walks the
+  XPHB table and `modifier()` divides, three times per resolution, because
+  `w1a`'s derived-stat cache does not exist yet. Worth ~1.5%, and already on
+  `w1a`'s list — but it means the number above is measured against a creature
+  doing slightly more work than the finished one will.
+
+Sources: DESIGN.md § Performance, § The spike must be pessimistic, § Levers,
+§ The benchmark gate, § Condition language; ROADMAP w0i, w1a, w1f, w2e, w3i.

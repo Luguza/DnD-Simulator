@@ -15,7 +15,7 @@ load-bearing ideas for the rule and the reason.
 | **Parameter Object** | `hooks/contexts.py` | Contexts bundle the in-flight state features are allowed to touch |
 | **Registry + Factory Method** | `HOOKS`, `FEATURE_REGISTRY` | id → class resolution; closed registries make typos import errors |
 | **Command** | `actions/base.py` | `is_legal()` / `execute()`; lets the economy queue and re-poll actions |
-| **Strategy** | `apl/`, `core/rng.py` | Swappable decision policy; `PcgRng` vs `ScriptedRng` |
+| **Strategy** | `apl/`, `core/rng.py` | Swappable decision policy; `MersenneRng` vs `ScriptedRng` |
 | **Interpreter** | `apl/expr.py` | APL conditions are a small expression grammar compiled to an AST |
 | **Specification** | APL `if:` clauses | Composable boolean predicates over domain objects |
 | **State** | `conditions/`, `effects.py` | Prone/Frightened/Raging alter behaviour by being attached |
@@ -53,7 +53,7 @@ load-bearing ideas for the rule and the reason.
   steps (abilities → class levels → features → equipment → APL), each able to
   fail loudly with a useful message, rather than via a constructor with twenty
   arguments.
-- `core/rng.py` — **Strategy**. `PcgRng` in production, `ScriptedRng` in golden
+- `core/rng.py` — **Strategy**. `MersenneRng` in production, `ScriptedRng` in golden
   tests. The linter bans `import random` everywhere else, so determinism is
   structurally guaranteed rather than merely intended.
 - W7 stat-block parser — **Visitor** over 5etools entry trees, dispatching on

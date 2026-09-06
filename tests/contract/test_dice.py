@@ -10,7 +10,7 @@ testing).
 import pytest
 
 from dndsim.core.dice import Dice
-from dndsim.core.rng import PcgRng, ScriptedRng
+from dndsim.core.rng import MersenneRng, ScriptedRng
 
 
 class TestParsing:
@@ -87,14 +87,14 @@ class TestRolling:
         assert Dice(1, 8).roll(ScriptedRng([7])) == 7
 
     def test_the_total_stays_within_the_pool(self) -> None:
-        rng = PcgRng(11)
+        rng = MersenneRng(11)
         dice = Dice(8, 6)
         for _ in range(500):
             assert 8 <= dice.roll(rng) <= 48
 
     def test_rolling_does_not_mutate_the_pool(self) -> None:
         dice = Dice(2, 6)
-        dice.roll(PcgRng(1))
+        dice.roll(MersenneRng(1))
         assert dice == Dice(2, 6)
 
 

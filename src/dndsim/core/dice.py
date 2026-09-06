@@ -24,6 +24,14 @@ from dndsim.core.rng import Rng
 
 __all__ = ["Dice"]
 
+_PARSED: "dict[str, Dice]" = {}
+"""Notation already parsed, keyed by the exact string the caller passed.
+
+Keyed before `strip()` so that a hit costs one dict lookup and nothing else;
+`"2d6 "` and `"2d6"` are two entries holding the same value, which is a
+rounding error against re-running the regular expression.
+"""
+
 _NOTATION: Final = re.compile(r"(?P<count>\d*)[dD](?P<sides>\d+)")
 """`[count]d<sides>`, count defaulting to 1 so that both `d20` and `1d20` parse.
 Deliberately not anchored with `\\s`-tolerance or sign handling: the caller's
@@ -55,12 +63,31 @@ class Dice:
         (DESIGN.md § Fail at the earliest moment): weapon and spell notation is
         read once at content load, so a typo in the dataset stops the run before
         the first iteration rather than mis-scoring every one of them.
+
+        **Memoised, because the load-time story above is only half true.** A
+        feature writes `ctx.damage.add(dice="6d6")` in its handler body, so the
+        string is re-parsed on every attack that rider lands on — `w0i` measured
+        2.5 parses per attack resolution against the pessimistic spike, which is
+        a regular expression on the hottest path in the project. The cache makes
+        the repeat a dict lookup, and the alternative — a rule telling ~630
+        authors to hoist a module constant — is the kind of rule that is
+        obeyed for a fortnight.
+
+        Sound because a `Dice` is a frozen **Value Object**: two calls with the
+        same notation may safely be the same object, and nothing can mutate the
+        one they share. The cache is bounded by the number of distinct dice
+        expressions in the content set, which is a few hundred.
         """
+        cached = _PARSED.get(notation)
+        if cached is not None:
+            return cached
         text = notation.strip()
         match = _NOTATION.fullmatch(text)
         if match is None:
             raise ValueError(_rejection(notation, text))
-        return cls(count=int(match["count"] or 1), sides=int(match["sides"]))
+        parsed = cls(count=int(match["count"] or 1), sides=int(match["sides"]))
+        _PARSED[notation] = parsed
+        return parsed
 
     def doubled(self) -> "Dice":
         """Twice the dice — a critical hit (XPHB: "roll the damage dice twice").
@@ -72,10 +99,18 @@ class Dice:
         return Dice(count=self.count * 2, sides=self.sides)
 
     def roll(self, rng: Rng) -> int:
-        """Roll the pool and return the total."""
+        """Roll the pool and return the total.
+
+        A loop rather than `sum(... for _ in ...)`: the generator's frame costs
+        more than the addition it saves at the two or three dice a typical pool
+        holds, and this runs several times per attack resolution (w0i).
+        """
         roll = rng.roll
         sides = self.sides
-        return sum(roll(sides) for _ in range(self.count))
+        total = 0
+        for _ in range(self.count):
+            total += roll(sides)
+        return total
 
     def __str__(self) -> str:
         return f"{self.count}d{self.sides}"

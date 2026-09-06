@@ -74,6 +74,7 @@ Sources: DESIGN.md § Structural prevention over testing, § Hook system; XPHB
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from typing import Final, Protocol
 
 from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.rng import Rng
@@ -88,7 +89,77 @@ from dndsim.hooks.contexts import (
 from dndsim.hooks.definitions import ON_DAMAGE_TAKEN, ON_INCOMING_DAMAGE
 from dndsim.rules.enums import DamageType
 
-__all__ = ["Mitigated", "mitigate", "resolve_damage", "roll_damage"]
+__all__ = [
+    "DamageContexts",
+    "FreshDamageContexts",
+    "Mitigated",
+    "mitigate",
+    "resolve_damage",
+    "roll_damage",
+]
+
+
+class DamageContexts(Protocol):
+    """Where the two contexts of a damage event come from.
+
+    The same **Strategy** the attack sequence uses for its six (`w0i`), and for
+    the same reason: DESIGN.md § Levers asks for contexts reused per attack
+    rather than allocated, and a hit allocates two here. Pooling them is worth
+    about a tenth of an attack resolution, which at 4M of those is minutes.
+    """
+
+    def incoming(
+        self,
+        *,
+        defender: Creature,
+        attacker: Creature | None,
+        amounts: Mapping[DamageType, int],
+    ) -> IncomingDamageContext: ...
+
+    def taken(
+        self,
+        *,
+        defender: Creature,
+        attacker: Creature | None,
+        amount: int,
+        damage_types: frozenset[DamageType],
+    ) -> DamageTakenContext: ...
+
+
+class FreshDamageContexts:
+    """Allocate both, every hit. The default, and what `w0h` uses."""
+
+    __slots__ = ()
+
+    def incoming(
+        self,
+        *,
+        defender: Creature,
+        attacker: Creature | None,
+        amounts: Mapping[DamageType, int],
+    ) -> IncomingDamageContext:
+        return IncomingDamageContext(
+            defender=defender, attacker=attacker, amounts=amounts
+        )
+
+    def taken(
+        self,
+        *,
+        defender: Creature,
+        attacker: Creature | None,
+        amount: int,
+        damage_types: frozenset[DamageType],
+    ) -> DamageTakenContext:
+        return DamageTakenContext(
+            defender=defender,
+            attacker=attacker,
+            amount=amount,
+            damage_types=damage_types,
+        )
+
+
+FRESH_DAMAGE: Final[DamageContexts] = FreshDamageContexts()
+"""The default source. Stateless, so one instance serves every caller."""
 
 
 def roll_damage(
@@ -102,22 +173,32 @@ def roll_damage(
 
     Two rules live in these few lines and neither is the caller's to remember:
 
-    - **A critical hit doubles the dice and never the flat part**, which happens
-      through `DamagePart.on_crit()` and `Dice.doubled()` — the crit rolls a
-      doubled pool rather than multiplying a total, so 2d6 that rolled 7 is not
-      14 (DESIGN.md § Structural prevention).
+    - **A critical hit doubles the dice and never the flat part**, through
+      `Dice.doubled()` — the crit rolls a doubled pool rather than multiplying a
+      total, so 2d6 that rolled 7 is not 14 (DESIGN.md § Structural
+      prevention). The doubling is spelled out in the loop rather than routed
+      through `DamagePart.on_crit()`, which would allocate a second part per
+      contribution per critical hit purely to hold the doubled pool; that
+      method stays as the readable statement of the rule and the one a test
+      pins it by, and this loop is the only caller that has a reason not to use
+      it.
     - **`damage_type=None` means "the type of the attack this rides on"**, so
       Sneak Attack's d6s are the dagger's piercing. It is resolved here, at the
       last moment before the amounts stop being the attacker's and become the
       victim's, because every step downstream is keyed by type.
     """
     amounts: dict[DamageType, int] = {}
+    get = amounts.get
     for part in parts:
-        rolled = part.on_crit() if critical else part
-        rolled_dice = 0 if rolled.dice is None else rolled.dice.roll(rng)
-        amount = rolled_dice + rolled.flat
-        damage_type = rolled.damage_type or base_type
-        amounts[damage_type] = amounts.get(damage_type, 0) + amount
+        dice = part.dice
+        if dice is None:
+            amount = part.flat
+        else:
+            if critical:
+                dice = dice.doubled()
+            amount = dice.roll(rng) + part.flat
+        damage_type = part.damage_type or base_type
+        amounts[damage_type] = get(damage_type, 0) + amount
     return amounts
 
 
@@ -178,6 +259,12 @@ def mitigate(
     *not* in doubt is the common case the sets and the list are both needed for:
     a resistance and a halving quarter the hit.
     """
+    if ledger.untouched:
+        # The ordinary hit: nothing was recorded, so every step below is the
+        # identity. Spelled as one question rather than five empty loops
+        # because it is the common case on the hottest path (w0i) — and it is
+        # the *order* that lives here, not an optimisation of it.
+        return Mitigated(amounts=amounts, total=sum(amounts.values()))
     resisted: dict[DamageType, int] = {}
     for damage_type, amount in amounts.items():
         if damage_type in ledger.immunities:
@@ -204,6 +291,7 @@ def resolve_damage(
     *,
     rng: Rng,
     attacker: Creature | None = None,
+    contexts: DamageContexts = FRESH_DAMAGE,
 ) -> int:
     """Deal damage to `defender` and return what it took.
 
@@ -226,9 +314,7 @@ def resolve_damage(
     instead. A hit absorbed entirely by temporary hit points *did* land and does
     fire, because those hit points are gone.
     """
-    incoming = IncomingDamageContext(
-        defender=defender, attacker=attacker, amounts=amounts
-    )
+    incoming = contexts.incoming(defender=defender, attacker=attacker, amounts=amounts)
     defender.dispatch(ON_INCOMING_DAMAGE, incoming)
     _refuse_pending(incoming)
     if incoming.vetoed:
@@ -243,7 +329,7 @@ def resolve_damage(
     defender.temp_hp -= absorbed
     defender.hp = max(defender.hp - (mitigated.total - absorbed), 0)
 
-    taken = DamageTakenContext(
+    taken = contexts.taken(
         defender=defender,
         attacker=attacker,
         amount=mitigated.total,

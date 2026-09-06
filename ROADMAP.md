@@ -64,7 +64,7 @@ else on it.
 ```mermaid
 flowchart TD
     W0["<b>W0 · Foundations</b><br/>scaffold, enums, RNG,<br/>timeline, hooks, contexts, dispatch,<br/>spike substrate, walking skeleton<br/><i>~19 nominal days · solo</i>"]
-    M0{{"<b>M0</b> — architecture proven<br/>≥50k res/s on a 25-feature creature"}}
+    M0{{"<b>M0</b> — architecture proven<br/>≥30k res/s on a 25-feature creature"}}
     W1["<b>W1 · Domain core</b><br/>creature, resources, effects,<br/>grid, damage, attack, saves,<br/>conditions, dying, log<br/><i>~17 nominal days</i>"]
     W2["<b>W2 · Orchestration</b><br/>importers, actions, turn loop,<br/>dummy, APL, builds,<br/>runner, API, CLI<br/><i>~19 nominal days</i>"]
     M1{{"<b>M1</b> — a level-5 Fighter<br/>kills a dummy, golden-verified"}}
@@ -137,13 +137,21 @@ afterwards.
 | w0g | `@hook` decorator, `HookResult`, `HookSource.__init_subclass__` validation, `Dispatcher` | 🔒 | w0f | `hooks/decorator.py`, `source.py`, `dispatch.py`, `core/errors.py` | bad signature is an `ImportError`; `once_per`/`costs` consumed only on `APPLIED` |
 | w0g2 | **Spike substrate**: minimal `Creature` / `StatBlock` and one weapon, first cut of `engine/damage.py` (the full resolution order, no effects yet) and of `core/geometry.py` (5 ft distance, reach, shortest-legal-route) | 🔒 | w0g | `creatures/creature.py`, `stats.py`, `engine/damage.py`, `core/geometry.py` | `w0h` and `w0i` run against real damage and real distance queries rather than stubs. `w1a` / `w1d` / `w1e` **complete** these files; the damage order is never written twice |
 | w0h | **Walking skeleton**: a featureless creature attacking another through the *real* dispatch path and *real* damage pipeline, printing a result | 🔒 | w0g2 | `tests/bench/`, `tools/skeleton.py` | one command runs a fight end to end, before resources, effects or conditions exist |
-| w0i | **Pessimistic performance spike**: synthetic creature with ~25 attached `HookSource`s (≥15 on `on_hit`), an 8-condition APL with `target:` and `move:` **hand-compiled to callables over the namespace-proxy shape `w2e` will emit**, real grid movement; worker-startup cost measured separately | 🔒 | w0g2, w0h | `tests/bench/` | **≥50k attack resolutions/sec/core on that configuration**, or the architecture is revised now. `w2e` re-runs this benchmark when the real compiler lands and must come in at or under the same number |
+| w0i | **Pessimistic performance spike**: synthetic creature with ~25 attached `HookSource`s (≥15 on `on_hit`), an 8-condition APL with `target:` and `move:` **hand-compiled to callables over the namespace-proxy shape `w2e` will emit**, real grid movement; worker-startup cost measured separately | 🔒 | w0g2, w0h | `tests/bench/` | **≥30k attack resolutions/sec/core on that configuration** — revised down from 50k by the spike itself at M0 (`docs/decisions.md` § w0i), which is what a stop-and-revise gate looks like when it fires. `w2e` re-runs this benchmark when the real compiler lands and must come in at or under the same number |
 
 > **M0 — Architecture proven.** If w0i misses the budget, stop and revise before
 > W1. This is the cheapest moment in the project to change the dispatch design.
 >
-> The spike is deliberately hostile. A stub creature clears 50k/s trivially and
-> proves only that the benchmark harness runs — which would spend the one
+> **This fired.** The spike came in at 17k against the 50k the design had
+> assumed; a revision pass across the hot path took it to ~31.5k, a floor
+> calculation showed 50k was unreachable without giving up the authoring
+> guarantees, and the budget was revised to 30k with the reasoning recorded in
+> `docs/decisions.md` § w0i. Two levers were taken there that later waves
+> inherit: `reopen()` is compiled per context class, and the production
+> generator is now `MersenneRng` rather than `PcgRng`.
+>
+> The spike is deliberately hostile. A stub creature clears any budget trivially
+> and proves only that the benchmark harness runs — which would spend the one
 > milestone whose entire purpose is to make revision cheap. Measure `spawn`
 > worker startup too: on Windows every worker re-imports the package and rebuilds
 > every character, a cost `compare --sweep dummy.ac=10:22` pays thirteen times

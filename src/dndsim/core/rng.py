@@ -9,32 +9,50 @@ regression diffs possible. Three decisions here are what buy that:
 There is no module-level generator and no global seed, so two simulations in one
 process cannot interleave their streams.
 
-**A generator we own the exact output of.** `PcgRng` implements PCG32 (XSH RR
-64/32, O'Neill 2014) rather than delegating to `random` or `numpy`. That is a
-deliberate exception to "libraries before reimplementing": the requirement is not
-"random numbers", it is *this* sequence of die faces, still reproducible years
-from now from an archived `SimResult`. `random.Random` is seed-stable but the
-mapping from its bit stream to a die face is a CPython implementation detail, and
-`numpy.random.Generator` costs microseconds per call against a budget of ~50k
-attack resolutions/sec/core. PCG32 is ~15 lines of specified arithmetic, so we
-pin it here and the archived seed keeps meaning what it meant.
+**A word from the standard library, a die face of our own.** `MersenneRng`
+draws 32-bit words from `random.Random.getrandbits(32)` — CPython's MT19937,
+seeded and documented — and maps them to die faces itself, by rejection
+sampling, in the eight lines below. The split is the whole design: what an
+archived seed has to keep meaning is *this sequence of die faces*, and the face
+mapping is the half of that this project owns and pins.
+
+This module previously implemented PCG32 (XSH RR 64/32, O'Neill 2014) for the
+stronger version of the same promise — an algorithm specified outside CPython,
+checkable against a reference implementation. `w0i` measured the difference:
+PCG32's 64-bit arithmetic in Python big-ints costs about eight times what
+`getrandbits(32)` does, and at eight draws per attack resolution that is ~7% of
+the entire simulation budget (`docs/decisions.md` § w0i). The trade was made
+deliberately and it is not free — the residual dependency is CPython's MT
+seeding routine (`init_by_array`), which is stable and documented but is not
+ours. If the reproducibility of an archived run ever matters more than the
+throughput, the PCG implementation is in this file's history and the `Rng`
+protocol is what makes swapping it back a one-class change.
+
+**Nothing but `getrandbits` is used**, deliberately. `randrange` and `randint`
+map bits to a range through logic that *is* a CPython implementation detail, and
+`random()` goes through floating point; the rejection sampling in `roll()`
+exists so that neither is in the path between a seed and a die face.
 
 **Seeding is per iteration, never per worker** (DESIGN.md § Performance). Callers
-build `PcgRng(mix(master_seed, iteration_index))`, so iteration 4,271 draws the
-same stream whether it ran on worker 0 of 1 or worker 6 of 8 — which is why
+build `MersenneRng(mix(master_seed, iteration_index))`, so iteration 4,271 draws
+the same stream whether it ran on worker 0 of 1 or worker 6 of 8 — which is why
 `--jobs` is absent from the reproducibility contract.
 
 `import random` is banned everywhere else in the tree and the linter (`dndsim
-check`, w3a) enforces it. This module does not import it either: an unseeded run
-gets its master seed from the caller (the CLI), which is where "no seed given"
-is a policy decision rather than a hidden source of entropy.
+check`, w3a) enforces it; this module is the exception the rule is written
+around. It imports `random.Random` — the class, instantiated per generator —
+and never the module's global functions, so there is still no ambient generator
+and no global seed, and an unseeded run gets its master seed from the caller
+(the CLI), where "no seed given" is a policy decision rather than a hidden
+source of entropy.
 """
 
 from collections.abc import Iterable
+from random import Random
 from typing import Final, Protocol
 
 __all__ = [
-    "PcgRng",
+    "MersenneRng",
     "Rng",
     "ScriptedRng",
     "ScriptedRngExhausted",
@@ -42,14 +60,9 @@ __all__ = [
 ]
 
 _MASK64: Final = 0xFFFF_FFFF_FFFF_FFFF
-_MASK32: Final = 0xFFFF_FFFF
 
-_PCG_MULTIPLIER: Final = 6364136223846793005
-"""The PCG32 LCG multiplier, from the reference implementation."""
-
-_PCG_DEFAULT_STREAM: Final = 1442695040888963407
-"""The reference implementation's default stream selector. One stream is all a
-run needs — separation between iterations comes from `mix`, not from streams."""
+_WORD_RANGE: Final = 0x1_0000_0000
+"""The number of distinct values `getrandbits(32)` returns."""
 
 _SPLITMIX_GAMMA: Final = 0x9E37_79B9_7F4A_7C15
 _SPLITMIX_A: Final = 0xBF58_476D_1CE4_E5B9
@@ -81,11 +94,13 @@ def _splitmix64(x: int) -> int:
 def mix(master_seed: int, iteration_index: int) -> int:
     """Derive iteration `iteration_index`'s seed from the run's master seed.
 
-    Consecutive iterations must not draw correlated streams, and `PcgRng`'s
-    seeding advances the LCG only twice — so `master_seed + i` would hand
-    neighbouring iterations neighbouring states. Two SplitMix64 rounds decorrelate
-    the pair first: flipping one bit of either input changes about half the bits
-    of the result.
+    Consecutive iterations must not draw correlated streams, and no generator's
+    seeding routine is owed to us — `master_seed + i` hands neighbouring
+    iterations neighbouring seeds and trusts the generator to scatter them. Two
+    SplitMix64 rounds decorrelate the pair first: flipping one bit of either
+    input changes about half the bits of the result. This is the separation
+    mechanism between iterations, which is why the generator below needs no
+    stream selector of its own.
 
     The mapping is part of the reproducibility contract. Changing it changes every
     archived run's meaning, so it changes only with the engine version.
@@ -97,50 +112,60 @@ def mix(master_seed: int, iteration_index: int) -> int:
     return _splitmix64((_splitmix64(master_seed) + iteration_index) & _MASK64)
 
 
-class PcgRng:
-    """PCG32 (XSH RR 64/32) — the production generator.
+_THRESHOLDS: dict[int, int] = {}
+"""Rejection thresholds by die size, filled on first use.
 
-    Two `PcgRng`s built from the same seed yield identical streams for ever; that
-    is the entire promise. Die faces are drawn by rejection sampling rather than a
-    bare modulo, so every face of every die is exactly equally likely. At d20
-    scale that correction is invisible — a bare modulo would over-represent 16 of
-    the 2^32 words' faces by under 1 part in 10^8 — but it is a systematic error
-    in the one primitive every number in the project is built from, and it costs
-    16 rejected words in 2^32 to not have it.
+`0x1_0000_0000 % sides` is a fixed function of the die and a big-integer
+modulo; a project that rolls d20s several times per attack resolution should
+compute each of the seven or eight distinct answers once.
+"""
+
+
+class MersenneRng:
+    """The production generator: MT19937 words, our own die faces.
+
+    Two `MersenneRng`s built from the same seed yield identical streams for
+    ever; that is the entire promise. Die faces are drawn by rejection sampling
+    rather than a bare modulo, so every face of every die is exactly equally
+    likely. At d20 scale that correction is invisible — a bare modulo would
+    over-represent 16 of the 2^32 words' faces by under 1 part in 10^8 — but it
+    is a systematic error in the one primitive every number in the project is
+    built from, and it costs 16 rejected words in 2^32 to not have it.
+
+    **There is no stream selector.** PCG32 had one and this does not, because
+    `random.Random` has no notion of a sequence and because the parameter was
+    already vestigial: separation between iterations comes from `mix()`, which
+    is what DESIGN.md § Performance specifies and what the reproducibility
+    contract is stated in terms of.
     """
 
-    __slots__ = ("_inc", "_state")
+    __slots__ = ("_words",)
 
-    def __init__(self, seed: int, stream: int = _PCG_DEFAULT_STREAM) -> None:
+    def __init__(self, seed: int) -> None:
         if seed < 0:
             raise ValueError(f"seed must be non-negative, got {seed}")
-        if stream < 0:
-            raise ValueError(f"stream must be non-negative, got {stream}")
-        # The reference seeding routine: state 0, step, add the seed, step.
-        self._inc = ((stream << 1) | 1) & _MASK64
-        self._state = 0
-        self._next_word()
-        self._state = (self._state + (seed & _MASK64)) & _MASK64
-        self._next_word()
-
-    def _next_word(self) -> int:
-        """Advance the LCG and return the permuted 32-bit output."""
-        state = self._state
-        self._state = (state * _PCG_MULTIPLIER + self._inc) & _MASK64
-        xorshifted = (((state >> 18) ^ state) >> 27) & _MASK32
-        rot = state >> 59
-        return ((xorshifted >> rot) | (xorshifted << (-rot & 31))) & _MASK32
+        self._words = Random(seed)
 
     def roll(self, sides: int) -> int:
+        """One face of a fair `sides`-sided die, in `1..sides`.
+
+        The rejection threshold is memoised and the word is drawn through a
+        bound method held on the instance: this is the primitive every number in
+        the project is built from, and `w0i` measured eight draws per attack
+        resolution.
+        """
         if sides < 1:
             raise ValueError(f"a die needs at least one side, got {sides}")
         # 2**32 is not a multiple of `sides`, so the last partial block of the
         # word range is discarded instead of being folded onto the low faces.
         # For a d20 that rejects 16 words in 2**32 — an unmeasurable cost for an
         # exactly uniform die.
-        threshold = 0x1_0000_0000 % sides
+        threshold = _THRESHOLDS.get(sides)
+        if threshold is None:
+            threshold = _THRESHOLDS[sides] = _WORD_RANGE % sides
+        word_of = self._words.getrandbits
         while True:
-            word = self._next_word()
+            word = word_of(32)
             if word >= threshold:
                 return word % sides + 1
 

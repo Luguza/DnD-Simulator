@@ -284,9 +284,15 @@ def test_reopen_rebinds_and_clears() -> None:
 
 
 def test_reopen_refuses_a_field_that_does_not_exist() -> None:
-    """A typo here would leave the previous attack's value in place."""
+    """A typo here would leave the previous attack's value in place.
+
+    A `TypeError` from the interpreter's own argument binding rather than a
+    hand-written check: `reopen()` is compiled per context class with the
+    fields as keyword-only parameters (`_make_reopen`), which is what makes
+    the guarantee free on the hot path (w0i).
+    """
     ctx = a_hit()
-    with pytest.raises(AttributeError, match="no field 'attaker'"):
+    with pytest.raises(TypeError, match="unexpected keyword argument 'attaker'"):
         ctx.reopen(attaker=DUMMY)
 
 
@@ -294,7 +300,7 @@ def test_reopen_demands_every_field_the_context_does_not_default() -> None:
     """A pooled context rebound with a new attacker and no new defender would
     otherwise be an attack on the previous target."""
     ctx = a_hit()
-    with pytest.raises(AttributeError, match=r"\['defender', 'damage'\]"):
+    with pytest.raises(TypeError, match="'defender' and 'damage'"):
         ctx.reopen(attacker=DUMMY, weapon=DAGGER, outcome=Outcome.HIT)
 
 

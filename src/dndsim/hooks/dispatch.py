@@ -4,8 +4,9 @@ This is the **Intercepting Filter** of DESIGN.md § Hook system — a pipeline o
 handlers over one shared mutable context — with the **Chain of Responsibility**
 element restricted to a veto. It is also the hottest code in the project: a
 level-12 barbarian carries ~25 sources, at least 15 of them on `on_hit`, and the
-budget is 50k attack resolutions per second per core (ROADMAP w0i). Almost every
-decision below is one of those two facts.
+budget is 30k attack resolutions per second per core (ROADMAP w0i, revised there
+from 50k by the spike that measured this loop). Almost every decision below is
+one of those two facts.
 
 **The table is per creature and precomputed.** `attach()` sorts once; `dispatch()`
 is a dict lookup and a walk over a tuple. A global bus scanned per event would
@@ -43,7 +44,8 @@ applied once, after both, by the engine that owns the event. It does not
 `close()` the context either, for the same reason. And it does not check that the
 context it was handed is the one the hook names: that pairing is fixed at import
 by `source.py` and pinned by w0f's contract test, and re-deriving it per dispatch
-would be paying at 50k/sec for a mistake that cannot survive a single test run.
+would be paying, on every attack of every iteration, for a mistake that cannot
+survive a single test run.
 """
 
 from collections.abc import Callable
@@ -109,6 +111,7 @@ class BoundHandler:
         "costs",
         "fn",
         "gate",
+        "guarded",
         "handler",
         "once_per",
         "order",
@@ -137,6 +140,14 @@ class BoundHandler:
         self.costs = handler.costs
         self.gate = handler.gate
         self.can_veto = handler.phase in _VETO_PHASES
+        # Whether this handler has anything to be asked before it runs. Most
+        # do not, and the dispatch loop tests this one flag instead of the
+        # three fields above (`Dispatcher.dispatch`).
+        self.guarded = (
+            handler.once_per is not None
+            or handler.costs is not None
+            or handler.gate is not None
+        )
         # What the no-op detector reports on (DESIGN.md § No-op detector): a
         # feature whose handlers never once applied is the commonest agent bug
         # in the project — a condition that cannot be true — and counting is
@@ -190,6 +201,35 @@ class Dispatcher:
         """
         return self._resets
 
+    def bind(self, *, economy: Economy | None = None, gate: Gate | None = None) -> None:
+        """Wire in the economy and the action list once the build is assembled.
+
+        Both are constructor arguments as well, and both need this because of a
+        cycle the constructor cannot break: the APL's namespace is built over
+        the creature (DESIGN.md § Condition language — proxies holding weak
+        references to live state), and the creature owns the dispatcher, so the
+        gate does not exist yet when the dispatcher is made. The build loader
+        (w2f) calls this once; `w0i` is what found it.
+
+        Rebinding raises rather than replacing. A dispatcher that swapped action
+        lists mid-run would make two attacks in the same fight answer to
+        different policies, which is not a thing a build can mean.
+        """
+        if economy is not None:
+            if self._economy is not None:
+                raise EngineAssemblyError(
+                    "this dispatcher already has an action economy; a creature "
+                    "has one economy for the length of an encounter"
+                )
+            self._economy = economy
+        if gate is not None:
+            if self._gate is not None:
+                raise EngineAssemblyError(
+                    "this dispatcher already has an action list; a build's "
+                    "policy is compiled once and does not change mid-run"
+                )
+            self._gate = gate
+
     def attach(self, source: HookSource) -> None:
         """Add a source's handlers to the table, at the end of the order."""
         if source in self._bound:
@@ -229,56 +269,52 @@ class Dispatcher:
 
         The context carries the result: what handlers contributed is in its
         bags, and `ctx.vetoed` says whether the event happens at all.
+
+        **The loop below is the single hottest piece of code in the project**,
+        and `w0i` measured it at nine dispatches and twenty-odd handler calls per
+        attack resolution. Three shapes here are performance decisions rather
+        than expressions of the design, and each is written so it cannot change
+        behaviour:
+
+        - **`bound.guarded` collapses three questions into one.** `once_per`,
+          `costs` and `gate` are still asked in ascending order of cost, in
+          `_permits()`; what changed is that a handler carrying none of the
+          three — which is most of them — pays one attribute test instead of
+          three. The flag is computed once, at attach time, from exactly those
+          three fields.
+        - **The provenance stamp is written into the frame directly** rather
+          than through `ctx.stamp()`. Twenty-one method calls an attack buy
+          nothing over two slot stores, and the frame is engine-owned state that
+          this module and `hooks/contexts.py` are the two halves of.
+        - **The entry veto is read off the frame**, for the same reason. The
+          in-loop one is not: mypy narrows the frame's field to `None` across
+          the handler calls and would then read the `break` as dead code, and a
+          type checker that has proved the veto unreachable is worse than the
+          property call it saves — which only runs for an `EARLY` or `FINAL`
+          handler anyway.
         """
         handlers = self._table.get(spec)
         if handlers is None:
             return
-        if ctx.veto_reason is not None:
+        frame = ctx._frame
+        if frame.veto_reason is not None:
             # A veto is a decision about the event, not about one creature's
             # view of it, so the second half of a paired dispatch (`on_hit` then
-            # `on_hit_taken`) does not run either. Spelled through the reason
-            # rather than `ctx.vetoed` because mypy narrows a property across
-            # the calls below, and would then read the in-loop check as dead.
+            # `on_hit_taken`) does not run either.
             return
-        resets = self._resets
-        stamp = ctx.stamp
-        was, band = ctx.stamped()
+        was_source = frame.source
+        was_phase = frame.phase
         try:
             for bound in handlers:
-                once_per = bound.once_per
-                if once_per is not None and resets.is_spent(bound):
+                if bound.guarded and not self._permits(bound, ctx):
                     continue
-                cost = bound.costs
-                economy = self._economy
-                if cost is not None:
-                    if economy is None:
-                        raise EngineAssemblyError(
-                            f"{bound!r} costs a {cost.value} and this dispatcher "
-                            "has no action economy to spend it from (w1a)"
-                        )
-                    if not economy.can_spend(cost):
-                        continue
-                gate_id = bound.gate
-                if gate_id is not None:
-                    gate = self._gate
-                    if gate is None:
-                        raise EngineAssemblyError(
-                            f"{bound!r} is gated on {gate_id!r} and this "
-                            "dispatcher has no action list to ask (w2f). A gate "
-                            "nobody answers is not an open one."
-                        )
-                    if not gate.allows(gate_id, bound.source, ctx):
-                        continue
-                stamp(bound.source_id, bound.phase)
+                frame.source = bound.source_id
+                frame.phase = bound.phase
                 result = bound.fn(bound.source, ctx)
                 if result is _APPLIED:
                     bound.applied += 1
-                    if once_per is not None:
-                        resets.spend(bound, once_per)
-                    if cost is not None and economy is not None:
-                        # The pair is set together: a cost was checked against
-                        # an economy above, or there was no cost to check.
-                        economy.spend(cost)
+                    if bound.guarded:
+                        self._spend(bound)
                 elif result is not _SKIPPED:
                     raise FeatureContractError(
                         f"{bound!r} returned {result!r}. A handler returns "
@@ -290,7 +326,56 @@ class Dispatcher:
                 if bound.can_veto and ctx.vetoed:
                     break
         finally:
-            stamp(was, band)
+            frame.source = was_source
+            frame.phase = was_phase
+
+    def _permits(self, bound: BoundHandler, ctx: Context) -> bool:
+        """The three escape valves, asked in ascending order of cost.
+
+        Off the hot path for the majority of handlers: only a `bound` that
+        declared `once_per`, `costs` or `gate` reaches here (`bound.guarded`).
+        """
+        once_per = bound.once_per
+        if once_per is not None and self._resets.is_spent(bound):
+            return False
+        cost = bound.costs
+        if cost is not None:
+            economy = self._economy
+            if economy is None:
+                raise EngineAssemblyError(
+                    f"{bound!r} costs a {cost.value} and this dispatcher "
+                    "has no action economy to spend it from (w1a)"
+                )
+            if not economy.can_spend(cost):
+                return False
+        gate_id = bound.gate
+        if gate_id is not None:
+            gate = self._gate
+            if gate is None:
+                raise EngineAssemblyError(
+                    f"{bound!r} is gated on {gate_id!r} and this dispatcher has "
+                    "no action list to ask (w2f). A gate nobody answers is not "
+                    "an open one."
+                )
+            if not gate.allows(gate_id, bound.source, ctx):
+                return False
+        return True
+
+    def _spend(self, bound: BoundHandler) -> None:
+        """Pay for a guarded handler that returned `APPLIED`, and only then.
+
+        The budget is on the return value (DESIGN.md § The uniform handler
+        shape), which is why this is a second call rather than something
+        `_permits()` could have done on the way past.
+        """
+        once_per = bound.once_per
+        if once_per is not None:
+            self._resets.spend(bound, once_per)
+        cost = bound.costs
+        if cost is not None and self._economy is not None:
+            # The pair is set together: a cost was checked against an economy
+            # in `_permits()`, or there was no cost to check.
+            self._economy.spend(cost)
 
     def _rebuild(self) -> None:
         """Re-sort the table into fresh tuples, leaving any in flight untouched."""

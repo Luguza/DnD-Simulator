@@ -9,7 +9,7 @@ Three properties carry this file, all stated in ROADMAP w0h:
   from `engine/damage.py` are exercised, not stubbed, so a hit's arithmetic is
   checked against a hand-computed number the way every damage-order test in
   this repo is.
-- **A fight is reproducible end to end.** Two `PcgRng`s built from the same
+- **A fight is reproducible end to end.** Two `MersenneRng`s built from the same
   seed drive `run_fight()` to the identical outcome, which is the property the
   whole determinism story (`core/rng.py`) is for.
 
@@ -20,7 +20,7 @@ from types import MappingProxyType
 from typing import Final
 
 from dndsim.core.geometry import Cell
-from dndsim.core.rng import PcgRng, ScriptedRng
+from dndsim.core.rng import MersenneRng, ScriptedRng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.stats import StatBlock
 from dndsim.hooks.contexts import (
@@ -200,8 +200,8 @@ def test_a_natural_20_always_hits_and_crits() -> None:
 
 
 def test_a_fight_is_reproducible_from_the_same_seed() -> None:
-    first_rounds = run_fight(build_fighter(), build_dummy(), PcgRng(12345))
-    second_rounds = run_fight(build_fighter(), build_dummy(), PcgRng(12345))
+    first_rounds = run_fight(build_fighter(), build_dummy(), MersenneRng(12345))
+    second_rounds = run_fight(build_fighter(), build_dummy(), MersenneRng(12345))
 
     assert first_rounds == second_rounds
     assert 0 < first_rounds < 50
@@ -211,7 +211,7 @@ def test_a_fight_ends_with_the_dummy_dead() -> None:
     attacker = build_fighter()
     defender = build_dummy()
 
-    run_fight(attacker, defender, PcgRng(1))
+    run_fight(attacker, defender, MersenneRng(1))
 
     assert not defender.is_alive
     assert attacker.is_alive

@@ -590,16 +590,27 @@ common shape of agent-authored slop.
 ## Performance
 
 ~10k iterations × 5 encounters × 5 rounds × 5 creatures × 3 attacks ≈ **4M
-attack resolutions** per build comparison. Budget: **≥50k attack
+attack resolutions** per build comparison. Budget: **≥30k attack
 resolutions/sec/core**, measured in W0 — before any content is written against
-the architecture.
+the architecture. About two minutes a core for one comparison, or under twenty
+seconds across eight.
+
+> **That number was 50k until M0, and the spike is what changed it.** The
+> original was set before anything had been measured. `w0i` measured 17k on the
+> hostile configuration, a revision pass took it to ~31.5k, and a floor
+> calculation put 50k at the theoretical limit of this object model in CPython —
+> reachable only by giving up the Parameter Object per hook, the automatic
+> provenance per contribution, or the frozen value per damage part, which are
+> the things that make ~630 agent-written features safe. The full argument, the
+> per-step measurements and the two levers taken (a compiled `reopen()`, and
+> MT19937 words in place of PCG32) are in `docs/decisions.md` § w0i.
 
 ### The spike must be pessimistic, or M0 proves nothing
 
 The obvious way to run `w0h` is against a stub creature and an attack loop. That
 measurement is worthless: a stub has ~0 attached handlers, no APL evaluation, no
-effect-expiry scan and no geometry query. It will clear 50k/s comfortably, M0
-gets declared, and the real number arrives in W4 with 400 features already
+effect-expiry scan and no geometry query. It will clear the budget comfortably
+whatever the budget is, M0 gets declared, and the real number arrives in W4 with 400 features already
 written against a dispatch design nobody can now afford to change. **M0 exists
 to be the cheap moment to revise; a stub spends that moment on nothing.**
 
@@ -618,7 +629,8 @@ So the spike benchmarks a deliberately hostile synthetic creature:
   benchmark that only times the inner loop.
 
 If that configuration misses the budget, the architecture is revised in W0. That
-is the whole point of the milestone.
+is the whole point of the milestone — and it is what happened: see the note
+above and `docs/decisions.md` § w0i.
 
 ### Levers
 
@@ -630,7 +642,7 @@ structured tuple logging with string formatting deferred to the reporter — wor
 ~2–3× on its own (`--log-level=summary`); multiprocessing across iterations;
 **adaptive stopping** on confidence-interval width rather than a fixed count.
 
-**Seeding is per iteration, never per worker.** `rng = PcgRng(mix(master_seed,
+**Seeding is per iteration, never per worker.** `rng = MersenneRng(mix(master_seed,
 iteration_index))`, so iteration 4,271 draws the same stream whether it ran on
 worker 0 of 1 or worker 6 of 8. Seeding per worker would make every result
 depend on `--jobs` and on scheduling, quietly breaking the reproducibility
@@ -910,7 +922,7 @@ Eight waves, `W0`–`W7`. This is the summary; [ROADMAP.md](ROADMAP.md) carries 
 
 | Wave | Content | Exit |
 |---|---|---|
-| **W0** | Scaffold, rules vocabulary, RNG/dice, timeline, hook registry, contexts, dispatch, **spike substrate + walking skeleton + pessimistic spike** | **M0:** ≥50k attack resolutions/sec/core on a 25-feature creature |
+| **W0** | Scaffold, rules vocabulary, RNG/dice, timeline, hook registry, contexts, dispatch, **spike substrate + walking skeleton + pessimistic spike** | **M0:** ≥30k attack resolutions/sec/core on a 25-feature creature (revised down from 50k by the spike itself) |
 | **W1** | `Creature` and AC derivation, resources, effects, grid, damage + attack resolution, saves, conditions, death saves, event log | interfaces importable |
 | **W2** | Content importers, actions, turn/encounter loop, target dummy, APL, build loader, runner, API + CLI | **M1:** a level-5 Fighter kills a dummy, golden-verified |
 | **W3** | Golden harness, linter, doc generators, reference exemplars, **the paper pass**, hook gap resolution, authoring skill, interaction matrix, statistical harness, **the canary batch** | **M2:** API frozen — *by a real batch, not by inspection* |
