@@ -34,11 +34,12 @@ def test_rejection_sampling_removes_the_modulo_bias() -> None:
     modulo of every word.
 
     At die sizes the rules use, the bias a bare `word % sides` would introduce is
-    ~1 part in 10^8 and no test could see it. So this uses a die whose size makes
-    it enormous: 2^32 words spread over 3 * 2^30 faces gives the bottom third of
-    the faces two source words each and the rest one, so a naive mapping would
-    put two thirds of the draws in that bottom third. A uniform one puts a third
-    there — and the same rejection is what keeps the d20 clean.
+    under 1 part in 10^8 and no test could see it. So this uses a die whose size
+    makes it enormous: 3 * 2^30 faces over 2^32 words leaves a remainder of 2^30,
+    so the bottom third of the faces gets two source words each and the rest one.
+    A naive mapping therefore sends 2^31 of the 2^32 words — half the draws — into
+    that bottom third, where a fair die sends a third. The same rejection is what
+    keeps the d20 clean.
     """
     sides = 3 * 2**30
     rng = PcgRng(4)

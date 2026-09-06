@@ -102,9 +102,11 @@ class PcgRng:
 
     Two `PcgRng`s built from the same seed yield identical streams for ever; that
     is the entire promise. Die faces are drawn by rejection sampling rather than a
-    bare modulo, so every face of every die is exactly equally likely — a 2.4%
-    bias on a d20 would move a DPR number by more than most of the features the
-    simulator exists to compare.
+    bare modulo, so every face of every die is exactly equally likely. At d20
+    scale that correction is invisible — a bare modulo would over-represent 16 of
+    the 2^32 words' faces by under 1 part in 10^8 — but it is a systematic error
+    in the one primitive every number in the project is built from, and it costs
+    16 rejected words in 2^32 to not have it.
     """
 
     __slots__ = ("_inc", "_state")
