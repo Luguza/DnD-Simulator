@@ -15,9 +15,9 @@ the decorator, source base class and dispatcher that run them), `creatures/` (a
 first-cut `Creature` and `StatBlock`) and `engine/` (the damage resolution
 order).
 
-Work is at wave **W0**; `w0a`–`w0g2` are done and `w0h` is next — the walking
-skeleton: a featureless creature attacking another through the real dispatch
-path and the real damage pipeline, printing a result.
+Work is at wave **W0**; `w0a`–`w0h` are done and `w0i` is next — the
+pessimistic performance spike that decides, before W1 starts, whether the
+dispatch design holds at 50k attack resolutions/sec/core.
 
 Both documents are load-bearing: `DESIGN.md` fixes the architecture and the
 vocabulary, `ROADMAP.md` fixes what may be built when and by whom. Read the
@@ -119,6 +119,7 @@ there is local to a module.
 | `hooks/contexts.py`, `core/errors.py` | § w0f |
 | `hooks/decorator.py`, `hooks/source.py`, `hooks/dispatch.py` | § w0g |
 | `creatures/`, `engine/damage.py`, `core/geometry.py` | § w0g2 |
+| `tools/skeleton.py`, `tests/bench/` | § w0h |
 
 Add a section there when a task lands, rather than growing this file.
 
