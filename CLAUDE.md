@@ -263,11 +263,17 @@ end of `ROADMAP.md` is what a delegated agent receives.
 
 ## Context facts (w0f)
 
-- `hooks/contexts.py` holds **31 context types for 39 hooks**: eight hooks are
-  one moment seen from both ends (the four `SELF`/`TARGET` pairs) and eight more
-  are two boundaries of one thing (round, encounter, turn, rest, condition,
-  effect), so the *scope* tells the ends apart and the context does not. A
-  contract test checks the registry's `context=` strings against this module in
+- `hooks/contexts.py` holds **31 context types for 39 hooks**: eight types are
+  named by two hooks each and 23 by one, so 16 + 23 = 39. Six of the eight are
+  the two boundaries of one thing (encounter, round, turn, rest, condition,
+  effect). The other two are a moment seen from both ends, where the *scope*
+  tells the ends apart and the context does not: `on_hit` / `on_hit_taken` and
+  `on_declare_attack` / `on_incoming_attack_declared`. **The other two
+  `SELF`/`TARGET` pairs deliberately do not share** — a save's DC and its roll
+  are different objects, and `on_damage_roll` / `on_incoming_damage` is the
+  sharing this task rejected outright (the victim gets rolled amounts, not the
+  attacker's bag). A contract test pins the eight by name rather than counting
+  them, and checks the registry's `context=` strings against this module in
   **both** directions — a hook naming a class nobody wrote, and a class no hook
   hands out, are both failures.
 - A context is a **frozen, slotted, keyword-only dataclass whose `__setattr__`
@@ -293,7 +299,9 @@ end of `ROADMAP.md` is what a delegated agent receives.
   to get wrong, and a mutation with nothing stamped is a `PhaseError`.
 - **Two contribution types, because two crit rules.** `DamagePart` (dice, flat,
   damage type) is the only thing that can reach `Dice.doubled()`, through
-  `on_crit()`. `Modifier` is the same dice/flat split for everything whose dice
+  `on_crit()`, and the *predicate* that decides a crit stays on `Outcome`
+  (`Outcome.is_critical`, w0b) rather than being re-spelled by a context.
+  `Modifier` is the same dice/flat split for everything whose dice
   never double — a D20 Test bonus, healing, temp HP, a save DC. One class with a
   `doubles: bool` flag would hand the crit rule back to every author who sets it.
   `damage_type=None` means "the type of the attack this rides on", which is a

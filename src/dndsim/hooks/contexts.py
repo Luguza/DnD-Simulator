@@ -1029,7 +1029,8 @@ class HitContext(Context):
 
     @property
     def is_critical(self) -> bool:
-        return self.outcome is Outcome.CRITICAL_HIT
+        """Delegated to `Outcome`, where the crit predicate lives (w0b)."""
+        return self.outcome.is_critical
 
 
 @_context

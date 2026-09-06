@@ -19,6 +19,7 @@ be found by a feature author months later, in a number that is merely wrong:
   rather than through an attack that has not been written yet.
 """
 
+from collections import Counter
 from dataclasses import dataclass
 
 import pytest
@@ -128,15 +129,36 @@ def test_every_context_class_is_handed_out_by_some_hook() -> None:
 
 
 def test_thirty_nine_hooks_share_thirty_one_contexts() -> None:
-    """Fewer contexts than hooks, because eight hooks are one moment seen twice.
+    """Eight context types are named by two hooks each; 23 have one apiece.
 
-    The four `SELF`/`TARGET` pairs plus round start/end, encounter start/end,
-    turn start/end, rest short/long, condition gained/lost and effect
-    applied/expired share a type; the scope, not the context, is what tells the
-    two ends apart (DESIGN.md § Hook scope).
+    16 + 23 = 39 hooks over 31 types. The eight are pinned by name rather than
+    counted, because *which* hooks share is the fact a later author needs and a
+    pair of totals would still match if the wrong two shared.
+
+    Two of them are a moment seen from both ends, where the scope and not the
+    context tells the ends apart (DESIGN.md § Hook scope): `on_hit` /
+    `on_hit_taken`, and `on_declare_attack` / `on_incoming_attack_declared`.
+    The other six are the two boundaries of one thing. Note what is **not**
+    here: the other two `SELF`/`TARGET` pairs do *not* share. A save's DC and
+    its roll are different objects, and `on_damage_roll` / `on_incoming_damage`
+    is the sharing this module deliberately rejected — by `on_incoming_damage`
+    the dice are thrown, so the victim is handed rolled amounts rather than the
+    attacker's bag.
     """
+    shared = Counter(spec.context for spec in all_hooks())
+    assert {name for name, count in shared.items() if count > 1} == {
+        "AttackDeclaredContext",
+        "ConditionContext",
+        "EffectContext",
+        "EncounterContext",
+        "HitContext",
+        "RestContext",
+        "RoundContext",
+        "TurnContext",
+    }
+    assert max(shared.values()) == 2, "no context is named by three hooks"
     assert len(all_hooks()) == 39
-    assert len({spec.context for spec in all_hooks()}) == 31
+    assert len(shared) == 31
 
 
 def test_every_context_is_slotted_and_locked() -> None:
