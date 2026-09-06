@@ -36,7 +36,12 @@ from dndsim.hooks.contexts import (
     TurnContext,
 )
 from dndsim.hooks.decorator import R, hook
-from dndsim.hooks.definitions import ON_ATTACK_ROLLED, ON_HIT, ON_TURN_START
+from dndsim.hooks.definitions import (
+    ON_ATTACK_ROLLED,
+    ON_HIT,
+    ON_HIT_TAKEN,
+    ON_TURN_START,
+)
 from dndsim.hooks.dispatch import Dispatcher
 from dndsim.hooks.registry import Phase, UnknownHookError
 from dndsim.hooks.source import HookSource
@@ -569,7 +574,7 @@ def test_a_vetoed_event_does_not_happen_on_the_other_creature_either() -> None:
 
     ctx = hit_context()
     attacker_side.dispatch(ON_HIT, ctx)
-    defender_side.dispatch(ON_HIT, ctx)
+    defender_side.dispatch(ON_HIT_TAKEN, ctx)
     assert log == []
 
 
