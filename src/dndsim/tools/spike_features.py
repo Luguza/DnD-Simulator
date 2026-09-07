@@ -25,11 +25,14 @@ Two properties of the mix matter more than the count:
   handler applies would measure `DamageBag.add()` fifteen times and call it
   dispatch; one where none applies would never pay for `once_per` or the
   economy. Both are wrong in the flattering direction.
-- **Every escape valve in the dispatcher is exercised.** Two handlers carry a
-  `once_per` budget (one `TURN`, one `OWN_TURN`), one costs a `REACTION`, and
+- **Every escape valve in the dispatcher is exercised.** Three handlers carry a
+  `once_per` budget (two `TURN`, one `OWN_TURN`), one costs a `REACTION`, and
   three are gated on the APL — so the ledger lookup, the economy query and the
   gate call are all in the measurement rather than in a comment about future
-  work.
+  work. Each of the six is reached by a handler that *applies* at least once,
+  not merely by one that declares the valve: `tests/bench/test_spike.py` checks
+  that through the dispatcher's own counter, because a gate that always answers
+  no buys the cheap half of the valve and none of what it guards.
 
 Sources: DESIGN.md § The spike must be pessimistic, § The uniform handler shape;
 ROADMAP w0i.
@@ -104,8 +107,6 @@ class BrutalStrike(Fixture):
 
     @hook("on_hit", once_per=Reset.TURN)
     def strike(self, ctx: HitContext) -> R:
-        if ctx.outcome is Outcome.MISS:
-            return R.SKIPPED
         ctx.damage.add(dice="1d10")
         return R.APPLIED
 
@@ -121,7 +122,8 @@ class PoisonedBlade(Fixture):
 
 
 class SneakAttack(Fixture):
-    """Conditional dice: lands only when the swing had advantage."""
+    """Conditional dice: the biggest rider on the list, and it lands only while
+    the state flag the APL set on turn one is up."""
 
     @hook("on_hit", once_per=Reset.TURN)
     def sneak(self, ctx: HitContext) -> R:
@@ -350,10 +352,14 @@ class RetaliationWatch(Fixture):
 class UncannyDodge(Fixture):
     """`on_incoming_damage`: gated on the APL *and* costing a reaction.
 
-    The one handler that pays for all three of the dispatcher's escape valves
-    in the same call — ledger, economy, gate — which is the combination
-    DESIGN.md § The uniform handler shape says is asked "in ascending order of
-    cost".
+    The only handler that pays for two of the dispatcher's escape valves in the
+    same call — economy then gate, the expensive two of the three DESIGN.md
+    § The uniform handler shape says are asked "in ascending order of cost". It
+    is also the only one whose valve ever *denies*: it applies roughly twice
+    every five encounters, and the reaction it spends is then gone until the
+    hero's turn comes back round, so `can_spend()` answers False for the
+    enemies still to swing that round. No `once_per` — the reaction is the
+    budget, which is why the gate is what has to be reachable.
     """
 
     @hook("on_incoming_damage", costs=ActionCost.REACTION, gate="rogue.uncanny_dodge")

@@ -694,5 +694,47 @@ spike, fixed in the same branch:
   arrive at `resolve_damage` as negative damage, which is temporary hit points
   granted by a sword. One comparison, no measurable cost (31,452/sec after).
 
+### What the review of the spike caught
+
+Both findings are about the same handler, and together they are the failure M0
+exists to catch, caught late: the one fixture that pays for the dispatcher's
+two expensive escape valves was never actually running.
+
+- **The victim's side of an attack never bound `trigger`.** `_enemy_turns()`
+  called `attack_once()` without one, and `attack_once()` guards every bind
+  with `if trigger is not None` — so the hero's only gate on that side, Uncanny
+  Dodge's `trigger.damage_estimate >= self.hp * 0.25`, was answered from the
+  estimate left over from the hero's own last swing. The two are not close: the
+  hero's bag carries Sneak Attack and the smite and offered 63 on the first
+  round of a fresh run, while the most an enemy can put on the table is 25. The
+  hero's trigger now travels with the enemies' attacks, and
+  `test_the_victims_gate_is_asked_about_the_swing_that_is_landing` pins it on
+  exactly that size difference rather than on a recorded number.
+- **With the hero at 400 hp the gate could not answer yes at all**, so the
+  reaction was never spent, `can_spend()` never denied, and `ctx.halve()` was
+  never on the measured path — while three docstrings claimed otherwise. The
+  tension is structural and worth stating so it is not undone: **a
+  fraction-of-current-hp reaction gate and a pool sized so the hero cannot drop
+  are the same knob pulled in opposite directions.** Losing a quarter of your
+  hit points to one hit and taking six hits an encounter cannot both be true of
+  a creature that lives, unless the hits are spread — the gate has to ride the
+  tail of the damage distribution, not its mean.
+
+  Of the two, the pool is the benchmark artifact and the gate is quoted
+  verbatim from DESIGN.md § APL, so the pool gave way: **70 hp against a 2d6
+  maul** rather than 400 against a 1d6 scimitar. The entry then fires about
+  0.4 times an encounter, and across 2,060 encounters on six seeds the hero
+  never fell below a third of its maximum. Re-measured after the change:
+  **31,674/sec**, inside the 0.2% run-to-run spread of the number the revision
+  landed on, so the budget is untouched.
+
+Beside those, five pieces of stale prose: the `once_per` count (three handlers,
+not two), `UncannyDodge` claiming all three valves when it carries no ledger,
+`SneakAttack` documented as reading advantage when it reads the rage flag,
+`BrutalStrike` testing for a `MISS` that `on_hit` cannot deliver, and a comment
+in `test_rng.py` still describing PCG32's seeding. Fixture prose drifting from
+fixture behaviour is how a benchmark ends up trusted for something it does not
+measure, which is the whole subject of this section.
+
 Sources: DESIGN.md § Performance, § The spike must be pessimistic, § Levers,
 § The benchmark gate, § Condition language; ROADMAP w0i, w1a, w1f, w2e, w3i.

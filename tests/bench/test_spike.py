@@ -11,7 +11,9 @@ that specification turned into something that breaks when it stops being true:
 - an 8-condition APL with a `target:` selector and a `move:` clause
 - real movement on a real grid, and both directions of the attack
 - the dispatcher's three escape valves — `once_per`, `costs`, `gate` — actually
-  reached, rather than declared and never asked
+  reached, rather than declared and never asked, and reached by a handler that
+  *applies*: a gate that always answers no buys the question and none of what
+  it guards
 - a run that reproduces exactly from its seed, which is what makes two
   measurements comparable at all
 
@@ -29,11 +31,14 @@ Sources: ROADMAP w0i; DESIGN.md § Performance, § The spike must be pessimistic
 § The benchmark gate.
 """
 
+from unittest.mock import patch
+
 import pytest
 
 from dndsim.core.timeline import Reset
-from dndsim.hooks.contexts import RoundContext
+from dndsim.hooks.contexts import Context, RoundContext
 from dndsim.hooks.definitions import ON_HIT
+from dndsim.hooks.source import HookSource
 from dndsim.rules.enums import ActionCost
 from dndsim.tools.spike import (
     ATTACKS_PER_TURN,
@@ -46,13 +51,22 @@ from dndsim.tools.spike import (
     measure_startup,
     run_encounter,
 )
+from dndsim.tools.spike_apl import Apl
 from dndsim.tools.spike_features import ON_HIT_SOURCES, SOURCES
 
 _RESOLUTIONS_PER_ENCOUNTER = ROUNDS_PER_ENCOUNTER * (ATTACKS_PER_TURN + ENEMIES)
 """Five rounds of three hero swings and one swing from each of three enemies."""
 
+_MOST_A_MAUL_CAN_DO = 2 * 2 * 6 + 1
+"""A critical hit with the enemies' 2d6 maul, plus their +1 — the ceiling on
+what an enemy swing can ever put in front of the hero's reaction."""
 
-def _fought(encounters: int = 3) -> Spike:
+
+def _fought(encounters: int = 10) -> Spike:
+    """Ten encounters, not three, because the reaction is the rarest of the
+    six guarded handlers: Uncanny Dodge needs the enemies to roll a swing worth
+    a quarter of the hero's remaining hit points, which happens about twice in
+    ten on the leanest of the seeds tried."""
     spike, rng = build_spike(0)
     for _ in range(encounters):
         run_encounter(spike, rng)
@@ -150,6 +164,7 @@ def test_the_riders_that_should_land_do_land() -> None:
         "sneak_attack.sneak",  # once per turn and state-dependent
         "bloodied_bonus.bloodied",  # conditional on the bag
         "vex_spender.spend",  # conditional on the roll
+        "uncanny_dodge.dodge",  # gated *and* costed — the victim's side
     ):
         assert applied[name] > 0, f"{name} never applied — the mix is flattered"
 
@@ -218,6 +233,37 @@ def test_rage_is_taken_on_the_first_turn_and_not_again() -> None:
     run_encounter(spike, rng)
 
     assert spike.state.raging
+
+
+def test_the_victims_gate_is_asked_about_the_swing_that_is_landing() -> None:
+    """`trigger.*` is what the engine is offering *right now*, and the only
+    gate on the victim's side of an attack is the hero's Uncanny Dodge.
+
+    Its `if:` reads `trigger.damage_estimate`, which is bound inside
+    `attack_once()` — so an enemy turn that dispatched without a trigger would
+    hand the gate the estimate left over from the hero's own last swing, which
+    is a different number by an order of magnitude and never changes during the
+    enemy's round. What separates the two is the size: an enemy can put at most
+    a critical maul on the table, while the hero's bag carries Sneak Attack and
+    the smite on top of a greatsword.
+    """
+    spike, rng = build_spike(0)
+    offered: list[int] = []
+    asked = Apl.allows
+
+    def recording(self: Apl, gate_id: str, source: HookSource, ctx: Context) -> bool:
+        if gate_id == "rogue.uncanny_dodge":
+            offered.append(self.namespace.trigger.damage_estimate)
+        return asked(self, gate_id, source, ctx)
+
+    with patch.object(Apl, "allows", recording):
+        run_encounter(spike, rng)
+
+    assert offered, "the reaction's gate was never asked"
+    assert max(offered) <= _MOST_A_MAUL_CAN_DO, (
+        f"the gate was offered {max(offered)}, which is more than a critical "
+        "maul — it is reading the hero's own swing, not the one landing on it"
+    )
 
 
 def test_an_unmentioned_gate_is_off() -> None:

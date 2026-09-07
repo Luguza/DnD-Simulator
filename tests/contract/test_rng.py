@@ -117,9 +117,10 @@ class TestMix:
         assert mix(42, 4271) == mix(42, 4271)
 
     def test_neighbouring_iterations_get_unrelated_seeds(self) -> None:
-        # `MersenneRng` seeding advances its LCG only twice, so seeds that differ by
-        # one would hand neighbouring iterations neighbouring streams. Half the
-        # bits should move; anything above a third is comfortably decorrelated.
+        # A seed reaches MT19937 through `init_by_array`, which is not a hash:
+        # seeds differing by one bit would hand neighbouring iterations streams
+        # nobody has shown to be independent, so `mix` is what has to decorrelate
+        # them. Half the bits should move; above a third is comfortably clear.
         a, b = mix(42, 0), mix(42, 1)
         assert bin(a ^ b).count("1") > 21
 

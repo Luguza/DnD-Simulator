@@ -123,21 +123,34 @@ _HERO_SCORES: Final = MappingProxyType(
 )
 _ENEMY_SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 12))
 
-_HERO_HP: Final = 400
-"""Four times a level-12 martial's, so the hero survives all five rounds of
-being swung at by three enemies. A hero that dropped mid-encounter would end
-the benchmark early and make the measurement depend on the dice."""
+_HERO_HP: Final = 70
+"""Sized against the two things that pull in opposite directions.
+
+**Upwards:** the hero has to survive all five rounds of being swung at by three
+enemies — one that dropped mid-encounter would end the benchmark early and make
+the measurement depend on the dice. Across a thousand encounters on three seeds
+this hero never falls below a third of it.
+
+**Downwards:** the APL's reaction entry is `trigger.damage_estimate >= self.hp *
+0.25`, so an inflated pool is a gate that can never answer yes — and a
+reaction-costing handler that never applies means the dispatcher's economy valve
+is only ever asked in the affirmative and `ctx.halve()` is never on the measured
+path. At 70 the entry fires about 0.4 times an encounter: often enough to be
+measured, rarely enough to still be a reaction rather than a rider."""
 
 _ENEMY_HP: Final = 1_000
 _HERO_START: Final = Cell(0, 0)
 _ENEMY_STARTS: Final = (Cell(5, 0), Cell(0, 5), Cell(7, 6))
 """Spread out, so that focus-firing the lowest-hp enemy means walking."""
 
-_SCIMITAR: Final = Weapon(
-    name="Scimitar", damage=Dice(1, 6), damage_type=DamageType.SLASHING
+_MAUL: Final = Weapon(
+    name="Maul", damage=Dice(2, 6), damage_type=DamageType.BLUDGEONING
 )
-"""What the enemies swing. Small dice on purpose: the enemies exist to make the
-hero's four defensive sources run, not to end the encounter."""
+"""What the enemies swing. Big enough that a good roll is worth a reaction —
+which is what puts Uncanny Dodge's gate, its reaction cost and `ctx.halve()` on
+the measured path — and no bigger, because the enemies exist to make the hero's
+four defensive sources run rather than to end the encounter. `RageResistance`
+halves it, which is most of why 70 hp lasts five rounds."""
 
 _TURN_ACTIONS: Final = frozenset({"rage", "second_wind", "healing_word", "attack"})
 """What the turn loop offers. The other four entries are riders and reactions,
@@ -154,8 +167,10 @@ class SpikeEconomy:
     Satisfies the `Economy` protocol in `hooks/dispatch.py`; `w1a` owns the real
     `ActionEconomy` with movement, grants and Action Surge. What matters here is
     that a costed handler pays for a `can_spend()` call on the hot path and that
-    a reaction really does run out, because a spike whose reaction was free
-    would measure the cheap half of the dispatcher's three escape valves.
+    a reaction really does run out — Uncanny Dodge spends one a few times in ten
+    encounters, and `can_spend()` then answers False for the enemies still to
+    swing that round — because a spike whose reaction was free would measure the
+    cheap half of the dispatcher's three escape valves.
     """
 
     __slots__ = ("action", "bonus", "reaction")
@@ -250,7 +265,7 @@ def build_spike(seed: int = 0, *, pooled: bool = True) -> tuple[Spike, Rng]:
                 abilities=_ENEMY_SCORES, max_hp=_ENEMY_HP, armour_class=16, level=5
             ),
             position=start,
-            weapon=_SCIMITAR,
+            weapon=_MAUL,
             initiative_index=index + 1,
         )
         for index, start in enumerate(_ENEMY_STARTS)
@@ -279,8 +294,7 @@ def build_spike(seed: int = 0, *, pooled: bool = True) -> tuple[Spike, Rng]:
         economy=economy,
         contexts=PooledContexts(hero, enemies[0], GREATSWORD) if pooled else FRESH,
         enemy_contexts=tuple(
-            PooledContexts(enemy, hero, _SCIMITAR) if pooled else FRESH
-            for enemy in enemies
+            PooledContexts(enemy, hero, _MAUL) if pooled else FRESH for enemy in enemies
         ),
         sources=sources,
     )
@@ -447,8 +461,16 @@ def _enemy_turns(spike: Spike, rng: Rng, number: int) -> int:
     They carry no sources of their own — what they are for is the hero's four
     defensive ones, which is also why their attacks go through the same
     `attack_once()` and the same damage pipeline.
+
+    **The hero's `trigger` goes with them.** `trigger.*` is what the engine is
+    offering the creature being asked, and the only gate on this side of the
+    attack — Uncanny Dodge's `trigger.damage_estimate >= self.hp * 0.25` — is
+    the hero's, answered while an enemy swings. Leaving it unbound here would
+    hand that gate the estimate from the hero's own last swing, which is both
+    the wrong number and a policy call that never changes.
     """
     hero = spike.hero
+    trigger = spike.apl.namespace.trigger
     resolutions = 0
     for enemy, contexts in zip(spike.enemies, spike.enemy_contexts, strict=True):
         enemy.dispatcher.resets.turn_started(own=True)
@@ -456,7 +478,7 @@ def _enemy_turns(spike: Spike, rng: Rng, number: int) -> int:
         if destination is not None:
             _step(spike, enemy, destination)
         if distance_ft(enemy.position, hero.position) <= enemy.reach_ft:
-            attack_once(enemy, hero, rng, contexts=contexts)
+            attack_once(enemy, hero, rng, contexts=contexts, trigger=trigger)
             resolutions += 1
     return resolutions
 
