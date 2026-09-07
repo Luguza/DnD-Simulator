@@ -27,9 +27,14 @@ dev = [
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-markers", "--strict-config"]
+# `-m "not bench"` keeps wall-clock assertions out of the ordinary suite: a
+# throughput test on a shared CI runner fires on noise, and a gate that fires
+# on noise gets turned off (DESIGN.md § The benchmark gate). Ask the M0
+# question deliberately with `uv run pytest -m bench`; `w3i` is the task that
+# turns it into a CI gate against a same-run baseline.
+addopts = ["-ra", "--strict-markers", "--strict-config", "-m", "not bench"]
 markers = [
-    "bench: performance benchmarks (roadmap w0i)",
+    "bench: wall-clock performance measurements (roadmap w0i, w3i)",
 ]
 
 [tool.ruff]

@@ -24,7 +24,7 @@ constants the engine dispatches on (`dispatch(ON_HIT, ctx)` — a typo there is 
 `AttributeError` before the process gets going). The dataclass is therefore
 `eq=False`: two specs are the same hook only when they are the same object, so a
 dispatch table keyed by spec hashes one pointer rather than five fields, on a
-path that runs several times per attack against a 50k/sec budget.
+path that runs several times per attack against a 30k/sec budget.
 
 **The context type is named, not imported.** `hooks/contexts.py` (w0f) sits
 *above* this module and imports it, so a spec carries the context class's name as

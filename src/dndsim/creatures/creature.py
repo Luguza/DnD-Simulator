@@ -45,6 +45,13 @@ class Creature:
     """
 
     __slots__ = (
+        # A creature can be the referent of a weak reference, which a slotted
+        # class is not by default. DESIGN.md § Condition language builds the
+        # APL's namespace proxies over "weak references to live state", so
+        # without this the compiled policy of every build would either be
+        # impossible or would keep dead combatants alive for the length of a
+        # run. One pointer per creature, nothing on the hot path (w0i).
+        "__weakref__",
         "dispatcher",
         "hp",
         "initiative_index",

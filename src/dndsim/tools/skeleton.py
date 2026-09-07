@@ -23,8 +23,8 @@ yet. What *is* real: the `Dispatcher` these hooks run through, the
 **Two creatures, no `HookSource` attached.** "Featureless" is the point
 (ROADMAP w0h) — a creature with nothing listening on any of its ten dispatched
 hooks costs one failed dict lookup per hook and proves the Null Object ending
-works, which is the cheapest possible thing to get wrong at 50k
-resolutions/sec.
+works, which is the cheapest possible thing to get wrong at tens of thousands
+of resolutions per second.
 
 Sources: DESIGN.md § The closed hook list, § Structural prevention over
 testing; ROADMAP § The critical path, w0g2, w0h, w1f.
@@ -33,20 +33,22 @@ testing; ROADMAP § The critical path, w0g2, w0h, w1f.
 import argparse
 from collections.abc import Callable, Mapping
 from types import MappingProxyType
-from typing import Final
+from typing import Final, Protocol
 
 from dndsim.core.geometry import Cell, in_reach
-from dndsim.core.rng import PcgRng, Rng
+from dndsim.core.rng import MersenneRng, Rng
 from dndsim.creatures.creature import Creature
-from dndsim.creatures.stats import GREATSWORD, StatBlock
-from dndsim.engine.damage import resolve_damage, roll_damage
+from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
+from dndsim.engine.damage import FreshDamageContexts, resolve_damage, roll_damage
 from dndsim.hooks.contexts import (
     AttackDeclaredContext,
     AttackResolvedContext,
     AttackRollContext,
     DamageBag,
     DamageRollContext,
+    DamageTakenContext,
     HitContext,
+    IncomingDamageContext,
     MissContext,
 )
 from dndsim.hooks.definitions import (
@@ -59,9 +61,472 @@ from dndsim.hooks.definitions import (
     ON_INCOMING_ATTACK_DECLARED,
     ON_MISS,
 )
-from dndsim.rules.enums import Ability, Outcome
+from dndsim.rules.enums import Ability, DamageType, Outcome
 
-__all__ = ["attack_once", "build_dummy", "build_fighter", "main", "run_fight"]
+__all__ = [
+    "AttackContexts",
+    "FreshContexts",
+    "PooledContexts",
+    "Trigger",
+    "attack_once",
+    "build_dummy",
+    "build_fighter",
+    "main",
+    "run_fight",
+]
+
+
+class Trigger(Protocol):
+    """The `trigger.*` namespace root, as the engine sees it.
+
+    A `Protocol` rather than an import because `engine/triggers.py` (w2) is what
+    will populate this and `apl/namespace.py` (w2e) is what will define it, and
+    neither exists: the attack sequence's whole knowledge of the APL is that
+    something wants to be told what it is being offered before the offer is
+    dispatched. `None` is the ordinary case — nobody is asking.
+    """
+
+    def bind(self, *, crit: bool = False, damage_estimate: int = 0) -> None: ...
+
+
+class AttackContexts(Protocol):
+    """Where the attack's six contexts come from.
+
+    DESIGN.md § Levers asks for "contexts reset and reused per attack rather
+    than allocated, which matters at 4M resolutions", and `w0i` is what measures
+    whether it does. Making the source of a context a **Strategy** rather than a
+    `if pool is None` at six call sites keeps the sequence below readable as one
+    thing, and keeps the two answers — allocate, or rebind — honest about
+    costing exactly what they cost.
+    """
+
+    def declared(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        ability: Ability,
+    ) -> AttackDeclaredContext: ...
+
+    def rolled(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        natural: int,
+        total: int,
+        had_advantage: bool,
+        had_disadvantage: bool,
+    ) -> AttackRollContext: ...
+
+    def hit(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        outcome: Outcome,
+        damage: DamageBag,
+    ) -> HitContext: ...
+
+    def missed(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        outcome: Outcome,
+        damage: DamageBag,
+    ) -> MissContext: ...
+
+    def damage_roll(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        is_critical: bool,
+        damage: DamageBag,
+    ) -> DamageRollContext: ...
+
+    def resolved(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        outcome: Outcome,
+        damage_dealt: int,
+    ) -> AttackResolvedContext: ...
+
+    def bag(self) -> DamageBag: ...
+
+    def incoming(
+        self,
+        *,
+        defender: Creature,
+        attacker: Creature | None,
+        amounts: Mapping[DamageType, int],
+    ) -> IncomingDamageContext: ...
+
+    def taken(
+        self,
+        *,
+        defender: Creature,
+        attacker: Creature | None,
+        amount: int,
+        damage_types: frozenset[DamageType],
+    ) -> DamageTakenContext: ...
+
+
+class FreshContexts(FreshDamageContexts):
+    """Allocate every context, every attack. The obvious answer, and the
+    baseline `w0i` measures the pooled one against."""
+
+    __slots__ = ()
+
+    def declared(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        ability: Ability,
+    ) -> AttackDeclaredContext:
+        return AttackDeclaredContext(
+            attacker=attacker, defender=defender, weapon=weapon, ability=ability
+        )
+
+    def rolled(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        natural: int,
+        total: int,
+        had_advantage: bool,
+        had_disadvantage: bool,
+    ) -> AttackRollContext:
+        return AttackRollContext(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            natural=natural,
+            total=total,
+            crit_threshold=_CRIT_THRESHOLD,
+            had_advantage=had_advantage,
+            had_disadvantage=had_disadvantage,
+        )
+
+    def hit(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        outcome: Outcome,
+        damage: DamageBag,
+    ) -> HitContext:
+        return HitContext(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            outcome=outcome,
+            damage=damage,
+        )
+
+    def missed(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        outcome: Outcome,
+        damage: DamageBag,
+    ) -> MissContext:
+        return MissContext(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            outcome=outcome,
+            damage=damage,
+        )
+
+    def damage_roll(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        is_critical: bool,
+        damage: DamageBag,
+    ) -> DamageRollContext:
+        return DamageRollContext(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            is_critical=is_critical,
+            damage=damage,
+        )
+
+    def resolved(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        outcome: Outcome,
+        damage_dealt: int,
+    ) -> AttackResolvedContext:
+        return AttackResolvedContext(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            outcome=outcome,
+            damage_dealt=damage_dealt,
+        )
+
+    def bag(self) -> DamageBag:
+        return DamageBag()
+
+
+class PooledContexts:
+    """One context of each kind, rebound per attack (DESIGN.md § Levers).
+
+    Built against whichever pair of creatures is convenient and rebound to the
+    real ones on every attack, because `reopen()` demands every field a context
+    does not default — nothing of the previous attack survives by omission
+    (`hooks/contexts.py`). One pool belongs to one attack sequence: the contexts
+    in it are live only while a hook is dispatching, so two nested attacks
+    (a reaction inside a reaction) need two pools, which is `w1f`'s problem and
+    is why this class is small enough to make one per attacker.
+    """
+
+    __slots__ = (
+        "_bag",
+        "_declared",
+        "_hit",
+        "_incoming",
+        "_missed",
+        "_resolved",
+        "_roll",
+        "_rolled",
+        "_taken",
+    )
+
+    def __init__(self, attacker: Creature, defender: Creature, weapon: Weapon) -> None:
+        fresh = FreshContexts()
+        self._bag = DamageBag()
+        self._declared = fresh.declared(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            ability=Ability.STRENGTH,
+        )
+        self._rolled = fresh.rolled(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            natural=1,
+            total=1,
+            had_advantage=False,
+            had_disadvantage=False,
+        )
+        self._hit = fresh.hit(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            outcome=Outcome.HIT,
+            damage=self._bag,
+        )
+        self._missed = fresh.missed(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            outcome=Outcome.MISS,
+            damage=self._bag,
+        )
+        self._roll = fresh.damage_roll(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            is_critical=False,
+            damage=self._bag,
+        )
+        self._resolved = fresh.resolved(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            outcome=Outcome.MISS,
+            damage_dealt=0,
+        )
+        self._incoming = fresh.incoming(
+            defender=defender, attacker=attacker, amounts={}
+        )
+        self._taken = fresh.taken(
+            defender=defender,
+            attacker=attacker,
+            amount=0,
+            damage_types=frozenset(),
+        )
+
+    def declared(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        ability: Ability,
+    ) -> AttackDeclaredContext:
+        ctx = self._declared
+        ctx.reopen(attacker=attacker, defender=defender, weapon=weapon, ability=ability)
+        return ctx
+
+    def rolled(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        natural: int,
+        total: int,
+        had_advantage: bool,
+        had_disadvantage: bool,
+    ) -> AttackRollContext:
+        ctx = self._rolled
+        ctx.reopen(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            natural=natural,
+            total=total,
+            crit_threshold=_CRIT_THRESHOLD,
+            had_advantage=had_advantage,
+            had_disadvantage=had_disadvantage,
+        )
+        return ctx
+
+    def hit(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        outcome: Outcome,
+        damage: DamageBag,
+    ) -> HitContext:
+        ctx = self._hit
+        ctx.reopen(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            outcome=outcome,
+            damage=damage,
+        )
+        return ctx
+
+    def missed(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        outcome: Outcome,
+        damage: DamageBag,
+    ) -> MissContext:
+        ctx = self._missed
+        ctx.reopen(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            outcome=outcome,
+            damage=damage,
+        )
+        return ctx
+
+    def damage_roll(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        is_critical: bool,
+        damage: DamageBag,
+    ) -> DamageRollContext:
+        ctx = self._roll
+        ctx.reopen(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            is_critical=is_critical,
+            damage=damage,
+        )
+        return ctx
+
+    def resolved(
+        self,
+        *,
+        attacker: Creature,
+        defender: Creature,
+        weapon: Weapon,
+        outcome: Outcome,
+        damage_dealt: int,
+    ) -> AttackResolvedContext:
+        ctx = self._resolved
+        ctx.reopen(
+            attacker=attacker,
+            defender=defender,
+            weapon=weapon,
+            outcome=outcome,
+            damage_dealt=damage_dealt,
+        )
+        return ctx
+
+    def bag(self) -> DamageBag:
+        """The one bag, emptied. It is handed to four contexts in turn, which
+        is why `reopen()` rebinds a handed bag rather than clearing it."""
+        bag = self._bag
+        bag.clear()
+        return bag
+
+    def incoming(
+        self,
+        *,
+        defender: Creature,
+        attacker: Creature | None,
+        amounts: Mapping[DamageType, int],
+    ) -> IncomingDamageContext:
+        ctx = self._incoming
+        ctx.reopen(defender=defender, attacker=attacker, amounts=amounts)
+        return ctx
+
+    def taken(
+        self,
+        *,
+        defender: Creature,
+        attacker: Creature | None,
+        amount: int,
+        damage_types: frozenset[DamageType],
+    ) -> DamageTakenContext:
+        ctx = self._taken
+        ctx.reopen(
+            defender=defender,
+            attacker=attacker,
+            amount=amount,
+            damage_types=damage_types,
+        )
+        return ctx
+
+
+FRESH: Final[AttackContexts] = FreshContexts()
+"""The default: allocate. Stateless, so one instance serves every caller."""
+
+_CRIT_THRESHOLD: Final = 20
+"""Where a natural roll starts critting. A derived stat on the creature once
+`w1a` lands (Improved Critical lowers the character's, never the attack's)."""
 
 _FIGHTER_SCORES: Final[Mapping[Ability, int]] = MappingProxyType(
     {
@@ -96,7 +561,12 @@ def build_dummy(name: str = "Dummy") -> Creature:
 
 
 def attack_once(
-    attacker: Creature, defender: Creature, rng: Rng
+    attacker: Creature,
+    defender: Creature,
+    rng: Rng,
+    *,
+    contexts: AttackContexts = FRESH,
+    trigger: Trigger | None = None,
 ) -> tuple[Outcome, int]:
     """One full attack, dispatched exactly as `hooks/definitions.py` describes
     the attack and damage groups, over the real pipeline in `engine/damage.py`.
@@ -104,6 +574,13 @@ def attack_once(
     Returns the outcome and the damage actually dealt (0 on a miss, or on a hit
     that landed on immunities/reductions worth nothing — `resolve_damage`
     already makes that distinction).
+
+    `contexts` decides where the six contexts come from; `trigger` is the APL's
+    `trigger.*` root, told what is being offered immediately before each hook
+    that carries gated handlers. Both default to "nobody is asking", which is
+    the walking skeleton's case (w0h) — they exist for `w0i`, whose creature has
+    an action list and twenty-five features, and both are `w1f`'s to own for
+    real.
     """
     weapon = attacker.weapon
     if weapon is None:
@@ -114,12 +591,21 @@ def attack_once(
             f"at {defender.position} with {attacker.reach_ft} ft of reach"
         )
     ability = Ability.STRENGTH
+    # Both dispatch tables, once. `Creature.dispatch()` is the API every other
+    # caller uses; the attack sequence runs it nine times per resolution and
+    # walks the attribute chain to it every time, which `w0i` measured at about
+    # a twentieth of the per-attack budget. `w1f` inherits this line, not the
+    # habit — nothing outside the engine's hot path reaches past the creature.
+    strike = attacker.dispatcher.dispatch
+    parry = defender.dispatcher.dispatch
 
-    declared = AttackDeclaredContext(
+    if trigger is not None:
+        trigger.bind()
+    declared = contexts.declared(
         attacker=attacker, defender=defender, weapon=weapon, ability=ability
     )
-    attacker.dispatch(ON_DECLARE_ATTACK, declared)
-    defender.dispatch(ON_INCOMING_ATTACK_DECLARED, declared)
+    strike(ON_DECLARE_ATTACK, declared)
+    parry(ON_INCOMING_ATTACK_DECLARED, declared)
     had_advantage = declared.had_advantage
     had_disadvantage = declared.had_disadvantage
     attack_bonus = declared.bonus.flat_total
@@ -136,17 +622,16 @@ def attack_once(
         natural + attacker.modifier(ability) + attacker.proficiency_bonus + attack_bonus
     )
 
-    rolled = AttackRollContext(
+    rolled = contexts.rolled(
         attacker=attacker,
         defender=defender,
         weapon=weapon,
         natural=natural,
         total=total,
-        crit_threshold=20,
         had_advantage=had_advantage,
         had_disadvantage=had_disadvantage,
     )
-    attacker.dispatch(ON_ATTACK_ROLLED, rolled)
+    strike(ON_ATTACK_ROLLED, rolled)
     is_critical = rolled.is_critical
     rolled.close()
 
@@ -161,8 +646,10 @@ def attack_once(
 
     damage_dealt = 0
     if outcome.is_hit:
-        bag = DamageBag()
-        hit = HitContext(
+        bag = contexts.bag()
+        if trigger is not None:
+            trigger.bind(crit=outcome.is_critical)
+        hit = contexts.hit(
             attacker=attacker,
             defender=defender,
             weapon=weapon,
@@ -175,18 +662,18 @@ def attack_once(
             flat=attacker.modifier(ability),
             damage_type=weapon.damage_type,
         )
-        attacker.dispatch(ON_HIT, hit)
-        defender.dispatch(ON_HIT_TAKEN, hit)
+        strike(ON_HIT, hit)
+        parry(ON_HIT_TAKEN, hit)
         hit.close()
 
-        damage_roll = DamageRollContext(
+        damage_roll = contexts.damage_roll(
             attacker=attacker,
             defender=defender,
             weapon=weapon,
             is_critical=outcome.is_critical,
             damage=bag,
         )
-        attacker.dispatch(ON_DAMAGE_ROLL, damage_roll)
+        strike(ON_DAMAGE_ROLL, damage_roll)
         damage_roll.close()
 
         amounts = roll_damage(
@@ -195,26 +682,33 @@ def attack_once(
             base_type=weapon.damage_type,
             critical=outcome.is_critical,
         )
-        damage_dealt = resolve_damage(defender, amounts, rng=rng, attacker=attacker)
+        if trigger is not None:
+            # What the victim's reactions are being offered: how much is on the
+            # table if nobody does anything about it (DESIGN.md § APL,
+            # `trigger.damage_estimate`).
+            trigger.bind(damage_estimate=sum(amounts.values()))
+        damage_dealt = resolve_damage(
+            defender, amounts, rng=rng, attacker=attacker, contexts=contexts
+        )
     else:
-        miss = MissContext(
+        miss = contexts.missed(
             attacker=attacker,
             defender=defender,
             weapon=weapon,
             outcome=outcome,
-            damage=DamageBag(),
+            damage=contexts.bag(),
         )
-        attacker.dispatch(ON_MISS, miss)
+        strike(ON_MISS, miss)
         miss.close()
 
-    resolved = AttackResolvedContext(
+    resolved = contexts.resolved(
         attacker=attacker,
         defender=defender,
         weapon=weapon,
         outcome=outcome,
         damage_dealt=damage_dealt,
     )
-    attacker.dispatch(ON_ATTACK_RESOLVED, resolved)
+    strike(ON_ATTACK_RESOLVED, resolved)
     resolved.close()
 
     return outcome, damage_dealt
@@ -250,7 +744,7 @@ def main(argv: list[str] | None = None) -> int:
 
     attacker = build_fighter()
     defender = build_dummy()
-    rng = PcgRng(args.seed)
+    rng = MersenneRng(args.seed)
 
     def report(round_number: int, outcome: Outcome, damage: int) -> None:
         print(

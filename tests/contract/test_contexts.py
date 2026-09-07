@@ -25,7 +25,7 @@ from dataclasses import dataclass
 import pytest
 
 from dndsim.core.dice import Dice
-from dndsim.core.errors import PhaseError
+from dndsim.core.errors import EngineAssemblyError, PhaseError
 from dndsim.core.timeline import TimeKey, TurnPhase
 from dndsim.hooks import contexts as contexts_module
 from dndsim.hooks.contexts import (
@@ -284,9 +284,15 @@ def test_reopen_rebinds_and_clears() -> None:
 
 
 def test_reopen_refuses_a_field_that_does_not_exist() -> None:
-    """A typo here would leave the previous attack's value in place."""
+    """A typo here would leave the previous attack's value in place.
+
+    A `TypeError` from the interpreter's own argument binding rather than a
+    hand-written check: `reopen()` is compiled per context class with the
+    fields as keyword-only parameters (`_make_reopen`), which is what makes
+    the guarantee free on the hot path (w0i).
+    """
     ctx = a_hit()
-    with pytest.raises(AttributeError, match="no field 'attaker'"):
+    with pytest.raises(TypeError, match="unexpected keyword argument 'attaker'"):
         ctx.reopen(attaker=DUMMY)
 
 
@@ -294,7 +300,7 @@ def test_reopen_demands_every_field_the_context_does_not_default() -> None:
     """A pooled context rebound with a new attacker and no new defender would
     otherwise be an attack on the previous target."""
     ctx = a_hit()
-    with pytest.raises(AttributeError, match=r"\['defender', 'damage'\]"):
+    with pytest.raises(TypeError, match="'defender' and 'damage'"):
         ctx.reopen(attacker=DUMMY, weapon=DAGGER, outcome=Outcome.HIT)
 
 
@@ -307,6 +313,53 @@ def test_reopen_resets_a_defaulted_field_that_is_not_named() -> None:
     ctx.reopen(creature=DUMMY, ability=Ability.STRENGTH)
     assert ctx.skill is None
     assert ctx.dc is None
+
+
+def test_a_context_class_that_escaped_the_decorator_has_no_reopen() -> None:
+    """The failure the compiled `reopen()` opens up, closed.
+
+    `reopen()` is generated per class from that class's field list, so a
+    context declared without `@_context` would inherit the nearest compiled
+    one — `Context`'s, which takes no fields, resets the frame and the pending
+    queue and leaves every field the subclass declared holding the previous
+    event's values. That is a pooled attack on the previous target with no
+    error anywhere. `Context.__init_subclass__` installs a raising `reopen()`
+    on every subclass before the decorator runs, so the class that skipped the
+    decorator keeps it.
+    """
+
+    class Undecorated(HitContext):
+        pass
+
+    ctx = Undecorated(
+        attacker=ROGUE,
+        defender=DUMMY,
+        weapon=DAGGER,
+        outcome=Outcome.HIT,
+        damage=contexts_module.DamageBag(),
+    )
+    with pytest.raises(EngineAssemblyError, match="no compiled reopen"):
+        ctx.reopen(
+            attacker=DUMMY,
+            defender=ROGUE,
+            weapon=DAGGER,
+            outcome=Outcome.HIT,
+            damage=contexts_module.DamageBag(),
+        )
+
+
+def test_every_context_class_has_a_reopen_compiled_for_itself() -> None:
+    """The other side of it: the guard above must never fire in this build.
+
+    A `reopen()` inherited from a base is the bug; one in the class's own
+    `__dict__` that is not the raising body is the decorator having run.
+    Checked over every context class this module defines, so a context added
+    in a later wave is covered the day it is written.
+    """
+    for context_class in context_classes().values():
+        own = context_class.__dict__.get("reopen")
+        assert own is not None, f"{context_class.__name__} inherits reopen()"
+        assert own is not contexts_module._uncompiled_reopen
 
 
 # --- Dice double, flat does not ---------------------------------------------

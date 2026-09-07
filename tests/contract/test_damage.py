@@ -412,6 +412,20 @@ def test_a_type_reduced_to_nothing_did_not_get_through() -> None:
     assert result.types == frozenset({SLASHING})
 
 
+def test_the_floor_survives_the_untouched_shortcut() -> None:
+    """The empty ledger skips the order; it must not skip the clamp.
+
+    `DamagePart.flat` is a signed `int` and nothing rejects a negative one, so
+    a contribution that subtracts more than the hit deals reaches `mitigate()`
+    as a negative total. Down the shortcut that would arrive at `resolve_damage`
+    as negative damage — which is temporary hit points granted by a sword. The
+    slow path clamps at zero, so the fast path does too.
+    """
+    result = mitigate({SLASHING: -4}, ledger(), rng=no_dice())
+    assert result.total == 0
+    assert mitigate({SLASHING: -4}, ledger(resist=[FIRE]), rng=no_dice()).total == 0
+
+
 def test_an_empty_ledger_changes_nothing() -> None:
     """The overwhelmingly common case: no handler recorded anything, so the
     rolled amounts arrive intact."""

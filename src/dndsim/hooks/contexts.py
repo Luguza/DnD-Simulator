@@ -74,8 +74,8 @@ Sources: DESIGN.md § Hook system, § Structural prevention over testing,
 """
 
 import dataclasses
-from collections.abc import Iterator, Mapping
-from dataclasses import dataclass, field, replace
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import (
     ClassVar,
     Final,
@@ -86,7 +86,7 @@ from typing import (
 )
 
 from dndsim.core.dice import Dice
-from dndsim.core.errors import PhaseError
+from dndsim.core.errors import EngineAssemblyError, PhaseError
 from dndsim.core.timeline import TimeKey
 from dndsim.hooks.registry import Phase
 from dndsim.rules.enums import Ability, Condition, DamageType, Outcome
@@ -207,8 +207,11 @@ class DamagePart:
     on a critical hit and flat bonuses never do**, so a feature that adds `2d6`
     of Sneak Attack and a feature that adds `+2` of Rage damage get the crit
     rule right without either author knowing there is a crit rule. `on_crit()`
-    is the only place the doubling happens, and `Dice.doubled()` is the only
-    thing it calls.
+    is the readable statement of that rule and the method a contract test pins
+    it by; `Dice.doubled()` is the only thing it calls, and it is the only
+    thing the engine calls too — `engine.damage.roll_damage()` inlines the same
+    doubling rather than allocating a doubled part per contribution per crit
+    (w0i), which makes it the one caller with a reason not to go through here.
 
     `damage_type` of `None` means "the same type as the attack this rides on" —
     Sneak Attack's d6s are the dagger's piercing — which is a real rule rather
@@ -222,10 +225,16 @@ class DamagePart:
     source: str
 
     def on_crit(self) -> "DamagePart":
-        """This contribution as it lands on a critical hit."""
-        if self.dice is None:
+        """This contribution as it lands on a critical hit.
+
+        Constructed rather than `replace()`d: this runs once per contribution
+        on every critical hit, and `dataclasses.replace` reads the field list
+        and rebuilds a keyword dict to do what four positional arguments do.
+        """
+        dice = self.dice
+        if dice is None:
             return self
-        return replace(self, dice=self.dice.doubled())
+        return DamagePart(dice.doubled(), self.flat, self.damage_type, self.source)
 
     def __str__(self) -> str:
         return f"{_amount(self.dice, self.flat)} [{self.source}]"
@@ -279,6 +288,13 @@ class _Bag:
         self._frame = frame
 
     def _acting_source(self, action: str) -> str:
+        """Who is acting, or a `PhaseError` saying why nobody is.
+
+        The two `add()` methods below inline the happy path of this — a live
+        frame with a source stamped on it — and call here only when one of the
+        three is false, because it runs several times per attack resolution and
+        the answer is a slot read (w0i).
+        """
         frame = self._frame
         if frame is None:
             raise PhaseError(
@@ -318,18 +334,19 @@ class DamageBag(_Bag):
 
         `damage_type=None` inherits the type of the attack this rides on.
         """
-        source = self._acting_source("ctx.damage.add()")
-        part = DamagePart(
-            dice=_as_dice(dice),
-            flat=flat,
-            damage_type=damage_type,
-            source=source,
-        )
-        if part.dice is None and part.flat == 0:
+        frame = self._frame
+        if frame is None or frame.source is None or not frame.open:
+            source = self._acting_source("ctx.damage.add()")
+        else:
+            source = frame.source
+        if dice is not None and not isinstance(dice, Dice):
+            dice = Dice.parse(dice)
+        elif dice is None and flat == 0:
             raise ValueError(
                 f"{source} added no damage: pass dice, flat, or both. An empty "
                 "contribution is a feature that meant to return SKIPPED."
             )
+        part = DamagePart(dice, flat, damage_type, source)
         self._parts.append(part)
         return part
 
@@ -367,13 +384,19 @@ class ModifierBag(_Bag):
 
     def add(self, *, dice: str | Dice | None = None, flat: int = 0) -> Modifier:
         """Contribute a modifier."""
-        source = self._acting_source("add()")
-        modifier = Modifier(dice=_as_dice(dice), flat=flat, source=source)
-        if modifier.dice is None and modifier.flat == 0:
+        frame = self._frame
+        if frame is None or frame.source is None or not frame.open:
+            source = self._acting_source("add()")
+        else:
+            source = frame.source
+        if dice is not None and not isinstance(dice, Dice):
+            dice = Dice.parse(dice)
+        elif dice is None and flat == 0:
             raise ValueError(
                 f"{source} added nothing: pass dice, flat, or both. An empty "
                 "contribution is a feature that meant to return SKIPPED."
             )
+        modifier = Modifier(dice, flat, source)
         self._parts.append(modifier)
         return modifier
 
@@ -540,6 +563,24 @@ def _locked_setattr(self: object, name: str, value: object) -> NoReturn:
     )
 
 
+def _uncompiled_reopen(self: object, **fields: object) -> NoReturn:
+    """The `reopen()` a context class that escaped `@_context` is left holding.
+
+    It exists as a free function because it has to be installed on every
+    subclass *before* the decorator runs (`Context.__init_subclass__`), and
+    because the alternative is worse than an error: a class the decorator never
+    saw would otherwise inherit `Context`'s own compiled `reopen()`, which takes
+    no fields, resets the frame and the pending queue, and leaves every field
+    the subclass declared holding the previous event's values.
+    """
+    raise EngineAssemblyError(
+        f"{type(self).__name__} has no compiled reopen(). Every context "
+        "class is built by the @_context decorator, which generates one "
+        "from the field list; a class that reached here was declared some "
+        "other way."
+    )
+
+
 @dataclass_transform(frozen_default=True, kw_only_default=True, eq_default=False)
 def _context(cls: type[_T]) -> type[_T]:
     """Make a context class: frozen, slotted, keyword-only, identity-compared.
@@ -586,7 +627,72 @@ def _context(cls: type[_T]) -> type[_T]:
     made._owned_bags = tuple(owned)  # type: ignore[attr-defined]
     made._required_fields = tuple(required)  # type: ignore[attr-defined]
     made._defaulted_fields = tuple(defaults)  # type: ignore[attr-defined]
+    made.reopen = _make_reopen(  # type: ignore[attr-defined]
+        made, required, defaults, owned, [b for b in bags if b in required]
+    )
     return made
+
+
+def _make_reopen(
+    made: type,
+    required: Sequence[str],
+    defaults: Sequence[tuple[str, object]],
+    owned_bags: Sequence[str],
+    handed_bags: Sequence[str],
+) -> Callable[..., None]:
+    """Compile this context class's `reopen()` — see `Context.reopen`.
+
+    **Generated, because the validation and the speed are the same problem.**
+    A hand-written `reopen(**fields)` has to check that every field was named
+    and that no field was invented, and `w0i` measured that checking — a set
+    difference and a comprehension over the field list — costing more per call
+    than constructing the context from scratch, which defeats the pooling lever
+    DESIGN.md § Levers asks for. A generated function with the fields as
+    keyword-only parameters gets both checks from the interpreter's own
+    argument binding, for nothing, and a missing field raises a `TypeError`
+    that names it.
+
+    The same technique `dataclasses` uses for `__init__`, applied for the same
+    reason and in the same place: once, at class creation.
+    """
+    parameters = list(required)
+    namespace: dict[str, object] = {}
+    lines = []
+    for name in required:
+        namespace[f"_set_{name}"] = getattr(made, name).__set__
+        lines.append(f"    _set_{name}(self, {name})")
+    for name, default in defaults:
+        parameters.append(f"{name}=_default_{name}")
+        namespace[f"_default_{name}"] = default
+        namespace[f"_set_{name}"] = getattr(made, name).__set__
+        lines.append(f"    _set_{name}(self, {name})")
+    lines.append("    frame = self._frame")
+    lines.append("    frame.source = None")
+    lines.append("    frame.phase = None")
+    lines.append("    frame.open = True")
+    lines.append("    frame.veto_reason = None")
+    lines.append("    self._pending.clear()")
+    for name in handed_bags:
+        # A bag this context was handed belongs to the event, not to the
+        # context, so it is rebound to the new frame rather than emptied — the
+        # damage built during `on_hit` is the damage rolled at `on_damage_roll`.
+        lines.append(f"    {name}._bind(frame)")
+    for name in owned_bags:
+        lines.append(f"    self.{name}.clear()")
+    # `RoundContext` and its kin carry one field or none, and `def f(self, *,)`
+    # is a syntax error rather than an empty keyword list.
+    signature = "self, *, " + ", ".join(parameters) if parameters else "self"
+    body = "\n".join(lines)
+    source = f"def reopen({signature}) -> None:\n{body}\n"
+    exec(source, namespace)  # noqa: S102 — built here from this class's own
+    # field names, which come from the class body and never from input.
+    reopen: Callable[..., None] = namespace["reopen"]  # type: ignore[assignment]
+    reopen.__qualname__ = f"{made.__name__}.reopen"
+    reopen.__doc__ = (
+        f"Rebind this pooled {made.__name__} to a new event. Every field it "
+        "does not default must be named; see `Context.reopen`."
+    )
+    return reopen
 
 
 @_context
@@ -615,6 +721,26 @@ class Context:
 
     _frame: _Frame = field(default_factory=_Frame, repr=False)
     _pending: list[tuple[Combatant, Effect]] = field(default_factory=list, repr=False)
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        """Leave every subclass holding a `reopen()` that must be replaced.
+
+        `reopen()` is compiled per class by `@_context`, so a context class the
+        decorator never saw would otherwise inherit the base's compiled
+        version — which takes no fields and would silently leave the subclass's
+        own fields holding the previous event's values. Installing the raising
+        body here, before the decorator runs, makes that class fail loudly on
+        first use instead. `@_context` overwrites it a moment later; a subclass
+        that declares its own `reopen` keeps it.
+        """
+        # Named rather than zero-argument `super()` — and `noqa`, because UP008
+        # asks for the zero-argument form and it is wrong here: `@_context`
+        # re-creates this class to add slots, so the `__class__` cell a bare
+        # `super()` closes over points at the class the decorator threw away,
+        # and every subclass raises `TypeError` at class-creation time.
+        super(Context, cls).__init_subclass__(**kwargs)  # noqa: UP008
+        if "reopen" not in cls.__dict__:
+            cls.reopen = _uncompiled_reopen  # type: ignore[method-assign]
 
     def __post_init__(self) -> None:
         self._frame.owner = type(self).__name__
@@ -678,46 +804,26 @@ class Context:
         """Rebind a pooled context to a new event and clear what it accumulated.
 
         The reuse primitive behind DESIGN.md § Levers' "contexts reset and
-        reused per attack rather than allocated". It writes through
-        `object.__setattr__` because the lock is for features, not for the
-        engine that owns the object — and it names every field it is given, so
-        a typo here is an `AttributeError` rather than a field silently left
-        holding the previous attack's value.
+        reused per attack rather than allocated". It writes through the slot
+        descriptors because the lock is for features, not for the engine that
+        owns the object — and it **demands every field the context does not
+        default**, so a pooled `HitContext` rebound with a new attacker and no
+        new defender is a `TypeError` rather than an attack on the previous
+        target. Nothing of the previous event survives by omission: defaulted
+        fields go back to their defaults, bags this context created are cleared
+        in place, and a bag it was handed is one of the fields that must be
+        named and is rebound rather than cleared — clearing the caller's
+        freshly built damage would be the pool eating the attack.
 
-        Nothing of the previous event survives by omission: it **demands** every
-        field the context does not default — a pooled `HitContext` rebound with
-        a new attacker and no new defender would otherwise be an attack on the
-        previous target — and resets the defaulted ones. Bags this context
-        created are cleared in place, since the point of the pool is not to
-        allocate; a bag it was handed belongs to whoever made it, is therefore
-        one of the fields that must be named, and is rebound rather than
-        cleared. Clearing the caller's freshly built damage would be the pool
-        eating the attack.
+        **Every context class overrides this with a compiled version of
+        itself** (`_make_reopen`), whose signature is the field list, so the
+        two guarantees above are enforced by Python's argument binding rather
+        than by set arithmetic on the hot path. This declaration is the
+        documented contract those compiled functions satisfy; the body it
+        delegates to only ever runs for a class that escaped `@_context`, and
+        `__init_subclass__` is what makes sure such a class reaches it.
         """
-        unknown = sorted(set(fields) - self._field_names)
-        if unknown:
-            raise AttributeError(
-                f"{type(self).__name__} has no field {unknown[0]!r} to rebind"
-            )
-        missing = [name for name in self._required_fields if name not in fields]
-        if missing:
-            raise AttributeError(
-                f"reopening a {type(self).__name__} needs every field it does "
-                f"not default, and {missing} were not given. Whatever is not "
-                "named here would still be the previous event's."
-            )
-        for name, value in fields.items():
-            object.__setattr__(self, name, value)
-        for name, default in self._defaulted_fields:
-            if name not in fields:
-                object.__setattr__(self, name, default)
-        for name in self._owned_bags:
-            if name not in fields:
-                bag: _Bag = getattr(self, name)
-                bag.clear()
-        self._frame.reset()
-        self._pending.clear()
-        self._bind_bags()
+        _uncompiled_reopen(self, **fields)
 
     # -- what a feature may do -----------------------------------------------
 
@@ -849,6 +955,23 @@ class MitigationLedger(_Bag):
     def vulnerable(self, damage_type: DamageType) -> None:
         self._acting_source("ctx.add_vulnerability()")
         self._vulnerable.add(damage_type)
+
+    @property
+    def untouched(self) -> bool:
+        """True when no handler recorded anything — the ordinary hit.
+
+        Most damage in a fight meets no resistance, no reduction and no
+        halving, and `engine/damage.py` reads this to skip the resolution order
+        rather than walk five empty collections per hit (w0i). It is a
+        statement about the ledger, not a step of the order.
+        """
+        return not (
+            self._resist
+            or self._immune
+            or self._vulnerable
+            or self._reductions
+            or self._halvings
+        )
 
     def reduce(self, dice: str | Dice | None, flat: int) -> Modifier:
         source = self._acting_source("ctx.reduce()")
