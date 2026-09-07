@@ -666,5 +666,33 @@ are not rediscovered:
   `w1a`'s list — but it means the number above is measured against a creature
   doing slightly more work than the finished one will.
 
+### What the review of the revision caught
+
+Three things, all of them consequences of the revision above rather than of the
+spike, fixed in the same branch:
+
+- **Compiling `reopen()` per class silently widened the blast radius of
+  forgetting `@_context`.** `Context.reopen`'s raising body was written as the
+  guard for a class that escaped the decorator, but `Context` is itself
+  decorated, so that body was overwritten and never ran: an undecorated
+  subclass inherited the base's *compiled* zero-parameter `reopen()`, which
+  resets the frame and the pending queue and leaves the subclass's own fields
+  holding the previous event's values — a pooled attack on the previous target,
+  with no error anywhere. `Context.__init_subclass__` now installs the raising
+  body on every subclass before the decorator runs, so the class that skipped
+  the decorator is the one left holding it. Class-creation time only; nothing
+  on the hot path.
+- **`DamagePart`'s docstring claimed `on_crit()` was the only place the
+  doubling happens**, which stopped being true when `roll_damage` inlined
+  `dice.doubled()` to avoid allocating a doubled part per contribution per
+  crit. The flagship structural invariant is not one to document by a sentence
+  that is no longer true; both sides now say which caller is which and why.
+- **`mitigate()`'s `untouched` fast path skipped the floor-at-zero clamp.** The
+  shortcut is the identity for every step the ledger drives, but the clamp is
+  not one of those — `DamagePart.flat` is a signed `int` and nothing rejects a
+  negative one, so a contribution that subtracts more than the hit deals would
+  arrive at `resolve_damage` as negative damage, which is temporary hit points
+  granted by a sword. One comparison, no measurable cost (31,452/sec after).
+
 Sources: DESIGN.md § Performance, § The spike must be pessimistic, § Levers,
 § The benchmark gate, § Condition language; ROADMAP w0i, w1a, w1f, w2e, w3i.

@@ -207,8 +207,11 @@ class DamagePart:
     on a critical hit and flat bonuses never do**, so a feature that adds `2d6`
     of Sneak Attack and a feature that adds `+2` of Rage damage get the crit
     rule right without either author knowing there is a crit rule. `on_crit()`
-    is the only place the doubling happens, and `Dice.doubled()` is the only
-    thing it calls.
+    is the readable statement of that rule and the method a contract test pins
+    it by; `Dice.doubled()` is the only thing it calls, and it is the only
+    thing the engine calls too — `engine.damage.roll_damage()` inlines the same
+    doubling rather than allocating a doubled part per contribution per crit
+    (w0i), which makes it the one caller with a reason not to go through here.
 
     `damage_type` of `None` means "the same type as the attack this rides on" —
     Sneak Attack's d6s are the dagger's piercing — which is a real rule rather
@@ -560,6 +563,24 @@ def _locked_setattr(self: object, name: str, value: object) -> NoReturn:
     )
 
 
+def _uncompiled_reopen(self: object, **fields: object) -> NoReturn:
+    """The `reopen()` a context class that escaped `@_context` is left holding.
+
+    It exists as a free function because it has to be installed on every
+    subclass *before* the decorator runs (`Context.__init_subclass__`), and
+    because the alternative is worse than an error: a class the decorator never
+    saw would otherwise inherit `Context`'s own compiled `reopen()`, which takes
+    no fields, resets the frame and the pending queue, and leaves every field
+    the subclass declared holding the previous event's values.
+    """
+    raise EngineAssemblyError(
+        f"{type(self).__name__} has no compiled reopen(). Every context "
+        "class is built by the @_context decorator, which generates one "
+        "from the field list; a class that reached here was declared some "
+        "other way."
+    )
+
+
 @dataclass_transform(frozen_default=True, kw_only_default=True, eq_default=False)
 def _context(cls: type[_T]) -> type[_T]:
     """Make a context class: frozen, slotted, keyword-only, identity-compared.
@@ -701,6 +722,26 @@ class Context:
     _frame: _Frame = field(default_factory=_Frame, repr=False)
     _pending: list[tuple[Combatant, Effect]] = field(default_factory=list, repr=False)
 
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        """Leave every subclass holding a `reopen()` that must be replaced.
+
+        `reopen()` is compiled per class by `@_context`, so a context class the
+        decorator never saw would otherwise inherit the base's compiled
+        version — which takes no fields and would silently leave the subclass's
+        own fields holding the previous event's values. Installing the raising
+        body here, before the decorator runs, makes that class fail loudly on
+        first use instead. `@_context` overwrites it a moment later; a subclass
+        that declares its own `reopen` keeps it.
+        """
+        # Named rather than zero-argument `super()` — and `noqa`, because UP008
+        # asks for the zero-argument form and it is wrong here: `@_context`
+        # re-creates this class to add slots, so the `__class__` cell a bare
+        # `super()` closes over points at the class the decorator threw away,
+        # and every subclass raises `TypeError` at class-creation time.
+        super(Context, cls).__init_subclass__(**kwargs)  # noqa: UP008
+        if "reopen" not in cls.__dict__:
+            cls.reopen = _uncompiled_reopen  # type: ignore[method-assign]
+
     def __post_init__(self) -> None:
         self._frame.owner = type(self).__name__
         self._bind_bags()
@@ -777,15 +818,12 @@ class Context:
         **Every context class overrides this with a compiled version of
         itself** (`_make_reopen`), whose signature is the field list, so the
         two guarantees above are enforced by Python's argument binding rather
-        than by set arithmetic on the hot path. This body is what a context
-        class that somehow escaped `@_context` would run, and it says so.
+        than by set arithmetic on the hot path. This declaration is the
+        documented contract those compiled functions satisfy; the body it
+        delegates to only ever runs for a class that escaped `@_context`, and
+        `__init_subclass__` is what makes sure such a class reaches it.
         """
-        raise EngineAssemblyError(
-            f"{type(self).__name__} has no compiled reopen(). Every context "
-            "class is built by the @_context decorator, which generates one "
-            "from the field list; a class that reached here was declared some "
-            "other way."
-        )
+        _uncompiled_reopen(self, **fields)
 
     # -- what a feature may do -----------------------------------------------
 

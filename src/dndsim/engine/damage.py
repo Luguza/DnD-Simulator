@@ -261,10 +261,13 @@ def mitigate(
     """
     if ledger.untouched:
         # The ordinary hit: nothing was recorded, so every step below is the
-        # identity. Spelled as one question rather than five empty loops
-        # because it is the common case on the hottest path (w0i) — and it is
-        # the *order* that lives here, not an optimisation of it.
-        return Mitigated(amounts=amounts, total=sum(amounts.values()))
+        # identity — every step but the clamp, which is not about the ledger
+        # and so has to survive the shortcut. Spelled as one question rather
+        # than five empty loops because it is the common case on the hottest
+        # path (w0i) — and it is the *order* that lives here, not an
+        # optimisation of it.
+        total = sum(amounts.values())
+        return Mitigated(amounts=amounts, total=total if total > 0 else 0)
     resisted: dict[DamageType, int] = {}
     for damage_type, amount in amounts.items():
         if damage_type in ledger.immunities:
