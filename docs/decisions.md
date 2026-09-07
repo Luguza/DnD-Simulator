@@ -538,6 +538,28 @@ attack, because four of the twenty-five listen on the victim's side.
   have applied at least once, read off the no-op detector's own counter, and
   the fixture set was corrected twice when that test found conditions which
   could never hold in this build.
+- **The turn loop charges the XPHB action costs, and review found out why that
+  matters.** `_TURN_COSTS` gives Rage, Second Wind and Healing Word a Bonus
+  Action and the Attack action an Action, and `_offered()` filters the list to
+  what the economy can still pay. An earlier version charged all four an Action,
+  which interacted badly with the entry order: `second_wind` sits above `attack`
+  and its `if:` is `self.hp_pct < 0.5`, so the first turn the hero dropped under
+  half it spent its Action on Second Wind and — since nothing in the spike heals
+  — stayed under half and never swung again for the rest of that encounter.
+  Measured before the fix: it fired in about 0.4% of encounters, almost always
+  on the last round, costing **21 of 30,000 resolutions a run (0.07%)**. That is
+  an order of magnitude under the 0.2% run-to-run spread, so the *rate* was
+  never in question. What was in question is the encounter's shape: 1 seed in 60
+  resolved something other than 30 attacks, and 3 in 60 made `measure(5, 1)`
+  return something other than 150 — so the exact-integer assertions in
+  `tests/bench/test_spike.py` were facts about seed 0 rather than about the
+  configuration. They are now invariants: 12,000 encounters across 60 seeds all
+  resolve exactly 30, `test_every_encounter_resolves_the_same_number_of_attacks`
+  holds the line on six of them, and
+  `test_a_wounded_hero_takes_second_wind_and_still_swings` checks the mechanism
+  directly without waiting on the dice. **A benchmark whose unit of work depends
+  on the dice cannot have exact-integer assertions written against it**, which
+  is the general lesson and the reason this was worth fixing for 0.07%.
 
 ### The revision, and what each step bought
 

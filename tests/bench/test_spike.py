@@ -46,6 +46,7 @@ from dndsim.tools.spike import (
     ENEMIES,
     ROUNDS_PER_ENCOUNTER,
     Spike,
+    _hero_turn,
     build_spike,
     measure,
     measure_startup,
@@ -200,6 +201,51 @@ def test_an_encounter_resolves_attacks_in_both_directions() -> None:
     assert resolutions == _RESOLUTIONS_PER_ENCOUNTER == 30
     assert spike.enemies[0].hp < spike.enemies[0].max_hp, "the hero never landed one"
     assert spike.hero.hp < spike.hero.max_hp, "the hero was never hit back"
+
+
+def test_every_encounter_resolves_the_same_number_of_attacks() -> None:
+    """The count above is a property of the *shape* of the encounter — five
+    rounds, three swings, three enemies — and it has to hold on every seed, not
+    on the one the assertion was written against.
+
+    What can break it is an entry above `attack` in the list taking the hero's
+    Action, since nothing in the spike heals and a policy that stops swinging
+    stays stopped: the encounter then quietly resolves three fewer attacks per
+    remaining round, and the exact-integer assertions elsewhere in this file
+    become a fact about seed 0. `_TURN_COSTS` is what prevents it, by charging
+    the three Bonus Action entries a Bonus Action.
+    """
+    for seed in range(6):
+        spike, rng = build_spike(seed)
+        counts = {run_encounter(spike, rng) for _ in range(40)}
+
+        assert counts == {_RESOLUTIONS_PER_ENCOUNTER}, (
+            f"seed {seed} resolved {sorted(counts)} attacks across its "
+            "encounters; the count is supposed to be a property of the shape"
+        )
+
+
+def test_a_wounded_hero_takes_second_wind_and_still_swings() -> None:
+    """The same invariant from the other side, without waiting on the dice.
+
+    `second_wind` sits above `attack` in the list and its `if:` is
+    `self.hp_pct < 0.5`, so a hero under half is supposed to take it *and*
+    attack: Second Wind is a Bonus Action in the 2024 rules and the Attack
+    action is an Action. Rage is set here because it is the other Bonus Action
+    entry and it outranks this one — from round two on it has already fired,
+    which is when the hero is wounded enough for this entry to be reachable.
+    """
+    spike, rng = build_spike(0)
+    spike.reset()
+    spike.state.raging = True
+    spike.hero.hp = spike.hero.max_hp // 4
+
+    resolutions = _hero_turn(spike, rng, 1)
+
+    assert not spike.economy.bonus, "the wounded hero never took Second Wind"
+    assert resolutions == ATTACKS_PER_TURN, (
+        "a Bonus Action entry ate the hero's Attack action"
+    )
 
 
 def test_the_hero_walks_to_the_target_its_policy_chose() -> None:

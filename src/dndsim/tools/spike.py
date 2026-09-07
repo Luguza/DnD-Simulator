@@ -152,13 +152,57 @@ the measured path — and no bigger, because the enemies exist to make the hero'
 four defensive sources run rather than to end the encounter. `RageResistance`
 halves it, which is most of why 70 hp lasts five rounds."""
 
-_TURN_ACTIONS: Final = frozenset({"rage", "second_wind", "healing_word", "attack"})
-"""What the turn loop offers. The other four entries are riders and reactions,
-which are never offered as a turn action — they are `gate:` answers given
-inside an event (DESIGN.md § APL: "one flat ordered list; the engine filters to
-currently-offered ids")."""
+_TURN_COSTS: Final = MappingProxyType(
+    {
+        "rage": ActionCost.BONUS_ACTION,
+        "second_wind": ActionCost.BONUS_ACTION,
+        "healing_word": ActionCost.BONUS_ACTION,
+        "attack": ActionCost.ACTION,
+    }
+)
+"""What the turn loop offers, and what each one costs to take.
+
+The other four entries are riders and reactions, which are never offered as a
+turn action — they are `gate:` answers given inside an event (DESIGN.md § APL:
+"one flat ordered list; **the engine filters to currently-offered ids**").
+
+**The costs are the XPHB ones, and that is load-bearing rather than flavour.**
+Rage, Second Wind and Healing Word are all Bonus Actions in the 2024 rules; only
+the Attack action is an Action. An earlier version of this file charged all four
+an Action, which made the offer filter wrong in a way that quietly ate the
+measurement: `second_wind`'s entry sits *above* `attack` in the list and its
+`if:` is `self.hp_pct < 0.5`, so the first turn the hero dropped under half it
+spent its Action on Second Wind — and, since nothing here heals, stayed under
+half and never swung again for the rest of the encounter. It cost 21 of 30,000
+resolutions a run, which is well under the noise floor and is not why this is
+fixed; it is fixed because an encounter whose resolution count depends on the
+dice is one the exact-integer assertions in `tests/bench/test_spike.py` can only
+hold at the seed they were written against."""
 
 _MAX_ACTIONS_PER_TURN: Final = 4
+
+
+def _offer_table() -> tuple[frozenset[str], ...]:
+    """The four possible offers, precomputed at import.
+
+    There are two bits of economy the turn loop can be in — Action spent or
+    not, Bonus Action spent or not — so there are four answers `_offered()` can
+    give, and building the set per decision would put an allocation on a path
+    that is asked up to four times a turn for nothing.
+    """
+    return tuple(
+        frozenset(
+            action
+            for action, cost in _TURN_COSTS.items()
+            if (cost is ActionCost.ACTION and has_action)
+            or (cost is ActionCost.BONUS_ACTION and has_bonus)
+        )
+        for has_action in (False, True)
+        for has_bonus in (False, True)
+    )
+
+
+_OFFERS: Final = _offer_table()
 
 
 class SpikeEconomy:
@@ -414,25 +458,28 @@ def _hero_turn(spike: Spike, rng: Rng, number: int) -> int:
 
 
 def _offered(spike: Spike) -> frozenset[str]:
-    """The ids currently on the table, which is what the APL filters against."""
+    """The ids currently on the table, which is what the APL filters against.
+
+    "The engine filters to currently-offered ids" (DESIGN.md § APL), and what
+    makes an id offered is that the economy can still pay for it — so this is
+    `_TURN_COSTS` read through `SpikeEconomy`, indexed rather than rebuilt.
+    """
     economy = spike.economy
-    if economy.action:
-        return _TURN_ACTIONS
-    return frozenset({"rage"}) if economy.bonus else frozenset()
+    return _OFFERS[2 * economy.action + economy.bonus]
 
 
 def _execute(spike: Spike, entry: Entry, rng: Rng) -> int:
     """Take the offer the APL accepted. Returns attack resolutions."""
     action = entry.action
-    if action == "rage":
-        spike.state.raging = True
-        spike.economy.spend(ActionCost.BONUS_ACTION)
-        return 0
     if action != "attack":
-        # second_wind, healing_word, dodge: an action is spent and the turn
-        # moves on. What each *does* is w2b's, and none of it is on the path
-        # the budget is about.
-        spike.economy.spend(ActionCost.ACTION)
+        if action == "rage":
+            spike.state.raging = True
+        # rage flips the flag its dependent riders read; second_wind and
+        # healing_word do nothing at all. What each *does* is w2b's and none of
+        # it is on the path the budget is about — what each *costs* is this
+        # file's, because the economy is what decides whether the hero still
+        # gets to swing this turn (`_TURN_COSTS`).
+        spike.economy.spend(_TURN_COSTS[action])
         return 0
 
     namespace = spike.apl.namespace
