@@ -26,7 +26,7 @@ import pytest
 
 from dndsim.core.dice import Dice
 from dndsim.core.errors import EngineAssemblyError, PhaseError
-from dndsim.core.timeline import TimeKey, TurnPhase
+from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.hooks import contexts as contexts_module
 from dndsim.hooks.contexts import (
     AbilityCheckContext,
@@ -52,13 +52,24 @@ from dndsim.rules.enums import Ability, DamageType, Outcome
 BASE_CONTEXTS = {"Context", "D20TestContext"}
 
 
+def seat(n: int) -> InitiativeKey:
+    """The nth place in an order where everyone rolled the same initiative.
+
+    A context only ever carries a place; the tie-break rule itself is under test
+    in `tests/contract/test_timeline.py`.
+    """
+    return InitiativeKey(
+        initiative=20, dexterity=10, player_character=True, tiebreak=n / 10
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class FakeCreature:
     """The narrowest thing that satisfies `Combatant` — which is the point of
     the protocol being narrow."""
 
     name: str
-    initiative_index: int
+    initiative: InitiativeKey
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,8 +82,8 @@ class FakeEffect:
     name: str
 
 
-ROGUE = FakeCreature(name="rogue", initiative_index=0)
-DUMMY = FakeCreature(name="dummy", initiative_index=1)
+ROGUE = FakeCreature(name="rogue", initiative=seat(0))
+DUMMY = FakeCreature(name="dummy", initiative=seat(1))
 DAGGER = FakeWeapon(name="dagger")
 
 
@@ -640,7 +651,7 @@ def test_two_identical_contexts_are_not_the_same_event() -> None:
 
 
 def test_a_context_carries_the_clock_rather_than_a_copy_of_it() -> None:
-    time = TimeKey(round=2, initiative_index=0, phase=TurnPhase.START)
+    time = TimeKey(round=2, initiative=seat(0), phase=TurnPhase.START)
     ctx = TurnContext(creature=ROGUE, time=time)
     assert ctx.time is time
 

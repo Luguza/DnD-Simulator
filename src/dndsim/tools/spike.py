@@ -60,7 +60,7 @@ from typing import Final
 from dndsim.core.dice import Dice
 from dndsim.core.geometry import Cell, distance_ft, route, steps_within
 from dndsim.core.rng import MersenneRng, Rng, mix
-from dndsim.core.timeline import TimeKey, TurnPhase
+from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
 from dndsim.hooks.contexts import MoveContext, TurnContext
@@ -141,6 +141,22 @@ measured, rarely enough to still be a reaction rather than a rider."""
 _ENEMY_HP: Final = 1_000
 _HERO_START: Final = Cell(0, 0)
 _ENEMY_STARTS: Final = (Cell(5, 0), Cell(0, 5), Cell(7, 6))
+
+
+def _seat(place: int) -> InitiativeKey:
+    """The `place`th key in a fixed order, hero first.
+
+    The spike never rolls initiative — it runs the hero's turn and then the
+    enemies' — so the keys only have to be distinct and ordered. Tying the roll
+    and separating them on the draw is the cheapest way to say that; `w2c` draws
+    the real ones (`core/timeline.py`).
+    """
+    return InitiativeKey(
+        initiative=20, dexterity=10, player_character=place == 0, tiebreak=place / 10
+    )
+
+
+_HERO_SEAT: Final = _seat(0)
 """Spread out, so that focus-firing the lowest-hp enemy means walking."""
 
 _MAUL: Final = Weapon(
@@ -300,7 +316,7 @@ def build_spike(seed: int = 0, *, pooled: bool = True) -> tuple[Spike, Rng]:
         ),
         position=_HERO_START,
         weapon=GREATSWORD,
-        initiative_index=0,
+        initiative=_HERO_SEAT,
     )
     enemies = tuple(
         Creature(
@@ -310,7 +326,7 @@ def build_spike(seed: int = 0, *, pooled: bool = True) -> tuple[Spike, Rng]:
             ),
             position=start,
             weapon=_MAUL,
-            initiative_index=index + 1,
+            initiative=_seat(index + 1),
         )
         for index, start in enumerate(_ENEMY_STARTS)
     )
@@ -443,7 +459,7 @@ def _hero_turn(spike: Spike, rng: Rng, number: int) -> int:
     spike.economy.turn_started()
     turn = TurnContext(
         creature=hero,
-        time=TimeKey(round=number, initiative_index=0, phase=TurnPhase.START),
+        time=TimeKey(round=number, initiative=_HERO_SEAT, phase=TurnPhase.START),
     )
     hero.dispatch(ON_TURN_START, turn)
     turn.close()

@@ -27,7 +27,7 @@ from dndsim.core.errors import (
     FeatureDeclarationError,
     PhaseError,
 )
-from dndsim.core.timeline import Reset, ResetManager, TimeKey, TurnPhase
+from dndsim.core.timeline import InitiativeKey, Reset, ResetManager, TimeKey, TurnPhase
 from dndsim.hooks.contexts import (
     AttackRollContext,
     Context,
@@ -48,16 +48,23 @@ from dndsim.hooks.source import HookSource
 from dndsim.rules.enums import ActionCost, DamageType, Outcome
 
 
+def seat(n: int) -> InitiativeKey:
+    """The nth place in an order where everyone rolled the same initiative."""
+    return InitiativeKey(
+        initiative=20, dexterity=10, player_character=True, tiebreak=n / 10
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class FakeCreature:
     """The narrowest thing that satisfies `Combatant`."""
 
     name: str
-    initiative_index: int = 0
+    initiative: InitiativeKey = seat(0)
 
 
-ATTACKER = FakeCreature("attacker", 0)
-DEFENDER = FakeCreature("defender", 1)
+ATTACKER = FakeCreature("attacker", seat(0))
+DEFENDER = FakeCreature("defender", seat(1))
 
 
 def hit_context() -> HitContext:
@@ -71,7 +78,7 @@ def hit_context() -> HitContext:
 
 
 def turn_context() -> TurnContext:
-    return TurnContext(creature=ATTACKER, time=TimeKey(1, 0, TurnPhase.START))
+    return TurnContext(creature=ATTACKER, time=TimeKey(1, seat(0), TurnPhase.START))
 
 
 def applied_counts(dispatcher: Dispatcher) -> dict[str, int]:

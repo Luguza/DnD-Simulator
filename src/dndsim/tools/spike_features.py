@@ -220,7 +220,7 @@ class BloodiedBonus(Fixture):
     """Applies to a hit that is already big — the sometimes-true rider.
 
     A real one would read the defender's hit points; the `Combatant` protocol
-    contexts hand out carries `name` and `initiative_index` and nothing else
+    contexts hand out carries `name` and `initiative` and nothing else
     yet (`hooks/contexts.py`, w0f), and widening it is `w1a`'s. So the
     condition is asked of the bag instead, which costs the same and, unlike a
     comparison of two fixed initiative seats, is **sometimes true**: a rider

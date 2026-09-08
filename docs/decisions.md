@@ -103,11 +103,37 @@ re-litigated by the next agent through the area.
 
 ## w0d — timeline
 
-- There is no clock *object*. `TimeKey(round, initiative_index, phase)` is a
-  position and the turn loop (`engine/turn.py`, w1f) owns the current one; a
-  second mutable clock would be a second source of truth for the one fact the
-  simulation is ordered by. Rounds are 1-based, an initiative index is a seat
-  (0 acts first), both validated.
+- There is no clock *object*. `TimeKey(round, initiative, phase)` is a position
+  and the turn loop (`engine/turn.py`, w1f) owns the current one; a second
+  mutable clock would be a second source of truth for the one fact the
+  simulation is ordered by. Rounds are 1-based and validated.
+- **`InitiativeKey` is a place in the order, never a seat index**, because the
+  population changes mid-encounter: a summon arrives, a corpse leaves, and a
+  dense index renumbers everyone below the change, so every already-resolved
+  `Expiry` starts naming a different creature's turn. The key is derived from
+  the roll and the roller, never from the roster — an arrival or a death moves
+  nobody, and a key stays a valid position after its creature is gone (the sweep
+  compares, it never looks the anchor up).
+- The **comparison is the tie-break rule**: higher initiative, then higher
+  Dexterity *score* (not modifier — a score below 1 raises, which is where
+  passing the modifier shows up), then PC over monster, then lowest `tiebreak`,
+  then shortest `after` chain. Only the first is a quotation; XPHB leaves ties
+  to the table, so the rest are a stated house rule chosen for being total,
+  deterministic and seed-reproducible. `tiebreak` is **one uniform draw from
+  `[0, 1)` per creature**, not a position in a shuffle of the entrants: a
+  shuffle has no honest place for a latecomer, and redrawing it to seat one
+  fairly moves everybody already in the order. w2c draws it as
+  `(rng.roll(2**32) - 1) / 2**32` — `Rng`'s primitive stays a scriptable die
+  face, `2**32` is the widest die `PcgRng.roll` can serve (one 32-bit word per
+  face), and the quotient is dyadic so it is exact in binary. A draw outside
+  `[0, 1)` raises, which is also what rejects NaN — one NaN and the order stops
+  being an order.
+- **`after: tuple[int, ...]` is the summon chain**, empty for anything that
+  rolled for itself, appended to by `key.sharing_turn()`. It is a separate field
+  because no single number can express XPHB's "shares your Initiative count …
+  takes its turn immediately after yours" — no draw is guaranteed to fall
+  between two others, but a chain step always does, and it nests, so a summon's
+  own summon lands behind it.
 - `TurnPhase` values are **ordinals, not lowercase strings** — a phase is a
   position on a clock and `end` sorts before `start` alphabetically. Still a
   plain `Enum`, so `phase == 0` stays a mypy error; the log serialises
@@ -121,11 +147,13 @@ re-litigated by the next agent through the area.
 - **"Your next turn" is the next turn, not the next boundary of that phase.**
   Said on your own turn it means a round from now, so `resolve()` counts the
   anchor's turn in the current round only when it has not begun
-  (`anchor > now.initiative_index`).
-- `Duration` anchors on an initiative **index**, not a creature, because `core/`
-  sits below `creatures/`. `creatures/effects.py` (w1c) passes
-  `creature.initiative_index` — `DESIGN.md`'s `until_end_of_next_turn_of(c)` one
-  layer up.
+  (`anchor > now.initiative`). The same comparison handles a mid-encounter
+  arrival with no special case: seated after the current actor it acts this
+  round, seated before it has already missed its turn.
+- `Duration` anchors on an `InitiativeKey`, not a creature, because `core/` sits
+  below `creatures/`. `creatures/effects.py` (w1c) passes `creature.initiative`
+  — `DESIGN.md`'s `until_end_of_next_turn_of(c)` one layer up. Anchoring on the
+  key is also what lets a deadline outlive the creature it named.
 - Two deliberate omissions: no multi-round anchor (every W1 duration ends one
   turn ahead; a "1 minute" spell wants an additive `turns` field in W4), and no
   "permanent" duration — Prone lasts until you stand up, which is no deadline,
@@ -232,7 +260,7 @@ re-litigated by the next agent through the area.
 - **Participants are `Protocol`s, not imports**, because `hooks/` sits below
   `creatures/` and w0f ran before the first `Creature` existed. `Combatant`,
   `Weapon`, `Spell`, `Effect` and `Cell` declare only what the design had
-  settled (`Duration` anchors on `initiative_index`; the log needs a name); one
+  settled (`Duration` anchors on `creature.initiative`; the log needs a name); one
   that grows to mirror `Creature` is a second domain model.
   **w0g2 owes a contract test that its real classes satisfy them.**
 - Nothing here rolls or applies anything — `engine/damage.py` (w1e) owns the
@@ -679,7 +707,7 @@ are not rediscovered:
 - **The `Combatant` and `Weapon` protocols are too narrow for real features.**
   No `on_hit` handler can read the defender's hit points or ask whether the
   weapon is Heavy — `hooks/contexts.py` gives them `name` and
-  `initiative_index`. The fixtures work around it and say so in place. `w1a`
+  `initiative`. The fixtures work around it and say so in place. `w1a`
   and `w1f` own widening them, and the W3 paper pass (`w3e`) should confirm the
   shape before ~400 features are written against it.
 - **Derived stats are recomputed per attack.** `proficiency_bonus` walks the

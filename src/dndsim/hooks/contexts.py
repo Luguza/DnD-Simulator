@@ -50,7 +50,7 @@ roadmap builds contexts (w0f) two tasks before the first `Creature` exists
 (w0g2). A context therefore names what it carries through narrow `Protocol`s:
 `Combatant`, `Weapon`, `Spell`, `Effect`, `Cell`. Each declares only what is
 already settled elsewhere in the design (`Duration` anchors on
-`creature.initiative_index`; the log and provenance need a name), and each is
+`creature.initiative`; the log and provenance need a name), and each is
 meant to *stay* narrow — a protocol that grows to mirror `Creature` is a second
 domain model, and the check that keeps it honest is w0g2 asserting its real
 classes satisfy these.
@@ -87,7 +87,7 @@ from typing import (
 
 from dndsim.core.dice import Dice
 from dndsim.core.errors import EngineAssemblyError, PhaseError
-from dndsim.core.timeline import TimeKey
+from dndsim.core.timeline import InitiativeKey, TimeKey
 from dndsim.hooks.registry import Phase
 from dndsim.rules.enums import Ability, Condition, DamageType, Outcome
 
@@ -146,18 +146,20 @@ __all__ = [
 
 
 class Combatant(Protocol):
-    """A creature as a context needs to know it: something with a seat and a name.
+    """A creature as a context needs to know it: a place in the order, and a name.
 
-    `initiative_index` is here because `core/timeline.py` already builds on it —
-    `Duration` anchors on a seat in the initiative order rather than on a
-    creature, precisely so that `core/` need not know what a creature is.
+    `initiative` is here because `core/timeline.py` already builds on it —
+    `Duration` anchors on an `InitiativeKey` rather than on a creature, precisely
+    so that `core/` need not know what a creature is. It is a key and never a
+    seat index, so a creature entering or leaving the encounter moves nobody
+    else (`core/timeline.py`, docs/decisions.md § w0d).
     """
 
     @property
     def name(self) -> str: ...
 
     @property
-    def initiative_index(self) -> int: ...
+    def initiative(self) -> InitiativeKey: ...
 
 
 class Weapon(Protocol):

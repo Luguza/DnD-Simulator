@@ -37,7 +37,7 @@ import pytest
 from dndsim.core.dice import Dice
 from dndsim.core.geometry import Cell
 from dndsim.core.timeline import TimeKey, TurnPhase
-from dndsim.creatures.creature import Creature
+from dndsim.creatures.creature import UNSEATED, Creature
 from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
 from dndsim.hooks.contexts import Combatant, TurnContext
 from dndsim.hooks.contexts import Weapon as WeaponProtocol
@@ -93,8 +93,8 @@ def test_a_creature_is_the_combatant_a_context_carries() -> None:
     checks, and the membership assertion is what fails loudly if the protocol
     grows a member `Creature` does not have."""
     combatant: Combatant = creature(name="rogue")
-    assert protocol_members(Combatant) == {"name", "initiative_index"}
-    assert (combatant.name, combatant.initiative_index) == ("rogue", 0)
+    assert protocol_members(Combatant) == {"name", "initiative"}
+    assert (combatant.name, combatant.initiative) == ("rogue", UNSEATED)
 
 
 def test_a_real_weapon_is_the_weapon_a_context_carries() -> None:
@@ -342,7 +342,7 @@ class TurnCounter(HookSource):
 
 def turn_context(subject: Creature) -> TurnContext:
     return TurnContext(
-        creature=subject, time=TimeKey(1, subject.initiative_index, TurnPhase.START)
+        creature=subject, time=TimeKey(1, subject.initiative, TurnPhase.START)
     )
 
 

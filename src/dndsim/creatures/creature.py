@@ -25,7 +25,10 @@ the two numbers and the guarantee that they are the creature's own.
 Sources: DESIGN.md § Hook system, § Levers; ROADMAP w0g2, w1a.
 """
 
+from typing import Final
+
 from dndsim.core.geometry import Cell
+from dndsim.core.timeline import InitiativeKey
 from dndsim.creatures.stats import StatBlock, Weapon
 from dndsim.hooks.contexts import Context
 from dndsim.hooks.dispatch import Dispatcher
@@ -33,15 +36,28 @@ from dndsim.hooks.registry import HookSpec
 from dndsim.hooks.source import HookSource
 from dndsim.rules.enums import Ability, Size
 
-__all__ = ["Creature"]
+__all__ = ["UNSEATED", "Creature"]
+
+
+UNSEATED: Final = InitiativeKey(
+    initiative=0, dexterity=10, player_character=False, tiebreak=0.0
+)
+"""The place of a creature nobody has rolled initiative for yet.
+
+`engine/turn.py` (w2c) owns the roster and draws a real key per combatant at the
+top of an encounter; until then a creature needs *some* position for the clock
+to compare against, and every unseated creature sharing one is the honest
+statement that the order is not yet decided. Compare `position`, which has no
+default at all — that one would be a silently wrong fight rather than an
+undecided one."""
 
 
 class Creature:
     """One combatant: its numbers, where it stands, and what is attached to it.
 
     Satisfies the `Combatant` protocol `hooks/contexts.py` declares — `name` and
-    `initiative_index` — which is the contract `w0f` deferred to this task, and
-    the contract test that says so is the reason the protocol may stay narrow.
+    `initiative` — which is the contract `w0f` deferred to this task, and the
+    contract test that says so is the reason the protocol may stay narrow.
     """
 
     __slots__ = (
@@ -54,7 +70,7 @@ class Creature:
         "__weakref__",
         "dispatcher",
         "hp",
-        "initiative_index",
+        "initiative",
         "name",
         "position",
         "stats",
@@ -69,7 +85,7 @@ class Creature:
         stats: StatBlock,
         position: Cell,
         weapon: Weapon | None = None,
-        initiative_index: int = 0,
+        initiative: InitiativeKey = UNSEATED,
     ) -> None:
         # `position` has no default: two creatures defaulted onto the same cell
         # would be a fight in which everything is in everyone's reach and every
@@ -78,7 +94,7 @@ class Creature:
         self.stats = stats
         self.weapon = weapon
         self.position = position
-        self.initiative_index = initiative_index
+        self.initiative = initiative
         self.hp = stats.max_hp
         self.temp_hp = 0
         self.dispatcher = Dispatcher()

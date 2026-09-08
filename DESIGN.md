@@ -325,7 +325,7 @@ highest-leverage move available when ~630 units are written by different hands.
 
 ## Durations: one mechanism, three shapes
 
-A totally ordered clock, `TimeKey(round, initiative_index, phase)` where phase is
+A totally ordered clock, `TimeKey(round, initiative, phase)` where phase is
 `START`(0) or `END`(1) — a **Value Object** whose natural ordering *is* the
 timeline, so expiry is a comparison rather than bespoke arithmetic. `Duration` is
 a declarative **Value Object** too, with named constructors
@@ -346,6 +346,50 @@ That one flag covers all three hard cases:
 | **Rage** | `until_end_of_next_turn_of(self)`, plus `refresh()` from `on_declare_attack` / `on_damage_taken` / `on_forced_save` — recomputes against the current clock, so "next turn" slides forward |
 | **Reckless Attack** | `until_start_of_next_turn_of(self)` |
 | **Vex** | `until_end_of_next_turn_of(self)` **plus `charges=1`** keyed to a target id — whichever runs out first removes it |
+
+### Initiative is a key, not an index
+
+The middle field of `TimeKey` is an `InitiativeKey` — a creature's *place* in the
+order — because the population of an encounter changes while it runs. A summoned
+creature enters; a dead one leaves. A dense seat index renumbers everyone below
+the change, and every `Expiry` already resolved against the old numbering
+silently starts naming a different creature's turn. The key is derived from the
+roll and the roller and never from the roster, which gives three properties the
+clock depends on: an arrival or a death changes **no other creature's key**; a
+key stays a **valid position** after its creature is gone, so an effect anchored
+to something that died still ends when its turn would have come (the sweep
+compares, it never looks the anchor up); and the order stays **total**.
+
+The comparison *is* the tie-break rule, in order: higher initiative total, then
+higher Dexterity **score** (not modifier), then a PC before a monster, then the
+lowest `tiebreak`, then the shortest `after` chain. Only the first is a
+quotation. XPHB leaves a tie to the table
+("the DM decides the order"), which is not a decision a simulator can make ten
+thousand times a second; what it needs is a rule that is total, deterministic and
+reproducible from a seed, so the remaining three are a **stated house rule**.
+Handing ties to the party is a small systematic bias in the PCs' favour, constant
+across the builds being compared — and the opposite convention is a bias too.
+
+`tiebreak` is **one uniform draw from `[0, 1)` per creature**, not a position in
+a shuffle of the entrants — because a shuffle has no honest answer for a
+latecomer. It can only append the joiner last among the tied, and redrawing the
+shuffle to place it fairly moves everybody already in the order, which is the
+failure this whole type exists to prevent. An independent draw means a summon
+arriving in round 3 lands in the order having cost nobody else a redraw. Two
+equal draws are possible in principle — one encounter in ~2×10⁷ with twenty
+combatants at 2⁻³² granularity — and the consequence is two tied creatures
+ordered arbitrarily but still deterministically, which does not pay for a
+shuffle. `engine/turn.py` (w2c) draws it as `(rng.roll(2**32) - 1) / 2**32`, so
+`Rng`'s primitive stays a die face a golden test can script, and the quotient is
+a dyadic rational — exact in binary, round-trips through the event log.
+
+The one thing a single number cannot express is XPHB's summon rule: the spirit
+"shares your Initiative count, but it takes its turn immediately after yours",
+and no draw is guaranteed to fall between two others. So the chain is its own
+field, `after: tuple[int, ...]`, empty for anything that rolled for itself and
+appended to by `summoner.sharing_turn()`: for a shared draw `t`, `(t, ()) < (t,
+(0,)) < (t, (0, 0)) < (t, (1,))`, all still inside the count `t` won, and moving
+nobody.
 
 `Effect`, `Condition`, `Feature` and magic items are all `HookSource` subclasses
 carrying hooks identically. **One API shape for all four** — an agent who has
