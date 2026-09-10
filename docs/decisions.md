@@ -788,3 +788,153 @@ measure, which is the whole subject of this section.
 
 Sources: DESIGN.md § Performance, § The spike must be pessimistic, § Levers,
 § The benchmark gate, § Condition language; ROADMAP w0i, w1a, w1f, w2e, w3i.
+
+## w0g3 — the movement observer
+
+`engine/triggers.py`, the audience half of the opportunity attack, and
+`Dispatcher.responsive()` underneath it. The task was set in chat: *"make sure
+the opportunity attacks are handled efficiently with an observer strategy where
+all enemies in the room are notified on every 5 ft move action what the position
+is and where the designated square is of that move. they then decide if they
+want to use their reaction. we should also have a reaction apl."*
+
+### Why this is in W0 at all
+
+`w2c` owns the turn loop, opportunity attacks and the trigger audience, and W2
+has not started. What moved forward is the audience and nothing else, on the
+`w0g2` precedent: a spike that walks a grid but fires no trigger is a stub of
+the most flattering kind, because the distance queries are paid for and the
+provocation they exist to produce costs nothing. The same sentence that pulled
+`core/geometry.py` into W0 pulls this in behind it. What deliberately did **not**
+move is the opportunity attack itself — it is a Command, Commands are `w2b`'s,
+and DESIGN.md § Module layout draws that line for the reason it is worth
+keeping: *what can be done* versus *when you are asked*.
+
+### An observer, but not a broadcast
+
+The request as put is O(combatants x squares): everybody hears about every step.
+That is the pub-sub bus DESIGN.md rejects, priced per square. What is
+implemented has the same semantics and a different cost, and the reason it is
+allowed to is that every filter is on the *offer* rather than on the answer — a
+bystander is dropped only where it provably could not have acted:
+
+1. **Nothing attached to `on_leave_reach`.** One dict lookup on the creature's
+   own dispatch table. In a fight where one creature owns an opportunity attack,
+   this alone takes an audience of twenty down to one.
+2. **Every handler it has costs a reaction it has already spent.** Also asked of
+   the dispatcher, because the dispatcher is what owns the economy.
+3. **Further from the mover than its own reach plus the length of the route.**
+   A step is one square in Chebyshev whatever its direction, so no square of an
+   n-square route is more than 5n feet from where it started; a creature beyond
+   `reach + 5n` can never have the mover in reach and so can never be left.
+
+Filters 1 and 2 are `Dispatcher.responsive(spec)`, added for this. It is
+deliberately a **conservative over-approximation**: it may answer True where a
+dispatch would run nothing (one wasted dispatch) and never False where one would
+run something (a silently skipped reaction). That is why it asks about `costs`
+and not about `gate` or `once_per` — the gate is the policy question, needs a
+context that does not exist yet, and is the expensive one of the dispatcher's
+three; a spent `once_per` would be exact but buys a ledger lookup per handler
+for a case the reaction cost already covers.
+
+What falls out is broad phase once per move, narrow phase once per square per
+survivor. When the broad phase comes back empty — most moves in most fights —
+`watch_movement()` returns `None` rather than an empty watch, which is the
+caller's licence to assign the destination in one statement and pay nothing per
+square. An empty **Null Object** would have cost a call and a loop over nothing
+on the one path whose whole claim is that it is free.
+
+### Two orderings that are not free to get wrong
+
+**The offer is made from the square being left.** XPHB puts the reaction right
+before the creature leaves your reach, so `walk_provoking()` offers, then
+assigns the position — and `LeaveReachContext.origin` is where the mover is
+standing while the attack resolves. Resolve it a square late and a 5-foot reach
+finds the mover out of range about half the time, on a route that provoked
+correctly. This is why the stepping loop lives in `engine/triggers.py` next to
+the offer rather than at each call site: it is one rule, and a second copy of it
+is an off-by-one square nothing would catch.
+
+**Two watchers left by the same step are asked in initiative order**, sorted
+once per move rather than per square. Any order produces legal D&D; only a
+stated one produces the same fight twice from the same seed, and determinism is
+what `trace`, the goldens and every regression diff stand on.
+
+### Measured, not asserted
+
+The efficiency claim is checked as a **count**, in `tests/contract/test_triggers.py`:
+twenty combatants, one of them owning a movement observer, a six-square move —
+seven distance queries, being one broad-phase question for the creature that got
+past the dict lookup plus one per square for the same creature. A broadcast is
+120. The other nineteen never reach the geometry. A wall-clock assertion of the
+same claim on a shared runner fires on noise and is deleted within a month
+(DESIGN.md § The benchmark gate), so there isn't one.
+
+The spike's `_step()` now moves creatures through `walk_provoking()`, so the
+audience computation is inside the M0 measurement. Nothing in the spike owns an
+`on_leave_reach` handler, so what is measured there is the case the design
+claims is free. On the container this was written on, four baseline runs
+returned 21.9k / 22.2k / 22.0k / 22.4k and four runs with the observer wired in
+returned 21.0k / 22.0k / 22.3k / 21.9k — the same number inside a run-to-run
+spread of about 3%. **That container is not the one M0 was measured on**: it
+misses the 30k budget with the observer removed entirely, so the numbers above
+are a *delta*, and re-running the gate for real belongs on the machine
+`docs/decisions.md` § w0i quotes. `BUDGET_PER_SECOND` was not touched, and the
+one edit this file warns must never be made quietly was not made.
+
+A configuration in which the offers actually fire is `w2c`'s, and its acceptance
+criterion says so — not out of caution but because an opportunity attack made by
+the spike's featureless enemies would be a *cheap* attack resolution added to the
+numerator of a rate quoted in attack resolutions per second. It would raise the
+reported number by making the average resolution less like a real one, which is
+the exact failure DESIGN.md § The spike must be pessimistic exists to prevent.
+
+### The reaction APL
+
+There is no second list, and the chat request for one is answered by pointing at
+what was already there: DESIGN.md § APL's unifying idea is that a turn action, a
+reaction and a mid-attack rider are all the same question, and the dispatcher
+already asks it — a handler declaring
+`@hook("on_leave_reach", costs=ActionCost.REACTION, gate="attack.opportunity_attack")`
+gets its economy checked and then its owner's action list asked, and the
+reaction is taken only if it answered `APPLIED`. So the opportunity attack needs
+no engine support to be a policy decision; it needs an audience, which is what
+this task built. What was added is the contract: DESIGN.md § Reactions in the
+APL, and `w2e`'s acceptance criteria.
+
+One consequence is worth naming because it will look like a bug in a report
+before it looks like a decision: **unmentioned is OFF applies to opportunity
+attacks**, so a melee build whose list never claims one never swings at a
+runner. That is the existing Null Object default and it was not carved out for
+this case. The alternative — a free attack taken by default — silently spends a
+reaction slot contested by Shield, Counterspell and Uncanny Dodge, and would
+change the numbers of every build that already had a reaction entry on the day
+opportunity attacks landed. Movement stays the one exception to OFF-by-default,
+because a melee build that stands still reports *zero* damage, which is a
+different order of wrong from one that declines a free swing.
+
+### Two things left loud rather than guessed
+
+`hooks/dispatch.py` deliberately does not drain `ctx.pending_effects` — the
+engine that owns the event must, and for this one that is `w2c`'s turn loop.
+There are no effects to queue until `w1c`, so rather than write a drain against
+a class that does not exist, `_offer()` raises `EngineAssemblyError` if a handler
+queues one. A silently dropped 2024 Sentinel is a wrong number nobody would ever
+chase to this file.
+
+**Entering** reach — which is what 2024 Polearm Master reacts to — has no hook.
+The registry is closed at 39 and this was not the task to open it: a hook
+addition is a deliberate batched core change, and one added on the way past
+while implementing something else is exactly the drift the freeze exists to
+stop. It is recorded here as a genuine gap for `w3e`'s paper pass to find and
+`w3f`'s batch to close.
+
+### Hostility is not asked about here
+
+The request says "all enemies in the room". `watch_movement()` takes the roster
+minus the mover and does not filter by side, which is both closer to the rules —
+an opportunity attack against an ally is legal and merely pointless — and
+cheaper to keep honest: the two places that already encode "don't swing at your
+own side" are the `opportunity_attack` Command's legality check (`w2b`) and the
+APL entry's `if:`. A third copy, in the file least able to see what a build
+means, is the copy that would go stale.

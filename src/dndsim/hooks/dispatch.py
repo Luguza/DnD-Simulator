@@ -264,6 +264,42 @@ class Dispatcher:
         """
         return self._table.get(spec, ())
 
+    def responsive(self, spec: HookSpec) -> bool:
+        """Whether dispatching `spec` could run anything at all on this creature.
+
+        The audience filter behind `engine/triggers.py`. An observer hook is
+        offered to bystanders rather than to one actor, so the engine has to ask
+        *who could possibly answer* before it starts asking them one at a time —
+        and in a room of twenty combatants the honest answer is usually nobody,
+        because an opportunity attack needs both a feature that declares
+        `on_leave_reach` and a reaction still in hand.
+
+        **Conservative in one direction only, and that direction is the safe
+        one.** It answers on the two questions that need no event to ask — is
+        the table empty, and can the economy still pay for at least one of the
+        handlers on it — and deliberately not on `once_per` or `gate`. A gate is
+        the policy question, which needs the context that does not exist yet and
+        is the expensive one of the three; a spent `once_per` budget would be
+        exact but buys a ledger lookup per handler for a case the reaction cost
+        already covers. So this may answer True where a dispatch would in fact
+        run nothing — one wasted dispatch — and never False where it would run
+        something, which would be a silently skipped reaction.
+
+        A dispatcher with no economy answers True for a costed handler on
+        purpose: `_permits()` raises `EngineAssemblyError` for that assembly, and
+        a filter that quietly dropped the creature from the audience would turn
+        that loud error into a feature that never fires.
+        """
+        handlers = self._table.get(spec)
+        if handlers is None:
+            return False
+        economy = self._economy
+        for bound in handlers:
+            cost = bound.costs
+            if cost is None or economy is None or economy.can_spend(cost):
+                return True
+        return False
+
     def dispatch(self, spec: HookSpec, ctx: Context) -> None:
         """Run every handler for `spec` over `ctx`, in order, until one vetoes.
 

@@ -24,6 +24,13 @@ sit at the theoretical floor of this object model in CPython.
 `docs/decisions.md` § w0i has the measurements, what each change bought, and
 the two levers deliberately not taken. **W1 may start.**
 
+One task has landed since: `w0g3`, a first cut of `engine/triggers.py` holding
+the **movement observer** — who is offered a reaction to a move, on every
+five-foot step, and in what order. It is the audience for an opportunity attack
+and not the attack itself, which is still `w2b`'s Command and `w2c`'s turn loop.
+Read `docs/decisions.md` § w0g3 before touching movement, reactions or the
+`Gate` path.
+
 Both documents are load-bearing: `DESIGN.md` fixes the architecture and the
 vocabulary, `ROADMAP.md` fixes what may be built when and by whom. Read the
 relevant sections before writing code in an area — they are the contract, not
@@ -135,6 +142,7 @@ there is local to a module.
 | `creatures/`, `engine/damage.py`, `core/geometry.py` | § w0g2 |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |
+| `engine/triggers.py`, `Dispatcher.responsive()` | § w0g3 |
 
 Add a section there when a task lands, rather than growing this file.
 

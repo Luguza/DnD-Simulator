@@ -63,6 +63,7 @@ from dndsim.core.rng import MersenneRng, Rng, mix
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
+from dndsim.engine.triggers import walk_provoking
 from dndsim.hooks.contexts import MoveContext, TurnContext
 from dndsim.hooks.definitions import ON_MOVE, ON_TURN_START
 from dndsim.rules.enums import Ability, ActionCost, DamageType
@@ -270,6 +271,7 @@ class Spike:
 
     hero: Creature
     enemies: tuple[Creature, ...]
+    combatants: tuple[Creature, ...]
     apl: Apl
     state: SpikeState
     economy: SpikeEconomy
@@ -349,6 +351,11 @@ def build_spike(seed: int = 0, *, pooled: bool = True) -> tuple[Spike, Rng]:
     spike = Spike(
         hero=hero,
         enemies=enemies,
+        # The roster, built once: `engine/triggers.py` walks it per move to work
+        # out who could react to it, and rebuilding it there would put a tuple
+        # allocation on a path whose whole claim is that it costs nothing when
+        # nobody in the room owns a reaction.
+        combatants=(hero, *enemies),
         apl=apl,
         state=state,
         economy=economy,
@@ -561,9 +568,7 @@ def _step(spike: Spike, mover: Creature, destination: Cell) -> None:
     every turn.
     """
     blocked = frozenset(
-        creature.position
-        for creature in (spike.hero, *spike.enemies)
-        if creature is not mover
+        creature.position for creature in spike.combatants if creature is not mover
     )
     if destination in blocked:
         return
@@ -573,11 +578,20 @@ def _step(spike: Spike, mover: Creature, destination: Cell) -> None:
     reachable = walked[: steps_within(mover.speed_ft)]
     if not reachable:
         return
-    mover.position = reachable[-1]
+    # `engine/triggers.py` is what actually moves the creature, because the
+    # opportunity-attack offer has to be made from the square being left rather
+    # than the one being entered. Nothing in this spike owns an `on_leave_reach`
+    # handler, so what is in the measurement here is the audience computation
+    # and its verdict — the case the design claims costs nothing, measured
+    # rather than asserted. A configuration where the offers actually fire is
+    # `w2c`'s to add when the turn loop and the Command exist to fire them.
+    stepped = walk_provoking(mover, reachable, spike.combatants)
+    if not stepped:
+        return
     move = MoveContext(
         creature=mover,
-        route=reachable,
-        distance_ft=len(reachable) * 5,
+        route=stepped,
+        distance_ft=len(stepped) * 5,
     )
     mover.dispatch(ON_MOVE, move)
     move.close()
