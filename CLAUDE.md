@@ -24,6 +24,11 @@ sit at the theoretical floor of this object model in CPython.
 `docs/decisions.md` § w0i has the measurements, what each change bought, and
 the two levers deliberately not taken. **W1 may start.**
 
+`DESIGN.md` § APL derivation was added after M0 and is the largest change to the
+project's goal since the founding document: the APL is **derived by search per
+build, not authored**, which adds wave W8 and milestone M5 and puts two
+signatures into W2 that were not there before. Nothing in W0's code is affected.
+
 Both documents are load-bearing: `DESIGN.md` fixes the architecture and the
 vocabulary, `ROADMAP.md` fixes what may be built when and by whom. Read the
 relevant sections before writing code in an area — they are the contract, not
@@ -103,6 +108,17 @@ only via `table_value()`, never hardcoded. `cli.py` is a thin adapter over
 `api.py` and holds no simulation logic; text output is rendered from the same
 `SimResult` JSON the API returns, so the two cannot disagree.
 
+**The policy is derived, not authored.** A build's APL is produced by statistical
+search per build (`DESIGN.md` § APL derivation, `ROADMAP.md` W8), because nobody
+knows the best line of play and a hand-written APL makes every reported number a
+measurement of *build plus author*. A hand-written `apl:` is the **baseline** the
+derived policy is scored against, never the input. Three consequences bite before
+W8 exists: `Apl` must be constructible programmatically and serialisable back
+(`w2e`), the API must accept a seed list and an APL override and return
+**per-seed** results (`w2g`), and `search/` is a client of `api.py` that may
+never import `engine/` or `hooks/`. Anything in `search/` that wants an engine
+change is a bug in `search/`.
+
 **Performance is a design constraint, not a later concern.** Budget is ≥30k
 attack resolutions/sec/core, revised down from 50k by the W0 spike itself,
 which now measures ~31.5k on the hostile configuration (`docs/decisions.md`
@@ -140,12 +156,17 @@ Add a section there when a task lands, rather than growing this file.
 
 ## Sequencing rules
 
-`ROADMAP.md` has 60 tasks across waves W0–W7 with explicit dependency edges.
-Two constraints dominate:
+`ROADMAP.md` has 68 tasks across waves W0–W8 with explicit dependency edges.
+Three constraints dominate:
 
 - **Nothing in W4 or later may start before M2** (API frozen, authoring skill
   written, paper pass done). The W3 freeze gate is what prevents 400 subtly
   wrong features.
+- **W8's seams are cut in W2, not in W8.** Policy derivation is the last wave and
+  the most important one; it cannot start earlier (there is nothing to search
+  over until W4 lands features and W6 lands the objective), so the compensation
+  is the two signatures named above. They are near-free in `w2e`/`w2g` and a
+  migration across every file in `builds/` afterwards.
 - W0's performance spike (w0i) is a stop-and-revise gate: missing the budget
   means changing the dispatch design then, not later. It runs against the `w0g2`
   substrate — a first cut of `Creature`, `engine/damage.py` and

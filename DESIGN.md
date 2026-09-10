@@ -19,6 +19,14 @@ not for licensing reasons.
 rests between them, *how far into the adventuring day does the party get before
 resources run dry?* Attrition, not single-fight DPR.
 
+That question is only well posed once "played how?" is answered, and it must not
+be answered by whoever wrote the build file. A party's attrition depends at least
+as much on its action priorities as on its class features, so a hand-authored
+policy makes every reported number a measurement of build *plus author*. **The
+policy is therefore derived by search per build, not authored** — see § APL
+derivation. An authored APL survives as the baseline the derived one is scored
+against, and nothing else.
+
 **What "runs dry" means, precisely.** A metric this vague is a metric that
 cannot be implemented, so the stop condition is settled here rather than
 discovered in W6:
@@ -50,7 +58,8 @@ settled decisions and not implementation detail.
 | Positioning | Square grid, 5 ft cells, real distance, opportunity attacks, true AoE templates |
 | Movement | **An APL decision, not an engine heuristic** — a `move:` clause, same grammar as `if:` |
 | Targeting | **An APL decision** — a `target:` selector expression per entry |
-| Policy | SimC-style Action Priority List in build YAML |
+| Policy | SimC-style Action Priority List — the *language*; see the next row for where the list comes from |
+| **Policy derivation** | **In scope for v1 — derived by statistical search per build, never authored.** A hand-written `apl:` is a baseline, not an input |
 | v1 output | Adventuring-day attrition |
 | Death & stop condition | Death saves rolled; healing is an APL action; day ends on TPK or a declared retreat threshold |
 | Content order | **Martials first, full vertical slice** (Barbarian/Fighter/Rogue/Monk, 16 subclasses, levels 1–12, masteries, martial feats) |
@@ -521,6 +530,270 @@ The namespace roots (`self`, `target`, `trigger`, `enemies`, …) are **Proxy**
 objects built once per creature holding weak references to live state, so
 evaluation is attribute access rather than object construction.
 
+## APL derivation — the policy is a result, not an input
+
+The section above describes how a policy is *expressed*. This one describes
+where it comes from, and it is the more important half.
+
+**The problem with an authored APL.** A hand-written `apl:` block makes every
+number the sim reports a measurement of *build plus author*. `compare A B` then
+answers "which build did I write a better APL for?", which is the one question a
+simulator exists to stop people asking. There is no prior knowledge of correct
+5e play at this granularity — nobody knows the HP threshold below which Reckless
+Attack stops paying, and the honest answer is that it depends on the build, the
+AC, the party and the encounter count in ways no author can hold in their head.
+
+So the quantity that is actually a property of a build is not `E[objective |
+apl]` but
+
+```
+value(build) = max over policies of  E[objective | build, policy, scenario]
+```
+
+and the argmax is unknown. **The policy is therefore derived by search, and the
+derivation is part of the product rather than a spreadsheet exercise done once
+by hand.** A hand-written APL keeps exactly one job: it is the **baseline** the
+derived policy is scored against.
+
+This is the reason for every statistical commitment the rest of this document
+makes. Determinism was justified above by reproducibility and readable
+regression diffs; its larger payoff is here, because it is what makes common
+random numbers exact and therefore what makes the search affordable at all.
+
+### What it changes architecturally: nothing
+
+The APL is already a **Strategy** — a pluggable policy object the engine knows
+nothing about. Derivation is a *generator of Strategy objects* that uses the
+simulator as a noisy oracle. It lives in `search/`, sits above `sim/` and
+`api.py`, imports `apl/`, and **changes no engine file, no hook, and no
+feature**. That property is the whole reason this is affordable to add, and it
+is worth defending: anything in `search/` that wants an engine change is a
+design error in `search/`, not a missing hook.
+
+It costs two seams, and both must be cut in W2 — before a single build YAML
+exists in git — because retrofitting them afterwards is a migration across every
+file in `builds/`:
+
+1. **`Apl` is constructible programmatically and serialisable back to YAML**,
+   round-tripping exactly. The search builds millions of policies; not one of
+   them may go through a text file.
+2. **The API accepts an APL override and returns per-seed results.** `run_sim`
+   and `run_day` take an explicit seed list and return the objective *vector*,
+   not only its mean. Aggregates are useless to a paired comparison, and a
+   paired comparison is the entire variance-reduction strategy below.
+
+### The candidate space is generated, never enumerated by hand
+
+This is what "derived, not hardcoded" has to mean in practice. If the search
+space were a hand-written list of plausible entries, the search would be an
+elaborate way to launder the author's priors — the exact failure it exists to
+avoid. So all three clause types are generated mechanically from artefacts that
+already exist:
+
+- **Actions** come from the *resolved build*: every action id its attached
+  features offer, plus every rider and every reaction. `dndsim inspect` already
+  computes this list; the generator reads it.
+- **Conditions** come from the `NamespaceSchema` — the same declared schema the
+  APL compiler resolves paths against. A boolean path `p` yields `p` and
+  `not p`; an enum path yields `p == v` for each declared `v`; a numeric path
+  yields `p <cmp> θ`, where θ is a searched parameter over the grid the schema
+  declares for that path (`hp_pct` steps of 0.1, counts 0–4, AC 12–20). The
+  schema gains one field — a candidate grid per numeric path — and nothing else.
+- **Targets and movement** come from the closed selector grammar's own cross
+  product: `{lowest_hp, highest_hp, nearest, farthest} of enemies.{in_reach, all}`
+  and the three `move:` forms.
+
+Nothing in `search/` knows what a Barbarian is. **The acceptance test for this
+package is that adding a class, a subclass or a spell requires zero lines of
+change in it** — a feature authored in W5 is searched the day it lands, because
+it arrived in the resolved build and its namespace paths arrived in the schema.
+A generator that needed a per-class table would reintroduce exactly the prior
+knowledge the search is meant to replace.
+
+The cross product is large, and the answer to that is staging (below), not
+pruning it by taste.
+
+### Encoding: random keys, so every point in the space is legal
+
+A policy is a *subset* of the candidate pool, in an *order*, with *thresholds* —
+a mixed combinatorial and numeric object that most samplers handle badly.
+Searching permutations directly means every mutation and every crossover needs a
+repair step, and the neighbourhood structure is poor.
+
+Instead each candidate entry `i` is encoded as `(enabled_i: bool, priority_i:
+float ∈ [0,1), θ_i...)`, and decoding is: keep the enabled entries, sort by
+priority, emit. This is the **random-key** encoding (Bean, 1994). Every vector in
+the box decodes to a legal APL, no repair operator exists, the dimension is
+fixed, and any off-the-shelf sampler works on it unmodified. The decoder is
+canonical, so two different vectors decoding to the same policy hash to the same
+string — which is what makes the evaluation cache below actually hit.
+
+### The oracle is noisy, so the statistics are the hard part
+
+The search is the easy half. Every evaluation is a Monte Carlo estimate, the
+differences being chased are a few percent, and a search that treats a lucky
+sample as a discovery will confidently report a policy that is not better. Four
+commitments, in descending order of how much they matter:
+
+**1. Common random numbers, and paired comparisons.** Every candidate is
+evaluated on the *same* seed set, and candidates are compared on the vector of
+per-seed differences, never on two independent means. Two APLs differing in one
+entry produce nearly identical runs on the same seed, so the difference has a far
+smaller variance than either mean — the paired test resolves a gap that an
+unpaired one would need roughly an order of magnitude more seeds to see. This is
+free, and it is free *because* seed + build + engine + content already reproduces
+a run byte for byte. Nothing else in the design pays off this hard here.
+
+**2. Racing, not fixed budgets.** Successive halving: evaluate every candidate on
+a small seed count, keep the top fraction, multiply the seed count, repeat. Most
+candidates are obviously bad and should die at 32 seeds rather than consume 512.
+This is the single largest cost lever, worth roughly 10× (see below).
+
+**3. Held-out seeds, and a reported optimism gap.** The search runs on a
+*derivation* seed set and the answer is reported on a **disjoint evaluation seed
+set**. With thousands of candidates scored against one seed set, the winner is
+partly noise-selected; the search-set number is therefore biased upward and must
+never be the headline. Every derivation reports both, and their difference as
+`optimism`. **A large optimism gap means the fix is more seeds, not more
+candidates** — which is the sort of thing that is obvious in a report and
+invisible in a single number.
+
+**4. Parsimony — the one-standard-error rule.** Among policies within one
+standard error of the best on the holdout, return the *simplest*: fewest entries,
+then fewest conditions. Then ablate: drop each surviving entry, re-evaluate on
+the holdout, and report that entry's marginal value with a confidence interval.
+Entries whose ablation is inside noise are dropped from the emitted APL. The
+output is a short readable policy in which every line has a measured reason to
+exist, rather than a thirty-entry thicket nobody can check — and the ablation
+table is the derivation's most useful artefact for a human, because it is the
+part that says *why*.
+
+### The party is a joint problem, and coordinate ascent is a compromise
+
+Four PCs means the policy space is a product of four spaces, and a joint search
+over it is hopeless. The derivation therefore does cyclic best response: fix
+three members, derive the fourth, rotate, and repeat until a full sweep produces
+no holdout improvement beyond noise.
+
+This converges to a **mutual best response, not a global optimum**, and it can
+cycle. Both facts are reported rather than hidden: the sweep count is capped, the
+per-sweep trajectory is in the result, and the result names which member's policy
+changed last. A coordinate-ascent answer presented as "optimal" is a false claim,
+and the difference matters most exactly where party composition is interesting —
+a healer's policy and a tank's policy are each other's inputs.
+
+### The objective is a knob, and a scalar objective hides variance
+
+For v1 the objective is the attrition metric: encounters cleared before the stop
+condition. But `objective:` is declared and pluggable (`attrition`, `dpr`,
+`survival`, `time_to_kill`), because a policy derived to maximise DPR and one
+derived to maximise attrition are *different policies*, and the size of that
+difference is itself a result worth reporting.
+
+Any scalar objective can be raised by trading away something it does not measure.
+So a derivation reports the objective's whole holdout distribution, not its mean
+— a policy that gains 4% expected encounters while doubling the TPK rate is then
+visible rather than silently preferred. Constrained objectives ("maximise
+encounters subject to TPK rate ≤ 5%") are expressible for the same reason.
+
+### Scenario dependence — the trap that invalidates the answer
+
+**There is no "best Champion APL".** There is a best Champion APL against AC 16,
+two enemies that close to melee, six encounters and two short rests. A derivation
+therefore names its scenario set, the result is labelled with it, and comparing
+two policies derived against different scenarios is a category error the tooling
+refuses rather than performs.
+
+Because deriving against one scenario overfits to it as surely as against one
+seed set, the default derives against a *distribution* of scenarios — the same
+sweep axes `compare --sweep` already uses — with the objective averaged over
+them, and reports the per-scenario breakdown. A policy that is excellent at AC 12
+and terrible at AC 20 is a finding, not a defect to average away.
+
+### Cost, honestly
+
+An adventuring-day run is on the order of 300 attack resolutions, so at the M0
+budget of 30k/sec/core one core does roughly 100 day-runs per second. A staged
+search of ~2,000 candidates with racing (most dying at 32 seeds, finalists at
+512) is on the order of 10^5 day-runs — **about 15 core-minutes per character**,
+and about 3 core-hours for a four-member party over three coordinate-ascent
+sweeps. Without racing the same search is ~10^6 runs and roughly 34 core-hours;
+a five-scenario distribution multiplies both by five.
+
+Those numbers are an order-of-magnitude estimate to be replaced by a measurement
+(`w8d`), and they carry one conclusion that must be stated plainly so it is not
+re-litigated: **the answer to derivation cost is not a faster engine.** Derivation
+multiplies sample count by two to three orders of magnitude, and no plausible
+CPython speedup covers that. `w0i`'s budget is not reopened. The levers are all
+on the sampling side:
+
+- common random numbers and racing, as above — together worth ~10×;
+- **staged search**: first search structure (which entries, in what order) with
+  default conditions, then search thresholds only on the entries that survived;
+- **a cheap proxy objective in the early rungs** — a single encounter against a
+  dummy, ~50× cheaper per sample than a full day — promoted to the true objective
+  only for finalists, with the promotion validated by checking that proxy rank
+  order correlates with true rank order on the finalists;
+- **memoisation on the canonical policy hash**, since under CRN an identical
+  decoded policy on an identical seed set is an identical result, and a search
+  revisits policies constantly.
+
+### A derived APL is an artefact with provenance
+
+Derivation is reproducible or it is worthless: **seed + build hash + engine
+version + content version + derivation-config hash + scenario-set hash** produces
+the same APL byte for byte. All six go in the result, exactly as the four already
+do for a simulation.
+
+The output is written as **ordinary build YAML** — a normal `apl:` block under a
+provenance comment header — so it can be pinned into the build file, reviewed in
+a diff, and hand-edited. There is no second policy format and no binary policy
+blob: a derived APL is indistinguishable from an authored one to the loader,
+which is the Single Source of Truth rule applied to policy. Re-deriving a pinned
+policy and diffing it is then an ordinary regression check, and one that catches
+a content change that quietly invalidates a line of play.
+
+### The optimizer is an adversary, and that is the point
+
+A search that runs 10^5 evaluations against the engine will find every place the
+rules are implemented too generously. This is not a hazard to be defended
+against so much as the most valuable secondary output in the project: it is to
+the content grind what the canary batch is to the API, an outsider that cannot
+be argued with.
+
+It does need a guard, because an exploit reported as a strategy is worse than no
+report. Two are cheap:
+
+- **Plausibility band.** A derived policy whose holdout objective exceeds a
+  declared band — or that rests on an entry whose measured marginal value is
+  implausible — is triaged as a suspected engine or feature bug *before* it is
+  reported as a finding, and `dndsim derive` exits non-zero with the offending
+  entries listed.
+- **The baseline comparison.** Every build keeps its hand-written APL as
+  `baseline_apl`, and the derivation reports Δ against it on the holdout. Two
+  signals fall out for free: derived ≈ baseline across many builds means the
+  search is not searching, and derived ≫ baseline by an implausible margin means
+  either an exploit or a genuinely non-obvious line — which is precisely the
+  output this project exists to produce. There will never be a ground truth to
+  check the derivation against; this is the substitute, and it is self-checking
+  in both directions.
+
+### Libraries
+
+`optuna` for the search itself — TPE over the define-by-run mixed space, its
+successive-halving and Hyperband pruners for racing, seeded samplers, and
+resumable study storage, none of which is worth hand-rolling. `scipy.stats` for
+the paired tests and intervals. Hand-written: the candidate generator and the
+decoder, because both are specific to this project's schema and neither is a
+solved problem in a library.
+
+One ladder rung is worth naming, because it is the common case and the fancy
+answer is the wrong one: a level 1–3 martial often generates six or fewer
+candidate entries, and there **exhaustive enumeration with racing dominates any
+sampler**. `optuna.samplers.BruteForceSampler` covers it, so the ladder — brute
+force when the decoded space is small, TPE when it is not — is one configuration
+switch rather than a second implementation.
+
 ## Failing loudly — layered
 
 This is **Design by Contract** with **Fail-Fast** escalation: each layer states a
@@ -676,6 +949,16 @@ If that configuration misses the budget, the architecture is revised in W0. That
 is the whole point of the milestone — and it is what happened: see the note
 above and `docs/decisions.md` § w0i.
 
+> **A second reader of this budget arrived after M0.** § APL derivation turns the
+> simulator into the inner loop of an optimiser, which multiplies the sample count
+> by two to three orders of magnitude. That does *not* reopen this number: no
+> plausible CPython speedup covers 10²–10³, so derivation buys its budget on the
+> sampling side (common random numbers, racing, staged search, a cheap proxy
+> objective, memoisation) rather than on the engine side. What it does change is
+> the value of two levers already listed below — **adaptive stopping** and
+> **per-iteration seeding** — from conveniences into load-bearing requirements,
+> because paired evaluation on a fixed seed set is what makes the search affordable.
+
 ### Levers
 
 Per-creature precomputed dispatch tables (never scan a global bus); `__slots__`
@@ -770,6 +1053,8 @@ dndsim content fetch                                  # populate gitignored data
 dndsim sim BUILD --dummy ac=16 -n 10000 [--format text|json] [-o result.json]
 dndsim day PARTY --encounters 6 --short-rests 2
 dndsim compare A B --sweep dummy.ac=10:22
+dndsim derive BUILD --scenarios scenarios.yaml --budget 2000  # search the APL
+dndsim derive PARTY --joint --sweeps 3                        # coordinate ascent
 dndsim inspect BUILD                                  # resolved character, readable
 dndsim validate BUILD                                 # schema + APL check; exit code
 dndsim trace BUILD --seed 42                          # replay one fight, blow by blow
@@ -791,6 +1076,11 @@ Three of these exist because of decisions made elsewhere in this document:
   responsible. Only possible because runs are reproducible.
 - **`validate`** applies the load-time failures above as a fast exit code, so CI
   and batch authors can check a build without simulating it.
+- **`derive`** searches the APL rather than reading it, and emits ordinary build
+  YAML plus the ablation and optimism report (§ APL derivation). It is the
+  command that makes `compare` a comparison of builds rather than of authors, and
+  it exits non-zero when the winning policy leaves the plausibility band — an
+  optimiser that beats the baseline by 40% has usually found a bug, not a line.
 
 ---
 
@@ -819,6 +1109,8 @@ src/dndsim/
               encounter.py adventuring_day.py triggers.py
   content/    fetch.py loader.py refs.py tables.py weapons.py
   sim/        runner.py day.py compare.py sweep.py
+  search/     candidates.py encoding.py evaluate.py driver.py
+              ablate.py party.py emit.py objectives.py
   reporting/  result.py collect.py stats.py render_text.py render_json.py
   tools/      check_features.py noop_report.py gen_docs.py skeleton.py
 
@@ -845,6 +1137,12 @@ enough to restate in place:
   populates.
 - **`api.py` vs `cli.py`.** The CLI holds no simulation logic. A UI added later
   is another adapter against the same API, never a scraper of CLI output.
+- **`search/` imports downward and is imported by nobody.** It consumes `api.py`
+  and `apl/` and is consumed only by `cli.py`. Nothing in `sim/`, `engine/`,
+  `hooks/` or `features/` may import it, and it may not import `engine/` or
+  `hooks/` directly. This is what keeps the claim in § APL derivation true — that
+  policy search is a client of the simulator rather than a second engine — and it
+  is a one-line import check in `dndsim check`.
 - **`content/loader.py`.** 5etools' vocabulary (`dmg1`, `atkr`,
   `classTableGroups`, `refSubclassFeature`) stops at this boundary and never
   reaches the domain model. The dataset is a third-party artefact that changes
@@ -974,11 +1272,22 @@ Eight waves, `W0`–`W7`. This is the summary; [ROADMAP.md](ROADMAP.md) carries 
 | **W5** | Spell engine, then Paladin/Ranger, then full casters; spells on demand | casters playable |
 | **W6** | Rests, encounter chaining, attrition metrics, compare + sweep | **M4:** attrition v1 — the project's stated goal |
 | **W7** | Stat-block parser, bestiary import | real monsters |
+| **W8** | **Policy derivation** — candidate generation, paired evaluation, racing search, ablation, coordinate ascent, `dndsim derive` | **M5:** attrition under a *derived* policy — the number that is about the build |
 
-W0–W4 are the commitment being made now; W5–W7 are sketched to prove the
+W0–W4 are the commitment being made now; W5–W8 are sketched to prove the
 architecture doesn't paint itself into a corner. **W6 depends only on W4**, not
 on W5 — attrition against target dummies is reachable with martials alone, so
 M4 does not wait for casters.
+
+**W8 is last in sequence and first in importance**, and the tension is real
+rather than a scheduling accident: derivation is a consumer of everything else,
+so it cannot be built before there are features to search over and an objective
+to search against. What that means for now is not "start it earlier" but "cut its
+seams earlier" — the two W2 seams named in § APL derivation (programmatic `Apl`
+construction, and an API that takes an explicit seed list and returns per-seed
+results) are cheap in W2 and a migration across every file in `builds/` after
+that. M4 remains the stated v1 goal; M5 is what makes M4's number a property of
+the build rather than of its author.
 
 Two of the exits above changed shape after review, and both changes are the same
 argument: **a milestone that can be met by inspection has not been met.** M0 on
@@ -1001,16 +1310,19 @@ dndsim sim builds/fighter_gwm_l5.yaml --dummy ac=16 -n 10000
 dndsim trace builds/fighter_gwm_l5.yaml --seed 42
 dndsim day builds/party.yaml --encounters 6 --short-rests 2
 dndsim compare builds/a.yaml builds/b.yaml --sweep dummy.ac=10:22
+dndsim derive builds/fighter_gwm_l5.yaml --scenarios builds/scenarios.yaml
 ```
 
 Determinism is the backbone: identical seed + identical build ⇒ byte-identical
 event log, so every bug is reproducible and every regression diff is readable.
 `compare` and `--sweep` are what make this a sim rather than a calculator, and
-are the primary manual check that results are sane.
+are the primary manual check that results are sane. `derive` is what makes
+`compare` honest: without it, a comparison of two builds is partly a comparison
+of the two APLs somebody wrote for them.
 
 ## Biggest risks
 
-Ordered by expected cost, which is not the same as by likelihood. The first three
+Ordered by expected cost, which is not the same as by likelihood. The first four
 share a shape worth naming: **each is a check that passes while proving nothing**,
 and that is a far more dangerous failure than a check that fails.
 
@@ -1031,26 +1343,45 @@ and that is a far more dangerous failure than a check that fails.
    batch costs six times the rework of one discovered in the first. *Mitigated
    by:* the canary batch in W3 — one small, semi-disposable slice authored
    against the frozen API before anything fans out.
-4. **The paper pass degrades quietly.** Classifying ~400 prose features to hooks
+4. **The derivation fits noise and reports a policy that is not better.** A
+   search scoring thousands of candidates against one seed set will find a winner
+   whether or not one exists; the search-set number is biased upward by
+   construction, and a policy selected on noise looks exactly like a discovery.
+   This is the most expensive version of the shape above, because the whole
+   project's headline claim rests on it and there will never be a ground truth to
+   check it against. Two sub-risks ride along: **scenario overfitting** (a policy
+   derived against one AC and enemy count, reported as general) and
+   **exploitation** — an optimiser with 10^5 evaluations finds every place the
+   rules are implemented too generously, and reports the exploit as a strategy.
+   *Mitigated by:* the disjoint holdout seed set with a reported optimism gap, a
+   scenario *distribution* with a per-scenario breakdown, common random numbers
+   and paired tests so a real difference is resolvable at an affordable sample
+   count, the one-standard-error parsimony rule with per-entry ablation
+   intervals, the plausibility band that exits non-zero, and the Δ-vs-baseline
+   comparison that catches both a search that is not searching and a win too
+   large to be real. All six are in § APL derivation, and the exploitation
+   sub-risk is also the project's best content-bug detector once triaged rather
+   than trusted.
+5. **The paper pass degrades quietly.** Classifying ~400 prose features to hooks
    is the highest-leverage task in the project and the most tedious, and nothing
    downstream detects a sloppy classification until features are written against
    it. *Mitigated by:* batching the classification against a strict row schema
    with a confidence column, human triage of the low-confidence and gap rows
    only, and the additive-vs-structural split that makes the hook-gap budget
    honest.
-5. **Review capacity, not agent throughput, is the constraint.** Roughly 150
+6. **Review capacity, not agent throughput, is the constraint.** Roughly 150
    nominal agent-days funnel through one person; every parallelism gain lands on
    the same desk. *Mitigated by:* designing artefacts to be reviewable in minutes
    — disposition tables, quoted citations, arithmetic in goldens, the file-size
    cap — and by sizing batches for a review sitting rather than for agent
    capacity.
-6. **Hook drift** — feature #340 needs a hook that doesn't exist, and an agent
+7. **Hook drift** — feature #340 needs a hook that doesn't exist, and an agent
    improvises by mutating private state or picking a wrong hook that happens to
    fire. Ranked below the others because it is the risk this design already
    defends best. *Mitigated by:* the paper pass in W3, the frozen registry with a
    CI diff check, both escape valves, and a linter banning private access and
    stray `random` imports.
-7. **Interaction correctness** — features individually right, combinations wrong;
+8. **Interaction correctness** — features individually right, combinations wrong;
    grows quadratically while features grow linearly. *Mitigated by:* structural
    prevention first, one resolution order in one file, the human-maintained
    interaction matrix, and property tests (damage never negative, HP

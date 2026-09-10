@@ -4,7 +4,7 @@ Companion to [DESIGN.md](DESIGN.md). This document sequences the build so that
 **decisions with the widest blast radius are made first**, and every interface a
 later agent depends on exists — in code, not prose — before that agent starts.
 
-60 tasks across 8 waves, `W0`–`W7`. DESIGN.md § Build order is the one-table
+68 tasks across 9 waves, `W0`–`W8`. DESIGN.md § Build order is the one-table
 summary; this is the operational detail.
 
 ## Sequencing principles
@@ -35,7 +35,15 @@ summary; this is the operational detail.
    single-owner; W1–W2 are delegable but tightly sequenced. W4 onward fans out to
    many agents with near-zero coordination cost, because by then the contract is
    fixed and the work is mechanical.
-7. **The reviewer is the bottleneck, not the agents.** Roughly 150 nominal
+7. **A seam for a later wave is cut in the wave that owns the file.** W8 derives
+   the APL by search, and needs two things from W2: an `Apl` that can be built
+   programmatically and serialised back, and an API that takes an explicit seed
+   list and returns per-seed results. Both are near-free in `w2e`/`w2g` and are a
+   migration across every file in `builds/` once builds exist in git. The rule
+   generalises: when a later wave's requirement is *known* and costs a signature
+   rather than a design, it goes in now — but only the signature. Speculative
+   generality is still the enemy; a known consumer is not speculation.
+8. **The reviewer is the bottleneck, not the agents.** Roughly 150 nominal
    agent-days funnel through one person, so every deliverable is designed to be
    *reviewable in minutes* — disposition tables, quoted citations, arithmetic
    written out in goldens, a hard file-size cap. Batches are sized for a review
@@ -76,16 +84,19 @@ flowchart TD
     W6["<b>W6 · Adventuring day</b><br/>rests, chaining, attrition,<br/>compare + sweep<br/><i>~6 nominal days</i>"]
     M4{{"<b>M4</b> — attrition v1<br/><b>the project's stated goal</b>"}}
     W7["<b>W7 · Monsters</b><br/>statblock parser, bestiary<br/><i>~7 nominal days</i>"]
+    W8["<b>W8 · Policy derivation</b><br/>candidate generation, paired evaluation,<br/>racing search, ablation, coordinate ascent<br/><i>~16 nominal days</i>"]
+    M5{{"<b>M5</b> — attrition under a <b>derived</b> policy<br/>the number that is about the build"}}
 
     W0 --> M0 --> W1 --> W2 --> M1 --> W3 --> M2 --> W4 --> M3
     M3 --> W5
     M3 --> W6 --> M4
     M3 --> W7
+    M4 --> W8 --> M5
 
     classDef gate fill:#1b5e45,stroke:#123f2f,color:#ffffff;
     classDef goal fill:#7f3f12,stroke:#5c2d0d,color:#ffffff;
     class M0,M1,M2,M3 gate;
-    class M4 goal;
+    class M4,M5 goal;
 ```
 
 **Nothing in W4 or later may start before M2**, and that is the single most
@@ -93,7 +104,10 @@ important scheduling constraint in the project. Once M3 lands, three branches ru
 independently: **W6 depends only on W4, not on W5**, so attrition against target
 dummies — the v1 goal — is reachable with martials alone and does not wait for
 casters. W7 likewise forks from W4. Given enough agents, W5, W6 and W7 proceed
-concurrently.
+concurrently. **W8 joins after M4**, because it needs W6's objective function to
+search against and W4's features to search over — it is the one wave whose
+position in the order is the inverse of its importance, and the compensation for
+that is `w2e`/`w2g`'s seams rather than an earlier start.
 
 ### The critical path
 
@@ -192,9 +206,9 @@ the three is greenfield, and none of them may restate the damage order.
 | w2b | `Action` Command base (`is_legal`/`execute`), Attack, Dash, Dodge, Disengage | 👥 | w1f | `actions/` | legality query provably cannot spend a resource |
 | w2c | Initiative, turn loop, round loop, trigger audience, **reaction regained at the start of each of your turns**, opportunity attacks, movement offers, `on_initiative_roll` | 🔒 | w2b | `engine/turn.py`, `encounter.py`, `triggers.py`, `world.py`, `query.py`, `actions/opportunity_attack.py` | turn loop re-polls after every action; a creature may react before its turn and again after it in the same round — the invariant is on the **turn** boundary, never the round. Owns the roster and the `InitiativeKey` for each combatant: `tiebreak` is **one independent uniform draw per creature**, `(rng.roll(2**32) - 1) / 2**32` (never a shuffle of the entrants — it has no honest place for a latecomer), a joiner mid-encounter draws its own without touching anyone else's, and a creature leaving is dropped from the roster with its key left alone |
 | w2d | `TargetDummy` with every knob from DESIGN.md, including `movement_profile` (`static` / `closes_to_melee` / `kites_at`) | 👥 | w1a | `creatures/dummy.py` | AC sweep 10–22 configurable from YAML; a dummy that closes to melee provokes and is provoked, so the grid is exercised rather than decorative |
-| w2e | **APL**: AST whitelist compiler, `NamespaceSchema`, proxies, `Apl.allows()`, default policy, and **all three clauses** — `if:`, `target:` (selector expressions), `move:` (positioning) | 🔒 | w2b, w2c | `apl/` | `self.ragging` fails at load with a suggestion; unmentioned riders and reactions default OFF, **movement being the one exception** — a build with no `move:` clause closes to its nearest enemy; `target: "lowest_hp of enemies.in_reach"` and `move: "toward nearest of enemies until in_reach"` compile through the same whitelist. **All three clauses ship together** — adding a clause after builds exist is a schema migration across every YAML file in git. `dndsim bench` on `w0i`'s configuration comes in at or under `w0i`'s number |
-| w2f | Build YAML pydantic schema — class + level, **species, background, ASI/feat choices, fighting style, equipment (weapons, armour, shield)**, `apl:`, and party `retreat_when` — plus the `Character` Builder | 👥 | w2a, w2e | `builds/`, `creatures/character.py` | unknown feature id fails with difflib suggestions; every choice a single-classed level 1–12 character makes is expressible, and AC falls out of the equipment |
-| w2g | Monte Carlo runner, multiprocessing, stats, CIs; **`SimResult` + its JSON schema**; text/json renderers; the public API | 👥 | w2c, w2d, w2f | `sim/`, `reporting/`, `api.py` | identical seed ⇒ byte-identical event log **at any `--jobs`**, because worker records are merged in **iteration order, never completion order**; text output derived from the JSON, not parallel to it |
+| w2e | **APL**: AST whitelist compiler, `NamespaceSchema`, proxies, `Apl.allows()`, default policy, and **all three clauses** — `if:`, `target:` (selector expressions), `move:` (positioning) | 🔒 | w2b, w2c | `apl/` | `self.ragging` fails at load with a suggestion; unmentioned riders and reactions default OFF, **movement being the one exception** — a build with no `move:` clause closes to its nearest enemy; `target: "lowest_hp of enemies.in_reach"` and `move: "toward nearest of enemies until in_reach"` compile through the same whitelist. **All three clauses ship together** — adding a clause after builds exist is a schema migration across every YAML file in git. `dndsim bench` on `w0i`'s configuration comes in at or under `w0i`'s number. **Seam for `w8`:** an `Apl` is constructible programmatically from a list of entry objects without going through YAML text, serialisable back to YAML, and carries a canonical hash — `parse → build → serialise → parse` round-trips to an equal object, and two policies that differ only in the spelling of an equivalent condition hash differently (the search decoder canonicalises, `apl/` does not have to) |
+| w2f | Build YAML pydantic schema — class + level, **species, background, ASI/feat choices, fighting style, equipment (weapons, armour, shield)**, `apl:`, and party `retreat_when` — plus the `Character` Builder | 👥 | w2a, w2e | `builds/`, `creatures/character.py` | unknown feature id fails with difflib suggestions; every choice a single-classed level 1–12 character makes is expressible, and AC falls out of the equipment. **Seam for `w8`:** `apl:` is optional — a build with no `apl:` block loads, and the field is `baseline_apl` in meaning if not in name, never the only way a build acquires a policy |
+| w2g | Monte Carlo runner, multiprocessing, stats, CIs; **`SimResult` + its JSON schema**; text/json renderers; the public API | 👥 | w2c, w2d, w2f | `sim/`, `reporting/`, `api.py` | identical seed ⇒ byte-identical event log **at any `--jobs`**, because worker records are merged in **iteration order, never completion order**; text output derived from the JSON, not parallel to it. **Seam for `w8`:** the API accepts an explicit **seed list** (not only a count) and an **APL override** per creature, and returns the **per-seed objective vector** alongside the aggregate — an aggregate is useless to a paired comparison, and the paired comparison is what makes policy search affordable at all |
 | w2h | Typer CLI as a **thin adapter** over `api.py`: `sim`, `day`, `compare`, `inspect`, `validate`, `trace`, `check`, `content fetch`, `bench` | 👥 | w2g, w2a, w2f | `cli.py` | every command in DESIGN.md § Verification runs; no simulation logic lives in `cli.py` |
 
 > **M1 — A level-5 Fighter with a greatsword kills a dummy**, and every number is
@@ -302,6 +316,13 @@ caster exists.
 > DESIGN.md § Context for the settled stop condition. `retreat_when` is a party
 > YAML knob precisely so that `--sweep` over it is an experiment rather than an
 > assumption buried in the engine.
+>
+> Note also what M4 does *not* yet say. `w6a`'s number is attrition **under the
+> APL somebody wrote**, so `compare` at M4 is still partly a comparison of two
+> authors. `w6b`'s `--sweep` axes are reused directly as W8's scenario
+> distribution, and `w6a`'s attrition metric is W8's default objective — W6 is
+> the objective function W8 optimises, which is why W8 depends on it and not the
+> other way round.
 
 ## W7 — Monsters 👥
 
@@ -309,6 +330,46 @@ caster exists.
 |---|---|---|---|---|
 | w7a | Statblock parser (Visitor) over the closed tag vocabulary + `.claude/skills/statblock-import/` | 👥 | w4g | `{@atkr}`, `{@hit}`, `{@h}`, `{@damage}`, `{@actSave}`, `{@dc}`, `{@recharge}` |
 | w7b | Bestiary import, Multiattack handling, unparsed-content report | 🚀 | w7a | 503 XMM stat blocks; unparseable content is flagged, never approximated |
+
+## W8 — Policy derivation 🔒
+
+**Last in sequence, first in importance.** Everything before this wave produces a
+simulator that answers "how does this build do *when played this way*". This wave
+removes the second clause, and it is the difference between a calculator with
+opinions and a sim. Full rationale in DESIGN.md § APL derivation; the tension —
+that the most important wave is necessarily the last one — is real and is
+addressed by cutting its two seams in `w2e`/`w2g` rather than by starting it
+early. There is nothing to search over until features exist.
+
+Mostly 🔒 Solo: the wave is one tightly coupled statistical argument, and a
+mistake anywhere in it produces confident wrong answers rather than a failure.
+The two 👥 rows are the ones with a checkable contract at their boundary.
+
+`search/` may import `api.py` and `apl/` and nothing lower. `dndsim check` grows
+one import rule for it (DESIGN.md § Module layout).
+
+| ID | Task | Mode | Depends | Produces | Done when |
+|---|---|---|---|---|---|
+| w8a | **Candidate generator** — resolved build + `NamespaceSchema` → the candidate entry pool. Actions from the build's offered ids, riders and reactions; conditions from the schema's boolean / enum / numeric paths (numeric paths gain a declared candidate grid, the schema's only new field); targets and `move:` forms from the closed selector grammar's cross product | 👥 | w2e, w2f, w4g | `search/candidates.py`, one `NamespaceSchema` field | **adding a class, subclass, feat or spell requires zero lines of change in this file** — the acceptance test parameterises over three unrelated builds and asserts every generated entry loads through the real APL compiler. A pool that needed a per-class table fails review outright: it would launder the author's priors through a search and is the exact failure the wave exists to prevent |
+| w8b | **Random-key encoding**, decoder and canonical policy hash — entry `i` is `(enabled, priority ∈ [0,1), θ…)`; decode = filter, sort by priority, emit | 👥 | w8a | `search/encoding.py` | every vector in the box decodes to a legal APL with no repair operator; `decode` is canonical, so two vectors decoding to the same policy produce the same hash, and the hash is stable across processes |
+| w8c | **Paired evaluator** — CRN seed sets, disjoint derivation/holdout split, per-seed objective vectors, memoisation on the policy hash, pluggable `objective:` (`attrition` / `dpr` / `survival` / `time_to_kill`) and the scenario **distribution** | 🔒 | w2g, w6a, w8b | `search/evaluate.py`, `objectives.py` | same policy + same seed set ⇒ **identical vector at any `--jobs`**; the paired-difference CI on a known near-identical policy pair is demonstrably narrower than the unpaired one on the same samples; the holdout seeds provably never touch the search |
+| w8d | **Derivation spike** — the whole loop with **random search only**, on one real level-5 martial, measuring core-hours per character and the train/holdout optimism gap. A stop-and-revise gate in the shape of `w0i` | 🔒 | w8c | `tools/derive_spike.py`, `docs/decisions.md` § w8d | a number exists for the cost per character and for the optimism gap at three budgets. **If the gap does not close with more seeds, the sampling design is revised here** — before a sampler is built on top of it. Random search's holdout score becomes the baseline `w8e` must beat |
+| w8e | **Search driver** — optuna study, TPE + successive-halving racing, `BruteForceSampler` rung when the decoded space is small, staged structure-then-thresholds, cheap proxy objective in the early rungs promoted on a rank-correlation check | 🔒 | w8d | `search/driver.py` | deterministic given seed + config, resumable; **beats `w8d`'s random-search baseline on the holdout at equal sample budget, or random search stays and the sampler is cut** — a sampler that does not beat random search is complexity with no measurement behind it |
+| w8f | **Parsimony + ablation** — one-standard-error selection, per-entry marginal value with a CI, drop-inside-noise, the ablation report | 🔒 | w8e | `search/ablate.py` | every entry in the emitted APL has a marginal-value CI excluding zero or an explicit retained-because annotation; the report is readable in one sitting, because it is the artefact that says *why* and an unreadable one is not evidence |
+| w8g | **Party coordinate ascent** — cyclic best response, capped sweeps, reported trajectory | 🔒 | w8e | `search/party.py` | sweeps are capped and the cap is reported; the result names which member's policy changed last and is labelled a **mutual best response, never an optimum**; a cycle is detected and reported rather than run to the cap in silence |
+| w8h | **`dndsim derive`** + the derived-APL artefact (provenance header over an ordinary `apl:` block), Δ-vs-baseline, and the exploit-triage plausibility band | 🔒 | w8e, w8f, w2h | `cli.py`, `search/emit.py` | a derived APL round-trips through the ordinary build loader unchanged and is indistinguishable from an authored one — **there is no second policy format**; the six provenance fields (seed, build hash, engine version, content version, derivation-config hash, scenario-set hash) reproduce the APL byte for byte; a derivation whose holdout objective leaves the declared band exits non-zero listing the offending entries |
+
+> **M5 — Attrition under a derived policy.** `dndsim derive` produces, for a
+> build the simulator has never been tuned against, a readable APL that beats its
+> hand-written baseline on held-out seeds by a margin whose confidence interval
+> excludes zero — and an ablation table in which every surviving line has a
+> measured reason to exist.
+>
+> M4 remains the project's stated goal. M5 is what makes M4's number a property
+> of the build rather than of whoever wrote its APL, and it is the only milestone
+> whose failure mode is a confident wrong answer rather than a red test. Read
+> DESIGN.md § Biggest risks #4 before starting `w8c`; the mitigations listed there
+> are the wave's actual specification, and every one of them is a row above.
 
 ---
 

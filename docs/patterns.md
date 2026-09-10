@@ -31,6 +31,9 @@ load-bearing ideas for the rule and the reason.
 | **Template Method** | `HookSource.__init_subclass__` | Fixed validation skeleton subclasses cannot skip |
 | **Ports & Adapters** | `api.py` vs `cli.py` | A UI added later is another adapter, not a rewrite |
 | **Inversion of Control** | the whole feature API | The engine calls features; features never drive the engine |
+| **Abstract Factory** | `search/candidates.py` | Generates the policy candidate pool from the schema, so no per-class table exists |
+| **Memento**-adjacent | `search/encoding.py` | The random-key vector is a flat, samplable representation a policy is restored from |
+| **Client, not layer** | `search/` over `api.py` | Policy search consumes the simulator; nothing in the simulator knows it exists |
 
 ## Patterns by package
 
@@ -53,6 +56,13 @@ load-bearing ideas for the rule and the reason.
   steps (abilities → class levels → features → equipment → APL), each able to
   fail loudly with a useful message, rather than via a constructor with twenty
   arguments.
+- `search/` — a **client** of `api.py`, deliberately not a layer of it. It
+  generates `Apl` **Strategy** objects and uses the simulator as a noisy oracle,
+  which is why W8 needs no engine change at all. The candidate pool is an
+  **Abstract Factory** over the `NamespaceSchema` rather than a hand-written
+  list: a hand-written pool would launder the author's priors through a search
+  and defeat the point. Import direction is enforced — `search/` may import
+  `api.py` and `apl/`, and nothing may import `search/` except `cli.py`.
 - `core/rng.py` — **Strategy**. `MersenneRng` in production, `ScriptedRng` in golden
   tests. The linter bans `import random` everywhere else, so determinism is
   structurally guaranteed rather than merely intended.
