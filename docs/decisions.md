@@ -21,6 +21,7 @@ re-litigated by the next agent through the area.
 | `creatures/`, `engine/damage.py`, `core/geometry.py` | [w0g2](#w0g2--spike-substrate) |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | [w0h](#w0h--walking-skeleton) |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | [w0i](#w0i--the-pessimistic-performance-spike-m0) |
+| `ROADMAP.md`, `DESIGN.md`, planning a wave | [the W0 plan review](#the-w0-plan-review--what-m0-changed-in-the-plan) |
 
 ## w0a — scaffold
 
@@ -35,9 +36,10 @@ re-litigated by the next agent through the area.
 - `.github/workflows/ci.yml` runs the same five checks as the pre-commit hook
   (`uv lock --check`, ruff check, ruff format, mypy, pytest) through
   `uv run --frozen`, each guarded by `if: ${{ !cancelled() }}` so one push
-  reports every failure rather than the first. Later gates — frozen-registry
-  diff (`w3b`), benchmark regression (`w3c`), stale generated docs (`w3i`) —
-  join this workflow as their tasks land.
+  reports every failure rather than the first. Later gates — the feature linter
+  (`w3b`), stale generated docs (`w3c`), the benchmark regression gate (`w3i`)
+  and the frozen-registry diff (`w3f`, after the paper pass has added what it
+  proves missing) — join this workflow as their tasks land.
 - Ruff excludes `*.md` and `.claude/skills`, so `ruff format` never rewrites
   `DESIGN.md`'s code samples or vendored skills; the hook only sees `.py`/`.pyi`,
   so this keeps hook and CI in agreement.
@@ -788,3 +790,135 @@ measure, which is the whole subject of this section.
 
 Sources: DESIGN.md § Performance, § The spike must be pessimistic, § Levers,
 § The benchmark gate, § Condition language; ROADMAP w0i, w1a, w1f, w2e, w3i.
+
+## The W0 plan review — what M0 changed in the plan
+
+Not a task. W0 is complete and M0 is met, so `ROADMAP.md` and `DESIGN.md` were
+re-read against what the wave measured rather than against what it assumed. The
+findings are recorded here so the *reasoning* survives even though the documents
+now simply state the conclusions.
+
+**The wave's own record was in good shape and this pass changed very little of
+it.** Every finding below was already written down somewhere in the code or in
+this file — usually in the module docstring of the file that owes the debt. What
+none of them had was a home in the plan. That distinction is the whole content
+of this review: a paragraph explaining a stand-in ages into a paragraph
+describing the code, and the reader who needed to act on it is the one who never
+opens that file.
+
+### The one structural change: `w1k`
+
+`w0i` measured ~31,500 against a budget of 30,000 and states in its own record
+that what the spike understates is the per-round cost, "because effects (`w1c`)
+and resources (`w1b`) do not exist, so there is no per-boundary expiry sweep and
+no pool arithmetic". W1 is the wave that builds both. The next task in the plan
+that re-measured anything was `w2e`, twenty tasks downstream.
+
+Five percent of headroom, twenty tasks, and a known-missing cost that lands in
+the very next wave is not a gap the M0 gate can be said to have covered. So
+`w1k` re-runs the spike at the end of W1 with the fixtures' hand-built effect
+and resource stand-ins replaced by the real ones. It is the same argument `w0i`
+made for the APL compiler, applied to the two stand-ins it named itself: **a
+stand-in a later task has to beat is a budget; a stand-in nobody re-measures is
+a stub.** That sentence is now sequencing principle 7 in `ROADMAP.md`, because
+W0 produced sixteen more stand-ins after writing it.
+
+### The debt register, and why a table rather than more prose
+
+Seventeen deliberate first cuts and deferred obligations came out of W0. Every one
+is explained where it lives, and the explanations are good — `_refuse_pending()`
+raises with a sentence naming `w1c`, `stats.py`'s docstring says why
+`armour_class` is a literal and until when. The problem is discovery, not
+documentation: an agent picking up `w1c` reads the `w1c` row of `ROADMAP.md`,
+not the docstring of a function in a file it may have no reason to open.
+
+So each debt now appears twice: once in `ROADMAP.md` § The W0 debt register, as
+an index with the task that retires it and what it costs if nobody does, and
+once in that task's **Done when** cell, which is the sentence the agent actually
+reads. The register is the map; the done-when is the instruction.
+
+Two of the seventeen are worth naming here because they are the ones that would
+have cost the most:
+
+- **`skeleton.attack_once()` becomes a second attack order the moment
+  `engine/attack.py` exists** — and `tools/spike.py` imports it. Left alone,
+  the benchmark that defends the performance budget, that `w2e` must beat and
+  that `w3i` turns into a CI gate would go on measuring a hand-sequenced attack
+  the project does not ship. The project's hardest structural rule is that the
+  damage order is written in exactly one place; the attack order has the same
+  property and had no rule protecting it. `w1f` retires it.
+- **The `Combatant` and `Weapon` protocols are too narrow to write a real
+  feature against.** `w0i` found this and worked around it in two fixtures with
+  a paragraph each. No `on_hit` handler can read the defender's hit points or
+  ask whether the weapon is Heavy — which is Great Weapon Master, every
+  mastery, and every bloodied-target rider in the game. `w1a` and `w1f` widen
+  them, `w3e` confirms the shape before ~400 features are written through it,
+  and `w3f` fixes a structural gap if the pass finds one. Those two sub-items
+  are the only W1 work that touches `hooks/contexts.py`, so they are solo inside
+  otherwise delegable tasks.
+
+### Three lessons that generalise past their tasks
+
+Each was learned once in W0 at some cost, and each has an obvious later victim
+that the plan did not previously warn:
+
+1. **A benchmark must witness its own fixtures** (`w3i`). The spike ran for a
+   while with its only gated reaction never firing, because the hero's hit point
+   pool was sized so the gate's condition could not hold. The rate was fine
+   throughout. The cheapest way to speed up a benchmark is to stop a rider
+   firing, so a gate watching only the rate cannot tell a fix from a fixture
+   that broke.
+2. **A harness with exact-integer assertions must fix its unit of work**
+   (`w3a`). The spike's counts were facts about seed 0. The fix was an invariant
+   — a configuration resolving the same number of attacks whatever the dice do —
+   not a bigger sample, and it is the harness's job rather than each author's.
+3. **An optimisation that skips a step must prove every skipped step was the
+   identity** (DESIGN.md § Structural prevention). Two of `w0i`'s three review
+   findings had exactly that shape. A structural guarantee is only as strong as
+   the fastest path around it.
+
+### The turn-loop finding, which is a design note and not a bug
+
+`w0i` charged an Action for what XPHB gives a Bonus Action, and the entry sat
+above `attack` with an `if:` that its own effect did not clear — so the creature
+bought the buff once and stopped attacking for the rest of the encounter. It
+cost 0.07% of the rate. **That is why it is worth recording: nothing watching
+the rate could ever have found it**, and it was caught only because the
+exact-integer assertions moved when the seeds changed.
+
+Two consequences are now in the plan. `w2c` charges real action costs and
+filters offers to what the economy can pay, which is correctness rather than
+policy. And `w2g`'s `SimResult` reports actions and attack resolutions per
+round, so a policy that starves itself shows up as a count rather than as a
+disappointing average — the same failure DESIGN.md § APL already warns about for
+a melee build that stands still, arriving through the economy instead of the
+grid.
+
+### Stale statements corrected
+
+- `ROADMAP.md` w0c named `PcgRng` as the production generator; `w0i` replaced it
+  with `MersenneRng`. The row now names both and which superseded which.
+- This file's § w0a listed the later CI gates against the wrong task ids
+  (frozen-registry diff as `w3b`, benchmark regression as `w3c`, stale docs as
+  `w3i`). The registry freeze is `w3f`'s, after the paper pass; the benchmark
+  gate is `w3i`'s; stale generated docs are `w3c`'s.
+- `core/timeline.py`'s `tiebreak` docstring justified `2**32` as the widest die
+  `PcgRng.roll` can serve. Still true of `MersenneRng` — one 32-bit word per
+  face — but by the old generator's name.
+- DESIGN.md § Levers listed "contexts reset and reused per attack" without the
+  finding that makes it true: the general `reopen()` was *slower* than
+  allocating, and only the per-class compiled one is a win. A later reader
+  simplifying that generated code back to a general implementation would re-take
+  a lever that does not work, which is precisely the re-litigation this file
+  exists to prevent.
+- DESIGN.md § Biggest risks still listed "the performance spike passes on a
+  stub" as risk 1. It fired, the mitigation worked, and it is closed. Its
+  successor — the headroom eroding between M0 and the gate that guards it — is
+  a different risk with different mitigations, and pretending it is the same one
+  would leave the register describing a danger that is already behind us.
+
+Sources: `docs/decisions.md` § w0c, § w0d, § w0f, § w0g, § w0g2, § w0h, § w0i;
+DESIGN.md § Performance, § The spike must be pessimistic, § Levers, § The
+benchmark gate, § APL, § Structural prevention over testing, § Biggest risks;
+ROADMAP § Sequencing principles, § The W0 debt register, w1a–w1k, w2c, w2e–w2g,
+w3a, w3e, w3f, w3i, w5a.

@@ -24,10 +24,20 @@ sit at the theoretical floor of this object model in CPython.
 `docs/decisions.md` § w0i has the measurements, what each change bought, and
 the two levers deliberately not taken. **W1 may start.**
 
-`DESIGN.md` § APL derivation was added after M0 and is the largest change to the
-project's goal since the founding document: the APL is **derived by search per
-build, not authored**, which adds wave W8 and milestone M5 and puts two
-signatures into W2 that were not there before. Nothing in W0's code is affected.
+The plans were then re-read against what the wave measured
+(`docs/decisions.md` § The W0 plan review). Two things came out of it that
+matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
+seventeen first cuts and deferred obligations W0 left behind and the task that
+retires each — check it for the file you are about to touch — and **`w1k` is a
+new task**, an M0 re-measure at the end of W1, because the measured ~31.5k has
+5% of headroom and W1 adds the per-round cost the spike does not model.
+
+`DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
+largest change to the project's goal since the founding document: the APL is
+**derived by search per build, not authored**, over a global fitted value model
+shared by every build. That adds wave W8 and milestone M5, three signatures to
+W2, and one authoring declaration to W3 (`BUFF_PROFILE`) that must exist before
+the W4 grind. Nothing in W0's code is affected.
 
 Both documents are load-bearing: `DESIGN.md` fixes the architecture and the
 vocabulary, `ROADMAP.md` fixes what may be built when and by whom. Read the
@@ -171,6 +181,7 @@ there is local to a module.
 | `creatures/`, `engine/damage.py`, `core/geometry.py` | § w0g2 |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |
+| `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review |
 
 Add a section there when a task lands, rather than growing this file.
 
