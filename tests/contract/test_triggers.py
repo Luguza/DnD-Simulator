@@ -34,7 +34,7 @@ from typing import Final
 import pytest
 
 from dndsim.core.errors import EngineAssemblyError
-from dndsim.core.geometry import Cell, distance_ft
+from dndsim.core.geometry import Cell, distance_ft, in_reach
 from dndsim.core.timeline import InitiativeKey
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.stats import GREATSWORD, StatBlock
@@ -304,13 +304,19 @@ def test_the_per_step_cost_is_linear_in_watchers_not_in_the_room(
     """The efficiency claim, counted rather than timed.
 
     Twenty creatures in the room, one of which owns a movement observer, and a
-    six-square move. A broadcast would put 120 reach questions on the table. What
-    this costs instead is **one** — the broad phase asking the single creature
-    that got past the handler-table filter where it is standing — plus one per
-    square for that same creature: seven. The other nineteen never reach the
-    geometry at all, because "has anything attached to `on_leave_reach`" is a
-    dict lookup and it is asked first, in the same ascending-cost order the
-    dispatcher asks its own three valves in.
+    six-square move. A broadcast asks the grid 120 times. What this costs instead
+    is **eight**: two in the broad phase for the single creature that got past
+    the handler-table filter — one bounding-box question and one reach question —
+    and one per square for that same creature afterwards. The other nineteen
+    never reach the geometry at all, because "has anything attached to
+    `on_leave_reach`" is a dict lookup and it is asked first, in the same
+    ascending-cost order the dispatcher asks its own three valves in.
+
+    Both names are counted because the file asks the grid through both:
+    `in_reach()` for every reach question, per `core/geometry.py`'s claim to be
+    the one place reach is decided, and `distance_ft()` only for the broad-phase
+    bound, which is a question about the size of the route rather than about
+    reach.
     """
     mover = _creature("Runner", Cell(0, 0))
     watcher = _creature("Watcher", Cell(0, -1))
@@ -320,15 +326,21 @@ def test_the_per_step_cost_is_linear_in_watchers_not_in_the_room(
 
     queries = 0
 
-    def counting(origin: Cell, destination: Cell) -> int:
+    def counting_distance(origin: Cell, destination: Cell) -> int:
         nonlocal queries
         queries += 1
         return distance_ft(origin, destination)
 
-    monkeypatch.setattr("dndsim.engine.triggers.distance_ft", counting)
+    def counting_reach(origin: Cell, destination: Cell, reach_ft: int) -> bool:
+        nonlocal queries
+        queries += 1
+        return in_reach(origin, destination, reach_ft)
+
+    monkeypatch.setattr("dndsim.engine.triggers.distance_ft", counting_distance)
+    monkeypatch.setattr("dndsim.engine.triggers.in_reach", counting_reach)
     walk_provoking(mover, _east(Cell(0, 0), 6), [watcher, *room])
 
-    assert queries == 1 + 6
+    assert queries == 2 + 6
 
 
 def test_a_watcher_out_of_range_of_the_whole_route_is_never_asked() -> None:

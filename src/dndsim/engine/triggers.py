@@ -117,7 +117,7 @@ w2e.
 from collections.abc import Iterable, Sequence
 
 from dndsim.core.errors import EngineAssemblyError
-from dndsim.core.geometry import Cell, distance_ft
+from dndsim.core.geometry import Cell, distance_ft, in_reach
 from dndsim.core.timeline import InitiativeKey
 from dndsim.creatures.creature import Creature
 from dndsim.hooks.contexts import LeaveReachContext
@@ -193,7 +193,7 @@ class MovementWatch:
         pruning = False
         for watcher in self._watchers:
             standing = watcher.creature.position
-            now = distance_ft(standing, destination) <= watcher.reach_ft
+            now = in_reach(standing, destination, watcher.reach_ft)
             if watcher.threatening and not now:
                 watcher.threatening = False
                 self._offer(watcher, origin, destination)
@@ -289,10 +289,24 @@ def watch_movement(
         if not creature.is_alive:
             continue
         reach = creature.reach_ft
-        separation = distance_ft(creature.position, origin)
-        if separation > reach + horizon:
+        standing = creature.position
+        # `distance_ft` for the horizon and `in_reach` for the flag, rather than
+        # one subtraction doing both. They are the same arithmetic today and
+        # will stop being: `core/geometry.py` says `in_reach` is the one query
+        # "the attack pipeline, the opportunity-attack trigger and the APL's
+        # `enemies.in_reach` selector all ask, in one place so that 'reach'
+        # means the same thing to all three", and `w1d` is the task that makes
+        # that sentence earn its keep by giving a Large creature a reach its
+        # square does not describe (debt 9). An inlined Chebyshev here would be
+        # the copy that quietly does not get that. The horizon is a bounding-box
+        # question rather than a reach one and stays raw distance — `w1d` owes
+        # it the same second look, since a footprint wider than one square
+        # widens the bound too.
+        if distance_ft(standing, origin) > reach + horizon:
             continue
-        watchers.append(_Watcher(creature, threatening=separation <= reach))
+        watchers.append(
+            _Watcher(creature, threatening=in_reach(standing, origin, reach))
+        )
     if not watchers:
         return None
     watchers.sort(key=_seat)

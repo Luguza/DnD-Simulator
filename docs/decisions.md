@@ -997,7 +997,7 @@ what `trace`, the goldens and every regression diff stand on.
 
 The efficiency claim is checked as a **count**, in `tests/contract/test_triggers.py`:
 twenty combatants, one of them owning a movement observer, a six-square move —
-seven distance queries, being one broad-phase question for the creature that got
+eight grid queries, being two broad-phase questions for the creature that got
 past the dict lookup plus one per square for the same creature. A broadcast is
 120. The other nineteen never reach the geometry. A wall-clock assertion of the
 same claim on a shared runner fires on noise and is deleted within a month
@@ -1006,14 +1006,20 @@ same claim on a shared runner fires on noise and is deleted within a month
 The spike's `_step()` now moves creatures through `walk_provoking()`, so the
 audience computation is inside the M0 measurement. Nothing in the spike owns an
 `on_leave_reach` handler, so what is measured there is the case the design
-claims is free. On the container this was written on, four baseline runs
-returned 21.9k / 22.2k / 22.0k / 22.4k and four runs with the observer wired in
-returned 21.0k / 22.0k / 22.3k / 21.9k — the same number inside a run-to-run
-spread of about 3%. **That container is not the one M0 was measured on**: it
-misses the 30k budget with the observer removed entirely, so the numbers above
-are a *delta*, and re-running the gate for real belongs on the machine
-`docs/decisions.md` § w0i quotes. `BUDGET_PER_SECOND` was not touched, and the
-one edit this file warns must never be made quietly was not made.
+claims is free. Measured **A/B in one session**, which is the only comparison
+this container supports: three baseline runs returned 26.5k / 26.6k / 26.6k and
+three with the observer wired in returned 26.6k / 25.8k / 26.6k — the same
+number. The fast path costs, per move, one dict lookup per combatant and a
+`None`.
+
+**That container is not the one M0 was measured on**, and the gap is not small:
+it misses the 30k budget with the observer removed entirely, and the same
+baseline measured 22.0k earlier the same day under different load. So these are
+a *delta* and nothing else — an absolute figure from here is worthless, and
+re-running the gate for real belongs on the machine § w0i quotes. Two sessions'
+numbers are not comparable; only two runs in one session are.
+`BUDGET_PER_SECOND` was not touched, and the one edit `tools/spike.py` warns
+must never be made quietly was not made.
 
 A configuration in which the offers actually fire is `w2c`'s, and its acceptance
 criterion says so — not out of caution but because an opportunity attack made by
@@ -1076,6 +1082,32 @@ other four debts live: row 21 of ROADMAP.md § The W0 debt register, retired by
 All five of this task's debts are rows 18-22 of that register, which post-dates
 the first draft of this section. The register is the record and the module
 docstring is a local copy of it; when the two disagree, the register wins.
+
+### Reach is asked through `in_reach()`, not inlined
+
+The first draft wrote `distance_ft(a, b) <= reach` at both query sites, on the
+grounds that it is `in_reach`'s own body and the narrow phase runs per square.
+The review of it pointed at `core/geometry.py`, which claims `in_reach` is the
+one query "the attack pipeline, **the opportunity-attack trigger** and the APL's
+`enemies.in_reach` selector all ask, in one place so that 'reach' means the same
+thing to all three" — and called the mismatch doc drift.
+
+It is more than that, which is why the code moved rather than the docstring.
+Debt 9 is `Size` reaching geometry nowhere, retired by `w1d`, and what `w1d`
+does is give a Large creature a reach its square does not describe. On that day
+`in_reach` learns something and an inlined Chebyshev does not, and the failure
+is an opportunity attack that a Large creature silently does not get — the exact
+class of bug the sentence in `core/geometry.py` was written to prevent. Both
+sites now ask `in_reach`. The broad phase keeps a raw `distance_ft` alongside it
+for the horizon cut, because that is a question about the length of the route
+rather than about reach; `w1d` owes that bound the same second look, since a
+footprint wider than one square widens it too.
+
+The cost is one function call per candidate per move and one per watcher per
+square — paid only when somebody in the room actually owns a movement reaction,
+which is the case that was going to dispatch an attack anyway. The spike's
+measurement is unchanged, because the filter that empties the audience runs
+before either call.
 
 ### Hostility is not asked about here
 
