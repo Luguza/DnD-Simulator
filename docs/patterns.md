@@ -34,6 +34,8 @@ load-bearing ideas for the rule and the reason.
 | **Abstract Factory** | `search/candidates.py` | Generates the policy candidate pool from the schema, so no per-class table exists |
 | **Memento**-adjacent | `search/encoding.py` | The random-key vector is a flat, samplable representation a policy is restored from |
 | **Client, not layer** | `search/` over `api.py` | Policy search consumes the simulator; nothing in the simulator knows it exists |
+| **Strategy** (second implementation) | `apl/scorer.py` | The scored policy the founding design anticipated: a value model swapped in behind the same interface as the ordered list |
+| **Decorator** (conceptual) | the APL overlay over `best_scored` | The per-build search wraps the global scorer with its departures, rather than replacing it |
 
 ## Patterns by package
 
@@ -63,6 +65,13 @@ load-bearing ideas for the rule and the reason.
   list: a hand-written pool would launder the author's priors through a search
   and defeat the point. Import direction is enforced — `search/` may import
   `api.py` and `apl/`, and nothing may import `search/` except `cli.py`.
+- `apl/scorer.py` — the **Strategy** slot § APL of DESIGN.md reserved from the
+  start ("a built-in scoring heuristic can later be dropped in as an alternative
+  Policy implementation"). It is not an alternative in the end but a *layer*: the
+  ordered list keeps its place and gains one entry, `best_scored`, so the two
+  compose rather than compete. `engine/estimate.py` is the expected-damage
+  estimator it reads, and it is engine code precisely because it must share the
+  crit, advantage and defence rules with `engine/damage.py` by construction.
 - `core/rng.py` — **Strategy**. `MersenneRng` in production, `ScriptedRng` in golden
   tests. The linter bans `import random` everywhere else, so determinism is
   structurally guaranteed rather than merely intended.

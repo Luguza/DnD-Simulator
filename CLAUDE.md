@@ -108,16 +108,30 @@ only via `table_value()`, never hardcoded. `cli.py` is a thin adapter over
 `api.py` and holds no simulation logic; text output is rendered from the same
 `SimResult` JSON the API returns, so the two cannot disagree.
 
-**The policy is derived, not authored.** A build's APL is produced by statistical
-search per build (`DESIGN.md` § APL derivation, `ROADMAP.md` W8), because nobody
-knows the best line of play and a hand-written APL makes every reported number a
-measurement of *build plus author*. A hand-written `apl:` is the **baseline** the
-derived policy is scored against, never the input. Three consequences bite before
-W8 exists: `Apl` must be constructible programmatically and serialisable back
-(`w2e`), the API must accept a seed list and an APL override and return
-**per-seed** results (`w2g`), and `search/` is a client of `api.py` that may
-never import `engine/` or `hooks/`. Anything in `search/` that wants an engine
-change is a bug in `search/`.
+**The policy is derived, not authored, and it has two layers.** A build's APL is
+produced by statistical search per build (`DESIGN.md` § APL derivation,
+`ROADMAP.md` W8), because nobody knows the best line of play and a hand-written
+APL makes every reported number a measurement of *build plus author*. A
+hand-written `apl:` is the **baseline** the derived policy is scored against,
+never the input. Underneath the search sits a **global scorer** (§ The scorer):
+one fitted value model, shared by every build, scoring offered actions in
+expected-damage points — so the searched APL carries only this build's
+*departures* from generic good play. Four consequences bite before W8 exists:
+`Apl` must be constructible programmatically and serialisable back (`w2e`), the
+action id `best_scored` must be **reserved** in W2's closed vocabulary (`w2e`),
+the API must accept a seed list and an APL override and return **per-seed**
+results (`w2g`), and `search/` is a client of `api.py` that may never import
+`engine/` or `hooks/`. Anything in `search/` that wants an engine change is a bug
+in `search/` — with the one stated exception of `engine/estimate.py`, which is
+engine code the *scorer* needs and the search does not.
+
+**The estimator and the resolver may never diverge.** `engine/estimate.py`
+computes expected damage in closed form (hit chance from attack bonus vs AC, or
+save DC vs save bonus, summed over targets); `engine/damage.py` resolves it. If
+they disagree about the crit dice/flat split or the defence order, the scorer's
+fit absorbs the discrepancy into a coefficient and hides it, and nothing goes
+red. The property test binding `Ê_dmg` to 10⁵ real resolutions is the guard, and
+it is not optional.
 
 **Performance is a design constraint, not a later concern.** Budget is ≥30k
 attack resolutions/sec/core, revised down from 50k by the W0 spike itself,
@@ -156,7 +170,7 @@ Add a section there when a task lands, rather than growing this file.
 
 ## Sequencing rules
 
-`ROADMAP.md` has 68 tasks across waves W0–W8 with explicit dependency edges.
+`ROADMAP.md` has 72 tasks across waves W0–W8 with explicit dependency edges.
 Three constraints dominate:
 
 - **Nothing in W4 or later may start before M2** (API frozen, authoring skill

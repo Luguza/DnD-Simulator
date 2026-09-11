@@ -60,6 +60,7 @@ settled decisions and not implementation detail.
 | Targeting | **An APL decision** — a `target:` selector expression per entry |
 | Policy | SimC-style Action Priority List — the *language*; see the next row for where the list comes from |
 | **Policy derivation** | **In scope for v1 — derived by statistical search per build, never authored.** A hand-written `apl:` is a baseline, not an input |
+| Policy structure | Two layers: a **global fitted scorer** (`best_scored`) under a **per-build searched overlay** of departures. Score is in expected-damage points, gauged so a plain attack is 1 and doing nothing is 0 |
 | v1 output | Adventuring-day attrition |
 | Death & stop condition | Death saves rolled; healing is an APL action; day ends on TPK or a declared retreat threshold |
 | Content order | **Martials first, full vertical slice** (Barbarian/Fighter/Rogue/Monk, 16 subclasses, levels 1–12, masteries, martial feats) |
@@ -452,7 +453,8 @@ The APL as a whole is a **Strategy**: the creature's decision-making is a
 pluggable policy object. That is what makes build-vs-build comparison possible at
 all — swap the policy, hold everything else fixed. A built-in scoring heuristic
 can later be dropped in as an alternative `Policy` implementation without the
-engine noticing.
+engine noticing — and § The scorer is that heuristic arriving, as a *layer*
+under this list rather than as a rival to it.
 
 **The unifying idea:** a turn action, a reaction, and a mid-attack rider are all
 "the engine has an offer; does the APL take it?" One flat ordered list; the
@@ -560,7 +562,11 @@ makes. Determinism was justified above by reproducibility and readable
 regression diffs; its larger payoff is here, because it is what makes common
 random numbers exact and therefore what makes the search affordable at all.
 
-### What it changes architecturally: nothing
+### What it changes architecturally: almost nothing
+
+> Amended by § The scorer below, which adds two files and a third seam. The
+> claim that *derivation* touches no engine file survives; the claim that the
+> whole feature does not, does not.
 
 The APL is already a **Strategy** — a pluggable policy object the engine knows
 nothing about. Derivation is a *generator of Strategy objects* that uses the
@@ -570,7 +576,7 @@ feature**. That property is the whole reason this is affordable to add, and it
 is worth defending: anything in `search/` that wants an engine change is a
 design error in `search/`, not a missing hook.
 
-It costs two seams, and both must be cut in W2 — before a single build YAML
+It costs three seams, and all must be cut in W2 — before a single build YAML
 exists in git — because retrofitting them afterwards is a migration across every
 file in `builds/`:
 
@@ -581,6 +587,271 @@ file in `builds/`:
    and `run_day` take an explicit seed list and return the objective *vector*,
    not only its mean. Aggregates are useless to a paired comparison, and a
    paired comparison is the entire variance-reduction strategy below.
+3. **`best_scored` is reserved in the action vocabulary.** The scorer below
+   enters the APL as one action id, and that vocabulary is closed — reserving
+   the id costs a line in W2 and is a schema migration across every build file
+   afterwards, exactly as the three clauses were.
+
+### The scorer: one global value model under the per-build search
+
+The search above starts every build from nothing. That is wasteful and it is also
+wrong about where the knowledge lives: *most* of what makes a turn good is not
+build-specific. "Hit the thing you are most likely to hit, with the option that
+deals the most damage, unless you are spending something scarce to do it" is true
+for every class at every level, and re-searching it once per build spends the
+budget proving the obvious.
+
+So the policy is two layers:
+
+1. **A scorer** — a global value model that scores every offered action at every
+   decision point, with **coefficients fitted once across a whole corpus of
+   builds** and reused by all of them.
+2. **The per-build overlay** — the searched APL from the previous sections,
+   which now carries only this build's *departures* from generic good play.
+
+The layering is what makes the per-build search cheap and its output readable.
+A derived APL stops being a policy and becomes a diff.
+
+**The obvious objection first.** A fixed scoring formula with fitted coefficients
+is a hardcoded functional form, which is exactly what the previous section said
+not to do. That trade is deliberate and it is made falsifiable rather than
+argued: the scorer competes for its place in the ordered list like any other
+candidate entry (below), so if the model is wrong for a build the search routes
+around it and the ablation table reports the scorer carrying no marginal value.
+**A scorer that cannot be shown to beat its own absence is cut.** That is an
+acceptance criterion of `w8h`, not a matter of taste.
+
+#### The score function
+
+Every offered action is scored in one currency — **points of expected damage** —
+so that damage, prevented damage and spent resources are directly comparable:
+
+```
+score(a, T) =   w[a] · Ê_dmg(a, T)              # what it does to them
+              + w_ally · Ê_ally_hp(a, T)         # what it saves us
+              − Σ_r  c[r](day) · spend_r/pool_r  # what it costs
+              + b[a]                             # everything not immediate
+```
+
+Three families of fitted coefficients, and nothing else:
+
+- **`w[a]`, a slope per action id**, multiplying the engine's expected-damage
+  estimate. For a plain attack it is pinned (below); elsewhere it absorbs the
+  residual the estimator cannot see — rider damage, follow-on attacks, the
+  tempo the action costs.
+- **`b[a]`, an intercept per action id**, for the actions whose value is not
+  immediate damage at all. Rage, Dodge and Hunter's Mark all have
+  `Ê_dmg = 0`; without an intercept a pure multiplier scores them at zero and
+  they never fire. This is why the model is affine and not multiplicative.
+- **`w_ally` and `c[r]`, the two exchange rates.** `w_ally` is what one point of
+  ally HP is worth in enemy damage; `c[r]` is the scarcity price of one unit of
+  resource `r`, modulated by how much of the day remains. These two numbers are
+  not bookkeeping — **they are the attrition question in scalar form**, and
+  discovering them is arguably the most interesting single output the project
+  can produce. One fitted `w_ally` drives healing, Dodge, Uncanny Dodge, Shield
+  and friendly-fire avoidance simultaneously, which is a very large compression
+  of the policy space for one parameter.
+
+**The gauge — two coefficients are pinned, not fitted.** A ranking is invariant
+under any positive affine transform of the scores, so the model is
+unidentifiable until two degrees of freedom are removed. Both choices are
+meaningful rather than arbitrary:
+
+- **`w[attack] = 1`, `b[attack] = 0`** fixes the scale. Every other coefficient
+  is then denominated in *plain attacks*, which is the unit a reader already
+  has intuition for: "Reckless Attack is worth 1.4 attacks against AC 17" is a
+  sentence; "Reckless Attack scores 8.3" is not.
+- **`score(null) = 0`** fixes the offset, where `null` is the explicit
+  end-your-turn option. This one earns its place twice over: it makes every
+  score a value *relative to doing nothing*, and it is what lets the scorer
+  decide to **hold a resource** rather than spend it. A model in which "do
+  nothing" is not on the ballot cannot answer the attrition question, because
+  conserving is half of it.
+
+#### The estimator is computed, never fitted
+
+`Ê_dmg` is the part the user's question is really about — *number of targets,
+and hit chance from our attack modifiers and our save DC* — and it is
+**closed-form engine code, not a learned number and not per-feature**:
+
+- **Attack rolls:** `Σ_t [ p_hit(t)·(dice_mean + flat) + p_crit·dice_mean ]`,
+  with `p_hit` from the real attack bonus against that target's AC and
+  advantage folded in as `1 − (1−p)²` (disadvantage `p²`), since advantage is
+  already a collection of sources rather than a boolean.
+- **Saving throws:** `Σ_t [ p_fail(t)·full + (1−p_fail(t))·half ]`, with
+  `p_fail` from this creature's spell save DC against that target's save bonus.
+- **Defences applied in the resolver's order**, so a Fireball against fire-immune
+  enemies scores zero rather than full.
+
+It lives in one file, `engine/estimate.py`, for the same reason the damage
+resolution order does — and it is bound to the resolver by an invariant that is
+the linchpin of this whole scheme:
+
+> **The estimator and the resolver share the crit rule, the advantage rule and
+> the defence order by construction, and a property test asserts that
+> `Ê_dmg` matches the empirical mean of 10⁵ resolutions of the same action to
+> within Monte Carlo error.**
+
+If those two ever disagree about whether `flat` doubles on a crit, the scorer is
+systematically wrong at every decision point and no amount of fitting repairs it
+— the fit would simply absorb the bug into `w[a]` and hide it. This test is the
+one that keeps the model honest, and it is cheap.
+
+**One stated modelling assumption:** the estimator reads the target's true AC,
+save bonuses, resistances and immunities. That is perfect information about
+defences, which a real party does not have. Modelling belief and scouting is a
+subsystem, not a parameter, and it is out of v1 — but it is written down here
+because it is the kind of assumption that is invisible in results and
+embarrassing when discovered later. It inflates AoE and damage-type selection
+specifically.
+
+#### `best_scored` — how the two layers compose
+
+The scorer does **not** replace the ordered list. It enters it as one new action
+id in the closed vocabulary:
+
+```yaml
+apl:
+  - { action: rage, if: "not self.raging and enemies.within(30) >= 1" }
+  - { action: best_scored }
+```
+
+`best_scored` means *take the highest-scoring offered action*. The consequences
+are worth being explicit about, because they are most of the value of this
+design:
+
+- **The default policy for any build is a single entry**, `[{action:
+  best_scored}]` — a strong default rather than the Null Object of § APL. A
+  build with no APL at all now plays competently instead of falling through.
+- **A derived APL is a sparse diff.** The entries the search places *above*
+  `best_scored` are precisely this build's departures from generic play, and
+  "how many lines does this build need beyond the scorer?" becomes a reportable
+  per-build number. This is the parsimony rule of the previous section getting a
+  much better-conditioned problem to work on.
+- **The search gets a warm start** instead of a cold one, which is the largest
+  single cut to the derivation budget in this document.
+- **`APL_FALLTHROUGH` sharpens.** With `best_scored` present, falling through is
+  nearly impossible; a build that still does is one where the *search chose to
+  exclude the scorer*, which is a far more informative signal than the old
+  counter.
+- **The grammar does not change.** `best_scored` is an action id, so the AST
+  whitelist, the three clauses and the loader are all untouched — but the action
+  vocabulary is closed, which is why `w2e` must reserve the id now. Adding it
+  after builds exist in git is the same migration the three clauses were.
+
+#### Fitting the priors: a declared corpus, and held-out *builds*
+
+The coefficients are fitted on **`builds/corpus.yaml`** — a declared, versioned
+list of builds spanning class family × level (1 / 5 / 11 at minimum) × role,
+hashed into the derivation provenance and **refitted deliberately once per
+content wave**, never continuously. Corpus membership is a review decision. The
+alternative — fitting on whatever happens to be in `builds/` — makes the priors
+drift silently and makes two derivations months apart incomparable, which is the
+same failure the content-version pin exists to prevent.
+
+**The fit is validated on builds that are not in the corpus.** This is the
+build-level analogue of the holdout seed set, and without it "global priors help"
+is unfalsifiable: coefficients fitted and evaluated on the same builds will
+always look good. Held-out builds are also the only way to detect the risk that
+one `w[attack]` shared between a Wizard and a Barbarian is a number that fits
+neither, and the fit therefore reports **per-build residuals** so that failure is
+visible as a row rather than as a slightly worse average. Splitting the priors by
+class family is the remedy if the residuals demand it — but it is a response to a
+measurement, not a precaution.
+
+**Two tiers, gated by measurement** — the same shape as `w0i` and `w8g`:
+
+1. **Pooled black-box fit.** Treat the coefficient vector as one policy and
+   search it against the corpus's pooled holdout objective, restricted to the
+   ~15 most common action ids. ~30 parameters, the existing machinery, no new
+   concepts. Try this first.
+2. **Decision-level regression**, only if tier 1 stalls on parameter count.
+   Roll the corpus out under the current coefficients with ε-greedy exploration,
+   log every decision point (the offered set, each option's feature vector, the
+   choice, and the realised return-to-go), and regress return on features. **A
+   day-run yields one number to a black-box search and ~200 labelled decisions
+   to a regression**, which is the ~10²× sample-efficiency difference that makes
+   a hundred shared coefficients affordable when twenty per-build ones were
+   already the expensive part.
+
+Tier 2 is approximate policy iteration and inherits its known failure: the
+regression is fitted on the state distribution the *current* coefficients visit,
+and the improved ones visit a different one. The mitigation is not clever, it is
+mandatory — **every iterate is validated on the held-out builds and seeds before
+it is accepted, and a step that does not improve is rejected rather than
+compounded.** An unguarded policy-iteration loop that diverges looks exactly like
+one that is still converging.
+
+#### AoE: placement is searched, and it is part of the estimator
+
+For an area spell, "number of targets" is not given — it is chosen, and choosing
+it well is most of what the spell is worth. Placement is therefore **searched at
+the decision point**, and the search is bounded by geometry rather than by the
+grid: for a fixed-radius template the coverage-maximising origins are generated
+by the enemy positions and the pairwise intersections of radius-circles around
+them, so the candidate set is **O(n²) in enemies (≤ ~64 in practice), not O(grid
+cells)**. Each candidate is scored by the same `Ê_dmg` summed over what it
+covers.
+
+Two points keep this consistent with everything above:
+
+- **Placement is an estimator, not a policy.** It answers "what is the best this
+  spell can do from here"; the *decision* — whether that best is worth the slot —
+  stays with the scorer comparing that number against the alternatives. So a
+  hand-written max-coverage enumeration is not a hardcoded tactic, any more than
+  `p_hit` is.
+- **The friendly-fire coefficient is fitted, not assumed.** Allies inside the
+  template subtract `w_ally · Ê_dmg` — the same exchange rate as everywhere else,
+  which is exactly the reuse that justified having one. Whether a point of ally
+  HP is worth more or less than a point of enemy damage is a result, not an
+  assumption, and asserting `1.0` would be the hardcoded heuristic this section
+  exists to avoid.
+
+The code lands with the spell engine (`w5a`), because templates do not exist
+before it; the *decision* is settled here. M5 is reachable on martials, so this
+sits off the critical path to it.
+
+#### What it costs, and the correction it forces
+
+The scorer runs per decision point over every offered action × its candidate
+targets — on the order of 30 estimator calls per decision, against ~2 attack
+resolutions per turn at ~32 µs each. Naively that is a **3–10× regression on the
+turn**, which would be fatal. It is brought back by the fact that almost
+everything in `Ê_dmg` is static: dice means are memoised per weapon and spell,
+`p_hit` is a lookup on `(attack_bonus − AC, advantage_state)` over a small
+integer table, and the score vector is cached within a turn until something it
+reads changes. The target is **under 30% turn overhead**, and it is a measured
+number, not an argued one — `w8g` measures it, and if it misses, the scorer is
+revised there rather than after the grind.
+
+This also forces a correction to the claim two sections above. **§ What it
+changes architecturally is no longer strictly true:** derivation still changes no
+engine file, but *the scorer does*. It adds `engine/estimate.py` and
+`apl/scorer.py`, and it puts a third item on W2's seam list — the reserved
+`best_scored` action id. The layering rule survives intact and is what matters:
+`engine/estimate.py` is engine code, `apl/scorer.py` is policy code that runs in
+the hot path, the fitted coefficients are **data** that `apl/` loads, and
+`search/` only *produces* those coefficients. Nothing in `search/` imports
+`engine/`.
+
+#### The known weakness: the scorer is myopic
+
+`Ê_dmg` is immediate expected damage. Rage, Hunter's Mark, Bless and every
+control effect have their value in *future* turns, and `b[a]` can only absorb a
+build-independent average of that — but the value of Rage genuinely depends on
+how many rounds remain, which is not a global constant. This is the model's
+weakest joint, ranked above every other concern in this subsection, and it is
+where a fitted prior is most likely to be confidently wrong.
+
+Three things contain it, in order of how much they are relied on: the per-build
+overlay exists precisely to carry the entries the scorer gets wrong, and a buff
+that needs a condition gets one; `rounds_elapsed` and `encounters_remaining` are
+available as features of the intercept and the resource price, which recovers the
+first-order effect; and the ablation table reports the scorer's marginal value
+per build, so a class the model serves badly shows up as a row rather than as a
+quietly mediocre result. What is explicitly *not* proposed is a learned
+state-value function over the whole encounter — that is a different project, and
+the overlay is the cheaper answer to the same problem.
 
 ### The candidate space is generated, never enumerated by hand
 
@@ -602,6 +873,11 @@ already exist:
 - **Targets and movement** come from the closed selector grammar's own cross
   product: `{lowest_hp, highest_hp, nearest, farthest} of enemies.{in_reach, all}`
   and the three `move:` forms.
+- **`best_scored`** is always in the pool, and its *priority* is searched like
+  any other entry's. Where it lands is the result that matters: entries the
+  search places above it are this build's departures from generic play, and a
+  build whose derived APL is `best_scored` alone is a build with nothing special
+  to say — which is a finding, not a failure.
 
 Nothing in `search/` knows what a Barbarian is. **The acceptance test for this
 package is that adding a class, a subclass or a spell requires zero lines of
@@ -727,6 +1003,9 @@ multiplies sample count by two to three orders of magnitude, and no plausible
 CPython speedup covers that. `w0i`'s budget is not reopened. The levers are all
 on the sampling side:
 
+- **the scorer's warm start** — searching departures from a fitted global policy
+  rather than a policy from scratch, which is the largest single cut and the main
+  reason § The scorer earns its complexity;
 - common random numbers and racing, as above — together worth ~10×;
 - **staged search**: first search structure (which entries, in what order) with
   default conditions, then search thresholds only on the entries that survived;
@@ -949,6 +1228,15 @@ If that configuration misses the budget, the architecture is revised in W0. That
 is the whole point of the milestone — and it is what happened: see the note
 above and `docs/decisions.md` § w0i.
 
+> **A third reader arrived with the scorer.** It runs per decision point over
+> every offered action and its candidate targets — ~30 estimator calls against a
+> turn's ~2 attack resolutions — so the naive implementation is a 3–10×
+> regression on the turn rather than a rounding error. The budget stands because
+> almost all of `Ê_dmg` is static (memoised dice means, a `p_hit` lookup table on
+> `(attack_bonus − AC, advantage_state)`, a per-turn score cache), and the target
+> is **under 30% turn overhead** — measured by `w8g`, not argued here. It is the
+> one part of § APL derivation that touches the hot path at all.
+
 > **A second reader of this budget arrived after M0.** § APL derivation turns the
 > simulator into the inner loop of an optimiser, which multiplies the sample count
 > by two to three orders of magnitude. That does *not* reopen this number: no
@@ -1055,6 +1343,7 @@ dndsim day PARTY --encounters 6 --short-rests 2
 dndsim compare A B --sweep dummy.ac=10:22
 dndsim derive BUILD --scenarios scenarios.yaml --budget 2000  # search the APL
 dndsim derive PARTY --joint --sweeps 3                        # coordinate ascent
+dndsim fit builds/corpus.yaml                                 # refit the scorer
 dndsim inspect BUILD                                  # resolved character, readable
 dndsim validate BUILD                                 # schema + APL check; exit code
 dndsim trace BUILD --seed 42                          # replay one fight, blow by blow
@@ -1081,6 +1370,12 @@ Three of these exist because of decisions made elsewhere in this document:
   command that makes `compare` a comparison of builds rather than of authors, and
   it exits non-zero when the winning policy leaves the plausibility band — an
   optimiser that beats the baseline by 40% has usually found a bug, not a line.
+- **`fit`** refits the scorer's coefficients across the declared corpus and
+  reports them in attacks-worth units with per-build residuals on **held-out
+  builds**. It is run once per content wave, deliberately, never continuously —
+  a coefficient set that drifts silently makes every archived derivation
+  incomparable, which is the failure the content-version pin already exists to
+  prevent.
 
 ---
 
@@ -1103,18 +1398,19 @@ src/dndsim/
   actions/    base.py attack.py opportunity_attack.py dash.py dodge.py
               disengage.py cast_spell.py
   spells/     base.py concentration.py templates.py level0..level6/
-  apl/        expr.py schema.py namespace.py apl.py
+  apl/        expr.py schema.py namespace.py apl.py scorer.py coefficients.py
   builds/     schema.py loader.py
   engine/     world.py query.py attack.py damage.py saves.py turn.py
-              encounter.py adventuring_day.py triggers.py
+              encounter.py adventuring_day.py triggers.py estimate.py
   content/    fetch.py loader.py refs.py tables.py weapons.py
   sim/        runner.py day.py compare.py sweep.py
   search/     candidates.py encoding.py evaluate.py driver.py
-              ablate.py party.py emit.py objectives.py
+              ablate.py party.py emit.py objectives.py fit.py
   reporting/  result.py collect.py stats.py render_text.py render_json.py
   tools/      check_features.py noop_report.py gen_docs.py skeleton.py
 
 builds/     # hand-authored YAML: characters, parties, encounters — in git
+            # corpus.yaml declares the builds the scorer's coefficients fit on
 data/       # gitignored: fetched 5etools JSON
 docs/       # hooks.md + apl.md GENERATED; feature-hook-map.md + patterns.md authored
 tests/      contract/ golden/ interaction/ statistical/ bench/
@@ -1272,7 +1568,7 @@ Eight waves, `W0`–`W7`. This is the summary; [ROADMAP.md](ROADMAP.md) carries 
 | **W5** | Spell engine, then Paladin/Ranger, then full casters; spells on demand | casters playable |
 | **W6** | Rests, encounter chaining, attrition metrics, compare + sweep | **M4:** attrition v1 — the project's stated goal |
 | **W7** | Stat-block parser, bestiary import | real monsters |
-| **W8** | **Policy derivation** — candidate generation, paired evaluation, racing search, ablation, coordinate ascent, `dndsim derive` | **M5:** attrition under a *derived* policy — the number that is about the build |
+| **W8** | **Policy derivation** — the expected-damage estimator, the global scorer and its corpus fit, candidate generation, paired evaluation, racing search, ablation, coordinate ascent, `dndsim derive` | **M5:** attrition under a *derived* policy — the number that is about the build |
 
 W0–W4 are the commitment being made now; W5–W8 are sketched to prove the
 architecture doesn't paint itself into a corner. **W6 depends only on W4**, not
@@ -1353,6 +1649,13 @@ and that is a far more dangerous failure than a check that fails.
    derived against one AC and enemy count, reported as general) and
    **exploitation** — an optimiser with 10^5 evaluations finds every place the
    rules are implemented too generously, and reports the exploit as a strategy.
+   The scorer adds two more of its own. **Estimator/resolver divergence** is the
+   nastier: if `engine/estimate.py` and `engine/damage.py` ever disagree — about
+   whether `flat` doubles on a crit, say — the fit absorbs the discrepancy into a
+   coefficient and hides it, and every decision in the project is then made on a
+   wrong number with nothing red anywhere. **Scorer myopia** is the likelier: the
+   estimator sees immediate damage, so buffs and control are valued by a fitted
+   constant that cannot depend on rounds remaining.
    *Mitigated by:* the disjoint holdout seed set with a reported optimism gap, a
    scenario *distribution* with a per-scenario breakdown, common random numbers
    and paired tests so a real difference is resolvable at an affordable sample
@@ -1361,7 +1664,10 @@ and that is a far more dangerous failure than a check that fails.
    comparison that catches both a search that is not searching and a win too
    large to be real. All six are in § APL derivation, and the exploitation
    sub-risk is also the project's best content-bug detector once triaged rather
-   than trusted.
+   than trusted. Divergence is caught by the property test binding the estimator
+   to 10^5 real resolutions; myopia by the per-build overlay that exists to carry
+   what the scorer gets wrong, and by the ablation row that reports the scorer's
+   marginal value per build.
 5. **The paper pass degrades quietly.** Classifying ~400 prose features to hooks
    is the highest-leverage task in the project and the most tedious, and nothing
    downstream detects a sloppy classification until features are written against
