@@ -676,7 +676,10 @@ Four families of fitted coefficients, and nothing else:
   rounds that change survives. Rage, Bless, Hunter's Mark, Faerie Fire,
   Frightened, Slow and Reckless Attack all deal zero damage on the turn you spend
   them and are among the strongest actions in the game; these terms are the whole
-  reason they can be scored at all rather than left to a constant. The split is
+  reason they can be scored at all rather than left to a constant. **A killing
+  blow scores here too** — killing an enemy is the debuff that removes all of its
+  remaining output, so `p_kill · Ê_dpr(e) · H` rides the same `w_def`, and focus
+  fire stops needing a protocol (§ Party tactics). The split is
   **offensive versus defensive — what changes, not whom it is cast on** — so a
   stun scores in both with no special case. Both are computed counterfactually,
   not declared as numbers, and `p_land` is the save-gating a debuff has and a
@@ -777,6 +780,13 @@ both differences taken in the same direction, every debuff would score negative
 and the scorer would refuse to cast any of them; that is the sort of bug a fit
 cannot rescue you from, because the coefficient would simply go negative and the
 model would still be wrong about everything else it touches.
+
+**The ally-side re-estimate includes target availability, not only the attack
+math.** Removing an enemy from the board — by hypnotising it, or by killing it —
+changes what this creature's allies can profitably do next, and that change is
+part of `ΔÊ_ours`. § Party tactics is the whole argument for why; it is stated
+here because an implementation that perturbed only the attack math would satisfy
+every word of the paragraph above and still be wrong about every control spell.
 
 **The axis is what changes, not whom it is cast on.** Bless raises our output;
 Faerie Fire raises our output too, by lowering an enemy's effective defence;
@@ -1000,6 +1010,128 @@ displaces. No new machinery is needed — **concentration is modelled as a resou
 with a pool of one**, so `c[concentration]` prices it through the term that is
 already there, and the scorer declines Hunter's Mark when Faerie Fire wants the
 slot more.
+
+#### Party tactics: composition is an input, not a coordination protocol
+
+A party plays differently from four soloists, and the difference is most of what
+makes a composition good or bad. The design's position is that **almost none of
+it needs a coordination mechanism** — three additions to the estimator make the
+tactics fall out of per-creature scoring, and only one thing genuinely has to be
+handed to the derivation.
+
+**Rejected first, because it is the obvious answer: a shared blackboard.** A
+party-level "focus target" that members write and read would work, and it would
+be a second policy mechanism running beside the first, with its own coordination
+bugs, its own failure modes, and no rows in the ablation table. Everything below
+produces the same behaviour out of the scoring already there.
+
+#### Lethality, and why focus fire needs no protocol
+
+The score prices damage dealt, and prices an enemy's output denied — but nothing
+yet connects them, and the connection is the single most important party tactic
+in the game. **Killing an enemy is a debuff that removes all of its remaining
+output**, so a killing blow belongs in the defensive term:
+
+```
+p_kill(a, e) = P( damage(a, e) ≥ hp_remaining(e) )
+```
+
+— computable, because the estimator has the dice and `core/dice.py` can give the
+survival function; precomputed per weapon and spell, memoised, a table lookup at
+decision time. The killing blow then denies `Ê_dpr(e) · H` through the same
+`w_def` term that prices Frightened, and four things follow with no further
+machinery:
+
+- **Focus fire emerges.** The fighter acting after the rogue sees a softened
+  target, `p_kill` is high, and finishing it outscores starting a fresh one.
+  Nobody nominated a focus target; the arithmetic converged on one.
+- **The opening attack of a round has the right heuristic too.** With nothing
+  softened, `p_kill` is flat and the defensive term ranks targets by
+  `Ê_dpr(e)` — so the first attacker goes for the most dangerous enemy, and
+  across a round the ordering is threat per effective hit point. That is the
+  right opening, and it is free.
+- **Overkill is penalised.** A forty-damage nova on a five-hit-point enemy earns
+  exactly the same kill credit as a dagger would, so the nova goes elsewhere.
+  This is the behaviour that a mean-damage score can never produce, and it is why
+  the distribution is needed rather than `Ê_dmg` alone.
+- **It is why a party out-damages four soloists**, and the scorer now knows that.
+
+#### The ally-side counterfactual is what makes composition matter
+
+This is the answer to "do we have AoE casters?", and it needs no composition
+feature anywhere in the coefficient vector.
+
+`ΔÊ_ours` for a control spell is **generally negative**. Hypnotising four enemies
+does not only deny their output; it removes four targets the party was going to
+hit. So the ally-side re-estimate must include **target availability**, not only
+the attack math:
+
+- A party of four melee bruisers, engaged, with nothing else in reach, loses most
+  of its damage for the duration — a large negative `ΔÊ_ours` that can swamp the
+  denial and correctly make the spell a bad idea.
+- A party with reach, a sniper, or a second cluster to work on loses almost
+  nothing, and the same spell is excellent.
+
+The net of the two terms is the true value, and **it is a function of who is
+actually standing there**, computed fresh at every decision point. The same
+mechanism handles the inverse question the user's example raises: a Fighter's own
+best line changes when a Hypnotic Pattern wizard is in the party, because the
+targets available to it change. Neither creature needs to know the other's
+policy; both read the same battlefield.
+
+> **This is the load-bearing reason the coefficients stay global.** Every term is
+> already computed over the actual party, so composition enters through the
+> *inputs* rather than through the fit. Adding composition features to the
+> coefficient vector would multiply the parameter count by the number of party
+> archetypes and learn separately what the estimator can compute exactly.
+
+#### Horizons are counted in turns, not rounds
+
+Initiative order is known, so the horizon a buff earns is measured in **the
+buffed creature's remaining turns**, not in rounds of wall clock. Bless cast
+before the martials act helps them this round; cast after they have gone, its
+first round of value is the next one. The difference is one whole application on
+a three-round fight, which is large, and it is exactly the consideration that
+makes a caster's place in the initiative order matter. It costs a lookup, because
+`engine/turn.py` already owns the roster and the `InitiativeKey`.
+
+#### What the derivation has to be told, because it cannot be computed
+
+**A derived APL is conditional on its party.** A Fighter derived beside a
+Hypnotic Pattern wizard is a different policy from the same Fighter derived
+solo — it should hold position differently, pick different targets, and value its
+own AoE differently. So:
+
+- **The scenario spec gains a party axis**, alongside enemy AC, count and
+  movement profile. The scenario-set hash already in the provenance then covers
+  composition, and comparing two builds derived in different parties is a
+  category error the tooling refuses rather than performs.
+- **The corpus spans compositions, not only builds.** Coefficients fitted only
+  against solo builds and target dummies would be composition-blind in exactly
+  the terms that matter most — `w_def` and `w_ally` — because nothing in the
+  fitting set would ever have had an ally worth protecting or a target worth
+  leaving alone.
+
+#### What coordinate ascent still cannot do
+
+Cyclic best response converges to a **mutual best response** given every other
+member's policy held fixed. It cannot discover a convention that requires two
+members to change *together* — the classic coordination-game failure, where
+neither the wizard's control nor the fighter's repositioning pays unless the
+other is already doing its half, so neither moves and the pair is never found.
+
+Three things contain it, and none of them is a proof:
+
+- **Seeding from the scorer**, which already handles the reactive half: the
+  fighter declines to break control it can see, so the wizard's half pays on its
+  own and the pair is reachable one member at a time.
+- **Sweeping in initiative order**, so each member optimises against the party
+  state it will actually observe on its turn rather than against an arbitrary
+  one.
+- **Multiple restarts with different member orders**, with the trajectory
+  reported. A composition whose derived policies depend on the sweep order has
+  found more than one mutual best response, and that is a result about the party
+  rather than a defect in the search.
 
 #### `best_scored` — how the two layers compose
 
@@ -1265,6 +1397,13 @@ per-sweep trajectory is in the result, and the result names which member's polic
 changed last. A coordinate-ascent answer presented as "optimal" is a false claim,
 and the difference matters most exactly where party composition is interesting —
 a healer's policy and a tank's policy are each other's inputs.
+
+It is also not where most party play comes from. § Party tactics below argues
+that focus fire, target selection, not breaking your own control and the value of
+an AoE caster to the melee standing next to them all fall out of per-creature
+scoring over the actual party, and that coordinate ascent is left with the much
+smaller job of the conventions that need two members to move at once — which is
+also the one thing it provably cannot do.
 
 ### The objective is a knob, and a scalar objective hides variance
 
@@ -1562,11 +1701,14 @@ hard way and which every later harness inherits:**
 
 > **A third reader arrived with the scorer.** It runs per decision point over
 > every offered action and its candidate targets, and on a turn where control is
-> offered it estimates the *enemies'* output too — ~30 estimator calls against a
-> turn's ~2 attack resolutions, roughly doubling where a debuff is on the ballot — so the naive implementation is a 3–10×
+> offered it estimates the *enemies'* output too, plus an ally-side pass for
+> target availability — ~30 estimator calls against a turn's ~2 attack
+> resolutions, roughly doubling where a debuff is on the ballot — so the naive implementation is a 3–10×
 > regression on the turn rather than a rounding error. The budget stands because
 > almost all of `Ê_dmg` is static (memoised dice means, a `p_hit` lookup table on
-> `(attack_bonus − AC, advantage_state)`, a per-turn score cache), and the target
+> `(attack_bonus − AC, advantage_state)`, a **precomputed survival function per
+> weapon and spell** so `p_kill` is a lookup rather than a convolution, and a
+> per-turn score cache), and the target
 > is **under 30% turn overhead** — measured by `w8g`, not argued here. It is the
 > one part of § APL derivation that touches the hot path at all.
 
@@ -2027,7 +2169,11 @@ and that is a far more dangerous failure than a check that fails.
    wrong with nothing red anywhere either. Debuffs carry a third of their own —
    their value is the product of three estimates (`p_land`, a geometric expected
    duration, and a per-target horizon), so an error in any one compounds, and
-   control is where the scorer's confidence most exceeds its evidence.
+   control is where the scorer's confidence most exceeds its evidence. At the party
+   level there is one more: coordinate ascent cannot find a convention that needs
+   two members to change at once, so a composition can be reported as worse than
+   it is because the search never reached the pair — and unlike the others this
+   one has no test that fails, only a number that is quietly low.
    *Mitigated by:* the disjoint holdout seed set with a reported optimism gap, a
    scenario *distribution* with a per-scenario breakdown, common random numbers
    and paired tests so a real difference is resolvable at an affordable sample
@@ -2042,7 +2188,9 @@ and that is a far more dangerous failure than a check that fails.
    the same terms as every `expectation`; the compounding on control by the wider
    priors on `w_off`/`w_def` being paid for with their own ablation rows; the planning gap by the per-build overlay that exists to
    carry what the scorer gets wrong, and by the ablation row that reports the
-   scorer's marginal value per build.
+   scorer's marginal value per build; the coordination gap by `w8a3` making most
+   party play emergent rather than searched, by sweeping in initiative order, and
+   by restarts whose disagreement is reported as a result about the party.
 5. **The paper pass degrades quietly.** Classifying ~400 prose features to hooks
    is the highest-leverage task in the project and the most tedious, and nothing
    downstream detects a sloppy classification until features are written against

@@ -134,7 +134,19 @@ scores in both terms with no special case. A debuff additionally multiplies by
 and takes a per-target horizon. That is why re-applying an active effect scores
 zero with no condition written, why a second source of advantage scores ~0
 without anyone encoding that advantage does not stack, and why nothing buffs on
-the killing round or stuns the enemy on 3 hp. Five consequences bite before W8 exists:
+the killing round or stuns the enemy on 3 hp.
+
+**Party tactics are emergent, not a coordination protocol** (§ Party tactics).
+A killing blow is the debuff that removes all of an enemy's remaining output, so
+`p_kill · Ê_dpr(e) · H` rides `w_def` and **focus fire needs no shared focus
+target** — a blackboard was considered and rejected. The ally-side re-estimate
+includes **target availability**, so a control spell's `ΔÊ_ours` goes negative by
+the damage it strands: the same spell scores well beside a sniper and badly
+beside four engaged bruisers. **Composition enters through the inputs, never
+through the coefficient vector** — every term is already computed over the actual
+party, which is what keeps one global fit defensible. What must be *told* to the
+derivation is that a derived APL is conditional on its party: the scenario spec
+carries a party axis and the corpus spans compositions. Five consequences bite before W8 exists:
 `Apl` must be constructible programmatically and serialisable back (`w2e`), the
 action id `best_scored` must be **reserved** in W2's closed vocabulary (`w2e`),
 the API must accept a seed list and an APL override and return **per-seed**
@@ -192,7 +204,7 @@ Add a section there when a task lands, rather than growing this file.
 
 ## Sequencing rules
 
-`ROADMAP.md` has 74 tasks across waves W0–W8 with explicit dependency edges.
+`ROADMAP.md` has 75 tasks across waves W0–W8 with explicit dependency edges.
 Three constraints dominate:
 
 - **Nothing in W4 or later may start before M2** (API frozen, authoring skill
