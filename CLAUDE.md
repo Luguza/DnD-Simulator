@@ -24,6 +24,14 @@ sit at the theoretical floor of this object model in CPython.
 `docs/decisions.md` § w0i has the measurements, what each change bought, and
 the two levers deliberately not taken. **W1 may start.**
 
+The plans were then re-read against what the wave measured
+(`docs/decisions.md` § The W0 plan review). Two things came out of it that
+matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
+seventeen first cuts and deferred obligations W0 left behind and the task that
+retires each — check it for the file you are about to touch — and **`w1k` is a
+new task**, an M0 re-measure at the end of W1, because the measured ~31.5k has
+5% of headroom and W1 adds the per-round cost the spike does not model.
+
 Both documents are load-bearing: `DESIGN.md` fixes the architecture and the
 vocabulary, `ROADMAP.md` fixes what may be built when and by whom. Read the
 relevant sections before writing code in an area — they are the contract, not
@@ -135,6 +143,7 @@ there is local to a module.
 | `creatures/`, `engine/damage.py`, `core/geometry.py` | § w0g2 |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |
+| `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review |
 
 Add a section there when a task lands, rather than growing this file.
 
