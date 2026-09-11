@@ -1552,6 +1552,16 @@ class LeaveReachContext(Context):
     The project's one `OBSERVER` hook and the opportunity-attack trigger: the
     owner neither acted nor was acted upon, it merely has reach where the
     `mover` used to be.
+
+    **One five-foot step, not a whole move.** `origin` is the square the mover
+    is standing on *right now* and `destination` the single square it is about
+    to step into — adjacent, always, and the pair the observer was handed
+    because it is the pair that decides the offer. A route of six squares that
+    leaves the owner's reach on its fourth step dispatches this once, with the
+    third and fourth squares in it, and never with the whole route: the mover is
+    still on `origin` while the reaction resolves, which is what lets a
+    five-foot reach find it there at all (`engine/triggers.py`). Compare
+    `MoveContext.route`, which is the mover's own view and does carry the lot.
     """
 
     creature: Combatant

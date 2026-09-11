@@ -27,10 +27,17 @@ the two levers deliberately not taken. **W1 may start.**
 The plans were then re-read against what the wave measured
 (`docs/decisions.md` § The W0 plan review). Two things came out of it that
 matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
-seventeen first cuts and deferred obligations W0 left behind and the task that
+twenty-two first cuts and deferred obligations W0 left behind and the task that
 retires each — check it for the file you are about to touch — and **`w1k` is a
 new task**, an M0 re-measure at the end of W1, because the measured ~31.5k has
 5% of headroom and W1 adds the per-round cost the spike does not model.
+
+One task has landed since: `w0g3`, a first cut of `engine/triggers.py` holding
+the **movement observer** — who is offered a reaction to a move, on every
+five-foot step, and in what order. It is the audience for an opportunity attack
+and not the attack itself, which is still `w2b`'s Command and `w2c`'s turn loop.
+Read `docs/decisions.md` § w0g3 before touching movement, reactions or the
+`Gate` path.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
@@ -214,12 +221,13 @@ there is local to a module.
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |
 | `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review |
+| `engine/triggers.py`, `Dispatcher.responsive()` | § w0g3 |
 
 Add a section there when a task lands, rather than growing this file.
 
 ## Sequencing rules
 
-`ROADMAP.md` has 76 tasks across waves W0–W8 with explicit dependency edges.
+`ROADMAP.md` has 77 tasks across waves W0–W8 with explicit dependency edges.
 Three constraints dominate:
 
 - **Nothing in W4 or later may start before M2** (API frozen, authoring skill
