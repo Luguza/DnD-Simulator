@@ -527,6 +527,53 @@ to see it. Movement is the one exception to OFF-by-default: a build with no
 `move:` clause anywhere closes to reach of its nearest enemy, because the
 alternative is a melee build that stands still and reports zero damage.
 
+### Reactions in the APL
+
+There is no second list. "A turn action, a reaction, and a mid-attack rider are
+all 'the engine has an offer; does the APL take it?'" is the unifying idea
+above, and a reaction is that sentence with a different offer:
+
+```yaml
+apl:
+  - { action: opportunity_attack, if: "trigger.mover.hp_pct < 0.5" }
+  - { action: uncanny_dodge,      if: "trigger.damage_estimate >= self.hp * 0.25" }
+```
+
+What differs from a turn entry is only *when* the question is asked. A turn
+entry is filtered against the ids the turn loop is currently offering; a
+reaction entry is answered through `Apl.allows()` at the moment
+`engine/triggers.py` makes the offer — inside somebody else's move, or inside
+the attack that is landing on you. Four consequences are worth stating because
+each one is a rule somewhere else in this document paying off here:
+
+- **The trigger condition is the engine's, the decision is the APL's.** Whether
+  a step leaves your reach is arithmetic out of the rulebook and belongs to
+  `Scope.OBSERVER`; whether that is worth your reaction is policy and belongs to
+  the list. No feature writes a reach check, and no engine file holds a
+  heuristic about when to swing.
+- **A declined offer costs nothing.** `once_per` and `costs` are spent only on
+  `APPLIED`, so a reaction the list turns down is still in hand for the next
+  square, the next attacker, the next round. That is what makes "hold it for
+  something better" an expressible policy rather than an accident of ordering.
+- **Unmentioned is OFF, opportunity attacks included.** A build whose list never
+  claims `opportunity_attack` never makes one. This is the Null Object default,
+  and it is deliberate even though it costs a melee build free damage: the
+  reaction is one slot contested by Shield, Counterspell and Uncanny Dodge, and
+  a default that quietly spent it would change the numbers of every build that
+  already had a reaction entry the moment opportunity attacks were implemented.
+  Movement is the one exception to OFF-by-default and stays the only one — a
+  build that stands still reports zero damage, which is a different order of
+  wrong from a build that declines a free swing.
+- **The reaction invariant is checked on the turn boundary**, never the round
+  one, for the reason given under *Failing loudly* — a creature high in
+  initiative may legitimately react before its turn and again after it.
+
+The `trigger.*` root is populated per offer by `engine/triggers.py`, which for a
+movement offer means the mover and the squares: `trigger.mover`,
+`trigger.origin`, `trigger.destination`. It is bound by the engine and never
+scraped off the context, so a gate never has to ask what kind of event it is
+looking at.
+
 **Condition language: the Interpreter pattern, over an AST whitelist.** The `if:`
 clauses are a small expression grammar with its own compile step, not `eval` of
 source: parse, walk, reject any node outside an allowlist (no comprehensions,
@@ -913,6 +960,31 @@ enough to restate in place:
   special case, since granting a slot and re-polling touches neither file.
   The name matches the APL's `trigger.*` namespace root, which this module
   populates.
+
+  **The movement audience is an Observer, and a filtered one.** Every creature
+  that could react is told, on every five-foot step, which square the mover is
+  standing on and which one it is stepping into, and each decides for itself.
+  What is not done is a message to every combatant in the room per step: a
+  bystander is dropped from the audience only on facts that cannot change its
+  answer — nothing attached to `on_leave_reach` at all, or every handler it has
+  costing a reaction it has already spent (`Dispatcher.responsive()`), or a
+  position further from the whole route than its own reach can span. The
+  filtered audience and a broadcast produce the same fight; the filtered one
+  does not dispatch twenty times a square to learn that nineteen combatants own
+  no reaction feature. The shape is broad phase once per move (walk the roster,
+  sort the survivors into initiative order, record who currently threatens),
+  narrow phase once per square per survivor (one Chebyshev distance). Cost is
+  linear in creatures that could react, which in a real fight is nought, one or
+  two — and when it is nought the mover is put on its destination in a single
+  assignment.
+
+  Two orderings inside it are load-bearing. **The offer is made from the square
+  being left**, with the mover still standing on it, because "you can make an
+  opportunity attack when a creature you can see leaves your reach" happens
+  right before it leaves — resolve it a square late and a 5-foot reach misses
+  about half the time. And **two watchers left by the same step are asked in
+  initiative order**, sorted once per move: any order is legal D&D, only a
+  stated one reproduces from a seed.
 - **`api.py` vs `cli.py`.** The CLI holds no simulation logic. A UI added later
   is another adapter against the same API, never a scraper of CLI output.
 - **`content/loader.py`.** 5etools' vocabulary (`dmg1`, `atkr`,
