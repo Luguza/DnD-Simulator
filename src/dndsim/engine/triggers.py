@@ -95,9 +95,18 @@ Null Object policy of DESIGN.md § APL.
 - **Disengage, forced movement and teleportation**, which do not provoke. The
   valve is here — `provokes=False` — but what sets it is the Command and the
   condition, and both are `w2b`/`w2c`'s.
+- **Whether the watcher can see the mover.** The rule is "a creature *you can
+  see* leaves your reach", and there is no visibility gate below. It is exact
+  while nothing in the fight is Blinded or Invisible, which is every fight until
+  `w1h` builds the conditions — and wrong the first time one is, so it is the
+  debt most likely to be forgotten because it costs nothing yet.
 - **Entering** reach, which 2024 Polearm Master reacts to. There is no hook for
   it: the registry is closed at 39 and this is not the task that opens it. It is
   a genuine gap and it is `w3e`'s paper pass to find and `w3f`'s to batch.
+
+All five are rows 18-22 of ROADMAP.md § The W0 debt register, which is the
+ledger an agent actually reads before touching a file; this list is the local
+copy, not the record.
 
 Sources: XPHB (2024) "Combat" — Opportunity Attacks, "you can make an
 opportunity attack when a creature you can see leaves your reach"; DESIGN.md

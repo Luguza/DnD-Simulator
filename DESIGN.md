@@ -323,6 +323,19 @@ This is *"make illegal states unrepresentable"* rather than *"test for illegal
 states"*. Every rule made structural is one that never needs a test — the
 highest-leverage move available when ~630 units are written by different hands.
 
+**The failure mode this creates, named by M0 so it is recognised next time: an
+optimisation that skips a step it believed was the identity.** Two of the three
+findings in `w0i`'s review had that exact shape — a `mitigate()` fast path that
+skipped the floor-at-zero clamp along with the steps it was right to skip (so a
+reduction larger than the hit arrived as negative damage, which is temporary hit
+points granted by a sword), and a compiled `reopen()` that overwrote the raising
+body meant to catch a context class which had escaped its decorator (so such a
+class silently inherited a `reopen()` that left its own fields holding the
+previous attack's values). A structural guarantee is only as strong as the
+fastest path around it, and the hot path is where the paths around things get
+written. **When a fast path skips a sequence, every step in that sequence needs
+to be checked for being the identity — the clamp usually is not.**
+
 ## Durations: one mechanism, three shapes
 
 A totally ordered clock, `TimeKey(round, initiative, phase)` where phase is
@@ -448,6 +461,16 @@ engine noticing.
 **The unifying idea:** a turn action, a reaction, and a mid-attack rider are all
 "the engine has an offer; does the APL take it?" One flat ordered list; the
 engine filters to currently-offered ids and takes the first passing entry.
+**Filtering to what the action economy can still pay is part of that filter,
+not an optimisation of it** — M0 found the alternative by accident: a self-buff
+charged an Action instead of a Bonus Action, sitting above `attack` with an
+`if:` its own effect did not clear, so the creature bought the buff once and
+never swung again for the rest of the encounter. It cost 0.07% of the rate,
+which is precisely why nothing watching the rate would ever have found it. The
+sibling of "a melee build that stands still and reports zero damage", through
+the economy rather than the grid, and the reason `SimResult` reports actions and
+attack resolutions per round: a starved policy should be visible as a count and
+not only as a disappointing average.
 Individual actions are **Command** objects (`is_legal()` / `execute()`), which is
 what lets the turn loop re-poll after every action — and is why Action Surge
 needs no special case: it simply grants another action slot and the loop asks
@@ -717,17 +740,48 @@ So the spike benchmarks a deliberately hostile synthetic creature:
   every worker re-imports the package and rebuilds every character from YAML.
   At 10k iterations that amortises to nothing; at `compare --sweep dummy.ac=10:22`
   it is paid 13 times over, and it is the cost most likely to be missed by a
-  benchmark that only times the inner loop.
+  benchmark that only times the inner loop. **Measured at M0: 0.167 s per
+  worker**, so that sweep spends two seconds on startup before a die is rolled —
+  which is an argument for reusing one pool across sweep points rather than
+  building one per point. Measuring it is itself hazardous: `spawn` brings a
+  worker up by re-importing the parent's `__main__`, so a pool started from a
+  module without a main guard re-runs that module in every worker. The first
+  version of this measurement fork-bombed the machine it was measuring.
 
 If that configuration misses the budget, the architecture is revised in W0. That
 is the whole point of the milestone — and it is what happened: see the note
 above and `docs/decisions.md` § w0i.
 
+**Two things the spike taught about benchmarks, which its own review found the
+hard way and which every later harness inherits:**
+
+- **A benchmark must witness its own fixtures.** The one handler that paid for
+  the dispatcher's two expensive escape valves — a gate answered mid-attack, a
+  reaction spent — ran for a while without ever firing, because the hero's hit
+  point pool was sized so its condition could never hold. The rate looked fine
+  the whole time. A benchmark that watches only the rate cannot tell an
+  optimisation from a rider that quietly stopped working, so the fixtures now
+  carry a test naming the handlers that must have applied at least once, read
+  off the no-op detector's counters. The CI gate (`w3i`) inherits the
+  requirement.
+- **A benchmark whose unit of work depends on the dice cannot carry
+  exact-integer assertions.** The spike's counts were true of the seed they were
+  written on and false on 3 seeds in 60. The fix is an invariant — a
+  configuration that resolves the same number of attacks whatever the dice do —
+  not a larger sample, and the golden harness (`w3a`) inherits that too.
+
 ### Levers
 
 Per-creature precomputed dispatch tables (never scan a global bus); `__slots__`
 on every hot object; contexts reset and reused per attack rather than allocated,
-which matters at 4M resolutions; immutable specs (`ResourceSpec`, `Duration`,
+which matters at 4M resolutions — **but only with `reopen()` compiled per
+context class**: the general version, which validated its keyword arguments
+against the field list at every call, cost more per call than constructing the
+context from scratch, and pooling was a net *loss* until `w0i` moved that check
+to class-creation time and let Python's own argument binding do it (that one
+change is 26k against 20k). A later reader who simplifies the generated
+`reopen()` back into a general one will re-take a lever that does not work;
+immutable specs (`ResourceSpec`, `Duration`,
 weapon definitions) shared across every creature; APL compiled once per build;
 structured tuple logging with string formatting deferred to the reporter — worth
 ~2–3× on its own (`--log-level=summary`); multiprocessing across iterations;
@@ -755,10 +809,26 @@ contact with a shared CI runner:
 - **Median of N runs with a warmup**, never a single timing.
 - **Compared against a same-run microbenchmark baseline**, not an absolute
   number, so a slow runner scales both sides.
+- **Enough work per timed run.** M0 measured a 9% spread across three
+  consecutive 200-encounter runs on one machine and 0.2% at a thousand. A gate
+  looking for a 10% regression inside a 9% spread is a coin toss, so a thousand
+  encounters is a floor rather than the first number to trim when the suite
+  feels slow.
 
 A gate that fires on noise gets disabled within a month, at which point
 performance decays exactly as predicted. Run it tracked-but-non-blocking until
 its variance is known, then turn on the failure.
+
+**When it does fire, the levers are ordered and the order is a decision, not a
+preference.** M0 spent the cheap ones already (see `docs/decisions.md` § w0i);
+what is left in reserve is the *shape* of `DamagePart` and `Modifier` — a
+`NamedTuple` constructs in ~0.38 µs and a plain slotted class in ~0.28 µs
+against a frozen dataclass's ~0.9 µs, and there are six of them per hit. What is
+**not** in reserve is the object model: collapsing an attack's contexts into one
+or dropping per-part provenance buys real time and costs `parts_by_source`, the
+no-op detector and the trace, which are what make ~630 agent-written features
+safe to accept. M0 declined that trade with the numbers in front of it; a later
+agent under CI pressure should not re-open it without them.
 
 ---
 
@@ -1034,7 +1104,9 @@ Great Weapon Master stops being worth it, exactly as a WoW sim would.
 ## Build order
 
 Eight waves, `W0`–`W7`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
-60 tasks, their dependency edges, delegation modes and the task-packet template.
+61 tasks, their dependency edges, delegation modes and the task-packet template.
+Its § The W0 debt register is the ledger of what W0 left for later waves to
+retire, and which task retires each.
 
 | Wave | Content | Exit |
 |---|---|---|
@@ -1086,12 +1158,22 @@ Ordered by expected cost, which is not the same as by likelihood. The first thre
 share a shape worth naming: **each is a check that passes while proving nothing**,
 and that is a far more dangerous failure than a check that fails.
 
-1. **The performance spike passes on a stub.** M0 is the designated cheap moment
-   to revise dispatch, and a stub benchmark spends it on nothing — the real
-   number then arrives in W4 with 400 features already written against a design
-   nobody can afford to change. *Mitigated by:* the hostile-configuration spike
-   in § Performance, a benchmark gate built to survive CI noise, and the walking
-   skeleton that makes W0's measurement an integrated one.
+1. ~~**The performance spike passes on a stub.**~~ **Closed at M0, and replaced
+   by its successor: the headroom erodes between M0 and the gate that guards
+   it.** The original risk was real and the mitigation worked — the hostile
+   configuration measured 17k where a stub would have cleared any budget, the
+   architecture was revised, and the budget was revised with it. What that
+   leaves is a live risk of a different shape. The measured ~31.5k sits 5% over
+   a 30k budget rather than 60% over a 50k one, `w0i` says plainly that what it
+   understates is the per-round cost — effects and resources did not exist to be
+   swept — and W1 is the wave that adds exactly that. Nothing in the plan
+   re-measured until `w2e`, twenty tasks later. *Mitigated by:* `w1k`, the M0
+   re-measure at the end of W1 against the real `EffectStore` and `ResourcePool`;
+   `w2e`'s re-run when the real APL compiler replaces the hand-compiled one; and
+   `w3i`'s CI gate, which must witness its own fixtures rather than watch the
+   rate alone. *The failure mode to watch for is not a slow feature — it is the
+   budget being lowered a second time.* A budget that follows the measurement
+   down is not a budget.
 2. **Goldens grade their own homework.** The agent that writes the feature writes
    its test; a green suite is evidence of self-consistency, not of correctness.
    *Mitigated by:* hand-computed arithmetic in the golden, quoted `source_ref`, a

@@ -4,7 +4,7 @@ Companion to [DESIGN.md](DESIGN.md). This document sequences the build so that
 **decisions with the widest blast radius are made first**, and every interface a
 later agent depends on exists — in code, not prose — before that agent starts.
 
-60 tasks across 8 waves, `W0`–`W7`. DESIGN.md § Build order is the one-table
+61 tasks across 8 waves, `W0`–`W7`. DESIGN.md § Build order is the one-table
 summary; this is the operational detail.
 
 ## Sequencing principles
@@ -35,7 +35,18 @@ summary; this is the operational detail.
    single-owner; W1–W2 are delegable but tightly sequenced. W4 onward fans out to
    many agents with near-zero coordination cost, because by then the contract is
    fixed and the work is mechanical.
-7. **The reviewer is the bottleneck, not the agents.** Roughly 150 nominal
+7. **A stand-in is a budget only if a named task re-measures it.** `w0i` stated
+   this of the APL compiler — "a stand-in that a later task has to beat is a
+   budget; a stand-in nobody re-measures is a stub" — and W0 then produced sixteen
+   more of them, among them a literal `armour_class`, a hand-sequenced attack, a
+   hardcoded greatsword, two protocols too narrow for real features, a
+   `_refuse_pending()` that raises where `w1c` will apply, and derived stats
+   recomputed per attack.
+   None of those were wrong to write; all of them are invisible once the file
+   around them grows. Every one is now in § The W0 debt register with the task
+   that retires it, and a first cut written from here on gets a row there in the
+   same commit.
+8. **The reviewer is the bottleneck, not the agents.** Roughly 150 nominal
    agent-days funnel through one person, so every deliverable is designed to be
    *reviewable in minutes* — disposition tables, quoted citations, arithmetic
    written out in goldens, a hard file-size cap. Batches are sized for a review
@@ -65,7 +76,7 @@ else on it.
 flowchart TD
     W0["<b>W0 · Foundations</b><br/>scaffold, enums, RNG,<br/>timeline, hooks, contexts, dispatch,<br/>spike substrate, walking skeleton<br/><i>~19 nominal days · solo</i>"]
     M0{{"<b>M0</b> — architecture proven<br/>≥30k res/s on a 25-feature creature"}}
-    W1["<b>W1 · Domain core</b><br/>creature, resources, effects,<br/>grid, damage, attack, saves,<br/>conditions, dying, log<br/><i>~17 nominal days</i>"]
+    W1["<b>W1 · Domain core</b><br/>creature, resources, effects,<br/>grid, damage, attack, saves,<br/>conditions, dying, log,<br/>M0 re-measure<br/><i>~18 nominal days</i>"]
     W2["<b>W2 · Orchestration</b><br/>importers, actions, turn loop,<br/>dummy, APL, builds,<br/>runner, API, CLI<br/><i>~19 nominal days</i>"]
     M1{{"<b>M1</b> — a level-5 Fighter<br/>kills a dummy, golden-verified"}}
     W3["<b>W3 · Freeze gate</b><br/>goldens, linter, docs, exemplars,<br/>paper pass, hook gaps, skill, stats<br/>harness, <b>canary batch</b><br/><i>~22 nominal days · mostly solo</i>"]
@@ -138,7 +149,7 @@ afterwards.
 |---|---|---|---|---|---|
 | w0a | Repo scaffold: `pyproject.toml`, ruff, mypy, pytest layout, `.gitignore` (`data/`), GitHub Actions | 🔒 | — | package importable, CI green | `uv sync` + `uv run pytest` pass on an empty suite |
 | w0b | **Rules vocabulary**: `Ability`, `DamageType`, `Condition`, `Mastery`, `WeaponProperty`, `Size`, `School`, `Outcome`, PB table, slot table | 🔒 | w0a | `rules/enums.py`, `rules/constants.py` | every 2024 damage type, condition and mastery present; no string literals anywhere downstream |
-| w0c | RNG protocol + `PcgRng` + `ScriptedRng`; dice tokeniser; **per-iteration seeding** `mix(master_seed, iteration_index)` | 🔒 | w0a | `core/rng.py`, `core/dice.py` | same seed ⇒ identical stream; `ScriptedRng` raises on over-draw; **a run reproduces byte-for-byte across different `--jobs` values** |
+| w0c | RNG protocol + `MersenneRng` (`PcgRng` as built, replaced by `w0i`) + `ScriptedRng`; dice tokeniser; **per-iteration seeding** `mix(master_seed, iteration_index)` | 🔒 | w0a | `core/rng.py`, `core/dice.py` | same seed ⇒ identical stream; `ScriptedRng` raises on over-draw; **a run reproduces byte-for-byte across different `--jobs` values** |
 | w0d | Timeline: `TimeKey`, `TurnPhase`, `InitiativeKey` + the tie-break rule, `Duration` + named constructors, `ResetManager`, `Reset` scopes | 🔒 | w0b | `core/timeline.py` | `TURN` vs `OWN_TURN` semantics covered by tests; `through_phase` proven in both directions; **a creature entering or leaving the order moves nobody else and invalidates no resolved `Expiry`** — initiative is a key, never a seat index |
 | w0e | **Hook registry**: `Scope`, `Phase`, `HookSpec`, `define_hook`, and the 39 `define_hook()` calls — including `on_heal`, `on_temp_hp_gained`, `on_death_save`, `on_stabilize`, `on_initiative_roll` | 🔒 | w0b | `hooks/registry.py`, `hooks/definitions.py` | unknown hook name raises; the registry is closed and complete for W1–W3, and the CI **freeze** guard is enabled by `w3f` after the paper pass, not here; the healing and initiative hooks exist **before** W6 and W4 need them |
 | w0f | **Contexts**: every `*Context` Parameter Object, attribute-locked, mutator methods only | 🔒 | w0e | `hooks/contexts.py` | direct field assignment raises `AttributeError`; wrong-phase mutation raises `PhaseError` |
@@ -173,6 +184,76 @@ afterwards.
 > prove the real compiler is no slower. A stand-in that a later task has to beat
 > is a budget; a stand-in nobody re-measures is a stub.
 
+## The W0 debt register
+
+W0 is complete and M0 is met, so this plan has been re-read against what the
+wave actually taught rather than against what it assumed. Most of what it taught
+is already in `docs/decisions.md`; what follows is the part that changes *the
+plan*.
+
+The wave produced twenty-two deliberate stand-ins and deferred obligations —
+seventeen from `w0a`-`w0i` and five more from `w0g3`. Every
+one of them was the right thing to write — a hostile spike needs real machinery
+now, not finished machinery later — and every one of them is invisible six
+months from now, when the file around it has grown and the paragraph explaining
+it reads as description rather than as a debt. Sequencing principle 7 is the
+general rule; this is the ledger it refers to.
+
+**Each row is now also in the retiring task's *Done when* cell**, which is where
+an agent will actually look. This table is the index, not the specification.
+
+| # | The stand-in or debt | Where | Retired by | What it costs if nobody does |
+|---|---|---|---|---|
+| 1 | `StatBlock.armour_class` is a literal | `creatures/stats.py` | `w1a` | AC becomes a number typed into build YAML — the thing DESIGN.md § Reconnaissance is most emphatic about |
+| 2 | `Combatant` carries `name` and `initiative` and nothing else | `hooks/contexts.py` | `w1a` | no `on_hit` feature can read the defender's hit points; the spike's own "bloodied" rider had to ask the damage bag instead |
+| 3 | `Weapon` carries `name` and nothing else | `hooks/contexts.py` | `w1f` | no feature can ask whether the weapon is Heavy — Great Weapon Master, and every mastery, is unwritable |
+| 4 | Derived stats recomputed per attack | `creatures/creature.py` | `w1a` | ~1.5%, out of a 5% headroom |
+| 5 | `_refuse_pending()` raises on a queued effect | `engine/damage.py` | `w1c` | every effect a handler applies is refused; the raise is the reminder |
+| 6 | `attack_once()` hand-sequences the attack | `tools/skeleton.py`, imported by `tools/spike.py` | `w1f` | a second attack order beside `engine/attack.py` — **and a benchmark that defends the budget on a sequence the project does not ship** |
+| 7 | Two inline rulings and one open question, unconfirmed against the 2024 text | `engine/damage.py` | `w1e` | every number a Heavy Armor Master or Uncanny Dodge build reports rests on an argument nobody checked |
+| 8 | `on_reduced_to_zero` never fires; hit points clamp at 0 | `engine/damage.py` | `w1j` | nothing is ever dying, and Relentless Endurance has no moment to attach to |
+| 9 | `Size` reaches geometry nowhere | `core/geometry.py` | `w1d` | every Large creature is Medium — exact for W1–W3's combatants, silently wrong for the first ogre |
+| 10 | The `Economy` protocol has no real implementer or contract test | `hooks/dispatch.py` | `w1a` | the protocol and the class drift, and `costs=` stops being paid |
+| 11 | The `Gate` protocol has no contract test | `hooks/dispatch.py` | `w2e` | as above, for every gated handler |
+| 12 | `Dispatcher.bind()` is never called | `hooks/dispatch.py` | `w2f` | every gated handler raises `EngineAssemblyError` at the first gate |
+| 13 | `GREATSWORD` is hardcoded | `creatures/stats.py` | `w2a` | a second weapon definition beside the imported 38 |
+| 14 | The APL is hand-compiled callables | `tools/spike_apl.py` | `w2e` | the budget is defended by a compiler that does not exist yet (already in `w2e`'s row — `w0i` set this precedent) |
+| 15 | Effects and resources are fixture stand-ins in the spike | `tools/spike_apl.py` | **`w1k`** | the budget never sees the per-round cost `w0i` says it understates |
+| 16 | No multi-round `Duration` anchor | `core/timeline.py` | `w5a` | nothing lasting a minute is expressible — a `core/` change made after the registry freeze, which is why it is named now |
+| 17 | No healer-side heal hook | `hooks/definitions.py` | `w3f`, via `w3e` | `on_heal` is `TARGET` by design, so Disciple of Life and every heal-boosting feature has nowhere to attach |
+| 18 | `_offer()` raises on a queued effect | `engine/triggers.py` | `w2c` | every effect a reaction applies is refused — 2024 Sentinel's speed-to-zero above all; the raise is the reminder, and it is the same debt as #5 one hook along |
+| 19 | Nothing stops a mover whose speed a reaction set to 0 | `engine/triggers.py` | `w2c`, needs `w1a` + `w1c` | Sentinel lets the runner keep running; the walk stops on hit points because those exist, and on nothing else |
+| 20 | `provokes=False` has no caller | `engine/triggers.py` | `w2b`, `w2c` | Disengage, forced movement and teleportation all provoke — the valve is there and nothing sets it |
+| 21 | No visibility gate on the offer | `engine/triggers.py` | `w2c`, needs `w1h` | the rule is "a creature **you can see** leaves your reach"; a Blinded or Invisible-adjacent creature takes opportunity attacks it cannot legally take. Exact while nothing is blind, wrong the first time something is |
+| 22 | No hook for *entering* reach | `hooks/definitions.py` | `w3f`, via `w3e` | 2024 Polearm Master is unwritable — the registry is closed at 39 and this was not the task to open it (same shape as #17) |
+
+### What else the review changed
+
+Four things that are not stand-ins:
+
+- **`w1k` is a new task.** `w0i` measured ~31.5k against a 30k budget and states
+  plainly that what it understates is the per-round cost, because effects and
+  resources did not exist to be swept. W1 is the wave that adds them, and the
+  next task that re-measures anything was `w2e` — twenty tasks later. Five
+  percent of headroom does not survive twenty tasks unwatched, and the wave that
+  spends it is the wave that should find out.
+- **The perf gate needs a work witness** (`w3i`). The cheapest way to make a
+  benchmark faster is to stop a rider from firing, and `w0i` ran for a while
+  with the one handler that paid for the dispatcher's two expensive escape
+  valves never actually running. A gate that watches only the rate cannot tell a
+  fix from a fixture that quietly stopped working.
+- **A harness with exact-integer assertions must fix its unit of work** (`w3a`).
+  `w0i`'s counts were facts about seed 0 rather than about the configuration,
+  and the fix was an invariant, not a larger sample. The golden harness inherits
+  the same requirement, and it is the harness's job rather than each author's.
+- **The turn loop must charge real action costs** (`w2c`), and a starved policy
+  must be visible in the output (`w2g`). The spike spent an Action on a Bonus
+  Action self-buff whose own condition it could not clear, and stopped attacking
+  for the rest of the encounter. It cost 0.07% of the rate — which is exactly
+  why nothing about the *rate* would ever have found it. DESIGN.md § APL warns
+  about the melee build that stands still; this is the same failure through the
+  economy rather than through the grid.
+
 ## W1 — Domain core 👥
 
 Interfaces from W0 are fixed, so these run largely in parallel. `w1e`/`w1f` stay
@@ -180,30 +261,42 @@ with the architect — they encode the two resolution orders everything else
 trusts. `w1a`, `w1d` and `w1e` **complete** files `w0g2` already created; none of
 the three is greenfield, and none of them may restate the damage order.
 
+Two changes came out of the W0 review. **`w1k` is new** — the M0 number has 5%
+of headroom and W1 is the wave that adds the per-round cost `w0i` says it
+understates, so the re-measure happens at the end of this wave rather than
+twenty tasks later in `w2e`. And **the participant protocols in
+`hooks/contexts.py` are widened here**, by `w1a` (`Combatant`) and `w1f`
+(`Weapon`): those two sub-items are the only W1 work that touches a package
+content batches may never touch, they are the shape ~400 features will read the
+defender and the weapon through, and they are therefore solo within their
+otherwise delegable tasks. `w3e` confirms the shape before the grind; `w3f` is
+where a structural gap in it gets fixed.
+
 | ID | Task | Mode | Depends | Produces | Done when |
 |---|---|---|---|---|---|
-| w1a | `Creature` and `StatBlock` completed from `w0g2`, derived stats, **AC derivation** over an `Armour` value object (armour + DEX cap + shield + the Unarmored Defense variants), `ActionEconomy` (action/bonus/reaction/movement, grants) | 👥 | w0g2 | `creatures/creature.py`, `stats.py`, `economy.py` | Action Surge's "grant another action" works via the economy alone; AC is **derived from equipment**, never a literal in the build YAML |
+| w1a | `Creature` and `StatBlock` completed from `w0g2`, derived stats, **AC derivation** over an `Armour` value object (armour + DEX cap + shield + the Unarmored Defense variants), `ActionEconomy` (action/bonus/reaction/movement, grants) | 👥 | w0g2 | `creatures/creature.py`, `stats.py`, `economy.py` | Action Surge's "grant another action" works via the economy alone; AC is **derived from equipment**, never a literal in the build YAML — `StatBlock.armour_class` is gone, not defaulted. Three W0 debts land here: the derived-stat cache (`proficiency_bonus` and `modifier()` are recomputed three times per resolution today, worth ~1.5%), the contract test `w0g` is owed for the `Economy` protocol, and **widening `Combatant`** — no `on_hit` handler can read the defender's hit points, which is why the spike's own "bloodied" rider had to ask the damage bag instead |
 | w1b | `ResourceSpec`, `Recovery`, `ResourcePool`, `SpellSlots` facade, `transaction()` unit of work | 👥 | w0g | `creatures/resources.py` | all 7 resource shapes in DESIGN.md expressible; rollback proven |
-| w1c | `Effect`, `EffectStore`, `Stacking`, charge consumption, refresh/expire | 👥 | w0d | `creatures/effects.py` | Rage extend, Vex charge+time, Reckless hard stop all pass |
-| w1d | Grid geometry completed from `w0g2`: LoS, cone/sphere/line templates, and the full **shortest-legal-route resolution** for a movement destination | 👥 | w0g2 | `core/geometry.py` | Fireball's 20 ft sphere selects the correct cells; a `move:` destination resolves to a route that provokes correctly on the way out of reach |
-| w1e | **Damage resolution order** completed from `w0g2` — immunity → vulnerability → resistance → flat → halvings → temp HP → HP, with the ruling for each non-quoted step cited inline | 🔒 | w0g2 | `engine/damage.py` | Rage + Uncanny Dodge + vulnerability produces the hand-computed number |
-| w1f | **Attack pipeline** — declare → roll → adv/disadv resolution → hit/crit/miss → damage → resolved | 🔒 | w1e | `engine/attack.py` | crit doubles `dice` and never `flat`; advantage is idempotent |
+| w1c | `Effect`, `EffectStore`, `Stacking`, charge consumption, refresh/expire | 👥 | w0d | `creatures/effects.py` | Rage extend, Vex charge+time, Reckless hard stop all pass; **`engine/damage.py`'s `_refuse_pending()` and its two contract tests are deleted here**, and `ctx.pending_effects` is drained where they raised — the first cut refuses a queued effect loudly precisely so that deleting the refusal is a task rather than a discovery |
+| w1d | Grid geometry completed from `w0g2`: LoS, cone/sphere/line templates, and the full **shortest-legal-route resolution** for a movement destination | 👥 | w0g2 | `core/geometry.py` | Fireball's 20 ft sphere selects the correct cells; a `move:` destination resolves to a route that provokes correctly on the way out of reach; **`Size` reaches geometry** — a Large creature occupies 2×2 and that changes its reach and what a template covers. `w0g2` reads `Size` nowhere, which is exact for Small/Medium and silently wrong for the first ogre |
+| w1e | **Damage resolution order** completed from `w0g2` — immunity → vulnerability → resistance → flat → halvings → temp HP → HP, with the ruling for each non-quoted step cited inline | 🔒 | w0g2 | `engine/damage.py` | Rage + Uncanny Dodge + vulnerability produces the hand-computed number; the **two rulings `w0g2` wrote inline are confirmed against the 2024 text or changed** — flat reductions applying after resistance, and halvings after the flat reductions — as is the open question beside them, whether two halvings stack where two resistances do not (`_halvings` is a list on the strength of no rule saying otherwise). Each changes every number a Heavy Armor Master or Uncanny Dodge build reports; `mitigate()` stays a pure function over a `MitigationLedger`, which is what lets the order be pinned by a table of cases |
+| w1f | **Attack pipeline** — declare → roll → adv/disadv resolution → hit/crit/miss → damage → resolved | 🔒 | w1e | `engine/attack.py` | crit doubles `dice` and never `flat`; advantage is idempotent; `mitigate()` is handed **the generator the attack is using**, because a second stream reproduces a different fight from the same archived seed with no error anywhere; the `Weapon` protocol is widened (no `on_hit` handler can ask whether the weapon is Heavy today); reach comes from the weapon and the creature's square, not from a bare `in_reach()`. **`tools/skeleton.py`'s hand-sequenced `attack_once()` is retired here** — `tools/spike.py` imports it, so leaving it in place is both a second attack order and a benchmark that stops measuring the sequence the project ships |
 | w1g | Saving throws, DC calculation, save-for-half | 👥 | w1f | `engine/saves.py` | legendary resistance expressible |
 | w1h | The 15 combat-relevant conditions as `Effect` subclasses | 👥 | w1c | `conditions/` | no `if creature.is_prone` anywhere in the engine |
 | w1i | Structured event log (tuples; formatting deferred to the reporter) | 👥 | w0d | `core/log.py` | `--log-level=summary` skips per-roll records |
-| w1j | **Dying**: 0 HP, death saves, stabilise, healing application and temp HP, firing `on_death_save` / `on_stabilize` / `on_heal` / `on_temp_hp_gained` | 👥 | w1e | `engine/dying.py`, `engine/healing.py` | a downed PC rolls death saves; a heal at 0 HP restores consciousness; Relentless Endurance is expressible with no engine change |
+| w1j | **Dying**: 0 HP, death saves, stabilise, healing application and temp HP, firing `on_death_save` / `on_stabilize` / `on_heal` / `on_temp_hp_gained` | 👥 | w1e | `engine/dying.py`, `engine/healing.py` | a downed PC rolls death saves; a heal at 0 HP restores consciousness; Relentless Endurance is expressible with no engine change; **`resolve_damage()` fires `on_reduced_to_zero`** and computes `ReducedToZeroContext.overflow` for the instant-death rule — `w0g2` clamps hit points at 0 and fires nothing, which is the one hook the damage pipeline currently owes |
+| w1k | **M0 re-measure**: re-run `w0i`'s spike against the completed W1 substrate — real `EffectStore`, real `ResourcePool`, the real attack sequence — replacing the fixtures' hand-built stand-ins | 🔒 | w1a–w1f, w1j | an updated § w0i measurement | **≥30k on the same hostile configuration, or the shortfall is measured, attributed and either accepted or revised away — as a decision taken here, not a number noticed in W2.** Added by the W0 review: `w0i` measured ~31.5k against a 30k budget — 5% of headroom — and says in as many words that what it understates is the per-round cost, because effects and resources did not exist. W1 is what adds them, `w2e` is the next task that re-measures, and twenty tasks is too long a run for 5% |
 
 ## W2 — Orchestration 👥
 
 | ID | Task | Mode | Depends | Produces | Done when |
 |---|---|---|---|---|---|
-| w2a | **Content ACL**: fetch script **pinning the upstream 5etools commit as the content version**, 5etools loader, `refSubclassFeature`/`refOptionalfeature` resolution, `classTableGroups` → `table_value()`, weapon + **armour** + mastery + **species** import | 👥 | w0b | `content/` | 38 XPHB weapons, every armour and shield entry, `species.json`, and every class table import; `content fetch` records the commit SHA that every `SimResult` cites; no 5etools vocabulary escapes this package |
+| w2a | **Content ACL**: fetch script **pinning the upstream 5etools commit as the content version**, 5etools loader, `refSubclassFeature`/`refOptionalfeature` resolution, `classTableGroups` → `table_value()`, weapon + **armour** + mastery + **species** import | 👥 | w0b | `content/` | 38 XPHB weapons, every armour and shield entry, `species.json`, and every class table import; `content fetch` records the commit SHA that every `SimResult` cites; no 5etools vocabulary escapes this package; `stats.GREATSWORD` — the one hardcoded weapon the project was ever going to have — goes with the spike that needed it |
 | w2b | `Action` Command base (`is_legal`/`execute`), Attack, Dash, Dodge, Disengage | 👥 | w1f | `actions/` | legality query provably cannot spend a resource |
-| w2c | Initiative, turn loop, round loop, trigger audience, **reaction regained at the start of each of your turns**, opportunity attacks, movement offers, `on_initiative_roll` | 🔒 | w2b | `engine/turn.py`, `encounter.py`, `triggers.py`, `world.py`, `query.py`, `actions/opportunity_attack.py` | **completes `w0g3`'s `engine/triggers.py`** rather than rewriting it: the movement audience, the per-step offer and the initiative ordering are already there, and what this task owes them is the `opportunity_attack` Command, the `ctx.pending_effects` drain the first cut raises on, the Disengage / forced-movement / teleport valve wired to the Commands and conditions that set it, and a stop on a speed reduced to zero. Re-runs `w0i`'s benchmark on a configuration where the offers actually fire and must come in at or under its number. turn loop re-polls after every action; a creature may react before its turn and again after it in the same round — the invariant is on the **turn** boundary, never the round. Owns the roster and the `InitiativeKey` for each combatant: `tiebreak` is **one independent uniform draw per creature**, `(rng.roll(2**32) - 1) / 2**32` (never a shuffle of the entrants — it has no honest place for a latecomer), a joiner mid-encounter draws its own without touching anyone else's, and a creature leaving is dropped from the roster with its key left alone |
+| w2c | Initiative, turn loop, round loop, trigger audience, **reaction regained at the start of each of your turns**, opportunity attacks, movement offers, `on_initiative_roll` | 🔒 | w2b | `engine/turn.py`, `encounter.py`, `triggers.py`, `world.py`, `query.py`, `actions/opportunity_attack.py` | **completes `w0g3`'s `engine/triggers.py`** rather than rewriting it: the movement audience, the per-step offer and the initiative ordering are already there, and what this task owes them is the `opportunity_attack` Command and debts 18-22 of § The W0 debt register. Re-runs `w0i`'s benchmark on a configuration where the offers actually fire, and must come in at or under its number **without** counting an opportunity attack made by a featureless creature as an attack resolution — a cheap resolution added to the numerator of a rate quoted per resolution raises the reported number by making the average resolution less like a real one. turn loop re-polls after every action; a creature may react before its turn and again after it in the same round — the invariant is on the **turn** boundary, never the round. Owns the roster and the `InitiativeKey` for each combatant: `tiebreak` is **one independent uniform draw per creature**, `(rng.roll(2**32) - 1) / 2**32` (never a shuffle of the entrants — it has no honest place for a latecomer), a joiner mid-encounter draws its own without touching anyone else's, and a creature leaving is dropped from the roster with its key left alone. **The loop charges the real XPHB action cost of each offer and filters to what the economy can still pay**: `w0i` charged an Action for a Bonus Action self-buff, and because the buff's own `if:` was a condition the buff did not clear, the creature spent its Action on it and never swung again for the rest of that encounter |
 | w2d | `TargetDummy` with every knob from DESIGN.md, including `movement_profile` (`static` / `closes_to_melee` / `kites_at`) | 👥 | w1a | `creatures/dummy.py` | AC sweep 10–22 configurable from YAML; a dummy that closes to melee provokes and is provoked, so the grid is exercised rather than decorative |
-| w2e | **APL**: AST whitelist compiler, `NamespaceSchema`, proxies, `Apl.allows()`, default policy, and **all three clauses** — `if:`, `target:` (selector expressions), `move:` (positioning) | 🔒 | w2b, w2c | `apl/` | `self.ragging` fails at load with a suggestion; unmentioned riders and reactions default OFF, **movement being the one exception** — a build with no `move:` clause closes to its nearest enemy; `target: "lowest_hp of enemies.in_reach"` and `move: "toward nearest of enemies until in_reach"` compile through the same whitelist. **Reactions are entries like any other** — one flat list, not a second one: `{ action: opportunity_attack, if: "..." }` is answered through `Apl.allows()` at the moment `engine/triggers.py` makes the offer, the `trigger.*` root carries the mover and the square being left, and an entry nobody wrote is OFF, so a build that never swings at runners is a build that said so. **All three clauses ship together** — adding a clause after builds exist is a schema migration across every YAML file in git. `dndsim bench` on `w0i`'s configuration comes in at or under `w0i`'s number |
-| w2f | Build YAML pydantic schema — class + level, **species, background, ASI/feat choices, fighting style, equipment (weapons, armour, shield)**, `apl:`, and party `retreat_when` — plus the `Character` Builder | 👥 | w2a, w2e | `builds/`, `creatures/character.py` | unknown feature id fails with difflib suggestions; every choice a single-classed level 1–12 character makes is expressible, and AC falls out of the equipment |
-| w2g | Monte Carlo runner, multiprocessing, stats, CIs; **`SimResult` + its JSON schema**; text/json renderers; the public API | 👥 | w2c, w2d, w2f | `sim/`, `reporting/`, `api.py` | identical seed ⇒ byte-identical event log **at any `--jobs`**, because worker records are merged in **iteration order, never completion order**; text output derived from the JSON, not parallel to it |
+| w2e | **APL**: AST whitelist compiler, `NamespaceSchema`, proxies, `Apl.allows()`, default policy, and **all three clauses** — `if:`, `target:` (selector expressions), `move:` (positioning) | 🔒 | w2b, w2c | `apl/` | `self.ragging` fails at load with a suggestion; unmentioned riders and reactions default OFF, **movement being the one exception** — a build with no `move:` clause closes to its nearest enemy; `target: "lowest_hp of enemies.in_reach"` and `move: "toward nearest of enemies until in_reach"` compile through the same whitelist; `Apl` satisfies the `Gate` protocol `hooks/dispatch.py` declares and owes the contract test that says so. **Reactions are entries like any other** — one flat list, not a second one: `{ action: opportunity_attack, if: "..." }` is answered through `Apl.allows()` at the moment `engine/triggers.py` makes the offer, the `trigger.*` root carries the mover and the square being left, and an entry nobody wrote is OFF, so a build that never swings at runners is a build that said so. **All three clauses ship together** — adding a clause after builds exist is a schema migration across every YAML file in git. `dndsim bench` on `w0i`'s configuration comes in at or under `w0i`'s number |
+| w2f | Build YAML pydantic schema — class + level, **species, background, ASI/feat choices, fighting style, equipment (weapons, armour, shield)**, `apl:`, and party `retreat_when` — plus the `Character` Builder | 👥 | w2a, w2e | `builds/`, `creatures/character.py` | unknown feature id fails with difflib suggestions; every choice a single-classed level 1–12 character makes is expressible, and AC falls out of the equipment; **the loader calls `Dispatcher.bind()` once per creature** — the gate cannot be a constructor argument because the APL's namespace is built over the creature that owns the dispatcher, and a gated handler with nobody to ask raises rather than running free |
+| w2g | Monte Carlo runner, multiprocessing, stats, CIs; **`SimResult` + its JSON schema**; text/json renderers; the public API | 👥 | w2c, w2d, w2f | `sim/`, `reporting/`, `api.py` | identical seed ⇒ byte-identical event log **at any `--jobs`**, because worker records are merged in **iteration order, never completion order**; text output derived from the JSON, not parallel to it; the pool is started behind a main guard and never from a module a worker re-imports (`spawn` re-runs `__main__` in every worker — `w0i`'s first startup measurement fork-bombed the machine it was measuring, and 0.167 s of that startup is real and paid per worker); **`SimResult` carries actions and attack resolutions per round**, so a policy that starves itself is visible as a count rather than only as a disappointing DPR |
 | w2h | Typer CLI as a **thin adapter** over `api.py`: `sim`, `day`, `compare`, `inspect`, `validate`, `trace`, `check`, `content fetch`, `bench` | 👥 | w2g, w2a, w2f | `cli.py` | every command in DESIGN.md § Verification runs; no simulation logic lives in `cli.py` |
 
 > **M1 — A level-5 Fighter with a greatsword kills a dummy**, and every number is
@@ -227,15 +320,15 @@ cannot fake — had no task producing it.
 
 | ID | Task | Mode | Depends | Produces | Done when |
 |---|---|---|---|---|---|
-| w3a | Golden harness, `scripted_rng` fixture, `parts_by_source` assertions | 👥 | w2c | `tests/golden/conftest.py` | exact-integer assertions, no distributions |
+| w3a | Golden harness, `scripted_rng` fixture, `parts_by_source` assertions | 👥 | w2c | `tests/golden/conftest.py` | exact-integer assertions, no distributions — and the fixture fixes the *unit of work*, not just the dice: `w0i` wrote exact counts against a benchmark whose encounters resolved 30 attacks on the seed it was written on and something else on 3 seeds in 60. **A harness whose unit of work depends on the dice cannot carry exact-integer assertions**, and the fix is an invariant the fixture guarantees, not a larger sample |
 | w3b | Feature linter + no-op detector + golden-coverage collection test, wired to `dndsim check` and to **every batch PR** | 👥 | w3a | `tools/check_features.py`, `noop_report.py` | catches missing `# PHASE:`, private access, stray `import random`, `try`/`except` or `hasattr` in `features/`, a feature file over 60 lines, a `source_ref` without a quoted rules sentence, a `dndsim` import inside an analytic expectation, and any write outside a packet's file allowlist |
 | w3c | Generate `docs/hooks.md` and `docs/apl.md` from the registries | 👥 | w0e, w2e | `tools/gen_docs.py` | CI fails if generated docs are stale |
 | w3d | **Reference exemplars**: Rage, Sneak Attack, Uncanny Dodge, hand-built | 🔒 | w2e | `features/base.py`, `params.py`, `TEMPLATE.py`, the three exemplars | all three pass goldens; they become the skill's examples |
-| w3e | **Paper pass**: classify all ~400 combat-relevant features to a hook. **Batched against a fixed row schema**, then human-triaged | 🚀 → 🔒 | w3d | `docs/feature-hook-map.md` | every feature has a row: `feature_id \| hook \| scope \| phase \| resource \| once_per \| confidence \| gap_kind`. Gaps are classified **additive** (a new hook) or **structural** (a missing context field, or a hook firing at the wrong pipeline point) |
-| w3f | **Hook gap resolution**: add the hooks the paper pass proved missing; fix the structural ones | 🔒 | w3e | `hooks/definitions.py` (final) | registry frozen; CI guard enabled. **Budget against the structural count, not the total** — additive gaps are an append, structural gaps touch `hooks/contexts.py` and `engine/` |
+| w3e | **Paper pass**: classify all ~400 combat-relevant features to a hook. **Batched against a fixed row schema**, then human-triaged | 🚀 → 🔒 | w3d | `docs/feature-hook-map.md` | every feature has a row: `feature_id \| hook \| scope \| phase \| resource \| once_per \| confidence \| gap_kind`. Gaps are classified **additive** (a new hook) or **structural** (a missing context field, or a hook firing at the wrong pipeline point). **The pass also confirms the shape of what a hook hands out** — the `Combatant` and `Weapon` protocols `w1a`/`w1f` widened, and the context fields — because a field ~400 features need and cannot reach is a structural gap found at the cheapest moment there is |
+| w3f | **Hook gap resolution**: add the hooks the paper pass proved missing; fix the structural ones | 🔒 | w3e | `hooks/definitions.py` (final) | registry frozen; CI guard enabled. **Budget against the structural count, not the total** — additive gaps are an append, structural gaps touch `hooks/contexts.py` and `engine/`. Two gaps are known before the pass starts and are its opening rows: the **healer's side of `on_heal`** (Disciple of Life has nowhere to attach — `on_heal` is `TARGET` by design) and the **multi-round `Duration` anchor** (`core/timeline.py` has no additive `turns` field, so nothing lasting a minute is expressible; budgeted to `w5a`, and the pass is where a W4 feature that needs it earlier surfaces) |
 | w3g | `.claude/skills/feature-authoring/SKILL.md` (≤3 pages) | 🔒 | w3f | the skill | a fresh agent implements a held-out feature correctly from it alone |
 | w3h | Interaction matrix v1 (~50 hand-computed combos) | 🔒 | w3d | `tests/interaction/` | crit+rider, resistance+halving, chained attacks covered |
-| w3i | CI benchmark gate: median-of-N with warmup, against a same-run microbenchmark baseline | 👥 | w0i, w2h | CI config | a deliberate slowdown fails CI **and a rerun on unchanged code does not**. Tracked-but-non-blocking until its variance is known |
+| w3i | CI benchmark gate: median-of-N with warmup, against a same-run microbenchmark baseline | 👥 | w0i, w2h | CI config | a deliberate slowdown fails CI **and a rerun on unchanged code does not**. Tracked-but-non-blocking until its variance is known. Three constraints `w0i` measured: **1,000 encounters is a floor, not a default to trim** (at 200 the same machine spread 9% across three consecutive runs — wide enough to hide the regression the gate exists to catch; at 1,000 it is 0.2%); the gate **asserts its own fixtures still did their work**, off the no-op detector's counters, because the cheapest way to make a benchmark faster is to stop a rider firing and `w0i` shipped for a while with the one handler that paid for the dispatcher's two expensive escape valves never running; and when the gate does fire, **the reserve lever is the shape of `DamagePart`/`Modifier`** — a `NamedTuple` constructs in ~0.38 µs and a plain slotted class in ~0.28 µs against a frozen dataclass's ~0.9 µs — never the object model `w0i` refused |
 | w3j | **The canary batch**: Rogue core + Thief only, authored by one agent from the skill alone, treated as semi-disposable | 🚀 | w3g | `features/classes/rogue/`, an API-friction report | the batch lands needing no correction — or the API is revised and the batch is rewritten |
 | w3k | **Reviewer-pass harness**: a read-only review prompt that sees the quoted rules text and the code but not the author's reasoning, and that **re-derives each golden's expected number from the rules text alone** before comparing it with the author's | 👥 | w3d | `.claude/skills/feature-review/` | run against w3j; it finds at least one real discrepancy or is judged useless and cut |
 | w3l | **Statistical harness**: the `expectation` declaration on features, 200k-attack comparison, Wilson intervals for rates and Student-t for means, wired to **every batch PR**; plus the invariant property tests (damage never negative, HP conservation, one reaction per turn, effect count back to baseline after an encounter) | 👥 | w3a, w3b | `tests/statistical/` | a feature whose implementation is 10% off its declared expectation fails the batch; an `expectation` that imports `dndsim` is a linter error, not a review comment |
@@ -285,7 +378,7 @@ information is still free.
 
 | ID | Task | Mode | Depends | Scope |
 |---|---|---|---|---|
-| w5a | **Spell engine**: `Spell(Action)`, concentration + checks, slots/upcasting, AoE templates, save-for-half | 🔒 | w4g | the last high-blast-radius design decision |
+| w5a | **Spell engine**: `Spell(Action)`, concentration + checks, slots/upcasting, AoE templates, save-for-half, **and the multi-round `Duration` anchor** | 🔒 | w4g | the last high-blast-radius design decision. `core/timeline.py` (w0d) deliberately shipped no multi-round anchor — every W1 duration ends one turn ahead — so "1 minute" is not expressible until an additive `turns` field lands here. It is a `core/` change made after the registry freeze, which is why it is named now rather than discovered by the first concentration spell |
 | w5b | Paladin + Ranger | 🚀 | w5a | half-casters, martial-adjacent — the cheapest validation of w5a |
 | w5c | Cleric + Druid | 🚀 | w5b | |
 | w5d | Bard + Sorcerer | 🚀 | w5b | + 10 metamagic |
