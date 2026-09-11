@@ -158,6 +158,21 @@ and `search/` is a client of `api.py` that may never import
 in `search/` — with the one stated exception of `engine/estimate.py`, which is
 engine code the *scorer* needs and the search does not.
 
+**The score is a registry, not a formula** (§ Extensibility). `apl/score/` is the
+hook registry's shape on purpose — a closed CI-diffed registry, an
+attribute-locked pooled `ScoreContext`, a uniform handler — so learning one
+surface teaches the other; it is simpler in that terms are summed and addition
+commutes, so there are no phase bands. Adding a term is one file, one
+coefficient and one ablation row. **Extensibility without falsification is rot:
+a term that cannot show marginal value on held-out builds is cut, not
+deprecated**, and `docs/score.md` is generated from the registry. Provenance
+carries a **score-model version** hashing the registered terms, and a coefficient
+set that does not match it is refused at load rather than used with the missing
+term treated as zero. Deliberately *not* extensible, and each for a reason:
+`engine/estimate.py` (a Strategy there bypasses the property test that is the
+scheme's linchpin), the damage resolution order, the gauge (identifiability needs
+exactly two pins), and the single unit.
+
 **The estimator and the resolver may never diverge.** `engine/estimate.py`
 computes expected damage in closed form (hit chance from attack bonus vs AC, or
 save DC vs save bonus, summed over targets); `engine/damage.py` resolves it. If
@@ -204,7 +219,7 @@ Add a section there when a task lands, rather than growing this file.
 
 ## Sequencing rules
 
-`ROADMAP.md` has 75 tasks across waves W0–W8 with explicit dependency edges.
+`ROADMAP.md` has 76 tasks across waves W0–W8 with explicit dependency edges.
 Three constraints dominate:
 
 - **Nothing in W4 or later may start before M2** (API frozen, authoring skill

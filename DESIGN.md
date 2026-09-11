@@ -1133,6 +1133,133 @@ Three things contain it, and none of them is a proof:
   found more than one mutual best response, and that is a result about the party
   rather than a defect in the search.
 
+#### Extensibility: the score is a registry, not a formula
+
+The architecture question has an unusually well-evidenced answer here, because
+this design produced the evidence while being written. **The score function was
+revised four times in a single sitting**, and every revision added or split a
+term rather than changing anything else:
+
+| Revision | What changed |
+|---|---|
+| 1 | `w·Ê_dmg + w_ally·Ê_ally_hp − Σc[r] + b` — the first cut |
+| 2 | `+ w_buff·ΔÊ_dpr·H` — buffs, because a constant cannot depend on rounds remaining |
+| 3 | split to `w_off`/`w_def`, `p_land` added — debuffs, because "buff vs debuff" was the wrong axis |
+| 4 | `p_land` and `H` folded inside the sums, `p_kill` added to `w_def`, availability added to `ΔÊ_ours` — party tactics |
+
+Four revisions, one afternoon, all the same shape. That is not a prediction that
+the formula will keep changing; it is a measurement that it does. **This is the
+one place in the scorer where generality is earned rather than speculative**, and
+everything below is scoped to it.
+
+**So the score is a closed-but-appendable registry of independently declared
+terms, shaped exactly like the hook registry.** Not because registries are nice,
+but because this repository already teaches that shape once — a closed registry,
+an attribute-locked pooled context, a uniform handler signature — and the
+project's central bet is that learning one such surface teaches the others:
+
+```python
+@score_term("lethality")
+class Lethality(ScoreTerm):
+    coefficient = "w_def"        # which fitted family it multiplies
+    unit = Unit.DAMAGE           # the only unit there is; declared, not assumed
+    def value(self, ctx: ScoreContext) -> float: ...
+```
+
+It is **strictly simpler than the hook registry in one respect that matters**:
+scoring terms are summed, and addition commutes, so there are no phase bands, no
+ordering, and no `# PHASE:` justifications. A term cannot break another term by
+running at the wrong time. What the context does carry is memoised shared
+sub-results — `Ê_dmg` is read by the damage term, the lethality term and the AoE
+placement search, and computing it three times is the obvious way to lose the
+performance budget.
+
+#### Extensibility without falsification is just rot
+
+A registry makes terms cheap to add, and cheap-to-add is how a value model
+accumulates six years of plausible-sounding corrections that nobody can show help.
+The mechanism that prevents it already exists and only needs pointing at a second
+target: **every term is ablatable exactly as every APL entry is.** Drop the term,
+refit, re-evaluate on held-out builds, report the marginal value with an interval.
+
+> **A term that cannot show marginal value on held-out builds is cut.** Not
+> deprecated, not left in with a small coefficient — cut, so the next person
+> reading `docs/score.md` sees only terms that earned their place.
+
+`docs/score.md` is generated from the registry, on the same footing as
+`docs/hooks.md` and `docs/apl.md`, and CI fails if it is stale. The registry is
+CI-diffed like the hook registry, so adding a term is a deliberate reviewed
+change rather than drift.
+
+#### Two more seams, both already named by this document
+
+- **Perturbation kinds.** The vocabulary is closed and CI-guarded already; what
+  should also be open is the *application* — a mapping from vocabulary key to a
+  small function folding that key into the estimator's inputs. Adding
+  `crit_range` should be adding a file, not editing a fifteen-branch conditional
+  that every other key also passes through.
+- **`Horizon` is a Strategy.** `H` was the most-revised quantity in the whole
+  design — encounter-wide, then per-target, then counted in turns rather than
+  rounds, then with neutralised enemies out of the numerator. And § The known
+  weakness already names its eventual successor: a learned state-value function,
+  which is a different project but *this* seam is where it would land, replacing
+  one implementation and touching no term. Naming the seam costs an interface
+  now; discovering it later costs every term that inlined the closed form.
+
+#### Versioning, which is what makes extensibility safe
+
+An extensible score model silently invalidates its own archive. A derived APL is
+only comparable with another derived under **the same set of terms**, and the
+coefficient-set hash does not capture that — refitting produces new numbers for
+the same terms, while adding a term changes what the numbers mean.
+
+So the provenance gains an eighth field, a **score-model version**: a hash over
+the registered term ids and their coefficient families. Two consequences, both
+fail-loud in the project's usual way:
+
+- A coefficient set whose score-model version does not match the running registry
+  is **refused at load**, not used with the missing term treated as zero. A
+  stale fit is not a slightly worse fit; the remaining coefficients absorbed the
+  variance of the term that has since changed.
+- `compare` refuses two derivations from different score-model versions, on the
+  same terms it already refuses two derived against different scenario sets.
+
+#### What is deliberately *not* extensible
+
+Naming the closed parts matters as much, because a seam in the wrong place is how
+an invariant stops being one:
+
+- **`engine/estimate.py` is concrete, with no Strategy in front of it.** Its
+  entire correctness argument is that it is the single closed-form partner to
+  `engine/damage.py`, bound by the property test against 10⁵ real resolutions.
+  A swappable estimator is a way to bypass that binding, and the binding is the
+  linchpin of the whole scheme.
+- **The damage resolution order stays one file**, for the reason it always was.
+- **The gauge is not configurable.** Identifiability requires exactly two pins;
+  offering a knob invites a fit that cannot converge and a reader who cannot tell
+  what a coefficient means.
+- **There is one unit.** Terms declare `Unit.DAMAGE` so the invariant is
+  structural rather than remembered, but a second unit would need an exchange
+  rate nobody can fit, and the two that exist — `w_ally` and `c[r]` — are fitted
+  precisely because they are the only conversions the model admits.
+
+#### What it costs, and the escape if it costs too much
+
+A registry is virtual dispatch per term per action per target, against an inlined
+formula's straight-line arithmetic, and § Performance has already spent its
+headroom twice. Three answers, in order:
+
+- Terms are few (~6), and the loop runs over actions × targets regardless.
+- **Per-creature applicable-term lists**, precomputed — a build with no buffs
+  never evaluates the offensive term. This is the dispatch-table lever § Levers
+  already lists, applied to a second registry.
+- If it still misses, **the fallback is code generation, not abandoning the
+  registry**: emit a flat scoring function per build from the registered terms,
+  exactly as `reopen()` is already generated per context class. The repository
+  has done this once and the reasoning is in `docs/decisions.md` § w0i.
+
+`w8g` measures it. As everywhere else in § Performance, the number decides.
+
 #### `best_scored` — how the two layers compose
 
 The scorer does **not** replace the ordered list. It enters it as one new action
@@ -1467,9 +1594,13 @@ on the sampling side:
 ### A derived APL is an artefact with provenance
 
 Derivation is reproducible or it is worthless: **seed + build hash + engine
-version + content version + derivation-config hash + scenario-set hash** produces
-the same APL byte for byte. All six go in the result, exactly as the four already
-do for a simulation.
+version + content version + derivation-config hash + scenario-set hash +
+coefficient-set hash + score-model version** produces the same APL byte for byte.
+All eight go in the result, exactly as the four already do for a simulation. The
+last is a hash over the registered score terms and their coefficient families,
+and it is not redundant with the one before it: refitting produces new numbers
+for the same terms, while adding a term changes what the numbers mean
+(§ Extensibility).
 
 The output is written as **ordinary build YAML** — a normal `apl:` block under a
 provenance comment header — so it can be pinned into the build file, reviewed in
@@ -1896,7 +2027,10 @@ src/dndsim/
   actions/    base.py attack.py opportunity_attack.py dash.py dodge.py
               disengage.py cast_spell.py
   spells/     base.py concentration.py templates.py level0..level6/
-  apl/        expr.py schema.py namespace.py apl.py scorer.py coefficients.py
+  apl/        expr.py schema.py namespace.py apl.py
+              score/  registry.py context.py horizon.py coefficients.py
+                      terms/ damage.py offensive.py defensive.py
+                             lethality.py mitigation.py resources.py
   builds/     schema.py loader.py
   engine/     world.py query.py attack.py damage.py saves.py turn.py
               encounter.py adventuring_day.py triggers.py estimate.py
@@ -1931,6 +2065,11 @@ enough to restate in place:
   populates.
 - **`api.py` vs `cli.py`.** The CLI holds no simulation logic. A UI added later
   is another adapter against the same API, never a scraper of CLI output.
+- **`apl/score/` is the hook registry's shape, deliberately.** A closed
+  CI-diffed registry, an attribute-locked pooled context, a uniform handler
+  signature — the same surface `hooks/` teaches, so learning one teaches the
+  other. It is simpler in one respect: terms are summed and addition commutes, so
+  there are no phase bands and no ordering to get wrong.
 - **`search/` imports downward and is imported by nobody.** It consumes `api.py`
   and `apl/` and is consumed only by `cli.py`. Nothing in `sim/`, `engine/`,
   `hooks/` or `features/` may import it, and it may not import `engine/` or
@@ -1943,7 +2082,8 @@ enough to restate in place:
   without notice, so this is the difference between "a schema change breaks the
   importer" and "a schema change breaks everything".
 
-`docs/hooks.md` and `docs/apl.md` are **generated** from the registries —
+`docs/hooks.md`, `docs/apl.md` and `docs/score.md` are **generated** from the
+registries —
 **Single Source of Truth** applied to documentation. Hand-maintained docs drift,
 and a drifted doc is how you get 40 wrong features in one batch.
 

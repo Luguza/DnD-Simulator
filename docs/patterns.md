@@ -36,6 +36,8 @@ load-bearing ideas for the rule and the reason.
 | **Client, not layer** | `search/` over `api.py` | Policy search consumes the simulator; nothing in the simulator knows it exists |
 | **Strategy** (second implementation) | `apl/scorer.py` | The scored policy the founding design anticipated: a value model swapped in behind the same interface as the ordered list |
 | **Decorator** (conceptual) | the APL overlay over `best_scored` | The per-build search wraps the global scorer with its departures, rather than replacing it |
+| **Registry + Composite** | `apl/score/registry.py` | The score is a sum of independently declared terms; adding one is a file, not a formula edit |
+| **Strategy** | `apl/score/horizon.py` | `H` was the most-revised quantity in the design; this is where a learned value function would land |
 
 ## Patterns by package
 
@@ -65,13 +67,17 @@ load-bearing ideas for the rule and the reason.
   list: a hand-written pool would launder the author's priors through a search
   and defeat the point. Import direction is enforced — `search/` may import
   `api.py` and `apl/`, and nothing may import `search/` except `cli.py`.
-- `apl/scorer.py` — the **Strategy** slot § APL of DESIGN.md reserved from the
+- `apl/score/` — the **Strategy** slot § APL of DESIGN.md reserved from the
   start ("a built-in scoring heuristic can later be dropped in as an alternative
   Policy implementation"). It is not an alternative in the end but a *layer*: the
   ordered list keeps its place and gains one entry, `best_scored`, so the two
   compose rather than compete. `engine/estimate.py` is the expected-damage
   estimator it reads, and it is engine code precisely because it must share the
-  crit, advantage and defence rules with `engine/damage.py` by construction.
+  crit, advantage and defence rules with `engine/damage.py` by construction —
+  and is pointedly *not* behind a Strategy of its own, since that would be a way
+  to bypass the property test binding it to the resolver. Inside `apl/score/`,
+  the registry is the hook registry's shape minus the phase bands: terms are
+  summed, addition commutes, so nothing can run at the wrong time.
 - `core/rng.py` — **Strategy**. `MersenneRng` in production, `ScriptedRng` in golden
   tests. The linter bans `import random` everywhere else, so determinism is
   structurally guaranteed rather than merely intended.
