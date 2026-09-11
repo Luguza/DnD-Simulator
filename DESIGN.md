@@ -651,18 +651,19 @@ so that damage, prevented damage and spent resources are directly comparable:
 
 ```
 score(a, T) =   w[a]     · Ê_dmg(a, T)                       # damage now
-              + w_off[a] · ΔÊ_ours(a, T)   · H · p_land       # our output, later
-              + w_def[a] · ΔÊ_theirs(a, T) · H · p_land · w_ally
-                                                             # their output, later
+              + w_off[a] · ΔÊ_ours(a, T)                      # our output, later
+              + w_def[a] · ΔÊ_theirs(a, T) · w_ally            # their output, later
               + w_ally   · Ê_ally_hp(a, T)                    # damage prevented now
               − Σ_r  c[r](day) · spend_r/pool_r               # what it costs
               + b[a]                                          # the residual, only that
 ```
 
-`p_land` is `1` for anything not gated on a saving throw, so a buff on an ally
-carries it trivially and only a debuff pays it. Both `ΔÊ` terms are signed so
-that positive is good — see § Buffs and debuffs, where getting that backwards is
-the one sign error the fit cannot rescue.
+Both `ΔÊ` terms carry the horizon and the landing probability **inside** their
+per-target sums, because an area effect rolls a separate save against a separate
+creature with its own remaining life; `p_land` is `1` for anything not gated on a
+save, so only a debuff pays it. Both are signed so that positive is good — see
+§ Buffs and debuffs, where getting that backwards is the one sign error the fit
+cannot rescue.
 
 Four families of fitted coefficients, and nothing else:
 
@@ -756,9 +757,17 @@ estimator and take the difference** — and the useful axis between them is not 
 they target:
 
 ```
-ΔÊ_ours(a, T)   = Σ_a∈allies  [ Ê_dpr(a | perturbed) − Ê_dpr(a | as things stand) ]
-ΔÊ_theirs(a, T) = Σ_e∈enemies [ Ê_dpr(e | as things stand) − Ê_dpr(e | perturbed) ]
+ΔÊ_ours(a, T)   = Σ_a∈allies  p_land(a)·H_a·[ Ê_dpr(a | perturbed) − Ê_dpr(a | stands) ]
+ΔÊ_theirs(a, T) = Σ_e∈enemies p_land(e)·H_e·[ Ê_dpr(e | stands) − Ê_dpr(e | perturbed) ]
 ```
+
+**`p_land` and the horizon live inside the sum, per target.** An area control
+spell rolls a separate save for every creature it catches, so a single scalar
+`p_land` multiplied over the whole term would price Hypnotic Pattern against a
+goblin and an archmage as though they were the same creature. The horizon is
+per-target for the same reason — one enemy may be about to die while another has
+full hit points. Factoring either out of the sum is only correct for a
+single-target effect, which is the case that makes the error easy to miss.
 
 **Note the enemy term subtracts the other way round.** Both are written so that
 *positive is good* — `ΔÊ_ours` is damage per round gained, `ΔÊ_theirs` is damage
@@ -853,6 +862,33 @@ what stops the scorer from casting Hold Person on the enemy sitting at 3 hit
 points — the other half of the same instinct that stops it buffing on the
 killing round.
 
+**4. Some of them are destroyed by your own follow-up.** Hypnotic Pattern is the
+canonical case: *"The spell ends for an affected creature if it takes any
+damage."* A scorer that only ever asked "what does this action change?" would
+cast it on a cluster for a large `ΔÊ_theirs`, and then on the next turn happily
+drop a Fireball on the same cluster — scoring the damage, ignoring the control it
+just destroyed, and teaching the fit that Hypnotic Pattern is worthless. The
+failure would be the policy's, and the coefficient would take the blame.
+
+The fix is not lookahead. **Breaking an effect is itself a perturbation, so it
+belongs in the breaking action's own counterfactual.** Attacking a creature whose
+control `ends_on_damage` restores that creature's output, so `ΔÊ_theirs` for the
+*attack* is negative by exactly the control it destroys, and the attack's score
+drops by that much. The scorer then targets elsewhere because the arithmetic says
+to — one step, no plan, no condition written by anyone. It flows into AoE
+placement for free, since placement scores candidate origins with the same
+estimator: an origin covering hypnotised enemies pays for each one it wakes, and
+the coverage-maximising placement stops being the highest-scoring one.
+
+This is why `ends_on_damage` is in the perturbation vocabulary rather than left
+to the intercept, and it carries one rule with it: **an effect that ends on
+damage does not take the per-target hit-point horizon.** That bound exists
+because a dying enemy stops being worth debuffing, but it presumes the party
+keeps attacking the target — and for this class of effect the correct policy
+stops. Applying both would double-count the same consideration, once as a
+shortened horizon and once as a penalty on the breaking action, and the penalty
+is the one that is actually true.
+
 Control that works through **positioning** — Push, Thorn Whip, Repelling Blast —
 is deliberately outside this. Its value depends on where everyone ends up and on
 the route back, which is a pathing question the design does not answer even for
@@ -875,9 +911,10 @@ BUFF_PROFILE = Perturbation(
 )
 
 DEBUFF_PROFILE = Perturbation(
-    advantage_against=True,            # Faerie Fire
-    targets="enemies.in(template)",
-    save=Save(Ability.DEX, ends="each_turn"),
+    action_denied=True, speed=0,        # Hypnotic Pattern
+    targets="enemies.in(template)",     # a 30-foot cube; one save each
+    save=Save(Ability.WIS),             # no repeat save — it just holds
+    ends_on_damage=True,                # so nobody in the party may hit them
     duration=Duration.minutes(1),
     concentration=True,
 )
@@ -886,7 +923,8 @@ DEBUFF_PROFILE = Perturbation(
 Offensive keys (`to_hit`, `advantage`, `damage_per_hit`, `extra_attacks`,
 `crit_range`) and defensive keys (`target_ac`, `target_save`,
 `advantage_against`, `their_disadvantage`, `damage_taken`, `action_denied`,
-`speed`) — a closed list, appended to deliberately, never improvised. **An effect
+`speed`), plus the two that say how an effect *ends* — `save=` and
+`ends_on_damage` — a closed list, appended to deliberately, never improvised. **An effect
 that does not fit declares nothing and falls back to `b[a]`**, which is the
 `NEEDS_HOOK` escape valve applied to the scorer: blocked and visible beats
 approximated and wrong.
@@ -916,10 +954,20 @@ is how many rounds the effect will actually be worth something for:
 H = clamp( min( duration_or_E[rounds],  Σ_enemies hp_remaining / Ê_party_dpr ),  0,  h_max )
 ```
 
-— narrowed to `H_target` above when the effect lands on one enemy. The second
-term is the estimated rounds left in the fight, and **the scorer can compute
-it**: it knows the enemies' remaining HP, and `Ê_dmg` over the party is precisely
-an estimate of how fast that HP disappears. A fitted correction absorbs the rest.
+— computed per target, and narrowed to `H_target` above for an effect that
+persists through damage. The second term is the estimated rounds left in the
+fight, and **the scorer can compute it**: it knows the enemies' remaining HP, and
+`Ê_dmg` over the party is precisely an estimate of how fast that HP disappears. A
+fitted correction absorbs the rest.
+
+Its weakest moment is the one Hypnotic Pattern creates. Neutralised enemies are
+not being killed, so counting their hit points in the numerator says the fight
+has longer to run than it does for the enemies that still matter — which
+*under*-values the control that neutralised them, the wrong direction for a
+heuristic to fail in. The numerator therefore runs over enemies the party is
+actually still fighting. That is a refinement, not a repair: `H_encounter` stays
+a heuristic with a fitted correction, and control-heavy states remain where it is
+least trustworthy.
 
 This is the part worth dwelling on, because it repairs the model's worst failure.
 A myopic scorer buffs in the last round of a fight and stuns the enemy on 3 hit
