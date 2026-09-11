@@ -36,8 +36,8 @@ new task**, an M0 re-measure at the end of W1, because the measured ~31.5k has
 largest change to the project's goal since the founding document: the APL is
 **derived by search per build, not authored**, over a global fitted value model
 shared by every build. That adds wave W8 and milestone M5, three signatures to
-W2, and one authoring declaration to W3 (`BUFF_PROFILE`) that must exist before
-the W4 grind. Nothing in W0's code is affected.
+W2, and one authoring declaration to W3 (the `Perturbation` profile on a buff or
+debuff) that must exist before the W4 grind. Nothing in W0's code is affected.
 
 Both documents are load-bearing: `DESIGN.md` fixes the architecture and the
 vocabulary, `ROADMAP.md` fixes what may be built when and by whom. Read the
@@ -126,16 +126,21 @@ hand-written `apl:` is the **baseline** the derived policy is scored against,
 never the input. Underneath the search sits a **global scorer** (§ The scorer):
 one fitted value model, shared by every build, scoring offered actions in
 expected-damage points — so the searched APL carries only this build's
-*departures* from generic good play. A buff is scored by **perturbing the
-estimator and differencing** (§ Buffs) rather than by a constant: `ΔÊ_dpr × H`,
-where `H` is the computed rounds the buff will still be worth something for. That
-is why re-applying an active buff scores zero with no condition written, and why
-nothing buffs on the killing round. Five consequences bite before W8 exists:
+*departures* from generic good play. Buffs and debuffs are scored by **perturbing the
+estimator and differencing** (§ Buffs and debuffs) rather than by a constant,
+split **offensive/defensive by what changes, not by whom it targets** — so a stun
+scores in both terms with no special case. A debuff additionally multiplies by
+`p_land` from the save DC, uses a geometric `E[rounds]` for save-ends effects,
+and takes a per-target horizon. That is why re-applying an active effect scores
+zero with no condition written, why a second source of advantage scores ~0
+without anyone encoding that advantage does not stack, and why nothing buffs on
+the killing round or stuns the enemy on 3 hp. Five consequences bite before W8 exists:
 `Apl` must be constructible programmatically and serialisable back (`w2e`), the
 action id `best_scored` must be **reserved** in W2's closed vocabulary (`w2e`),
 the API must accept a seed list and an APL override and return **per-seed**
-results (`w2g`), a buff feature must declare a `BUFF_PROFILE` from `w3f`'s closed
-perturbation vocabulary **before the W4 grind writes them** or it is a retrofit,
+results (`w2g`), a buff or debuff feature must declare a `Perturbation` profile from
+`w3f`'s closed vocabulary **before the W4 grind writes them** or it is a
+retrofit,
 and `search/` is a client of `api.py` that may never import
 `engine/` or `hooks/`. Anything in `search/` that wants an engine change is a bug
 in `search/` — with the one stated exception of `engine/estimate.py`, which is
@@ -187,7 +192,7 @@ Add a section there when a task lands, rather than growing this file.
 
 ## Sequencing rules
 
-`ROADMAP.md` has 73 tasks across waves W0–W8 with explicit dependency edges.
+`ROADMAP.md` has 74 tasks across waves W0–W8 with explicit dependency edges.
 Three constraints dominate:
 
 - **Nothing in W4 or later may start before M2** (API frozen, authoring skill
@@ -198,9 +203,10 @@ Three constraints dominate:
   search over until W4 lands features and W6 lands the objective), so the
   compensation is the signatures named above — near-free in `w2e`/`w2g`, a
   migration across every file in `builds/` afterwards. **One seam is authoring
-  surface and lands in W3**: `BUFF_PROFILE`, the closed perturbation vocabulary
-  the scorer reads off a buff feature (`w3f`, `w3g`, `w3b`, `w3l`). Declared
-  after the grind it is a retrofit across every buff in `features/`.
+  surface and lands in W3**: the closed `Perturbation` vocabulary the scorer
+  reads off a buff or debuff feature (`w3f`, `w3g`, `w3b`, `w3l`). Declared
+  after the grind it is a retrofit across every one of the ~30–50 effects in
+  `features/`.
 - W0's performance spike (w0i) is a stop-and-revise gate: missing the budget
   means changing the dispatch design then, not later. It runs against the `w0g2`
   substrate — a first cut of `Creature`, `engine/damage.py` and

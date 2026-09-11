@@ -650,12 +650,19 @@ Every offered action is scored in one currency — **points of expected damage**
 so that damage, prevented damage and spent resources are directly comparable:
 
 ```
-score(a, T) =   w[a] · Ê_dmg(a, T)              # what it does to them now
-              + w_buff[a] · ΔÊ_dpr(a, T) · H     # what it does to them later
-              + w_ally · Ê_ally_hp(a, T)         # what it saves us
-              − Σ_r  c[r](day) · spend_r/pool_r  # what it costs
-              + b[a]                             # the residual, and only that
+score(a, T) =   w[a]     · Ê_dmg(a, T)                       # damage now
+              + w_off[a] · ΔÊ_ours(a, T)   · H · p_land       # our output, later
+              + w_def[a] · ΔÊ_theirs(a, T) · H · p_land · w_ally
+                                                             # their output, later
+              + w_ally   · Ê_ally_hp(a, T)                    # damage prevented now
+              − Σ_r  c[r](day) · spend_r/pool_r               # what it costs
+              + b[a]                                          # the residual, only that
 ```
+
+`p_land` is `1` for anything not gated on a saving throw, so a buff on an ally
+carries it trivially and only a debuff pays it. Both `ΔÊ` terms are signed so
+that positive is good — see § Buffs and debuffs, where getting that backwards is
+the one sign error the fit cannot rescue.
 
 Four families of fitted coefficients, and nothing else:
 
@@ -663,18 +670,22 @@ Four families of fitted coefficients, and nothing else:
   estimate. For a plain attack it is pinned (below); elsewhere it absorbs the
   residual the estimator cannot see — rider damage, follow-on attacks, the
   tempo the action costs.
-- **`w_buff[a]`, a second slope**, multiplying the *change* an action makes to
-  expected damage per round over the rounds that change will survive. Rage,
-  Bless, Hunter's Mark, Faerie Fire and Reckless Attack all deal zero damage on
-  the turn you spend them and are among the strongest actions in the game; this
-  term is the whole reason they can be scored at all rather than left to a
-  constant. It is computed counterfactually, not declared as a number — see
-  § Buffs below.
+- **`w_off[a]` and `w_def[a]`, two slopes on *rates*** rather than on damage,
+  multiplying the change an action makes to expected damage per round over the
+  rounds that change survives. Rage, Bless, Hunter's Mark, Faerie Fire,
+  Frightened, Slow and Reckless Attack all deal zero damage on the turn you spend
+  them and are among the strongest actions in the game; these terms are the whole
+  reason they can be scored at all rather than left to a constant. The split is
+  **offensive versus defensive — what changes, not whom it is cast on** — so a
+  stun scores in both with no special case. Both are computed counterfactually,
+  not declared as numbers, and `p_land` is the save-gating a debuff has and a
+  buff does not. See § Buffs and debuffs below.
 - **`b[a]`, an intercept per action id**, for whatever remains after all three.
-  With the buff term present this is a genuine residual rather than the entire
-  value of every non-damaging action, which is a large improvement in what the
-  model can be trusted with — but it stays, because a closed perturbation
-  vocabulary will never cover every feature.
+  With the two rate terms present this is a genuine residual rather than the
+  entire value of every non-damaging action, which is a large improvement in what
+  the model can be trusted with — but it stays, because a closed perturbation
+  vocabulary will never cover every feature, and positioning control is the
+  standing example of one it does not.
 - **`w_ally` and `c[r]`, the two exchange rates.** `w_ally` is what one point of
   ally HP is worth in enemy damage; `c[r]` is the scarcity price of one unit of
   resource `r`, modulated by how much of the day remains. These two numbers are
@@ -737,121 +748,210 @@ because it is the kind of assumption that is invisible in results and
 embarrassing when discovered later. It inflates AoE and damage-type selection
 specifically.
 
-#### Buffs: a counterfactual re-estimate, over a computed horizon
+#### Buffs and debuffs: one counterfactual, split by what changes
 
-A buff's value is the damage it adds to *future* rounds, and that is a product of
-two things the scorer can work out rather than guess:
+A buff's value is the damage it adds to future rounds; a debuff's is the damage
+it adds *or removes* from them. Both are evaluated the same way — **perturb the
+estimator and take the difference** — and the useful axis between them is not who
+they target:
 
 ```
-ΔÊ_dpr(a, T) = Σ_targets [ Ê_dpr(t | buff applied) − Ê_dpr(t | as things stand) ]
+ΔÊ_ours(a, T)   = Σ_a∈allies  [ Ê_dpr(a | perturbed) − Ê_dpr(a | as things stand) ]
+ΔÊ_theirs(a, T) = Σ_e∈enemies [ Ê_dpr(e | as things stand) − Ê_dpr(e | perturbed) ]
 ```
 
-**The buff is evaluated by perturbing the estimator and taking the difference.**
-Not by dispatching the feature, not by asking the author for a number — by
-re-running the same closed-form `Ê_dmg` with the buff's effect folded into its
-inputs and subtracting. `+2` to hit is `p_hit(atk + 2, AC)` instead of
-`p_hit(atk, AC)`. Advantage is `1 − (1−p)²` instead of `p`. An extra die per hit
-is a term added to the damage sum. Lowering an enemy's AC is the same
-computation from the other side, so **debuffs are the same mechanism with the
-sign flipped** and need no separate treatment: Faerie Fire and Bane arrive
-through this term, and the ones that reduce incoming damage arrive through
-`Ê_ally_hp` by the identical trick.
+**Note the enemy term subtracts the other way round.** Both are written so that
+*positive is good* — `ΔÊ_ours` is damage per round gained, `ΔÊ_theirs` is damage
+per round denied — because a single sign convention across the two terms is what
+lets one fitted exchange rate convert between them. Written the naive way, with
+both differences taken in the same direction, every debuff would score negative
+and the scorer would refuse to cast any of them; that is the sort of bug a fit
+cannot rescue you from, because the coefficient would simply go negative and the
+model would still be wrong about everything else it touches.
+
+**The axis is what changes, not whom it is cast on.** Bless raises our output;
+Faerie Fire raises our output too, by lowering an enemy's effective defence;
+Frightened lowers theirs; Shield of Faith lowers theirs as well, by raising our
+AC. A "buff versus debuff" split would cut across all four and need special cases
+for each. The offensive/defensive split does not, and it pays for itself the
+first time it meets a **stun**, which is both at once — the enemy loses its turn
+*and* becomes far easier to hit — and therefore simply scores in both terms with
+no special case anywhere.
+
+`+2` to hit is `p_hit(atk + 2, AC)` instead of `p_hit(atk, AC)`. Advantage is
+`1 − (1−p)²`. Lowering an enemy's AC is the same call from the other side.
+Removing the enemy's action zeroes its whole contribution to `Ê_dpr(e)`. In every
+case it is the same closed form run twice and subtracted — no dispatch, no
+dry-run context, no hook change.
 
 Three properties fall out of the counterfactual form, and they are the reason to
 prefer it over a declared scalar:
 
-- **Re-applying an active buff scores zero, structurally.** Perturbing a state
-  that already carries the effect produces no difference. Nobody has to write
-  `if: "not self.raging"` — the arithmetic refuses on its own. This is the
-  project's structural-prevention doctrine reaching the policy layer.
-- **It is build-sensitive for free.** Bless on a build with three attacks is
-  worth three times what it is worth on a build with one, and the estimator
-  already knows how many attacks the target makes. A per-action constant
-  cannot express that and would have to average it away.
-- **It scales with the actual targets.** Bless on three allies sums three
-  perturbations, each against that ally's own attack math against the enemies
-  actually in front of them.
+- **Re-applying an active effect scores zero, structurally.** Perturbing a state
+  that already carries it produces no difference. Nobody writes
+  `if: "not self.raging"` or `if: "not target.frightened"` — the arithmetic
+  refuses on its own.
+- **Non-stacking is respected for free.** A second source of advantage against an
+  already-advantaged target changes `p_hit` by nothing, so the second Faerie
+  Fire scores ~0 without anyone encoding the rule that advantage does not stack.
+  That is one of the classic policy errors, gone by construction.
+- **It scales with who is actually there.** Bless on three allies sums three
+  perturbations. Faerie Fire on one enemy sums over **every ally who will attack
+  that enemy**, so it is worth roughly four times as much to a party of four as
+  to a lone character — which no per-action constant can express.
 
-**The perturbation vocabulary is closed and CI-guarded**, exactly like the hook
-registry, and for the same reason. A buff feature declares what it does to the
-attack math as data:
+Note what the second summation requires: **the estimator must run over enemies as
+well as allies.** `Ê_dpr(e)` is the enemy's own expected output, computed from
+its own attack bonuses against our ACs. This is free in the architecture — the
+target dummy implements the full `Creature` interface and a monster is not
+special-cased anywhere — but it is a real requirement on `engine/estimate.py`
+that the offensive-only version would not have had, and it roughly doubles
+estimator work on a turn where control is offered.
+
+#### What debuffs need that buffs do not
+
+Here the symmetry stops, and treating a debuff as "a buff with the sign flipped"
+would be wrong in three ways that all matter:
+
+**1. It has to land.** A buff on an ally always applies; a debuff is usually
+gated on a saving throw, so its whole value is multiplied by
+`p_land = p_fail_save(target)` — computed from this creature's spell save DC
+against that target's save bonus, which is the same arithmetic `Ê_dmg` already
+does for save-for-half damage. This is what makes Hold Person excellent against a
+low-WIS brute and a wasted slot against a high-WIS caster, and the scorer gets
+the distinction for free rather than needing a condition per spell.
+
+> **Legendary resistance sets `p_land` to zero while any remain**, because the
+> target will simply succeed. The value of *burning* one falls to the intercept,
+> which is a known approximation rather than a modelled effect — worth stating
+> because a scorer that valued legendary resistances correctly would be making a
+> multi-turn plan, and § The known weakness says it cannot.
+
+**2. Its duration is stochastic, not fixed.** "Save at the end of each of its
+turns" is not a duration, it is a geometric process, and the expected number of
+rounds it actually holds for is
+
+```
+E[rounds] = Σ_{k≥1} p_fail^k  =  p_fail / (1 − p_fail)
+```
+
+capped by the stated duration and by the horizon. A buff's `duration_remaining`
+is read off the effect; a save-ends debuff's must be computed. The difference is
+large and it is not a correction factor: against a target failing half the time
+the effect is worth one round, not the ten the spell's duration claims.
+
+**3. Its horizon is the target's, not the encounter's.** Debuffing an enemy about
+to die is waste, so the horizon for a single-target debuff is bounded by how long
+that enemy has left:
+
+```
+H_target = min( H_encounter,  hp_target / Ê_dpr_directed_at_it )
+```
+
+This is the per-target refinement of the encounter-wide horizon below, and it is
+what stops the scorer from casting Hold Person on the enemy sitting at 3 hit
+points — the other half of the same instinct that stops it buffing on the
+killing round.
+
+Control that works through **positioning** — Push, Thorn Whip, Repelling Blast —
+is deliberately outside this. Its value depends on where everyone ends up and on
+the route back, which is a pathing question the design does not answer even for
+the policy's own movement. Those features declare nothing and fall back to the
+intercept, which is the honest outcome rather than a number invented to look
+complete.
+
+#### The perturbation vocabulary is closed and CI-guarded
+
+A buff or debuff feature declares what it does to the attack math as data,
+exactly like the hook registry and for the same reason:
 
 ```python
 BUFF_PROFILE = Perturbation(
-    to_hit=+Dice("1d4"),      # Bless
+    to_hit=+Dice("1d4"),               # Bless
     targets="allies.within(30)",
     max_targets=3,
     duration=Duration.rounds(10),
     concentration=True,
 )
+
+DEBUFF_PROFILE = Perturbation(
+    advantage_against=True,            # Faerie Fire
+    targets="enemies.in(template)",
+    save=Save(Ability.DEX, ends="each_turn"),
+    duration=Duration.minutes(1),
+    concentration=True,
+)
 ```
 
-`to_hit`, `advantage`, `damage_per_hit`, `extra_attacks`, `crit_range`,
-`target_ac`, `target_save`, `damage_taken` — a closed list, appended to
-deliberately, never improvised. **A buff whose effect does not fit declares
-nothing and falls back to `b[a]`**, which is the `NEEDS_HOOK` escape valve
-applied to the scorer: blocked and visible beats approximated and wrong.
+Offensive keys (`to_hit`, `advantage`, `damage_per_hit`, `extra_attacks`,
+`crit_range`) and defensive keys (`target_ac`, `target_save`,
+`advantage_against`, `their_disadvantage`, `damage_taken`, `action_denied`,
+`speed`) — a closed list, appended to deliberately, never improvised. **An effect
+that does not fit declares nothing and falls back to `b[a]`**, which is the
+`NEEDS_HOOK` escape valve applied to the scorer: blocked and visible beats
+approximated and wrong.
 
-Only the buff and debuff features need this — on the order of 20–40
+Only buff, debuff and control features need this — on the order of 30–50
 implementations across the whole project, not 630. But **it is authoring surface,
 so it is a W3 decision, not a W8 one.** The declaration must be in the authoring
 skill and the linter before the grind writes 400 features, or it is a retrofit
-across every buff in `features/`. That is a third place the seam rule bites, and
-the only one that lands outside W2.
+across every one of them. That is the one place the seam rule lands outside W2.
 
 **It can disagree with the implementation, so it is checked against it.** A
-declared `+2` where the code grants `+1d4` is a silent, systematic scoring error
-of exactly the kind the estimator/resolver property test exists to prevent — so
-the same statistical harness that already validates a feature's `expectation`
-validates its `BUFF_PROFILE`, by measuring the real DPR difference with and
-without the feature attached and comparing it to the perturbation's prediction.
-A profile more than 10% off its own implementation fails the batch, on the same
-terms and in the same run as everything else `w3l` checks.
+declared `+2` where the code grants `+1d4`, or a declared `save=WIS` where the
+spell calls for CON, is a silent systematic scoring error of exactly the kind the
+estimator/resolver property test exists to prevent — so the same statistical
+harness that already validates a feature's `expectation` validates its profile,
+by measuring the real DPR difference on both sides with and without the feature
+attached and comparing it to the perturbation's prediction. A profile more than
+10% off its own implementation fails the batch, on the same terms and in the same
+run as everything else `w3l` checks.
 
 #### The horizon is computed too, and it is what fixes myopia
 
-`ΔÊ_dpr` is a rate; the score needs a quantity. The multiplier is how many rounds
-the buff will actually be worth something for:
+`ΔÊ_ours` and `ΔÊ_theirs` are rates; the score needs quantities. The multiplier
+is how many rounds the effect will actually be worth something for:
 
 ```
-H = clamp( min( duration_remaining,  Σ_enemies hp_remaining / Ê_party_dpr ),  0,  h_max )
+H = clamp( min( duration_or_E[rounds],  Σ_enemies hp_remaining / Ê_party_dpr ),  0,  h_max )
 ```
 
-The second term is the estimated rounds left in the fight, and **the scorer can
-compute it** — it knows the enemies' remaining HP, and `Ê_dmg` over the party is
-precisely an estimate of how fast that HP disappears. A fitted correction
-absorbs the rest.
+— narrowed to `H_target` above when the effect lands on one enemy. The second
+term is the estimated rounds left in the fight, and **the scorer can compute
+it**: it knows the enemies' remaining HP, and `Ê_dmg` over the party is precisely
+an estimate of how fast that HP disappears. A fitted correction absorbs the rest.
 
-This is the part worth dwelling on, because it repairs the model's worst
-failure. A myopic scorer buffs in the last round of a fight, which is the single
-most recognisable mark of a bad policy, and a fitted per-action constant cannot
-avoid it — the constant is the same on round one and round six. With a computed
-horizon, `H → 0` as the last enemy drops and every buff's score collapses to its
-cost, automatically and in every build. **Rage is worth ten rounds of extra
-damage at the start of a fight and nothing at the end of one, and the scorer now
-says so without being told.**
+This is the part worth dwelling on, because it repairs the model's worst failure.
+A myopic scorer buffs in the last round of a fight and stuns the enemy on 3 hit
+points — the two most recognisable marks of a bad policy — and a fitted
+per-action constant cannot avoid either, because the constant is the same on
+round one and round six. With a computed horizon, `H → 0` as the last enemy
+drops and every buff, debuff and control effect collapses to its cost,
+automatically and in every build. **Rage is worth ten rounds of extra damage at
+the start of a fight and nothing at the end of one, and the scorer now says so
+without being told.**
 
 The same `H` multiplies the defensive term, so Dodge and Shield of Faith get the
-horizon treatment for free.
+horizon treatment on exactly the same footing as Frightened and Slow.
 
-**Buffs are fitted with more freedom than anything else, and pay for it with more
-scrutiny.** This is where the model's structural form is weakest — the horizon is
-an estimate of an estimate, and the perturbation vocabulary is an approximation
-of a rules text — so `w_buff[a]` is given a **wider prior than `w[a]` in the
-hierarchical fit**, shrunk toward the global mean far less aggressively. That is
-the principled version of "learn these harder": not a separate procedure, just
-less pooling where the prior deserves less trust. The cost is more effective
-parameters on the smallest subset of actions, which is the classic way to
-overfit — so buff coefficients carry their own ablation rows, and the held-out
-*builds* check of § Fitting the priors is what stops the extra freedom from
-being spent on noise.
+**These coefficients are fitted with more freedom than anything else, and pay for
+it with more scrutiny.** This is where the model's structural form is weakest —
+the horizon is an estimate of an estimate, `p_land` compounds it, and the
+perturbation vocabulary approximates a rules text — so `w_off[a]` and `w_def[a]`
+are given **wider priors than `w[a]` in the hierarchical fit**, shrunk toward the
+global mean far less aggressively. That is the principled version of "learn these
+harder": not a separate procedure, just less pooling where the prior deserves
+less trust. The cost is more effective parameters on the smallest subset of
+actions, which is the classic way to overfit — so these coefficients carry their
+own ablation rows, and the held-out *builds* check of § Fitting the priors is
+what stops the extra freedom from being spent on noise.
 
-One trap the exchange rates already handle: a concentration buff blocks every
+One trap the exchange rates already handle: a concentration effect blocks every
 other concentration option, and its value must be net of the best one it
 displaces. No new machinery is needed — **concentration is modelled as a resource
 with a pool of one**, so `c[concentration]` prices it through the term that is
-already there, and the scorer declines Hunter's Mark when something better wants
-the slot.
+already there, and the scorer declines Hunter's Mark when Faerie Fire wants the
+slot more.
 
 #### `best_scored` — how the two layers compose
 
@@ -1413,8 +1513,9 @@ hard way and which every later harness inherits:**
   not a larger sample, and the golden harness (`w3a`) inherits that too.
 
 > **A third reader arrived with the scorer.** It runs per decision point over
-> every offered action and its candidate targets — ~30 estimator calls against a
-> turn's ~2 attack resolutions — so the naive implementation is a 3–10×
+> every offered action and its candidate targets, and on a turn where control is
+> offered it estimates the *enemies'* output too — ~30 estimator calls against a
+> turn's ~2 attack resolutions, roughly doubling where a debuff is on the ballot — so the naive implementation is a 3–10×
 > regression on the turn rather than a rounding error. The budget stands because
 > almost all of `Ê_dmg` is static (memoised dice means, a `p_hit` lookup table on
 > `(attack_bonus − AC, advantage_state)`, a per-turn score cache), and the target
@@ -1872,9 +1973,13 @@ and that is a far more dangerous failure than a check that fails.
    nastier: if `engine/estimate.py` and `engine/damage.py` ever disagree — about
    whether `flat` doubles on a crit, say — the fit absorbs the discrepancy into a
    coefficient and hides it, and every decision in the project is then made on a
-   wrong number with nothing red anywhere. **Scorer myopia** is the likelier: the
-   estimator sees immediate damage, so buffs and control are valued by a fitted
-   constant that cannot depend on rounds remaining.
+   wrong number with nothing red anywhere. **Perturbation-profile drift** is the
+   likelier: a buff declares `+2` where its code grants `+1d4`, or a debuff
+   declares the wrong save ability, and every decision involving it is scored
+   wrong with nothing red anywhere either. Debuffs carry a third of their own —
+   their value is the product of three estimates (`p_land`, a geometric expected
+   duration, and a per-target horizon), so an error in any one compounds, and
+   control is where the scorer's confidence most exceeds its evidence.
    *Mitigated by:* the disjoint holdout seed set with a reported optimism gap, a
    scenario *distribution* with a per-scenario breakdown, common random numbers
    and paired tests so a real difference is resolvable at an affordable sample
@@ -1884,9 +1989,10 @@ and that is a far more dangerous failure than a check that fails.
    large to be real. All six are in § APL derivation, and the exploitation
    sub-risk is also the project's best content-bug detector once triaged rather
    than trusted. Divergence is caught by the property test binding the estimator
-   to 10^5 real resolutions; profile drift by `w3l` measuring each buff's real
-   DPR difference against what its perturbation predicts, on the same terms as
-   every `expectation`; the planning gap by the per-build overlay that exists to
+   to 10^5 real resolutions; profile drift by `w3l` measuring each effect's real
+   DPR difference **on both sides** against what its perturbation predicts, on
+   the same terms as every `expectation`; the compounding on control by the wider
+   priors on `w_off`/`w_def` being paid for with their own ablation rows; the planning gap by the per-build overlay that exists to
    carry what the scorer gets wrong, and by the ablation row that reports the
    scorer's marginal value per build.
 5. **The paper pass degrades quietly.** Classifying ~400 prose features to hooks
