@@ -116,11 +116,17 @@ hand-written `apl:` is the **baseline** the derived policy is scored against,
 never the input. Underneath the search sits a **global scorer** (§ The scorer):
 one fitted value model, shared by every build, scoring offered actions in
 expected-damage points — so the searched APL carries only this build's
-*departures* from generic good play. Four consequences bite before W8 exists:
+*departures* from generic good play. A buff is scored by **perturbing the
+estimator and differencing** (§ Buffs) rather than by a constant: `ΔÊ_dpr × H`,
+where `H` is the computed rounds the buff will still be worth something for. That
+is why re-applying an active buff scores zero with no condition written, and why
+nothing buffs on the killing round. Five consequences bite before W8 exists:
 `Apl` must be constructible programmatically and serialisable back (`w2e`), the
 action id `best_scored` must be **reserved** in W2's closed vocabulary (`w2e`),
 the API must accept a seed list and an APL override and return **per-seed**
-results (`w2g`), and `search/` is a client of `api.py` that may never import
+results (`w2g`), a buff feature must declare a `BUFF_PROFILE` from `w3f`'s closed
+perturbation vocabulary **before the W4 grind writes them** or it is a retrofit,
+and `search/` is a client of `api.py` that may never import
 `engine/` or `hooks/`. Anything in `search/` that wants an engine change is a bug
 in `search/` — with the one stated exception of `engine/estimate.py`, which is
 engine code the *scorer* needs and the search does not.
@@ -170,17 +176,20 @@ Add a section there when a task lands, rather than growing this file.
 
 ## Sequencing rules
 
-`ROADMAP.md` has 72 tasks across waves W0–W8 with explicit dependency edges.
+`ROADMAP.md` has 73 tasks across waves W0–W8 with explicit dependency edges.
 Three constraints dominate:
 
 - **Nothing in W4 or later may start before M2** (API frozen, authoring skill
   written, paper pass done). The W3 freeze gate is what prevents 400 subtly
   wrong features.
-- **W8's seams are cut in W2, not in W8.** Policy derivation is the last wave and
-  the most important one; it cannot start earlier (there is nothing to search
-  over until W4 lands features and W6 lands the objective), so the compensation
-  is the two signatures named above. They are near-free in `w2e`/`w2g` and a
-  migration across every file in `builds/` afterwards.
+- **W8's seams are cut in W2 and W3, not in W8.** Policy derivation is the last
+  wave and the most important one; it cannot start earlier (there is nothing to
+  search over until W4 lands features and W6 lands the objective), so the
+  compensation is the signatures named above — near-free in `w2e`/`w2g`, a
+  migration across every file in `builds/` afterwards. **One seam is authoring
+  surface and lands in W3**: `BUFF_PROFILE`, the closed perturbation vocabulary
+  the scorer reads off a buff feature (`w3f`, `w3g`, `w3b`, `w3l`). Declared
+  after the grind it is a retrofit across every buff in `features/`.
 - W0's performance spike (w0i) is a stop-and-revise gate: missing the budget
   means changing the dispatch design then, not later. It runs against the `w0g2`
   substrate — a first cut of `Creature`, `engine/damage.py` and
