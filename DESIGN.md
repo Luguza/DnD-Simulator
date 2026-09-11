@@ -760,7 +760,7 @@ estimator and take the difference** — and the useful axis between them is not 
 they target:
 
 ```
-ΔÊ_ours(a, T)   = Σ_a∈allies  p_land(a)·H_a·[ Ê_dpr(a | perturbed) − Ê_dpr(a | stands) ]
+ΔÊ_ours(a, T)   = Σ_i∈allies  p_land(i)·H_i·[ Ê_dpr(i | perturbed) − Ê_dpr(i | stands) ]
 ΔÊ_theirs(a, T) = Σ_e∈enemies p_land(e)·H_e·[ Ê_dpr(e | stands) − Ê_dpr(e | perturbed) ]
 ```
 
@@ -846,18 +846,30 @@ the distinction for free rather than needing a condition per spell.
 > because a scorer that valued legendary resistances correctly would be making a
 > multi-turn plan, and § The known weakness says it cannot.
 
-**2. Its duration is stochastic, not fixed.** "Save at the end of each of its
-turns" is not a duration, it is a geometric process, and the expected number of
-rounds it actually holds for is
+**2. Its duration is stochastic, not fixed.** A repeated save is not a duration,
+it is a geometric process — and **which end of the turn the save comes at changes
+the answer by a whole round**, so the vocabulary carries the timing rather than
+assuming one:
 
 ```
-E[rounds] = Σ_{k≥1} p_fail^k  =  p_fail / (1 − p_fail)
+save at the END of each of its turns    E[N] = Σ_{k≥1} p_fail^(k−1) = 1 / (1 − p_fail)
+save at the START of each of its turns  E[N] = Σ_{k≥1} p_fail^k     = p_fail / (1 − p_fail)
 ```
 
-capped by the stated duration and by the horizon. A buff's `duration_remaining`
-is read off the effect; a save-ends debuff's must be computed. The difference is
-large and it is not a correction factor: against a target failing half the time
-the effect is worth one round, not the ten the spell's duration claims.
+The common case is the first, and the reason it is not the second is worth
+stating because it is easy to get backwards: an end-of-turn save means the target
+has **already spent that turn affected** before it rolls, so `N ≥ 1` always. A
+start-of-turn save means a first-roll success costs the target nothing, so `N` can
+be zero.
+
+Both are capped by the stated duration and by the horizon. A buff's
+`duration_remaining` is read off the effect; a repeat-save debuff's must be
+computed. The difference is large and it is not a correction factor: against a
+target failing half its end-of-turn saves the effect is worth **two** of that
+creature's turns, not the ten the spell's duration claims — and since the value
+also carries `p_land`, getting the exponent wrong makes a debuff score
+`p²/(1−p)` where the truth is `p/(1−p)`, which is wrong by a factor of `p` on
+every control spell in the game.
 
 **3. Its horizon is the target's, not the encounter's.** Debuffing an enemy about
 to die is waste, so the horizon for a single-target debuff is bounded by how long
@@ -924,6 +936,9 @@ DEBUFF_PROFILE = Perturbation(
     action_denied=True, speed=0,        # Hypnotic Pattern
     targets="enemies.in(template)",     # a 30-foot cube; one save each
     save=Save(Ability.WIS),             # no repeat save — it just holds
+                                        # a repeating one declares repeat="turn_end"
+                                        # or "turn_start"; the two differ by a
+                                        # whole round of value, see above
     ends_on_damage=True,                # so nobody in the party may hit them
     duration=Duration.minutes(1),
     concentration=True,
@@ -933,8 +948,10 @@ DEBUFF_PROFILE = Perturbation(
 Offensive keys (`to_hit`, `advantage`, `damage_per_hit`, `extra_attacks`,
 `crit_range`) and defensive keys (`target_ac`, `target_save`,
 `advantage_against`, `their_disadvantage`, `damage_taken`, `action_denied`,
-`speed`), plus the two that say how an effect *ends* — `save=` and
-`ends_on_damage` — a closed list, appended to deliberately, never improvised. **An effect
+`speed`), plus the three that say how an effect *ends* — `save=`, its optional
+`repeat=` (`"turn_end"` or `"turn_start"`, which select between the two `E[N]`
+formulas above), and `ends_on_damage` — a closed list, appended to deliberately,
+never improvised. **An effect
 that does not fit declares nothing and falls back to `b[a]`**, which is the
 `NEEDS_HOOK` escape valve applied to the scorer: blocked and visible beats
 approximated and wrong.
@@ -1571,7 +1588,7 @@ sweeps. Without racing the same search is ~10^6 runs and roughly 34 core-hours;
 a five-scenario distribution multiplies both by five.
 
 Those numbers are an order-of-magnitude estimate to be replaced by a measurement
-(`w8d`), and they carry one conclusion that must be stated plainly so it is not
+(`w8g`), and they carry one conclusion that must be stated plainly so it is not
 re-litigated: **the answer to derivation cost is not a faster engine.** Derivation
 multiplies sample count by two to three orders of magnitude, and no plausible
 CPython speedup covers that. `w0i`'s budget is not reopened. The levers are all
@@ -2219,10 +2236,12 @@ M4 does not wait for casters.
 rather than a scheduling accident: derivation is a consumer of everything else,
 so it cannot be built before there are features to search over and an objective
 to search against. What that means for now is not "start it earlier" but "cut its
-seams earlier" — the two W2 seams named in § APL derivation (programmatic `Apl`
-construction, and an API that takes an explicit seed list and returns per-seed
-results) are cheap in W2 and a migration across every file in `builds/` after
-that. M4 remains the stated v1 goal; M5 is what makes M4's number a property of
+seams earlier" — the three W2 seams named in § APL derivation (programmatic `Apl`
+construction, the **reserved `best_scored` action id**, and an API that takes an
+explicit seed list and returns per-seed results), plus the one W3 seam that is
+authoring surface (the `Perturbation` profile on a buff or debuff). All are cheap
+where they land and a migration across every file in `builds/` — or every buff in
+`features/` — after that. M4 remains the stated v1 goal; M5 is what makes M4's number a property of
 the build rather than of its author.
 
 Two of the exits above changed shape after review, and both changes are the same
@@ -2338,7 +2357,7 @@ and that is a far more dangerous failure than a check that fails.
    with a confidence column, human triage of the low-confidence and gap rows
    only, and the additive-vs-structural split that makes the hook-gap budget
    honest.
-6. **Review capacity, not agent throughput, is the constraint.** Roughly 150
+6. **Review capacity, not agent throughput, is the constraint.** Roughly 175
    nominal agent-days funnel through one person; every parallelism gain lands on
    the same desk. *Mitigated by:* designing artefacts to be reviewable in minutes
    — disposition tables, quoted citations, arithmetic in goldens, the file-size
