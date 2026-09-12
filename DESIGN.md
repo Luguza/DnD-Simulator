@@ -705,6 +705,9 @@ score(a, T) =   w[a]     · Ê_eff(a, T)                       # damage now
               + b[a]                                          # the residual, only that
 ```
 
+`pool_r` is the resource's own capacity, and it is the one place in this document
+where `pool` does not mean a target's temporary plus current hit points.
+
 Both `ΔÊ` terms carry the horizon and the landing probability **inside** their
 per-target sums, because an area effect rolls a separate save against a separate
 creature with its own remaining life; `p_land` is `1` for anything not gated on a
@@ -775,9 +778,9 @@ set.
 
 #### The estimator is computed, never fitted
 
-The damage estimate is the part the user's question is really about — *number of targets,
-and hit chance from our attack modifiers and our save DC* — and it is
-**closed-form engine code, not a learned number and not per-feature**:
+The damage estimate is the part the user's question is really about — *number
+of targets, and hit chance from our attack modifiers and our save DC* — and it
+is **closed-form engine code, not a learned number and not per-feature**:
 
 - **Attack rolls:** `Σ_t [ p_hit(t)·(dice_mean + flat) + p_crit·dice_mean ]`,
   with `p_hit` from the real attack bonus against that target's AC and
@@ -931,7 +934,7 @@ estimator work on a turn where control is offered.
 #### What debuffs need that buffs do not
 
 Here the symmetry stops, and treating a debuff as "a buff with the sign flipped"
-would be wrong in three ways that all matter:
+would be wrong in four ways that all matter:
 
 **1. It has to land.** A buff on an ally always applies; a debuff is usually
 gated on a saving throw, so its whole value is multiplied by
@@ -1156,14 +1159,18 @@ in the game. **Killing an enemy is a debuff that removes all of its remaining
 output**, so a killing blow belongs in the defensive term:
 
 ```
-p_kill(a, e) = P( damage(a, e) ≥ hp_remaining(e) )
+p_kill(a, e) = P( damage(a, e) ≥ pool_remaining(e) )
 ```
 
-— computable, because the estimator has the dice and `core/dice.py` can give the
-survival function; precomputed per weapon and spell, memoised, a table lookup at
-decision time. The killing blow then denies `Ê_dpr(e) · H` through the same
-`w_def` term that prices Frightened, and four things follow with no further
-machinery:
+— the **pool** again, for the reason `Ê_eff` caps against it: the resolver spends
+temporary hit points first, so a target with 5 temporary and 10 hit points drops
+at 15 damage and not at 10, and `P(X ≥ hp_remaining)` would overstate lethality
+on every target carrying any. It is also the cheaper lookup, being the survival
+function read at exactly the index its own prefix sum stops at. Computable,
+because the estimator has the dice and `core/dice.py` can give the survival
+function; precomputed per weapon and spell, memoised, a table lookup at decision
+time. The killing blow then denies `Ê_dpr(e) · H` through the same `w_def` term
+that prices Frightened, and four things follow with no further machinery:
 
 - **Focus fire emerges.** The fighter acting after the rogue sees a softened
   target, `p_kill` is high, and finishing it outscores starting a fresh one.
@@ -1306,8 +1313,8 @@ scoring terms are summed, and addition commutes, so there are no phase bands, no
 ordering, and no `# PHASE:` justifications. A term cannot break another term by
 running at the wrong time. What the context does carry is memoised shared
 sub-results — one survival-function lookup feeds the damage term, the lethality
-term and the AoE placement search, and computing it three times is the obvious way to lose the
-performance budget.
+term and the AoE placement search, and computing it three times is the obvious
+way to lose the performance budget.
 
 #### Extensibility without falsification is just rot
 
@@ -1972,20 +1979,6 @@ hard way and which every later harness inherits:**
   configuration that resolves the same number of attacks whatever the dice do —
   not a larger sample, and the golden harness (`w3a`) inherits that too.
 
-> **A third reader arrived with the scorer.** It runs per decision point over
-> every offered action and its candidate targets, and on a turn where control is
-> offered it estimates the *enemies'* output too, plus an ally-side pass for
-> target availability — ~30 estimator calls against a turn's ~2 attack
-> resolutions, roughly doubling where a debuff is on the ballot — so the naive implementation is a 3–10×
-> regression on the turn rather than a rounding error. The budget stands because
-> almost all of the estimate is static (memoised dice means, a `p_hit` lookup
-> table on `(attack_bonus − AC, advantage_state)`, a **precomputed survival
-> function per weapon and spell with its prefix sums**, so `p_kill` and `Ê_eff`
-> are both a lookup rather than a convolution, and a per-turn score cache), and
-> the target
-> is **under 30% turn overhead** — measured by `w8g`, not argued here. It is the
-> one part of § APL derivation that touches the hot path at all.
-
 > **A second reader of this budget arrived after M0.** § APL derivation turns the
 > simulator into the inner loop of an optimiser, which multiplies the sample count
 > by two to three orders of magnitude. That does *not* reopen this number: no
@@ -1995,6 +1988,20 @@ hard way and which every later harness inherits:**
 > the value of two levers already listed below — **adaptive stopping** and
 > **per-iteration seeding** — from conveniences into load-bearing requirements,
 > because paired evaluation on a fixed seed set is what makes the search affordable.
+
+> **A third reader arrived with the scorer.** It runs per decision point over
+> every offered action and its candidate targets, and on a turn where control is
+> offered it estimates the *enemies'* output too, plus an ally-side pass for
+> target availability — ~30 estimator calls against a turn's ~2 attack
+> resolutions, roughly doubling where a debuff is on the ballot — so the naive
+> implementation is a 3–10× regression on the turn rather than a rounding error.
+> The budget stands because almost all of the estimate is static (memoised dice
+> means, a `p_hit` lookup table on `(attack_bonus − AC, advantage_state)`, a
+> **precomputed survival function per weapon and spell with its prefix sums**, so
+> `p_kill` and `Ê_eff` are both a lookup rather than a convolution, and a
+> per-turn score cache), and the target is **under 30% turn overhead** —
+> measured by `w8g`, not argued here. It is the one part of § APL derivation
+> that touches the hot path at all.
 
 ### Levers
 
@@ -2393,8 +2400,8 @@ construction, the **reserved `best_scored` action id**, and an API that takes an
 explicit seed list and returns per-seed results), plus the one W3 seam that is
 authoring surface (the `Perturbation` profile on a buff or debuff). All are cheap
 where they land and a migration across every file in `builds/` — or every buff in
-`features/` — after that. M4 remains the stated v1 goal; M5 is what makes M4's number a property of
-the build rather than of its author.
+`features/` — after that. M4 remains the stated v1 goal; M5 is what makes M4's
+number a property of the build rather than of its author.
 
 Two of the exits above changed shape after review, and both changes are the same
 argument: **a milestone that can be met by inspection has not been met.** M0 on
