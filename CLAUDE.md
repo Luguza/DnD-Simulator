@@ -248,10 +248,11 @@ Three constraints dominate:
 - **W8's seams are cut in W2 and W3, not in W8.** Policy derivation is the last
   wave and the most important one; it cannot start earlier (there is nothing to
   search over until W4 lands features and W6 lands the objective), so the
-  compensation is the signatures named above — near-free in `w2e`/`w2g`, a
-  migration across every file in `builds/` afterwards. **One seam is authoring
-  surface and lands in W3**: the closed `Perturbation` vocabulary the scorer
-  reads off a buff or debuff feature (`w3f`, `w3g`, `w3b`, `w3l`). Declared
+  compensation is the signatures named above — near-free in `w2e`/`w2g`, and in
+  the reserved id's case a migration across every file in `builds/` afterwards.
+  **One seam is authoring surface and lands in W3**: the closed `Perturbation`
+  vocabulary the scorer reads off a buff or debuff feature (`w3f`, `w3g`, `w3b`,
+  `w3l`). Declared
   after the grind it is a retrofit across every one of the ~30–50 effects in
   `features/`.
 - W0's performance spike (w0i) is a stop-and-revise gate: missing the budget

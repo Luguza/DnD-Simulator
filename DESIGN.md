@@ -839,6 +839,31 @@ is that table's running sum — so **storing `S` alongside its prefix sums makes
 both `p_kill` and `Ê_eff` a single lookup**, off one precompute that the
 lethality term then costs nothing to add.
 
+**The mitigation term is the same quantity pointed the other way.**
+`Ê_ally_hp(a, A)` — the score's *damage prevented now* term — is not a third
+primitive; it is computed by the defensive path (`w8a2`) out of the two above,
+summed over the allies `a` affects:
+
+- **Damage prevented** (Dodge, Uncanny Dodge, Shield, a granted resistance,
+  Protection) is the difference of two `Ê_eff` evaluations of the enemies'
+  attacks *against that ally*, with the effect and without:
+  `Σ_e [ Ê_eff(e → ally | without) − Ê_eff(e → ally | with) ]`. This is the
+  perturbation-and-difference method of § Buffs and debuffs, applied to the
+  current round rather than to a horizon.
+- **Pool restored** (healing) is `E[min(roll, missing(ally))]`, where `missing`
+  is maximum minus current hit points, because hit points restored above the
+  maximum are not restored at all. A grant of temporary hit points is priced as
+  the pool it actually adds — the amount granted less any temporary hit points
+  it replaces, since they do not stack.
+
+**Both are capped, and that is the point of stating them here.** Revision 5 of
+§ The score function exists because an uncapped estimate does not penalise
+overkill; the mitigation term is that bug's mirror image, and an uncapped
+`Ê_ally_hp` scores a 30-point heal on an ally missing 4 hit points as 30 and a
+Dodge against a blow larger than the ally's remaining pool at its full size.
+Expressing prevention as a difference of two `Ê_eff` values inherits the cap
+rather than restating it; healing needs its own, and `missing` is it.
+
 It lives in one file, `engine/estimate.py`, for the same reason the damage
 resolution order does — and it is bound to the resolver by an invariant that is
 the linchpin of this whole scheme:
@@ -1880,10 +1905,11 @@ missing return annotation; duplicate/malformed feature id; missing `source_ref`
 rulebook citation.
 
 **Load time:** unknown feature id (with suggestions); APL action id no attached
-feature provides — with `best_scored` exempt while no feature provides it, per
-§ `best_scored`, since it is the default policy from `w2f` and implemented only
-in `w8b`; unparseable condition or unknown namespace path; `with:` params
-not matching the feature's declared `params`; declared features cross-checked
+feature provides — with `best_scored` permanently exempt, per § `best_scored`:
+no *feature* ever provides it, the scorer does, and it is the default policy
+from `w2f` while the scorer arrives only in `w8b`; unparseable condition or
+unknown namespace path; `with:` params not matching the feature's declared
+`params`; declared features cross-checked
 against the class progression table, warning on omissions.
 
 **Runtime invariants (cheap, always on):** non-`HookResult` return; mutator
@@ -2468,8 +2494,10 @@ seams earlier" — the three W2 seams named in § APL derivation (programmatic `
 construction, the **reserved `best_scored` action id**, and an API that takes an
 explicit seed list and returns per-seed results), plus the one W3 seam that is
 authoring surface (the `Perturbation` profile on a buff or debuff). All are cheap
-where they land and a migration across every file in `builds/` — or every buff in
-`features/` — after that. M4 remains the stated v1 goal; M5 is what makes M4's
+where they land: the first two are signatures every later caller is built
+against, while the reserved id is a schema migration across every file in
+`builds/` afterwards and the `Perturbation` profile one across every buff in
+`features/`. M4 remains the stated v1 goal; M5 is what makes M4's
 number a property of the build rather than of its author.
 
 Two of the exits above changed shape after review, and both changes are the same
