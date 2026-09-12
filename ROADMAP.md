@@ -458,7 +458,7 @@ The 👥 rows are the ones with a checkable contract at their boundary.
 
 The policy is **two layers** (DESIGN.md § The scorer): a global fitted scorer
 that every build shares, under a per-build searched overlay carrying only that
-build's departures from it. `w8a`–`w8b` build the scorer, `w8c`–`w8e` the search
+build's departures from it. `w8a`–`w8b2` build the scorer, `w8c`–`w8e` the search
 substrate, `w8f` fits the coefficients, and everything after searches the
 overlay. The ordering matters — the overlay search takes its warm start from the
 fit, which is the largest single cut to the derivation budget in the design.

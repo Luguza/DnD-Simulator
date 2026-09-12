@@ -634,9 +634,10 @@ random numbers exact and therefore what makes the search affordable at all.
 
 ### What it changes architecturally: almost nothing
 
-> Amended by § The scorer below, which adds two files and a third seam. The
-> claim that *derivation* touches no engine file survives; the claim that the
-> whole feature does not, does not.
+> Amended by § The scorer below, which adds two files and two of the seams
+> listed here — the reserved `best_scored` id in W2, and the `Perturbation`
+> profile in W3. The claim that *derivation* touches no engine file survives;
+> the claim that the whole feature does not, does not.
 
 The APL is already a **Strategy** — a pluggable policy object the engine knows
 nothing about. Derivation is a *generator of Strategy objects* that uses the
@@ -646,9 +647,11 @@ feature**. That property is the whole reason this is affordable to add, and it
 is worth defending: anything in `search/` that wants an engine change is a
 design error in `search/`, not a missing hook.
 
-It costs three seams, and all must be cut in W2 — before a single build YAML
+It costs four seams. Three must be cut in W2 — before a single build YAML
 exists in git — because retrofitting them afterwards is a migration across every
-file in `builds/`:
+file in `builds/`; the fourth lands in W3, because it is authoring surface
+rather than a signature, and retrofitting *it* is a migration across every buff
+in `features/`:
 
 1. **`Apl` is constructible programmatically and serialisable back to YAML**,
    round-tripping exactly. The search builds millions of policies; not one of
@@ -660,7 +663,14 @@ file in `builds/`:
 3. **`best_scored` is reserved in the action vocabulary.** The scorer below
    enters the APL as one action id, and that vocabulary is closed — reserving
    the id costs a line in W2 and is a schema migration across every build file
-   afterwards, exactly as the three clauses were.
+   afterwards, exactly as the two seams above are.
+4. **A buff or debuff feature declares a `Perturbation` profile** (W3, not W2).
+   The scorer reads the closed key vocabulary of § Buffs and debuffs off the
+   feature itself, so the declaration must be in the authoring skill and the
+   linter before the grind writes 400 features. This is the expensive one to
+   miss: only ~30–50 effects need it, but declared after the grind it is a
+   retrofit across every one of them, written by whoever is free months after
+   the authors who understood the features moved on.
 
 ### The scorer: one global value model under the per-build search
 
@@ -1108,7 +1118,8 @@ Only buff, debuff and control features need this — on the order of 30–50
 implementations across the whole project, not 630. But **it is authoring surface,
 so it is a W3 decision, not a W8 one.** The declaration must be in the authoring
 skill and the linter before the grind writes 400 features, or it is a retrofit
-across every one of them. That is the one place the seam rule lands outside W2.
+across every one of them. That is the one place the seam rule lands outside W2,
+and it is the fourth seam in § What it changes architecturally.
 
 **It can disagree with the implementation, so it is checked against it.** A
 declared `+2` where the code grants `+1d4`, or a declared `save=WIS` where the
