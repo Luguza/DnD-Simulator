@@ -1167,11 +1167,11 @@ above), and `ends_on_damage=`.
 
 Keeping them apart is what makes the closed list closable: the perturbation keys
 are a claim about attack mathematics and each one costs a branch in the
-estimator, while the structural fields are the same five questions for every
+estimator, while the structural fields are the same four questions for every
 effect. Merging them would either reject the Bless and Hypnotic Pattern profiles
-above — both set four structural fields — or force "closed" to mean a list that
-grows with every new way of scoping an effect. **An effect
-that does not fit declares nothing and falls back to `b[a]`**, which is the
+above — four structural fields on the first, five on the second — or force
+"closed" to mean a list that grows with every new way of scoping an effect.
+**An effect that does not fit declares nothing and falls back to `b[a]`**, which is the
 `NEEDS_HOOK` escape valve applied to the scorer: blocked and visible beats
 approximated and wrong.
 
