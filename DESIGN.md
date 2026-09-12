@@ -1147,13 +1147,30 @@ DEBUFF_PROFILE = Perturbation(
 )
 ```
 
-Offensive keys (`to_hit`, `advantage`, `damage_per_hit`, `extra_attacks`,
-`crit_range`) and defensive keys (`target_ac`, `target_save`,
-`advantage_against`, `their_disadvantage`, `damage_taken`, `action_denied`,
-`speed`), plus the three that say how an effect *ends* — `save=`, its optional
-`repeat=` (`"turn_end"` or `"turn_start"`, which select between the two `E[N]`
-formulas above), and `ends_on_damage` — a closed list, appended to deliberately,
-never improvised. **An effect
+A profile has two halves, and only the first is the closed vocabulary.
+
+**The perturbation keys — *what* changes.** Offensive (`to_hit`, `advantage`,
+`damage_per_hit`, `extra_attacks`, `crit_range`) and defensive (`target_ac`,
+`target_save`, `advantage_against`, `their_disadvantage`, `damage_taken`,
+`action_denied`, `speed`). **This is the closed list**, appended to deliberately
+and never improvised, and it is the one `w3b`'s linter checks a profile's keys
+against.
+
+**The structural fields — *who*, *how long*, *at what cost*, *how it ends*.** A
+fixed set every profile may set, and not perturbations at all: `targets=` and
+`max_targets=`, which are the outer sum `C(a)` of § Buffs and debuffs;
+`duration=`, which § The horizon reads as `duration_or_E[rounds]`;
+`concentration=`, which is what prices the effect through `c[concentration]`;
+and the three that say how it ends — `save=`, its optional `repeat=`
+(`"turn_end"` or `"turn_start"`, which select between the two `E[N]` formulas
+above), and `ends_on_damage=`.
+
+Keeping them apart is what makes the closed list closable: the perturbation keys
+are a claim about attack mathematics and each one costs a branch in the
+estimator, while the structural fields are the same five questions for every
+effect. Merging them would either reject the Bless and Hypnotic Pattern profiles
+above — both set four structural fields — or force "closed" to mean a list that
+grows with every new way of scoping an effect. **An effect
 that does not fit declares nothing and falls back to `b[a]`**, which is the
 `NEEDS_HOOK` escape valve applied to the scorer: blocked and visible beats
 approximated and wrong.
