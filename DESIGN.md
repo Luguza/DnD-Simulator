@@ -697,7 +697,7 @@ Every offered action is scored in one currency — **points of expected damage**
 so that damage, prevented damage and spent resources are directly comparable:
 
 ```
-score(a, T) =   w[a]     · Ê_dmg(a, T)                       # damage now
+score(a, T) =   w[a]     · Ê_eff(a, T)                       # damage now
               + w_off[a] · ΔÊ_ours(a, T)                      # our output, later
               + w_def[a] · ΔÊ_theirs(a, T) · w_ally            # their output, later
               + w_ally   · Ê_ally_hp(a, T)                    # damage prevented now
@@ -766,7 +766,7 @@ modelling choice inside what looks like bookkeeping**:
 Those two exhaust the gauge freedom. **`b[attack] = 0` is therefore not a third
 pin but a declared assumption** — that a plain attack carries no value the damage
 term has not already counted, so the reference action is fully explained by
-`w[attack]·Ê_dmg`. It is a defensible assumption and probably a true one, but it
+`w[attack]·Ê_eff`. It is a defensible assumption and probably a true one, but it
 is a claim about the game rather than a choice of coordinates, and it is
 **relaxable**: let `b[attack]` float and the model stays identifiable, so the
 ablation machinery can be asked whether the freedom earns its coefficient.
@@ -775,7 +775,7 @@ set.
 
 #### The estimator is computed, never fitted
 
-`Ê_dmg` is the part the user's question is really about — *number of targets,
+The damage estimate is the part the user's question is really about — *number of targets,
 and hit chance from our attack modifiers and our save DC* — and it is
 **closed-form engine code, not a learned number and not per-feature**:
 
@@ -788,14 +788,46 @@ and hit chance from our attack modifiers and our save DC* — and it is
 - **Defences applied in the resolver's order**, so a Fireball against fire-immune
   enemies scores zero rather than full.
 
+**Two quantities, not one, and the difference is what stops overkill.** Damage
+*dealt* and hit points *removed* are the same number only while the target can
+absorb it, so the estimator computes both:
+
+```
+Ê_raw(a, t)  =  E[X]                 expected damage dealt, unbounded
+Ê_eff(a, t)  =  E[min(X, pool(t))]   expected hit points actually removed
+```
+
+where `pool(t)` is the target's remaining HP plus its temporary HP, in that order
+because that is the order `engine/damage.py` spends them. **The score's damage
+term uses `Ê_eff`**; `Ê_raw` exists because it is what the resolver's damage roll
+produces and therefore what the property test can bind.
+
+`Ê_eff` costs nothing extra to compute. `p_kill` already requires the survival
+function `S(k) = P(X ≥ k)` precomputed per weapon and spell, and
+
+```
+E[min(X, h)]  =  Σ_{k=1..h} S(k)
+```
+
+is that table's running sum — so **storing `S` alongside its prefix sums makes
+both `p_kill` and `Ê_eff` a single lookup**, on the same precompute the lethality
+term already demanded.
+
 It lives in one file, `engine/estimate.py`, for the same reason the damage
 resolution order does — and it is bound to the resolver by an invariant that is
 the linchpin of this whole scheme:
 
 > **The estimator and the resolver share the crit rule, the advantage rule and
-> the defence order by construction, and a property test asserts that
-> `Ê_dmg` matches the empirical mean of 10⁵ resolutions of the same action to
+> the defence order by construction, and a property test asserts that `Ê_raw`
+> matches the empirical mean of damage dealt over 10⁵ resolutions of the same
+> action, and `Ê_eff` the empirical mean of hit points actually removed, both to
 > within Monte Carlo error.**
+
+Splitting the quantity **strengthens** that binding rather than weakening it:
+capping a single `Ê_dmg` in place would have made the estimator disagree with the
+resolver's damage roll by construction, which is exactly the divergence the test
+exists to catch. Two quantities, two assertions, one pass over the same 10⁵
+resolutions.
 
 If those two ever disagree about whether `flat` doubles on a crit, the scorer is
 systematically wrong at every decision point and no amount of fitting repairs it
@@ -893,7 +925,7 @@ would be wrong in three ways that all matter:
 **1. It has to land.** A buff on an ally always applies; a debuff is usually
 gated on a saving throw, so its whole value is multiplied by
 `p_land = p_fail_save(target)` — computed from this creature's spell save DC
-against that target's save bonus, which is the same arithmetic `Ê_dmg` already
+against that target's save bonus, which is the same arithmetic the estimator already
 does for save-for-half damage. This is what makes Hold Person excellent against a
 low-WIS brute and a wasted slot against a high-WIS caster, and the scorer gets
 the distinction for free rather than needing a condition per spell.
@@ -1042,7 +1074,7 @@ H = clamp( min( duration_or_E[rounds],  Σ_enemies hp_remaining / Ê_party_dpr )
 — computed per target, and narrowed to `H_target` above for an effect that
 persists through damage. The second term is the estimated rounds left in the
 fight, and **the scorer can compute it**: it knows the enemies' remaining HP, and
-`Ê_dmg` over the party is precisely an estimate of how fast that HP disappears. A
+`Ê_eff` over the party is precisely an estimate of how fast that HP disappears. A
 fitted correction absorbs the rest.
 
 Its weakest moment is the one Hypnotic Pattern creates. Neutralised enemies are
@@ -1125,10 +1157,17 @@ machinery:
   `Ê_dpr(e)` — so the first attacker goes for the most dangerous enemy, and
   across a round the ordering is threat per effective hit point. That is the
   right opening, and it is free.
-- **Overkill is penalised.** A forty-damage nova on a five-hit-point enemy earns
-  exactly the same kill credit as a dagger would, so the nova goes elsewhere.
-  This is the behaviour that a mean-damage score can never produce, and it is why
-  the distribution is needed rather than `Ê_dmg` alone.
+- **Overkill is priced, and the trade is made honestly.** Against a five-hit-point
+  enemy a forty-damage nova has `Ê_eff ≈ 5` and a dagger nearly as much, so the
+  nova earns almost no more damage credit than the dagger does — and the same
+  kill credit. Against a fresh enemy it earns all forty. So the nova prefers the
+  fresh target and the dagger finishes the wounded one, which is the behaviour a
+  mean-damage score can never produce.
+  It is a weighing rather than a prohibition, and deliberately so: the nova still
+  takes the dying enemy when `w·(Ê_eff_fresh − Ê_eff_dying)` is smaller than the
+  kill credit `w_def·Ê_dpr·H` that removing *that* enemy denies. Killing a nearly
+  dead archmage with a fireball is correct play, and the scorer now reaches it by
+  comparison instead of by never overkilling or always overkilling.
 - **It is why a party out-damages four soloists**, and the scorer now knows that.
 
 #### The ally-side counterfactual is what makes composition matter
@@ -1221,6 +1260,7 @@ term rather than changing anything else:
 | 2 | `+ w_buff·ΔÊ_dpr·H` — buffs, because a constant cannot depend on rounds remaining |
 | 3 | split to `w_off`/`w_def`, `p_land` added — debuffs, because "buff vs debuff" was the wrong axis |
 | 4 | `p_land` and `H` folded inside the sums, `p_kill` added to `w_def`, availability added to `ΔÊ_ours` — party tactics |
+| 5 | the damage term moved from `Ê_dmg` to `Ê_eff` — a review found "overkill is penalised" did not follow from an uncapped estimate |
 
 Four revisions, one afternoon, all the same shape. That is not a prediction that
 the formula will keep changing; it is a measurement that it does. **This is the
@@ -1245,8 +1285,8 @@ It is **strictly simpler than the hook registry in one respect that matters**:
 scoring terms are summed, and addition commutes, so there are no phase bands, no
 ordering, and no `# PHASE:` justifications. A term cannot break another term by
 running at the wrong time. What the context does carry is memoised shared
-sub-results — `Ê_dmg` is read by the damage term, the lethality term and the AoE
-placement search, and computing it three times is the obvious way to lose the
+sub-results — one survival-function lookup feeds the damage term, the lethality
+term and the AoE placement search, and computing it three times is the obvious way to lose the
 performance budget.
 
 #### Extensibility without falsification is just rot
@@ -1424,8 +1464,10 @@ the decision point**, and the search is bounded by geometry rather than by the
 grid: for a fixed-radius template the coverage-maximising origins are generated
 by the enemy positions and the pairwise intersections of radius-circles around
 them, so the candidate set is **O(n²) in enemies (≤ ~64 in practice), not O(grid
-cells)**. Each candidate is scored by the same `Ê_dmg` summed over what it
-covers.
+cells)**. Each candidate is scored by the same `Ê_eff` summed over what it
+covers — **per target, so the cap bites here hardest**: a placement catching five
+enemies on four hit points each is worth twenty, not five times the fireball's
+average roll, and the coverage-maximising origin is routinely not the best one.
 
 Two points keep this consistent with everything above:
 
@@ -1435,7 +1477,7 @@ Two points keep this consistent with everything above:
   hand-written max-coverage enumeration is not a hardcoded tactic, any more than
   `p_hit` is.
 - **The friendly-fire coefficient is fitted, not assumed.** Allies inside the
-  template subtract `w_ally · Ê_dmg` — the same exchange rate as everywhere else,
+  template subtract `w_ally · Ê_eff` — the same exchange rate as everywhere else,
   which is exactly the reuse that justified having one. Whether a point of ally
   HP is worth more or less than a point of enemy damage is a result, not an
   assumption, and asserting `1.0` would be the hardcoded heuristic this section
@@ -1451,7 +1493,7 @@ The scorer runs per decision point over every offered action × its candidate
 targets — on the order of 30 estimator calls per decision, against ~2 attack
 resolutions per turn at ~32 µs each. Naively that is a **3–10× regression on the
 turn**, which would be fatal. It is brought back by the fact that almost
-everything in `Ê_dmg` is static: dice means are memoised per weapon and spell,
+everything in the estimate is static: dice means are memoised per weapon and spell,
 `p_hit` is a lookup on `(attack_bonus − AC, advantage_state)` over a small
 integer table, and the score vector is cached within a turn until something it
 reads changes. The target is **under 30% turn overhead**, and it is a measured
@@ -1646,7 +1688,8 @@ budget of 30k/sec/core one core does roughly 100 day-runs per second. A staged
 search of ~2,000 candidates with racing (most dying at 32 seeds, finalists at
 512) is on the order of 10^5 day-runs — **about 15 core-minutes per character**,
 and about 3 core-hours for a four-member party over three coordinate-ascent
-sweeps. Without racing the same search is ~10^6 runs and roughly 34 core-hours;
+sweeps. Without racing the same search is ~10^6 runs **per character** — 2.8
+core-hours each, so roughly 34 for that same four-member, three-sweep party;
 a five-scenario distribution multiplies both by five.
 
 Those numbers are an order-of-magnitude estimate to be replaced by a measurement
@@ -1915,10 +1958,11 @@ hard way and which every later harness inherits:**
 > target availability — ~30 estimator calls against a turn's ~2 attack
 > resolutions, roughly doubling where a debuff is on the ballot — so the naive implementation is a 3–10×
 > regression on the turn rather than a rounding error. The budget stands because
-> almost all of `Ê_dmg` is static (memoised dice means, a `p_hit` lookup table on
-> `(attack_bonus − AC, advantage_state)`, a **precomputed survival function per
-> weapon and spell** so `p_kill` is a lookup rather than a convolution, and a
-> per-turn score cache), and the target
+> almost all of the estimate is static (memoised dice means, a `p_hit` lookup
+> table on `(attack_bonus − AC, advantage_state)`, a **precomputed survival
+> function per weapon and spell with its prefix sums**, so `p_kill` and `Ê_eff`
+> are both a lookup rather than a convolution, and a per-turn score cache), and
+> the target
 > is **under 30% turn overhead** — measured by `w8g`, not argued here. It is the
 > one part of § APL derivation that touches the hot path at all.
 
@@ -2298,8 +2342,8 @@ Great Weapon Master stops being worth it, exactly as a WoW sim would.
 
 ## Build order
 
-Eight waves, `W0`–`W7`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
-61 tasks, their dependency edges, delegation modes and the task-packet template.
+Nine waves, `W0`–`W8`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
+77 tasks, their dependency edges, delegation modes and the task-packet template.
 Its § The W0 debt register is the ledger of what W0 left for later waves to
 retire, and which task retires each.
 
