@@ -647,11 +647,12 @@ feature**. That property is the whole reason this is affordable to add, and it
 is worth defending: anything in `search/` that wants an engine change is a
 design error in `search/`, not a missing hook.
 
-It costs four seams. Three must be cut in W2 — before a single build YAML
-exists in git — because retrofitting them afterwards is a migration across every
-file in `builds/`; the fourth lands in W3, because it is authoring surface
-rather than a signature, and retrofitting *it* is a migration across every buff
-in `features/`:
+It costs four seams. Three are cut in W2, while the code they shape is being
+written and before a single build YAML exists in git: the first two are
+signatures every later caller is built against, and the third is a schema
+migration across every file in `builds/` once builds exist. The fourth lands in
+W3, because it is authoring surface rather than a signature, and retrofitting
+*it* is a migration across every buff in `features/`:
 
 1. **`Apl` is constructible programmatically and serialisable back to YAML**,
    round-tripping exactly. The search builds millions of policies; not one of
@@ -663,7 +664,7 @@ in `features/`:
 3. **`best_scored` is reserved in the action vocabulary.** The scorer below
    enters the APL as one action id, and that vocabulary is closed — reserving
    the id costs a line in W2 and is a schema migration across every build file
-   afterwards, exactly as the two seams above are.
+   afterwards, exactly as the APL's three clauses were.
 4. **A buff or debuff feature declares a `Perturbation` profile** (W3, not W2).
    The scorer reads the closed key vocabulary of § Buffs and debuffs off the
    feature itself, so the declaration must be in the authoring skill and the
@@ -1479,6 +1480,14 @@ design:
 - **The default policy for any build is a single entry**, `[{action:
   best_scored}]` — a strong default rather than the Null Object of § APL. A
   build with no APL at all now plays competently instead of falling through.
+  **That competence arrives with `w8b`, not with W2.** `w2e` reserves the id and
+  `w2f` makes `apl:` optional with this as the default, so the shape is in place
+  before the scorer exists and the two layers compose with no migration when it
+  does; in between, `best_scored` offers nothing and such a build falls through
+  to the Null Object with `APL_FALLTHROUGH` ticking. One consequence binds W2:
+  the load-time check *APL action id no attached feature provides* (§ Failing
+  loudly) **exempts the reserved id**, or the loader would refuse the default
+  policy it was just given.
 - **A derived APL is a sparse diff.** The entries the search places *above*
   `best_scored` are precisely this build's departures from generic play, and
   "how many lines does this build need beyond the scorer?" becomes a reportable
@@ -1486,10 +1495,13 @@ design:
   much better-conditioned problem to work on.
 - **The search gets a warm start** instead of a cold one, which is the largest
   single cut to the derivation budget in this document.
-- **`APL_FALLTHROUGH` sharpens.** With `best_scored` present, falling through is
-  nearly impossible; a build that still does is one where the *search chose to
-  exclude the scorer*, which is a far more informative signal than the old
-  counter.
+- **`APL_FALLTHROUGH` sharpens** — once the scorer exists. With `best_scored`
+  implemented and present, falling through is nearly impossible; a build that
+  still does is one where the *search chose to exclude the scorer*, which is a
+  far more informative signal than the old counter. Between `w2f` and `w8b` the
+  same counter reads the other way, high for every build authored without an
+  `apl:` block, and that is the honest reading: no policy has been written and
+  none has been derived yet.
 - **The grammar does not change.** `best_scored` is an action id, so the AST
   whitelist, the three clauses and the loader are all untouched — but the action
   vocabulary is closed, which is why `w2e` must reserve the id now. Adding it
@@ -1868,7 +1880,9 @@ missing return annotation; duplicate/malformed feature id; missing `source_ref`
 rulebook citation.
 
 **Load time:** unknown feature id (with suggestions); APL action id no attached
-feature provides; unparseable condition or unknown namespace path; `with:` params
+feature provides — with `best_scored` exempt while no feature provides it, per
+§ `best_scored`, since it is the default policy from `w2f` and implemented only
+in `w8b`; unparseable condition or unknown namespace path; `with:` params
 not matching the feature's declared `params`; declared features cross-checked
 against the class progression table, warning on omissions.
 
