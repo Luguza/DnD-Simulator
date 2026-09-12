@@ -711,7 +711,7 @@ so that damage, prevented damage and spent resources are directly comparable:
 score(a, T) =   w[a]     · Ê_eff(a, T)                       # damage now
               + w_off[a] · ΔÊ_ours(a, T)                      # our output, later
               + w_def[a] · ΔÊ_theirs(a, T) · w_ally            # their output, later
-              + w_ally   · Ê_ally_hp(a, T)                    # damage prevented now
+              + w_ally   · Ê_ally_hp(a, T)                    # pool put back now
               − Σ_r  c[r](day) · spend_r/pool_r               # what it costs
               + b[a]                                          # the residual, only that
 ```
@@ -839,30 +839,39 @@ is that table's running sum — so **storing `S` alongside its prefix sums makes
 both `p_kill` and `Ê_eff` a single lookup**, off one precompute that the
 lethality term then costs nothing to add.
 
-**The mitigation term is the same quantity pointed the other way.**
-`Ê_ally_hp(a, A)` — the score's *damage prevented now* term — is not a third
-primitive; it is computed by the defensive path (`w8a2`) out of the two above,
-summed over the allies `a` affects:
+**The mitigation term is pool *restored*, and only that.** `Ê_ally_hp(a, A)` —
+the score's *pool put back now* term — is not a third primitive; it is
+computed by the defensive path (`w8a2`) out of the two above, summed over the
+allies `a` affects, and it covers **healing and granted temporary hit points**:
 
-- **Damage prevented** (Dodge, Uncanny Dodge, Shield, a granted resistance,
-  Protection) is the difference of two `Ê_eff` evaluations of the enemies'
-  attacks *against that ally*, with the effect and without:
-  `Σ_e [ Ê_eff(e → ally | without) − Ê_eff(e → ally | with) ]`. This is the
-  perturbation-and-difference method of § Buffs and debuffs, applied to the
-  current round rather than to a horizon.
-- **Pool restored** (healing) is `E[min(roll, missing(ally))]`, where `missing`
-  is maximum minus current hit points, because hit points restored above the
-  maximum are not restored at all. A grant of temporary hit points is priced as
-  the pool it actually adds — the amount granted less any temporary hit points
-  it replaces, since they do not stack.
+```
+Ê_ally_hp(a, A)  =  Σ_ally E[min(roll, missing(ally))]
+```
 
-**Both are capped, and that is the point of stating them here.** Revision 5 of
-§ The score function exists because an uncapped estimate does not penalise
-overkill; the mitigation term is that bug's mirror image, and an uncapped
-`Ê_ally_hp` scores a 30-point heal on an ally missing 4 hit points as 30 and a
-Dodge against a blow larger than the ally's remaining pool at its full size.
-Expressing prevention as a difference of two `Ê_eff` values inherits the cap
-rather than restating it; healing needs its own, and `missing` is it.
+where `missing` is maximum minus current hit points, because hit points restored
+above the maximum are not restored at all. A grant of temporary hit points is
+priced as the pool it actually adds — the amount granted less any temporary hit
+points it replaces, since those do not stack.
+
+**Mitigation that a perturbation can express does not belong here**, and the
+boundary is a rule rather than a matter of taste: Dodge, Uncanny Dodge, Shield,
+a granted resistance and Protection all *change an enemy's output against a
+creature*, which is exactly what `ΔÊ_theirs` measures, and § The horizon already
+multiplies them by `H` "on exactly the same footing as Frightened and Slow".
+Pricing them here as well would score them twice — once as a shortened enemy
+output over the horizon and once as damage prevented now — which is the error
+`ends_on_damage` is already legislated against in § What debuffs need. **The
+partition is by mechanism: if the effect perturbs someone's output, it is
+`ΔÊ_theirs`; if it puts pool back, it is `Ê_ally_hp`.** Healing is the case no
+perturbation can reach, which is why the term exists at all — and it is also
+what keeps `w_ally` identifiable, since it is the one place that coefficient
+appears alone.
+
+**The cap is the point of stating it here.** Revision 5 of § The score function
+exists because an uncapped estimate does not penalise overkill; this term is
+that bug's mirror image, and an uncapped `Ê_ally_hp` scores a 30-point heal on
+an ally missing 4 hit points as 30. `missing` is the cap, and it is the same
+`E[min(·, pool-like bound)]` shape as `Ê_eff`.
 
 It lives in one file, `engine/estimate.py`, for the same reason the damage
 resolution order does — and it is bound to the resolver by an invariant that is
@@ -1197,7 +1206,9 @@ without being told.**
 The same `H` multiplies the defensive term, so Dodge and Shield of Faith get the
 horizon treatment on exactly the same footing as Frightened and Slow — each
 measured on the creature the effect is applied to, which for those two is the
-defender itself and for Frightened and Slow is the enemy.
+defender itself and for Frightened and Slow is the enemy. **That is the whole of
+what they score**: mitigation priced here is not priced again in `Ê_ally_hp`,
+which holds pool restored alone (§ The estimator is computed).
 
 **These coefficients are fitted with more freedom than anything else, and pay for
 it with more scrutiny.** This is where the model's structural form is weakest —
