@@ -2296,7 +2296,7 @@ tests/      contract/ golden/ interaction/ statistical/ bench/
 ```
 
 The pattern-name rationale for each package lives in
-[docs/patterns.md](docs/patterns.md), not here. Three boundaries are load-bearing
+[docs/patterns.md](docs/patterns.md), not here. Five boundaries are load-bearing
 enough to restate in place:
 
 - **`actions/` vs `engine/triggers.py`.** `actions/` holds every **Command**,

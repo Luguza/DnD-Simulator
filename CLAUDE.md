@@ -139,8 +139,9 @@ split **offensive/defensive by what changes, not by whom it targets** — so a s
 scores in both terms with no special case. A debuff additionally multiplies by
 `p_land` from the save DC, uses a geometric `E[rounds]` for save-ends effects,
 and takes a per-target horizon. **`p_land` and the horizon index the creature the
-perturbation is applied to, never the creature whose output moves** — the two
-coincide only for an ally-targeted buff, and getting it wrong scores Faerie Fire
+perturbation is applied to, never the creature whose output moves** — only a
+cross-side effect separates the two, so the one-sum form looks right on every
+same-side effect until it meets one, and getting it wrong scores Faerie Fire
 as though it always lands and gives the two halves of one stun different landing
 probabilities. That is why re-applying an active effect scores
 zero with no condition written, why a second source of advantage scores ~0
