@@ -843,22 +843,29 @@ lethality term then costs nothing to add.
 **The restoration term is pool *restored*, and only that.** `Ê_ally_hp(a, A)` —
 the score's *pool put back now* term — is not a third primitive; it is computed
 by `w8a2` out of the two above, summed over the allies `a` affects, and it
-covers **healing and granted temporary hit points**:
+covers the three ways a creature's pool goes up — **healing, granted temporary
+hit points, and a raised hit point maximum**:
 
 ```
 Ê_ally_hp(a, A)  =  Σ_ally [ E[min(heal, missing(ally))]              healing
-                           + E[max(0, temp − temp_now(ally))] ]       temp HP
+                           + E[max(0, temp − temp_now(ally))]         temp HP
+                           + E[hp_max_increase] ]                     raised maximum
 ```
 
-**The two mechanisms take different caps, and neither is the other's.** Healing
-is bounded by `missing`, maximum minus *current hit points*, because hit points
-restored above the maximum are not restored at all. Temporary hit points are
-bounded by what they *replace*: they do not stack, so a grant adds only the
-excess over whatever the ally already carries — and it is bounded by nothing
-else, since temporary hit points are pool an undamaged ally can still gain.
-Capping a temp-HP grant at `missing` would score Aid, False Life, Heroism,
-Inspiring Leader and Armor of Agathys at zero on a healthy party, which is the
-whole point of most of them.
+**Three mechanisms, three caps, and no cap is another's.** Healing is bounded by
+`missing`, maximum minus *current hit points*, because hit points restored above
+the maximum are not restored at all. Temporary hit points are bounded by what
+they *replace*: they do not stack, so a grant adds only the excess over whatever
+the ally already carries — and by nothing else, since they are pool an undamaged
+ally can still gain. A raised maximum is bounded by neither, because the ceiling
+moves with the floor: Aid raises hit point maximum *and* current hit points by
+five, so `missing` is unchanged and the pool added is exactly the increase.
+
+Each case exists because the other two score it zero. Capping a temp-HP grant at
+`missing` would score False Life, Heroism, Inspiring Leader and Armor of Agathys
+at nothing on a healthy party, which is the whole point of most of them — and
+Aid is that same failure one mechanism further over, invisible to both of the
+others: healing sees no gap to fill, and no temporary hit points are granted.
 
 **Mitigation that a perturbation can express does not belong here**, and the
 boundary is a rule rather than a matter of taste: Dodge, Uncanny Dodge, Shield,
