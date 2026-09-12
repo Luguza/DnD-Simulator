@@ -816,16 +816,17 @@ temporary hit points depleted **plus** hit points lost. Binding `Ê_eff` to hit
 points alone would fail by construction on every target carrying temporary hit
 points.
 
-`Ê_eff` costs nothing extra to compute. `p_kill` already requires the survival
-function `S(k) = P(X ≥ k)` precomputed per weapon and spell, and
+`Ê_eff` costs nothing extra to compute. The estimator precomputes the survival
+function `S(k) = P(X ≥ k)` per weapon and spell — it owns that table, and
+§ Lethality's `p_kill` is a later reader of it rather than its author — and
 
 ```
 E[min(X, h)]  =  Σ_{k=1..h} S(k)
 ```
 
 is that table's running sum — so **storing `S` alongside its prefix sums makes
-both `p_kill` and `Ê_eff` a single lookup**, on the same precompute the lethality
-term already demanded.
+both `p_kill` and `Ê_eff` a single lookup**, off one precompute that the
+lethality term then costs nothing to add.
 
 It lives in one file, `engine/estimate.py`, for the same reason the damage
 resolution order does — and it is bound to the resolver by an invariant that is
@@ -864,17 +865,52 @@ estimator and take the difference** — and the useful axis between them is not 
 they target:
 
 ```
-ΔÊ_ours(a, T)   = Σ_i∈allies  p_land(i)·H_i·[ Ê_dpr(i | perturbed) − Ê_dpr(i | stands) ]
-ΔÊ_theirs(a, T) = Σ_e∈enemies p_land(e)·H_e·[ Ê_dpr(e | stands) − Ê_dpr(e | perturbed) ]
+C(a) = the creatures action a perturbs        # who rolls the save, whose horizon
+
+ΔÊ_ours(a, T)   = Σ_c∈C(a) p_land(c)·H_c · Σ_i∈allies  [ Ê_dpr(i | c) − Ê_dpr(i | ·) ]
+ΔÊ_theirs(a, T) = Σ_c∈C(a) p_land(c)·H_c · Σ_e∈enemies [ Ê_dpr(e | ·) − Ê_dpr(e | c) ]
 ```
 
-**`p_land` and the horizon live inside the sum, per target.** An area control
-spell rolls a separate save for every creature it catches, so a single scalar
-`p_land` multiplied over the whole term would price Hypnotic Pattern against a
-goblin and an archmage as though they were the same creature. The horizon is
-per-target for the same reason — one enemy may be about to die while another has
-full hit points. Factoring either out of the sum is only correct for a
-single-target effect, which is the case that makes the error easy to miss.
+where `(· | c)` is the estimate with `c` perturbed and `(· | ·)` the estimate
+with the effect never applied.
+
+**Two sums, and they run over different creatures.** The outer sum is over the
+creatures the action *perturbs*; the inner is over the creatures whose output
+*changes* as a result. **`p_land` and the horizon belong to the outer one**,
+because the creature that rolls the save and the creature whose damage moves are
+not always the same creature.
+
+For an ally-targeted buff they are the same — Bless perturbs three allies and
+changes exactly those three allies' output, so the two sums collapse and you get
+the one-sum form anybody would write first. That collapse is precisely why the
+error is easy to miss: **it is only cross-side effects that separate the
+indices**, and those are the effects this section exists to handle.
+
+- **Faerie Fire** scores offensively, and its Dex save is rolled by the *enemy*.
+  Indexed by the ally whose `p_hit` improved, `p_land` would be `1` by this
+  document's own rule — an ally rolls nothing — and the spell would be priced as
+  though it always lands, overstated by `1/p_fail`. Indexed by the perturbed
+  enemy it pays its save like everything else.
+- **Shield of Faith** is the same error mirrored: it scores *defensively* by
+  raising our AC, but the creature perturbed is our own ally, so `p_land` is `1`
+  and the horizon is the ally's — not that of whichever enemy's output happens
+  to drop.
+- **A stun** takes `p_land(e)` and `H_e` on *both* halves, because both halves
+  perturb the same creature `e`. That is what "scores in both terms with no
+  special case" has to mean arithmetically; indexed the other way the two halves
+  of one save would carry different landing probabilities, which is the special
+  case the split was introduced to abolish.
+- **Legendary resistance** zeroing `p_land(e)` therefore zeroes both halves,
+  rather than leaving the offensive half full value with nothing to apply to.
+
+Keeping them inside the outer sum rather than factoring them out is the other
+half of the rule. An area control spell rolls a separate save for every creature
+it catches, so a single scalar `p_land` over the whole term would price Hypnotic
+Pattern against a goblin and an archmage as though they were the same creature.
+The horizon is per-perturbed-creature for the same reason — one enemy may be
+about to die while another has full hit points. Factoring either out is only
+correct for a single-target effect, which is the case that makes *that* error
+easy to miss.
 
 **Note the enemy term subtracts the other way round.** Both are written so that
 *positive is good* — `ΔÊ_ours` is damage per round gained, `ΔÊ_theirs` is damage
@@ -888,9 +924,11 @@ model would still be wrong about everything else it touches.
 **The ally-side re-estimate includes target availability, not only the attack
 math.** Removing an enemy from the board — by hypnotising it, or by killing it —
 changes what this creature's allies can profitably do next, and that change is
-part of `ΔÊ_ours`. § Party tactics is the whole argument for why; it is stated
-here because an implementation that perturbed only the attack math would satisfy
-every word of the paragraph above and still be wrong about every control spell.
+part of `ΔÊ_ours`. It rides the outer sum like everything else, so the targets a
+control spell strands are stranded only as often as that spell lands. § Party
+tactics is the whole argument for why; it is stated here because an
+implementation that perturbed only the attack math would satisfy every word of
+the paragraph above and still be wrong about every control spell.
 
 **The axis is what changes, not whom it is cast on.** Bless raises our output;
 Faerie Fire raises our output too, by lowering an enemy's effective defence;
@@ -921,10 +959,11 @@ prefer it over a declared scalar:
 - **It scales with who is actually there.** Bless on three allies sums three
   perturbations. Faerie Fire on one enemy sums over **every ally who will attack
   that enemy**, so it is worth roughly four times as much to a party of four as
-  to a lone character — which no per-action constant can express.
+  to a lone character — which no per-action constant can express. That inner sum
+  is then discounted once, by the one save the one enemy rolls.
 
-Note what the second summation requires: **the estimator must run over enemies as
-well as allies.** `Ê_dpr(e)` is the enemy's own expected output, computed from
+Note what the enemy-side inner sum requires: **the estimator must run over
+enemies as well as allies.** `Ê_dpr(e)` is the enemy's own expected output, computed from
 its own attack bonuses against our ACs. This is free in the architecture — the
 target dummy implements the full `Creature` interface and a monster is not
 special-cased anywhere — but it is a real requirement on `engine/estimate.py`
@@ -938,14 +977,17 @@ would be wrong in four ways that all matter:
 
 **1. It has to land.** A buff on an ally always applies; a debuff is usually
 gated on a saving throw, so its whole value is multiplied by
-`p_land = p_fail_save(target)` — computed from this creature's spell save DC
-against that target's save bonus, which is the same arithmetic the estimator already
-does for save-for-half damage. This is what makes Hold Person excellent against a
-low-WIS brute and a wasted slot against a high-WIS caster, and the scorer gets
-the distinction for free rather than needing a condition per spell.
+`p_land = p_fail_save(c)` for the creature `c` it is applied to — *applied to*,
+not *scored over*, which is the distinction the two sums above exist to keep. It
+is computed from this creature's spell save DC against that target's save bonus,
+the same arithmetic the estimator already does for save-for-half damage. This is
+what makes Hold Person excellent against a low-WIS brute and a wasted slot
+against a high-WIS caster, and the scorer gets the distinction for free rather
+than needing a condition per spell.
 
 > **Legendary resistance sets `p_land` to zero while any remain**, because the
-> target will simply succeed. The value of *burning* one falls to the intercept,
+> target will simply succeed — in both terms, since both index the creature that
+> rolls. The value of *burning* one falls to the intercept,
 > which is a known approximation rather than a modelled effect — worth stating
 > because a scorer that valued legendary resistances correctly would be making a
 > multi-turn plan, and § The known weakness says it cannot.
@@ -1116,7 +1158,9 @@ the start of a fight and nothing at the end of one, and the scorer now says so
 without being told.**
 
 The same `H` multiplies the defensive term, so Dodge and Shield of Faith get the
-horizon treatment on exactly the same footing as Frightened and Slow.
+horizon treatment on exactly the same footing as Frightened and Slow — each
+measured on the creature the effect is applied to, which for those two is the
+defender itself and for Frightened and Slow is the enemy.
 
 **These coefficients are fitted with more freedom than anything else, and pay for
 it with more scrutiny.** This is where the model's structural form is weakest —

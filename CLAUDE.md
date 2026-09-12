@@ -138,7 +138,11 @@ estimator and differencing** (§ Buffs and debuffs) rather than by a constant,
 split **offensive/defensive by what changes, not by whom it targets** — so a stun
 scores in both terms with no special case. A debuff additionally multiplies by
 `p_land` from the save DC, uses a geometric `E[rounds]` for save-ends effects,
-and takes a per-target horizon. That is why re-applying an active effect scores
+and takes a per-target horizon. **`p_land` and the horizon index the creature the
+perturbation is applied to, never the creature whose output moves** — the two
+coincide only for an ally-targeted buff, and getting it wrong scores Faerie Fire
+as though it always lands and gives the two halves of one stun different landing
+probabilities. That is why re-applying an active effect scores
 zero with no condition written, why a second source of advantage scores ~0
 without anyone encoding that advantage does not stack, and why nothing buffs on
 the killing round or stuns the enemy on 3 hp.
@@ -153,7 +157,8 @@ beside four engaged bruisers. **Composition enters through the inputs, never
 through the coefficient vector** — every term is already computed over the actual
 party, which is what keeps one global fit defensible. What must be *told* to the
 derivation is that a derived APL is conditional on its party: the scenario spec
-carries a party axis and the corpus spans compositions. Five consequences bite before W8 exists:
+carries a party axis and the corpus spans compositions. Five consequences bite
+before W8 exists:
 `Apl` must be constructible programmatically and serialisable back (`w2e`), the
 action id `best_scored` must be **reserved** in W2's closed vocabulary (`w2e`),
 the API must accept a seed list and an APL override and return **per-seed**
