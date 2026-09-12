@@ -1770,7 +1770,9 @@ a run byte for byte. Nothing else in the design pays off this hard here.
 **2. Racing, not fixed budgets.** Successive halving: evaluate every candidate on
 a small seed count, keep the top fraction, multiply the seed count, repeat. Most
 candidates are obviously bad and should die at 32 seeds rather than consume 512.
-This is the single largest cost lever, worth roughly 10× (see below).
+This is the largest lever inside the search loop, worth roughly 10× on its own
+(see below) — the scorer's warm start cuts more, but it does so by shrinking what
+has to be searched at all rather than by searching it cheaper.
 
 **3. Held-out seeds, and a reported optimism gap.** The search runs on a
 *derivation* seed set and the answer is reported on a **disjoint evaluation seed
@@ -1861,7 +1863,10 @@ on the sampling side:
 - **the scorer's warm start** — searching departures from a fitted global policy
   rather than a policy from scratch, which is the largest single cut and the main
   reason § The scorer earns its complexity;
-- common random numbers and racing, as above — together worth ~10×;
+- **racing**, as above — worth ~10× on its own, and the largest lever inside the
+  search loop;
+- **common random numbers**, as above — free, and what makes the paired
+  comparison the racing decisions rest on possible at all;
 - **staged search**: first search structure (which entries, in what order) with
   default conditions, then search thresholds only on the entries that survived;
 - **a cheap proxy objective in the early rungs** — a single encounter against a
