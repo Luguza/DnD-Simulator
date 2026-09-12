@@ -178,7 +178,8 @@ set that does not match it is refused at load rather than used with the missing
 term treated as zero. Deliberately *not* extensible, and each for a reason:
 `engine/estimate.py` (a Strategy there bypasses the property test that is the
 scheme's linchpin), the damage resolution order, the gauge (identifiability needs
-exactly two pins), and the single unit.
+exactly two pins — `score(null) = 0` and `w[attack] = 1`; `b[attack] = 0` is a
+relaxable *assumption*, not a third pin), and the single unit.
 
 **The estimator and the resolver may never diverge.** `engine/estimate.py`
 computes expected damage in closed form (hit chance from attack bonus vs AC, or

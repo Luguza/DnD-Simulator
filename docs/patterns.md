@@ -34,7 +34,7 @@ load-bearing ideas for the rule and the reason.
 | **Abstract Factory** | `search/candidates.py` | Generates the policy candidate pool from the schema, so no per-class table exists |
 | **Memento**-adjacent | `search/encoding.py` | The random-key vector is a flat, samplable representation a policy is restored from |
 | **Client, not layer** | `search/` over `api.py` | Policy search consumes the simulator; nothing in the simulator knows it exists |
-| **Strategy** (second implementation) | `apl/scorer.py` | The scored policy the founding design anticipated: a value model swapped in behind the same interface as the ordered list |
+| **Strategy** (second implementation) | `apl/score/` | The scored policy the founding design anticipated: a value model swapped in behind the same interface as the ordered list |
 | **Decorator** (conceptual) | the APL overlay over `best_scored` | The per-build search wraps the global scorer with its departures, rather than replacing it |
 | **Registry + Composite** | `apl/score/registry.py` | The score is a sum of independently declared terms; adding one is a file, not a formula edit |
 | **Strategy** | `apl/score/horizon.py` | `H` was the most-revised quantity in the design; this is where a learned value function would land |

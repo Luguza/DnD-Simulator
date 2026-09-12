@@ -746,21 +746,32 @@ Four families of fitted coefficients, and nothing else:
   and friendly-fire avoidance simultaneously, which is a very large compression
   of the policy space for one parameter.
 
-**The gauge — two coefficients are pinned, not fitted.** A ranking is invariant
-under any positive affine transform of the scores, so the model is
-unidentifiable until two degrees of freedom are removed. Both choices are
-meaningful rather than arbitrary:
+**The gauge — two pins, plus one assumption that is not a pin.** A ranking is
+invariant under any positive affine transform of the scores, so exactly two
+degrees of freedom must be removed before the model is identifiable. Three
+quantities are nonetheless fixed, and **conflating them would hide a real
+modelling choice inside what looks like bookkeeping**:
 
-- **`w[attack] = 1`, `b[attack] = 0`** fixes the scale. Every other coefficient
-  is then denominated in *plain attacks*, which is the unit a reader already
-  has intuition for: "Reckless Attack is worth 1.4 attacks against AC 17" is a
+- **`score(null) = 0` fixes the offset.** `null` is the explicit end-your-turn
+  option, and it contributes to no term but its own intercept, so this is
+  `b[null] = 0`. It earns its place twice over: it makes every score a value
+  *relative to doing nothing*, and it is what lets the scorer decide to **hold a
+  resource** rather than spend it. A model in which "do nothing" is not on the
+  ballot cannot answer the attrition question, because conserving is half of it.
+- **`w[attack] = 1` fixes the scale.** Every other coefficient is then
+  denominated in *plain attacks*, which is the unit a reader already has
+  intuition for: "Reckless Attack is worth 1.4 attacks against AC 17" is a
   sentence; "Reckless Attack scores 8.3" is not.
-- **`score(null) = 0`** fixes the offset, where `null` is the explicit
-  end-your-turn option. This one earns its place twice over: it makes every
-  score a value *relative to doing nothing*, and it is what lets the scorer
-  decide to **hold a resource** rather than spend it. A model in which "do
-  nothing" is not on the ballot cannot answer the attrition question, because
-  conserving is half of it.
+
+Those two exhaust the gauge freedom. **`b[attack] = 0` is therefore not a third
+pin but a declared assumption** — that a plain attack carries no value the damage
+term has not already counted, so the reference action is fully explained by
+`w[attack]·Ê_dmg`. It is a defensible assumption and probably a true one, but it
+is a claim about the game rather than a choice of coordinates, and it is
+**relaxable**: let `b[attack]` float and the model stays identifiable, so the
+ablation machinery can be asked whether the freedom earns its coefficient.
+Relaxing it changes the score-model version, like any other change to the term
+set.
 
 #### The estimator is computed, never fitted
 
@@ -1299,9 +1310,13 @@ an invariant stops being one:
   A swappable estimator is a way to bypass that binding, and the binding is the
   linchpin of the whole scheme.
 - **The damage resolution order stays one file**, for the reason it always was.
-- **The gauge is not configurable.** Identifiability requires exactly two pins;
-  offering a knob invites a fit that cannot converge and a reader who cannot tell
-  what a coefficient means.
+- **The gauge is not configurable.** Identifiability requires exactly two pins —
+  `score(null) = 0` and `w[attack] = 1` — and offering a knob over *those*
+  invites a fit that cannot converge and a reader who cannot tell what a
+  coefficient means. The third fixed quantity, `b[attack] = 0`, is an assumption
+  rather than a pin (§ The score function) and *is* open, on the same terms as
+  any term change: relax it deliberately, refit, and the score-model version
+  moves.
 - **There is one unit.** Terms declare `Unit.DAMAGE` so the invariant is
   structural rather than remembered, but a second unit would need an exchange
   rate nobody can fit, and the two that exist — `w_ally` and `c[r]` — are fitted
@@ -1446,9 +1461,9 @@ revised there rather than after the grind.
 This also forces a correction to the claim two sections above. **§ What it
 changes architecturally is no longer strictly true:** derivation still changes no
 engine file, but *the scorer does*. It adds `engine/estimate.py` and
-`apl/scorer.py`, and it puts a third item on W2's seam list — the reserved
+`apl/score/`, and it puts a third item on W2's seam list — the reserved
 `best_scored` action id. The layering rule survives intact and is what matters:
-`engine/estimate.py` is engine code, `apl/scorer.py` is policy code that runs in
+`engine/estimate.py` is engine code, `apl/score/` is policy code that runs in
 the hot path, the fitted coefficients are **data** that `apl/` loads, and
 `search/` only *produces* those coefficients. Nothing in `search/` imports
 `engine/`.
@@ -1589,7 +1604,7 @@ changed last. A coordinate-ascent answer presented as "optimal" is a false claim
 and the difference matters most exactly where party composition is interesting —
 a healer's policy and a tank's policy are each other's inputs.
 
-It is also not where most party play comes from. § Party tactics below argues
+It is also not where most party play comes from. § Party tactics argues
 that focus fire, target selection, not breaking your own control and the value of
 an AoE caster to the melee standing next to them all fall out of per-creature
 scoring over the actual party, and that coordinate ascent is left with the much
@@ -2046,7 +2061,7 @@ dndsim bench                                          # asserts the sims/sec bud
 
 Global options: `--seed`, `--log-level=summary|full`, `--jobs`.
 
-Three of these exist because of decisions made elsewhere in this document:
+Five of these exist because of decisions made elsewhere in this document:
 
 - **`inspect`** dumps the *resolved* build — every feature actually attached,
   every resource with its recovery rule, the APL as parsed, and which entries are
@@ -2108,7 +2123,8 @@ src/dndsim/
 builds/     # hand-authored YAML: characters, parties, encounters — in git
             # corpus.yaml declares the builds the scorer's coefficients fit on
 data/       # gitignored: fetched 5etools JSON
-docs/       # hooks.md + apl.md GENERATED; feature-hook-map.md + patterns.md authored
+docs/       # hooks.md + apl.md + score.md GENERATED; feature-hook-map.md,
+            # patterns.md + decisions.md authored
 tests/      contract/ golden/ interaction/ statistical/ bench/
 .claude/skills/  feature-authoring/  feature-review/  statblock-import/
 ```
