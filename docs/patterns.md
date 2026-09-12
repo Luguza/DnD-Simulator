@@ -31,6 +31,13 @@ load-bearing ideas for the rule and the reason.
 | **Template Method** | `HookSource.__init_subclass__` | Fixed validation skeleton subclasses cannot skip |
 | **Ports & Adapters** | `api.py` vs `cli.py` | A UI added later is another adapter, not a rewrite |
 | **Inversion of Control** | the whole feature API | The engine calls features; features never drive the engine |
+| **Abstract Factory** | `search/candidates.py` | Generates the policy candidate pool from the schema, so no per-class table exists |
+| **Memento**-adjacent | `search/encoding.py` | The random-key vector is a flat, samplable representation a policy is restored from |
+| **Client, not layer** | `search/` over `api.py` | Policy search consumes the simulator; nothing in the simulator knows it exists |
+| **Layer, not alternative** | `apl/score/` | The value model the founding design anticipated. It is not a second policy Strategy: `best_scored` is one action id *inside* an `Apl`, so the scorer is reached through the ordered list rather than in place of it |
+| **Decorator** (conceptual) | the APL overlay over `best_scored` | The per-build search wraps the global scorer with its departures, rather than replacing it |
+| **Registry + Composite** | `apl/score/registry.py` | The score is a sum of independently declared terms; adding one is a file, not a formula edit |
+| **Strategy** | `apl/score/horizon.py` | `H` was the most-revised quantity in the design; this is where a learned value function would land |
 
 ## Patterns by package
 
@@ -53,6 +60,24 @@ load-bearing ideas for the rule and the reason.
   steps (abilities → class levels → features → equipment → APL), each able to
   fail loudly with a useful message, rather than via a constructor with twenty
   arguments.
+- `search/` — a **client** of `api.py`, deliberately not a layer of it. It
+  generates `Apl` **Strategy** objects and uses the simulator as a noisy oracle,
+  which is why W8 needs no engine change at all. The candidate pool is an
+  **Abstract Factory** over the `NamespaceSchema` rather than a hand-written
+  list: a hand-written pool would launder the author's priors through a search
+  and defeat the point. Import direction is enforced — `search/` may import
+  `api.py` and `apl/`, and nothing may import `search/` except `cli.py`.
+- `apl/score/` — the **Strategy** slot § APL of DESIGN.md reserved from the
+  start ("a built-in scoring heuristic can later be dropped in as an alternative
+  Policy implementation"). It is not an alternative in the end but a *layer*: the
+  ordered list keeps its place and gains one entry, `best_scored`, so the two
+  compose rather than compete. `engine/estimate.py` is the expected-damage
+  estimator it reads, and it is engine code precisely because it must share the
+  crit, advantage and defence rules with `engine/damage.py` by construction —
+  and is pointedly *not* behind a Strategy of its own, since that would be a way
+  to bypass the property test binding it to the resolver. Inside `apl/score/`,
+  the registry is the hook registry's shape minus the phase bands: terms are
+  summed, addition commutes, so nothing can run at the wrong time.
 - `core/rng.py` — **Strategy**. `MersenneRng` in production, `ScriptedRng` in golden
   tests. The linter bans `import random` everywhere else, so determinism is
   structurally guaranteed rather than merely intended.
