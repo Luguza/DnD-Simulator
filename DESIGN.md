@@ -675,30 +675,31 @@ W3, because it is authoring surface rather than a signature, and retrofitting
 
 ### The scorer: one global value model under the per-build search
 
-The search above starts every build from nothing. That is wasteful and it is also
-wrong about where the knowledge lives: *most* of what makes a turn good is not
-build-specific. "Hit the thing you are most likely to hit, with the option that
-deals the most damage, unless you are spending something scarce to do it" is true
-for every class at every level, and re-searching it once per build spends the
-budget proving the obvious.
+The per-build search described below starts every build from nothing. That is
+wasteful and it is also wrong about where the knowledge lives: *most* of what
+makes a turn good is not build-specific. "Hit the thing you are most likely to
+hit, with the option that deals the most damage, unless you are spending
+something scarce to do it" is true for every class at every level, and
+re-searching it once per build spends the budget proving the obvious.
 
 So the policy is two layers:
 
 1. **A scorer** — a global value model that scores every offered action at every
    decision point, with **coefficients fitted once across a whole corpus of
    builds** and reused by all of them.
-2. **The per-build overlay** — the searched APL from the previous sections,
-   which now carries only this build's *departures* from generic good play.
+2. **The per-build overlay** — the searched APL of the sections below, which
+   now carries only this build's *departures* from generic good play.
 
 The layering is what makes the per-build search cheap and its output readable.
 A derived APL stops being a policy and becomes a diff.
 
 **The obvious objection first.** A fixed scoring formula with fitted coefficients
-is a hardcoded functional form, which is exactly what the previous section said
-not to do. That trade is deliberate and it is made falsifiable rather than
-argued: the scorer competes for its place in the ordered list like any other
-candidate entry (below), so if the model is wrong for a build the search routes
-around it and the ablation table reports the scorer carrying no marginal value.
+is a hardcoded functional form, which is exactly what § The candidate space is
+generated says not to do. That trade is deliberate and it is made falsifiable
+rather than argued: the scorer competes for its place in the ordered list like
+any other candidate entry (below), so if the model is wrong for a build the
+search routes around it and the ablation table reports the scorer carrying no
+marginal value.
 **A scorer that cannot be shown to beat its own absence is cut.** That is an
 acceptance criterion of `w8h`, not a matter of taste.
 
@@ -839,10 +840,10 @@ is that table's running sum — so **storing `S` alongside its prefix sums makes
 both `p_kill` and `Ê_eff` a single lookup**, off one precompute that the
 lethality term then costs nothing to add.
 
-**The mitigation term is pool *restored*, and only that.** `Ê_ally_hp(a, A)` —
-the score's *pool put back now* term — is not a third primitive; it is
-computed by the defensive path (`w8a2`) out of the two above, summed over the
-allies `a` affects, and it covers **healing and granted temporary hit points**:
+**The restoration term is pool *restored*, and only that.** `Ê_ally_hp(a, A)` —
+the score's *pool put back now* term — is not a third primitive; it is computed
+by `w8a2` out of the two above, summed over the allies `a` affects, and it
+covers **healing and granted temporary hit points**:
 
 ```
 Ê_ally_hp(a, A)  =  Σ_ally E[min(roll, missing(ally))]
@@ -862,10 +863,12 @@ Pricing them here as well would score them twice — once as a shortened enemy
 output over the horizon and once as damage prevented now — which is the error
 `ends_on_damage` is already legislated against in § What debuffs need. **The
 partition is by mechanism: if the effect perturbs someone's output, it is
-`ΔÊ_theirs`; if it puts pool back, it is `Ê_ally_hp`.** Healing is the case no
-perturbation can reach, which is why the term exists at all — and it is also
-what keeps `w_ally` identifiable, since it is the one place that coefficient
-appears alone.
+`ΔÊ_theirs`; if it puts pool back, it is `Ê_ally_hp`.** The term's file is
+`terms/restoration.py` for the same reason — a file called `mitigation.py` here
+is an invitation to re-merge the two, and mitigation is what `defensive.py`
+already holds. Healing is the case no perturbation can reach, which is why the
+term exists at all — and it is also what keeps `w_ally` identifiable, since it
+is the one place that coefficient appears alone.
 
 **The cap is the point of stating it here.** Revision 5 of § The score function
 exists because an uncapped estimate does not penalise overkill; this term is
@@ -1366,9 +1369,9 @@ Three things contain it, and none of them is a proof:
 
 The architecture question has an unusually well-evidenced answer here, because
 this design produced the evidence while being written. **The score function was
-revised five times before a line of it was implemented** — four in the sitting
-that wrote this section, a fifth in review of that sitting — and every revision
-added or split a term rather than changing anything else:
+revised six times before a line of it was implemented** — four in the sitting
+that wrote this section, and two more in successive reviews of it — and every
+revision added, split or narrowed a term rather than changing anything else:
 
 | Revision | What changed |
 |---|---|
@@ -1377,12 +1380,15 @@ added or split a term rather than changing anything else:
 | 3 | split to `w_off`/`w_def`, `p_land` added — debuffs, because "buff vs debuff" was the wrong axis |
 | 4 | `p_land` and `H` folded inside the sums, `p_kill` added to `w_def`, availability added to `ΔÊ_ours` — party tactics |
 | 5 | the damage term moved from `Ê_dmg` to `Ê_eff` — a review found "overkill is penalised" did not follow from an uncapped estimate |
+| 6 | the mitigation term narrowed to pool *restored* — a review found it double-counted Dodge and Shield against the defensive term's own horizon |
 
-Five revisions, one afternoon and the review that followed it, all the same
+Six revisions, one afternoon and the reviews that followed it, all the same
 shape. That is not a prediction that the formula will keep changing; it is a
-measurement that it does — and revision 5 arriving from a reviewer rather than
-from the author is the sharper half of the measurement, because it is the one
-the author could not have scheduled. **This is the one place in the scorer where
+measurement that it does — and revisions 5 and 6 arriving from a reviewer rather
+than from the author is the sharper half of the measurement, because they are
+the ones the author could not have scheduled. Both were a term boundary drawn in
+the wrong place rather than a formula needing a rewrite, which is the registry's
+case made twice over. **This is the one place in the scorer where
 generality is earned rather than speculative**, and everything below is scoped to
 it.
 
@@ -2286,7 +2292,7 @@ src/dndsim/
   apl/        expr.py schema.py namespace.py apl.py
               score/  registry.py context.py horizon.py coefficients.py
                       terms/ damage.py offensive.py defensive.py
-                             lethality.py mitigation.py resources.py
+                             lethality.py restoration.py resources.py
   builds/     schema.py loader.py
   engine/     world.py query.py attack.py damage.py saves.py turn.py
               encounter.py adventuring_day.py triggers.py estimate.py
@@ -2544,9 +2550,12 @@ of the two APLs somebody wrote for them.
 
 ## Biggest risks
 
-Ordered by expected cost, which is not the same as by likelihood. The first four
-share a shape worth naming: **each is a check that passes while proving nothing**,
-and that is a far more dangerous failure than a check that fails.
+Ordered by expected cost, which is not the same as by likelihood — with one
+exception stated rather than smoothed away: **risk 4 arrived with § APL
+derivation and is the most expensive of all.** It sits last because it depends on
+everything above it, not because it costs least. All four share a shape worth
+naming: **each is a check that passes while proving nothing**, and that is a far
+more dangerous failure than a check that fails.
 
 1. ~~**The performance spike passes on a stub.**~~ **Closed at M0, and replaced
    by its successor: the headroom erodes between M0 and the gate that guards
@@ -2579,9 +2588,10 @@ and that is a far more dangerous failure than a check that fails.
    search scoring thousands of candidates against one seed set will find a winner
    whether or not one exists; the search-set number is biased upward by
    construction, and a policy selected on noise looks exactly like a discovery.
-   This is the most expensive version of the shape above, because the whole
-   project's headline claim rests on it and there will never be a ground truth to
-   check it against. Two sub-risks ride along: **scenario overfitting** (a policy
+   This is the most expensive version of the shape above — the most expensive
+   risk in this list, as the ordering note says — because the whole project's
+   headline claim rests on it and there will never be a ground truth to check it
+   against. Two sub-risks ride along: **scenario overfitting** (a policy
    derived against one AC and enemy count, reported as general) and
    **exploitation** — an optimiser with 10^5 evaluations finds every place the
    rules are implemented too generously, and reports the exploit as a strategy.
