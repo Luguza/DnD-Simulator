@@ -2534,10 +2534,11 @@ seams earlier" — the three W2 seams named in § APL derivation (programmatic `
 construction, the **reserved `best_scored` action id**, and an API that takes an
 explicit seed list and returns per-seed results), plus the one W3 seam that is
 authoring surface (the `Perturbation` profile on a buff or debuff). All are cheap
-where they land: the first two are signatures every later caller is built
-against, while the reserved id is a schema migration across every file in
-`builds/` afterwards and the `Perturbation` profile one across every buff in
-`features/`. M4 remains the stated v1 goal; M5 is what makes M4's
+where they land: programmatic `Apl` construction and the per-seed API are
+signatures every later caller is built against, while the reserved id is a
+schema migration across every file in `builds/` afterwards and the
+`Perturbation` profile one across every buff in `features/`. M4 remains the
+stated v1 goal; M5 is what makes M4's
 number a property of the build rather than of its author.
 
 Two of the exits above changed shape after review, and both changes are the same
