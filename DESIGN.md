@@ -846,13 +846,19 @@ by `w8a2` out of the two above, summed over the allies `a` affects, and it
 covers **healing and granted temporary hit points**:
 
 ```
-Ê_ally_hp(a, A)  =  Σ_ally E[min(roll, missing(ally))]
+Ê_ally_hp(a, A)  =  Σ_ally [ E[min(heal, missing(ally))]              healing
+                           + E[max(0, temp − temp_now(ally))] ]       temp HP
 ```
 
-where `missing` is maximum minus current hit points, because hit points restored
-above the maximum are not restored at all. A grant of temporary hit points is
-priced as the pool it actually adds — the amount granted less any temporary hit
-points it replaces, since those do not stack.
+**The two mechanisms take different caps, and neither is the other's.** Healing
+is bounded by `missing`, maximum minus *current hit points*, because hit points
+restored above the maximum are not restored at all. Temporary hit points are
+bounded by what they *replace*: they do not stack, so a grant adds only the
+excess over whatever the ally already carries — and it is bounded by nothing
+else, since temporary hit points are pool an undamaged ally can still gain.
+Capping a temp-HP grant at `missing` would score Aid, False Life, Heroism,
+Inspiring Leader and Armor of Agathys at zero on a healthy party, which is the
+whole point of most of them.
 
 **Mitigation that a perturbation can express does not belong here**, and the
 boundary is a rule rather than a matter of taste: Dodge, Uncanny Dodge, Shield,
