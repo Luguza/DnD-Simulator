@@ -187,12 +187,13 @@ save DC vs save bonus, summed over targets); `engine/damage.py` resolves it. If
 they disagree about the crit dice/flat split or the defence order, the scorer's
 fit absorbs the discrepancy into a coefficient and hides it, and nothing goes
 red. It computes **two** quantities: `Ê_raw = E[X]`, the damage dealt, and
-`Ê_eff = E[min(X, pool)]`, the hit points actually removed — the score's damage
-term uses `Ê_eff`, which is what stops a 40-damage nova being scored as 40
-against a 5-hp enemy. The property test binds **both** to 10⁵ real resolutions,
-and that split is why: capping a single estimate in place would put the estimator
-in deliberate disagreement with the damage roll, which is the divergence the test
-exists to catch. It is not optional.
+`Ê_eff = E[min(X, pool)]`, the *pool* removed (temp HP, then hit points, in the
+order `engine/damage.py` spends them) — the score's damage term uses `Ê_eff`,
+which is what stops a 40-damage nova being scored as 40 against a 5-hp enemy.
+The property test binds **both** to 10⁵ real resolutions, and that split is why:
+capping a single estimate in place would put the estimator in deliberate
+disagreement with the damage roll, which is the divergence the test exists to
+catch. It is not optional.
 
 **Performance is a design constraint, not a later concern.** Budget is ≥30k
 attack resolutions/sec/core, revised down from 50k by the W0 spike itself,

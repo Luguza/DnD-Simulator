@@ -794,13 +794,24 @@ absorb it, so the estimator computes both:
 
 ```
 Ê_raw(a, t)  =  E[X]                 expected damage dealt, unbounded
-Ê_eff(a, t)  =  E[min(X, pool(t))]   expected hit points actually removed
+Ê_eff(a, t)  =  E[min(X, pool(t))]   expected pool removed
 ```
 
-where `pool(t)` is the target's remaining HP plus its temporary HP, in that order
-because that is the order `engine/damage.py` spends them. **The score's damage
-term uses `Ê_eff`**; `Ê_raw` exists because it is what the resolver's damage roll
-produces and therefore what the property test can bind.
+where `pool(t)` is the target's temporary hit points plus its remaining HP, in
+that order because that is the order `engine/damage.py` spends them: temporary
+hit points absorb what they can and hit points take the rest. **The score's
+damage term uses `Ê_eff`**; `Ê_raw` exists because it is what the resolver's
+damage roll produces and therefore what the property test can bind.
+
+**`Ê_eff` is pool removed, not hit points removed, and the distinction is not
+pedantry** — it is what keeps the invariant below satisfiable. Against a target
+with 5 temporary hit points and 10 hit points, a 12-damage hit leaves
+`min(X, pool) = 12`, of which the resolver puts 5 into temporary hit points and 7
+into hit points. The quantity the scorer wants is the 12 — that is what the
+target no longer has to spend — so the empirical side of the binding measures
+temporary hit points depleted **plus** hit points lost. Binding `Ê_eff` to hit
+points alone would fail by construction on every target carrying temporary hit
+points.
 
 `Ê_eff` costs nothing extra to compute. `p_kill` already requires the survival
 function `S(k) = P(X ≥ k)` precomputed per weapon and spell, and
@@ -820,8 +831,8 @@ the linchpin of this whole scheme:
 > **The estimator and the resolver share the crit rule, the advantage rule and
 > the defence order by construction, and a property test asserts that `Ê_raw`
 > matches the empirical mean of damage dealt over 10⁵ resolutions of the same
-> action, and `Ê_eff` the empirical mean of hit points actually removed, both to
-> within Monte Carlo error.**
+> action, and `Ê_eff` the empirical mean of pool removed — temporary hit points
+> depleted plus hit points lost — both to within Monte Carlo error.**
 
 Splitting the quantity **strengthens** that binding rather than weakening it:
 capping a single `Ê_dmg` in place would have made the estimator disagree with the
@@ -966,12 +977,14 @@ to die is waste, so the horizon for a single-target debuff is bounded by how lon
 that enemy has left:
 
 ```
-H_target = min( H_encounter,  hp_target / Ê_dpr_directed_at_it )
+H_target = min( H_encounter,  pool_target / Ê_dpr_directed_at_it )
 ```
 
 This is the per-target refinement of the encounter-wide horizon below, and it is
 what stops the scorer from casting Hold Person on the enemy sitting at 3 hit
-points — the other half of the same instinct that stops it buffing on the
+points — `pool_target`, not `hp_target`, for the reason `Ê_eff` caps against the
+pool: temporary hit points are rounds the effect still gets to be worth
+something — the other half of the same instinct that stops it buffing on the
 killing round.
 
 **4. Some of them are destroyed by your own follow-up.** Hypnotic Pattern is the
@@ -994,9 +1007,9 @@ the coverage-maximising placement stops being the highest-scoring one.
 
 This is why `ends_on_damage` is in the perturbation vocabulary rather than left
 to the intercept, and it carries one rule with it: **an effect that ends on
-damage does not take the per-target hit-point horizon.** That bound exists
-because a dying enemy stops being worth debuffing, but it presumes the party
-keeps attacking the target — and for this class of effect the correct policy
+damage does not take the per-target pool horizon.** That bound exists because a
+dying enemy stops being worth debuffing, but it presumes the party keeps
+attacking the target — and for this class of effect the correct policy
 stops. Applying both would double-count the same consideration, once as a
 shortened horizon and once as a penalty on the breaking action, and the penalty
 is the one that is actually true.
@@ -1068,17 +1081,20 @@ run as everything else `w3l` checks.
 is how many rounds the effect will actually be worth something for:
 
 ```
-H = clamp( min( duration_or_E[rounds],  Σ_enemies hp_remaining / Ê_party_dpr ),  0,  h_max )
+H = clamp( min( duration_or_E[rounds],  Σ_enemies pool_remaining / Ê_party_dpr ),  0,  h_max )
 ```
 
 — computed per target, and narrowed to `H_target` above for an effect that
 persists through damage. The second term is the estimated rounds left in the
-fight, and **the scorer can compute it**: it knows the enemies' remaining HP, and
-`Ê_eff` over the party is precisely an estimate of how fast that HP disappears. A
-fitted correction absorbs the rest.
+fight, and **the scorer can compute it**: it knows the enemies' remaining pool,
+and `Ê_eff` over the party is precisely an estimate of how fast that pool
+disappears. The numerator is the same `pool` the damage term caps against, not
+hit points alone, because a denominator measuring pool removed against a
+numerator counting only hit points would under-read the fight by every temporary
+hit point on the far side. A fitted correction absorbs the rest.
 
 Its weakest moment is the one Hypnotic Pattern creates. Neutralised enemies are
-not being killed, so counting their hit points in the numerator says the fight
+not being killed, so counting their pool in the numerator says the fight
 has longer to run than it does for the enemies that still matter — which
 *under*-values the control that neutralised them, the wrong direction for a
 heuristic to fail in. The numerator therefore runs over enemies the party is
@@ -1251,8 +1267,9 @@ Three things contain it, and none of them is a proof:
 
 The architecture question has an unusually well-evidenced answer here, because
 this design produced the evidence while being written. **The score function was
-revised four times in a single sitting**, and every revision added or split a
-term rather than changing anything else:
+revised five times before a line of it was implemented** — four in the sitting
+that wrote this section, a fifth in review of that sitting — and every revision
+added or split a term rather than changing anything else:
 
 | Revision | What changed |
 |---|---|
@@ -1262,10 +1279,13 @@ term rather than changing anything else:
 | 4 | `p_land` and `H` folded inside the sums, `p_kill` added to `w_def`, availability added to `ΔÊ_ours` — party tactics |
 | 5 | the damage term moved from `Ê_dmg` to `Ê_eff` — a review found "overkill is penalised" did not follow from an uncapped estimate |
 
-Four revisions, one afternoon, all the same shape. That is not a prediction that
-the formula will keep changing; it is a measurement that it does. **This is the
-one place in the scorer where generality is earned rather than speculative**, and
-everything below is scoped to it.
+Five revisions, one afternoon and the review that followed it, all the same
+shape. That is not a prediction that the formula will keep changing; it is a
+measurement that it does — and revision 5 arriving from a reviewer rather than
+from the author is the sharper half of the measurement, because it is the one
+the author could not have scheduled. **This is the one place in the scorer where
+generality is earned rather than speculative**, and everything below is scoped to
+it.
 
 **So the score is a closed-but-appendable registry of independently declared
 terms, shaped exactly like the hook registry.** Not because registries are nice,
