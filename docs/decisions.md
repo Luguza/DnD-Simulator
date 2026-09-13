@@ -46,6 +46,52 @@ re-litigated by the next agent through the area.
 - `cli.py` is a placeholder that exits non-zero pointing at `w2h`, so the
   `dndsim` entry point gives a message rather than an ImportError.
 
+### The review workflow's two reviews
+
+`claude-code-review.yml` ran one configuration — the general-purpose
+`code-review` plugin at `high` effort on Opus — against every pull request, on
+every event, with no concurrency group. Measured against what this repo actually
+opens, that was wrong in three ways at once, and #19 showed all three: 27
+pushes, every file in the diff markdown, and a full code review of prose on each
+one.
+
+- **Two reviews, chosen by the diff.** A `.md`-only diff goes to a short prompt
+  on Sonnet that checks four things — self-contradiction, contradiction against
+  CLAUDE.md/DESIGN.md/ROADMAP.md, arithmetic and counts, and obligations with no
+  owning task. Everything else goes to the code review. The split is not a
+  cost dodge: the #19 findings were almost all of the first kind, and a reviewer
+  hunting for crit-split bugs in a document cannot find them.
+- **The checklist is this repo's, not a plugin's.** `.claude/skills/pr-review/SKILL.md`
+  is 93 lines and already names the failures that matter here; the plugin's
+  prompt is much larger and knows none of them. What the plugin was worth
+  keeping for — a verification pass and a fixed finding shape — is asked for in
+  the prompt instead: pass 1 collects candidates, pass 2 re-reads the cited
+  lines in the file and drops anything whose concrete failure cannot be
+  constructed, and each survivor is reported as CONFIRMED or PLAUSIBLE against a
+  named rule, two sentences, at most eight. The output shape is load-bearing in
+  both directions — a review nobody reads is a review that does not run.
+- **Do not review the same PR twice.** A concurrency group keyed on the PR
+  number with `cancel-in-progress`, matching `ci.yml`, so a burst of pushes does
+  not run a burst of reviews to completion on diffs already superseded. Drafts
+  are skipped; `ready_for_review` stays in the trigger list, so a draft is
+  reviewed once, when it stops being one.
+
+`--disallowedTools Agent,Task` survives unchanged and for the original reason:
+in headless CI there is no next turn in which a subagent's completion
+notification can be delivered, so a fan-out ends the run with the findings
+uncollected. The `high` effort level does not survive, because it was the
+plugin's knob and there is no plugin.
+
+Two silent-failure guards, because a review that did not run and a review that
+found nothing look identical from the outside — the reason the post step exists
+at all. The classifier runs under `set -e` and fetches the base ref explicitly:
+a `git diff` that errors yields no filenames, an empty list is indistinguishable
+from "markdown only", and the failure would route a code PR to the prose
+reviewer with nothing to show for it. And the "did not run" comment now names
+both causes, the workflow-file mismatch and a failed classification, rather than
+asserting the first.
+
+
 ## w0b — rules vocabulary
 
 - `rules/` is the bottom of the stack and imports nothing else from `dndsim`.

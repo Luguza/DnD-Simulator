@@ -3,16 +3,21 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.py"
+
+# A new push supersedes the review of the one before it. Without this a burst of
+# pushes runs a burst of reviews to completion, all but the last of them against
+# a diff nobody will merge — PR #19 took 27 pushes, so this is the difference
+# between 27 reviews and 27 reviews' worth of tokens spent on 26 stale diffs.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # Drafts are work in progress by definition. `ready_for_review` is in the
+    # trigger list above, so a draft is reviewed once, when it stops being one,
+    # instead of on every push while it is still being written.
+    if: github.event.pull_request.draft == false
 
     runs-on: ubuntu-latest
     permissions:
@@ -34,31 +39,93 @@ jobs:
           # the agent with no diff to review.
           fetch-depth: 0
 
-      - name: Run Claude Code Review
-        id: claude-review
+      # Which of the two reviews below runs. The split exists because the two
+      # kinds of change in this repo fail in completely different ways: code
+      # fails at the crit split and the reset scopes, prose fails at
+      # contradicting DESIGN.md. Sending a documentation PR to a reviewer
+      # hunting for code defects buys nothing and costs the most expensive
+      # configuration available.
+      - name: Classify the diff
+        id: scope
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          # -e, and the fetch, because the failure mode here is silent and
+          # expensive: a `git diff` that errors returns no filenames, an empty
+          # list looks exactly like "changed nothing but markdown", and a code
+          # PR would be routed to the cheap prose reviewer with nobody the
+          # wiser. Fail the step instead and let the post step say so.
+          set -euo pipefail
+          git fetch --no-tags --quiet origin "${BASE_REF}"
+          files=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+          printf 'Changed files:\n%s\n' "$files"
+          # grep -qv '\.md$' asks "is there a file that is not markdown?".
+          if [ -n "$files" ] && printf '%s\n' "$files" | grep -qv '\.md$'; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --- Code PRs -------------------------------------------------------
+      - name: Review the code
+        id: code-review
+        if: steps.scope.outputs.docs_only == 'false'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          # Deliberately no --comment: that flag posts one *inline* comment per
-          # finding, anchored to a diff line, and posts nothing at all when the
-          # review is clean. We want the findings as a single top-level comment
-          # in the Conversation tab instead, so the review just reports, and the
-          # step below does the posting.
-          # The trailing `high` is the skill's effort level (low | medium | high
-          # | xhigh | max). Interactively the level is remembered from the last
-          # one typed; a CI run has no such history, so leaving it off means the
-          # review runs at whatever the fallback happens to be rather than at a
-          # level this repo chose. high widens the sweep and admits findings the
-          # review is less than certain about — the right trade for a gate that
-          # runs once per push, where a false positive costs a sentence of reply
-          # and a miss costs a merged bug.
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }} high'
-          # --model opus: with no --model the action runs the review on its
-          # default model, which is Sonnet. A review is the one job here worth
-          # the stronger model — it is the only gate on this repo, it runs once
-          # per push rather than in a loop, and the findings it misses are the
+          # No plugin marketplace: the checklist this repo needs is already in
+          # the repo, at .claude/skills/pr-review/SKILL.md, and it is 93 lines
+          # against a general-purpose plugin's much larger prompt plus its
+          # bundled references. The local skill also knows what the plugin
+          # cannot — the crit dice/flat split, the reset scopes, the frozen
+          # registry, the content anti-corruption layer. The two things worth
+          # keeping from the plugin, a verification pass and a fixed finding
+          # shape, are asked for below instead of installed.
+          prompt: |
+            Review pull request #${{ github.event.pull_request.number }}.
+
+            Scope is the diff: `git diff origin/${{ github.base_ref }}...HEAD`.
+            Open a whole file only when the diff alone cannot settle a question.
+            Never read DESIGN.md, ROADMAP.md or docs/decisions.md end to end —
+            they are 160KB, 82KB and 72KB. Grep them for the one claim you need.
+
+            The checklist is this repo's own skill. Read
+            `.claude/skills/pr-review/SKILL.md` and apply it. CLAUDE.md is
+            already in your context; it and DESIGN.md are the contract.
+
+            Work in two passes.
+
+            Pass 1 — find. Collect candidate findings against the checklist.
+
+            Pass 2 — verify. For each candidate, re-read the cited lines in the
+            file itself, not in the diff, and construct the concrete failure:
+            the input or state that produces the wrong result. Drop every
+            candidate whose failure you cannot construct and whose violated rule
+            you cannot quote. This pass is the point of the review — reporting
+            pass 1's guesses is worse than reporting nothing.
+
+            Then report, and report nothing else. No preamble, no summary of
+            what the change does, no praise, no closing assessment. Exactly this
+            shape:
+
+            ## Findings
+
+            1. **CONFIRMED** · `path/to/file.py:123` · crit-split
+               One sentence naming the defect.
+               One sentence: concrete input or state -> wrong output.
+
+            CONFIRMED means you traced the failure. PLAUSIBLE means the rule is
+            violated but you could not construct the failure. The third field is
+            the rule: crit-split, reset-scope, frozen-registry,
+            content-boundary, determinism, citation, golden, or other.
+
+            Rank correctness bugs, then boundary violations, then everything
+            else. At most 8 findings; if more survive pass 2, report the worst 8
+            and say how many you dropped.
+
+            If nothing survives pass 2, reply with exactly: No findings.
+          # --model opus: a review is the one job here worth the stronger model —
+          # it is the only gate on this repo and the findings it misses are the
           # ones nothing else catches. The alias, not a pinned ID, so the
           # workflow follows the current Opus instead of silently pointing at a
           # retired model id.
@@ -67,21 +134,67 @@ jobs:
           # commands the review depends on have to be listed explicitly or they
           # come back as permission denials.
           # --disallowedTools Agent,Task: the review otherwise fans out into
-          # parallel finder subagents, then ends its turn saying it will wait
-          # for their completion notifications. In headless CI there is no next
-          # turn to deliver those, so the run terminates with the subagents
-          # pending and their findings never collected — the review's last words
-          # end up being "the four review agents are still running". Forcing a
-          # single inline pass trades some breadth for a review that finishes.
-          # The higher the effort level, the more eagerly it wants to fan out,
-          # so this denial is what `high` above is being bought against: the
-          # extra depth has to come from one pass, not from more agents.
+          # parallel finder subagents, then ends its turn saying it will wait for
+          # their completion notifications. In headless CI there is no next turn
+          # to deliver those, so the run terminates with the subagents pending and
+          # their findings never collected. Forcing a single inline pass is both
+          # the only way this finishes and much the cheaper one.
           claude_args: >-
             --model opus
             --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git merge-base:*),Bash(git rev-parse:*),Bash(git status:*),Bash(git ls-files:*)"
             --disallowedTools "Agent,Task"
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
+
+      # --- Documentation-only PRs -----------------------------------------
+      - name: Review the documentation
+        id: docs-review
+        if: steps.scope.outputs.docs_only == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Review documentation-only pull request
+            #${{ github.event.pull_request.number }}.
+
+            Nothing here is code, so do not hunt for code defects. DESIGN.md,
+            ROADMAP.md and CLAUDE.md are this project's contract, and a defect
+            in them is one that every later feature inherits. Check the diff —
+            `git diff origin/${{ github.base_ref }}...HEAD` — for four things
+            and nothing else:
+
+            1. Self-contradiction: the change says something the same document
+               already says differently.
+            2. Cross-document contradiction: it contradicts CLAUDE.md,
+               DESIGN.md or ROADMAP.md. Grep for the specific claim. Never read
+               those files end to end; they are 160KB, 82KB and 17KB.
+            3. Arithmetic and counts: task counts, hook counts, wave numbers,
+               worked examples, formulas. Recompute anything the text asserts.
+            4. Unowned obligations: a new requirement with no ROADMAP.md task
+               that delivers it, or a reference to a task id that does not
+               exist.
+
+            Read only the sections the diff touches or names.
+
+            Report nothing but findings — no preamble, no summary, no praise.
+            Exactly this shape:
+
+            ## Findings
+
+            1. `DESIGN.md:1234` · contradiction
+               One sentence naming the defect.
+               One sentence: what it contradicts, or what it should say.
+
+            The second field is one of: contradiction, arithmetic, unowned,
+            other. At most 8 findings.
+
+            If nothing is wrong, reply with exactly: No findings.
+          # Sonnet, not Opus, and no code-review skill: this pass is reading
+          # prose for contradictions and recomputing counts, which is not what
+          # the stronger model is being paid for. Same subagent denial and the
+          # same reason.
+          claude_args: >-
+            --model sonnet
+            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git merge-base:*),Bash(git rev-parse:*),Bash(git ls-files:*)"
+            --disallowedTools "Agent,Task"
 
       # The review's own output never reaches the PR by itself — it goes to the
       # action's execution log, which is hidden. This step posts it as one
@@ -92,10 +205,12 @@ jobs:
         if: always() && github.event.pull_request != null
         uses: actions/github-script@v8
         env:
-          # Only set when Claude actually executed. Empty when the action
-          # skipped itself (see the workflow-validation note below).
-          REVIEW_SESSION_ID: ${{ steps.claude-review.outputs.session_id }}
-          REVIEW_LOG: ${{ steps.claude-review.outputs.execution_file }}
+          # Whichever of the two reviews ran. Only set when Claude actually
+          # executed; empty when the action skipped itself (see the
+          # workflow-validation note below).
+          REVIEW_SESSION_ID: ${{ steps.code-review.outputs.session_id || steps.docs-review.outputs.session_id }}
+          REVIEW_LOG: ${{ steps.code-review.outputs.execution_file || steps.docs-review.outputs.execution_file }}
+          REVIEW_KIND: ${{ steps.scope.outputs.docs_only == 'true' && 'documentation' || 'code' }}
         with:
           script: |
             const fs = require('fs');
@@ -105,6 +220,7 @@ jobs:
             const { owner, repo } = context.repo;
             const pr = context.payload.pull_request;
             const short = pr.head.sha.slice(0, 7);
+            const kind = process.env.REVIEW_KIND || 'code';
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
 
             // The execution log is a stream of SDK messages, saved either as one
@@ -123,7 +239,7 @@ jobs:
             };
 
             // Prefer the run's own `result`; fall back to the last thing Claude
-            // said, which is where the skill restates its findings.
+            // said, which is where the review restates its findings.
             const finalText = (messages) => {
               for (let i = messages.length - 1; i >= 0; i--) {
                 const m = messages[i];
@@ -171,10 +287,11 @@ jobs:
               verdict = [
                 `## ⚠️ The review did not run on \`${short}\``,
                 '',
-                'This is **not** a pass. The action skips itself when',
+                'This is **not** a pass. Two things cause it. The action skips itself when',
                 '`.github/workflows/claude-code-review.yml` differs from the copy on the',
-                'default branch. If this PR edits that file, that is expected and it will',
-                `run once merged; otherwise check the [run log](${runUrl}).`,
+                'default branch — if this PR edits that file, that is expected and it will',
+                'run once merged. Otherwise the diff could not be classified, so neither',
+                `review was dispatched. The [run log](${runUrl}) says which.`,
               ].join('\n');
             } else {
               // Distinguish "ran and said nothing" from "we could not read what
@@ -211,6 +328,10 @@ jobs:
                 // tool call with no matching tool_result — rather than by
                 // pattern-matching the prose, and never dress it up as a review.
                 const pending = pendingSubagents(messages);
+                // "No findings." is the clean outcome both prompts ask for by
+                // name. Match it here so the clean case reads as a verdict
+                // rather than as a one-line quote of the model.
+                const clean = /^no findings\.?$/i.test(review.trim());
                 if (pending) {
                   verdict = [
                     `## ⚠️ The review did not finish on \`${short}\``,
@@ -223,10 +344,10 @@ jobs:
                     '',
                     `[run log](${runUrl})`,
                   ].join('\n');
+                } else if (review && !clean) {
+                  verdict = `## Claude ${kind} review of \`${short}\`\n\n${review}\n\n<sub>[run log](${runUrl})</sub>`;
                 } else {
-                  verdict = review
-                    ? `## Claude review of \`${short}\`\n\n${review}\n\n<sub>[run log](${runUrl})</sub>`
-                    : `## ✅ Looks good\n\nClaude reviewed \`${short}\` and found nothing worth flagging. ([run log](${runUrl}))`;
+                  verdict = `## ✅ Looks good\n\nClaude's ${kind} review of \`${short}\` found nothing worth flagging. ([run log](${runUrl}))`;
                 }
               }
             }
