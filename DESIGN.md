@@ -335,12 +335,19 @@ work that would otherwise be procedural code an author could misplace:
 - **Two consequences of that order, because both read as bugs otherwise.**
   Resistance and Vulnerability to the same type no longer cancel exactly: 7
   damage halves to 3 and doubles to 6, and the missing point is the book's
-  answer rather than a rounding slip. And a flat reduction is worth *more* to a
-  creature with resistance than to one without, because it is subtracted from
-  the full amount before the halving. `w0g2` wrote this order the other way
-  round on both counts, reasoning from `(2n) // 2 == n` and from what "the
-  damage you take" ought to mean; the `w1e` spec review found the 2024 text that
-  settles it, before any number the project reports was computed the wrong way.
+  answer rather than a rounding slip. And a flat reduction is worth **half** to a
+  creature with resistance what it is worth to one without, because it is
+  subtracted from the full amount and then halved along with it: against 20
+  damage, a 4-point reduction saves an unresisting creature 4 and a resisting one
+  2. That second consequence is the one `w0g2` saw coming and ruled against —
+  `engine/damage.py` argues in as many words that subtracting first "makes a
+  defensive feature worth *less* to the creature that invested in resistance,
+  which is the opposite of how both features read". It does, and the book orders
+  it that way regardless; a feature reading how it ought to work is not a rule.
+  `w0g2` wrote this order the other way round on both counts, reasoning from
+  `(2n) // 2 == n` and from what "the damage you take" ought to mean; the `w1e`
+  spec review found the 2024 text that settles it, before any number the project
+  reports was computed the wrong way.
   Nobody re-argues this in a code review three years from now: the quotation is
   above and the worked example is in `engine/damage.py`.
 
