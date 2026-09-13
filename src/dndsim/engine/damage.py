@@ -81,16 +81,28 @@ behind it. Two properties decide it:
 
 What survives both is proportion: **an adjustment changes the size of the hit,
 not its composition.** Each type keeps its share of what is left, and the points
-that do not divide evenly go to the largest fractional remainders — the standard
-largest-remainder apportionment — with ties broken by the larger component and
-then by the damage type's name, so the result is determined by the numbers alone
-and never by a dict's or a set's iteration history.
+that do not divide evenly are handed out one at a time to whichever type is
+furthest from its share — Jefferson's method of apportionment (`_apportion()`),
+with ties broken by the larger component and then by the damage type's name, so
+the result is determined by the numbers alone and never by a dict's or a set's
+iteration history.
 
-The alternative considered and rejected was spending the whole adjustment against
-one component, largest first. One case kills it: 5 fire and 5 slashing under
-Uncanny Dodge would delete the fire outright and leave 5 slashing, which is not
-what happened to the creature and flips to the other type on a one-point change
-in either.
+**A third property picks the apportionment method, and it is the one that bites
+in a fight: more mitigation must never mean more damage taken.** Jefferson's
+method hands out the `n`th point without disturbing the first `n - 1`, so a
+larger reduction can only ever move the creature down. The largest-remainder
+method this was first written with does not — the Alabama paradox is exactly
+that failure — and on three types it is visible in the numbers rather than in a
+footnote: 1 fire beside 5 slashing and 5 cold, resisting the latter two, took 2
+damage through a 5-point reduction and 3 through a 6-point one, because the odd
+point moved off a resisted pile onto the unresisted one. `_apportion()` carries
+the case.
+
+The other alternative considered and rejected was spending the whole adjustment
+against one component, largest first. One case kills it: 5 fire and 5 slashing
+under Uncanny Dodge would delete the fire outright and leave 5 slashing, which is
+not what happened to the creature and flips to the other type on a one-point
+change in either.
 
 ## What the two numbers on `Mitigated` mean now
 
@@ -299,38 +311,50 @@ class Mitigated:
         return frozenset(t for t, amount in self.amounts.items() if amount > 0)
 
 
-def _apportion(
-    amounts: Mapping[DamageType, int], target: int, total: int
-) -> dict[DamageType, int]:
+def _apportion(amounts: Mapping[DamageType, int], target: int) -> dict[DamageType, int]:
     """Spread `target` back over the types in proportion to `amounts`.
 
     The mechanism behind the module docstring's ruling on untyped adjustments,
-    and it is only ever called when one of them changed the total. Largest
-    remainder: every type takes its floored share, and the points left over go
-    one each to the largest fractional remainders. The comparison is on
-    `share * total` rather than on a float, so the ordering is exact; the
-    tie-breaks after it are the larger component and then the type's name, which
-    are the only two keys available that do not encode the order the damage
-    parts happened to be added in.
+    and it is only ever called when one of them changed the total. Each point of
+    the adjusted hit goes to whichever type is furthest from its share — the one
+    maximising `amount / (points it already holds + 1)` — which is Jefferson's
+    method of apportionment. The comparison cross-multiplies rather than
+    dividing, so the ordering is exact.
+
+    **The method is chosen for one property and it is not an aesthetic one: the
+    allocation of `target` points is the allocation of `target - 1` points plus
+    one more.** So no type can lose a point when the hit grows, and — reading it
+    the other way, which is the direction that matters — a *larger* reduction can
+    never leave the creature taking *more* damage than a smaller one did. That
+    is not automatic. The largest-remainder method this started as fails it (the
+    Alabama paradox): on 1 fire, 5 slashing and 5 cold against a creature
+    resisting the latter two, a 5-point reduction landed 2 damage and a 6-point
+    reduction landed 3, because the odd point moved off the resisted piles and
+    onto the unresisted one. Three types are needed to see it, so no two-type
+    case in the contract tests could have.
+
+    Ties are settled by the larger component and then by the type's name, which
+    are the only two keys available that do not encode the order the damage parts
+    happened to be added in.
+
+    The loop is `target` passes over at most a handful of types. It runs only
+    when a ledger carried an untyped step *and* more than one type survived
+    immunity, which is neither the ordinary hit nor the hot path (w0i).
     """
-    if target <= 0 or total <= 0:
+    if target <= 0:
         return dict.fromkeys(amounts, 0)
     if len(amounts) == 1:
         return {damage_type: target for damage_type in amounts}
-    shares: dict[DamageType, int] = {}
-    remainders: list[tuple[int, int, str, DamageType]] = []
-    assigned = 0
-    for damage_type, amount in amounts.items():
-        scaled = amount * target
-        share = scaled // total
-        shares[damage_type] = share
-        assigned += share
-        remainders.append(
-            (scaled - share * total, amount, damage_type.value, damage_type)
-        )
-    remainders.sort(key=lambda row: (-row[0], -row[1], row[2]))
-    for _, _, _, damage_type in remainders[: target - assigned]:
-        shares[damage_type] += 1
+    order = sorted(amounts.items(), key=lambda item: (-item[1], item[0].value))
+    shares = dict.fromkeys(amounts, 0)
+    for _ in range(target):
+        best_type, best_amount = order[0]
+        best_divisor = shares[best_type] + 1
+        for damage_type, amount in order[1:]:
+            divisor = shares[damage_type] + 1
+            if amount * best_divisor > best_amount * divisor:
+                best_type, best_amount, best_divisor = damage_type, amount, divisor
+        shares[best_type] += 1
     return shares
 
 
@@ -383,7 +407,7 @@ def mitigate(
     for _ in ledger.halvings:
         adjusted //= 2
     if adjusted != total:
-        surviving = _apportion(surviving, adjusted, total)
+        surviving = _apportion(surviving, adjusted)
 
     # Resistance second and Vulnerability third, per type, per the quotation.
     landed: dict[DamageType, int] = {}

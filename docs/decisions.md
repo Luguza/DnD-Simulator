@@ -1447,13 +1447,33 @@ instance of damage nor an untyped reduction of one. Two properties decided it:
   impossible.
 
 What survives both is proportion: **an adjustment changes the size of the hit,
-not its composition.** Each surviving type keeps its share; the points that do
-not divide evenly go to the largest fractional remainders, ties broken by the
-larger component and then by the type's name. That is the standard
-largest-remainder apportionment, `_apportion()` is ten lines of it, and the
-comparison is on `share * total` rather than on a float so the ordering is exact.
+not its composition.** Each surviving type keeps its share, and the points that
+do not divide evenly are handed out one at a time to whichever type is furthest
+from its share, ties broken by the larger component and then by the type's name.
 
-The alternative was spending the whole adjustment against one component,
+**A third property picks *which* proportional method, and it was found by the
+review rather than by the design: more mitigation must never mean more damage
+taken.** `_apportion()` was first written as the largest-remainder method, which
+is the obvious one and is not house-monotone — the Alabama paradox is precisely
+that failure. It showed up in the fight, not in a footnote: 1 fire beside 5
+slashing and 5 cold against a creature resisting the latter two took **2** damage
+through a 5-point reduction and **3** through a 6-point one, because the odd
+point moved off a resisted pile onto the unresisted one (4 rather than 2 with the
+fire vulnerable). Jefferson's method has the property by construction — the
+allocation of `n` points is the allocation of `n - 1` plus one more, so no type
+can lose a point when the hit grows and no reduction can cost the creature
+damage. It is what `_apportion()` runs, the comparison cross-multiplies so the
+ordering is exact, and `test_more_mitigation_never_means_more_damage` carries the
+case plus the sweep either side of it.
+
+Three types are needed to see the paradox at all, which is why every two-type
+case in the contract file passed under both methods and why the one that catches
+it is written out with its arithmetic. The same review found the tie-break
+unpinned — the only case whose outcome it decides is a dead tie, and the test
+that had one fed the types in a single insertion order, so `damage_type.value`
+could be deleted with the suite green. That case now asserts both orders.
+
+The other alternative was spending the whole adjustment against one component,
 largest first. One case killed it: 5 fire and 5 slashing under Uncanny Dodge
 would delete the fire outright and leave 5 slashing — not what happened to the
 creature, and it flips to deleting the slashing on a one-point change in either.

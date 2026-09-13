@@ -68,6 +68,7 @@ SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 10))
 
 FIRE: Final = DamageType.FIRE
 SLASHING: Final = DamageType.SLASHING
+COLD: Final = DamageType.COLD
 PIERCING: Final = DamageType.PIERCING
 POISON: Final = DamageType.POISON
 
@@ -459,18 +460,63 @@ def test_the_whole_order_over_one_mixed_hit() -> None:
 def test_an_untyped_adjustment_is_spent_in_proportion() -> None:
     """**The ruling the reorder forced, pinned here.** An adjustment changes the
     size of the hit, not its composition, so 5 fire and 5 slashing under Uncanny
-    Dodge become 3 and 2 rather than 5 and 0. The odd point goes to the larger
-    remainder and, on a dead tie like this one, to the type whose name sorts
-    first — arbitrary, but fixed, which is the whole requirement.
+    Dodge become 3 and 2 rather than 5 and 0. The odd point goes to the type
+    furthest from its share and, on a dead tie like this one, to the type whose
+    name sorts first — arbitrary, but fixed, which is the whole requirement.
+
+    Asserted from **both** insertion orders, because this is the only shape of
+    case whose outcome the tie-break decides: with distinct remainders the sort
+    would land the same way without it, so a test that fed the types in one
+    order only would leave `damage_type.value` deletable and the suite green.
 
     The rejected alternative was spending the whole adjustment against the
     largest component: it would delete the fire outright here, and would flip to
     deleting the slashing on a one-point change in either."""
-    result = mitigate(
-        {FIRE: 5, SLASHING: 5}, ledger(halvings=["uncanny dodge"]), rng=no_dice()
-    )
-    assert dict(result.amounts) == {FIRE: 3, SLASHING: 2}
-    assert result.total == 5
+    halved = ledger(halvings=["uncanny dodge"])
+    forwards = mitigate({FIRE: 5, SLASHING: 5}, halved, rng=no_dice())
+    backwards = mitigate({SLASHING: 5, FIRE: 5}, halved, rng=no_dice())
+    assert dict(forwards.amounts) == {FIRE: 3, SLASHING: 2}
+    assert dict(backwards.amounts) == {FIRE: 3, SLASHING: 2}
+    assert forwards.total == backwards.total == 5
+
+
+def test_more_mitigation_never_means_more_damage() -> None:
+    """**The property that picked the apportionment method.** Jefferson's method
+    hands out the nth point without disturbing the first n-1, so a bigger
+    reduction can only ever move the creature down.
+
+    That is not automatic, and the case below is the one that caught it: 1 fire
+    beside 5 slashing and 5 cold, resisting the latter two. Under the
+    largest-remainder method this started as, a 5-point reduction landed 2 damage
+    and a 6-point reduction landed **3** — the odd point moved off a resisted
+    pile onto the unresisted one, and a point of extra mitigation cost the
+    creature a point of extra damage (with fire vulnerable instead of plain, 2
+    became 4). That is the Alabama paradox, it needs three types to show, and
+    no two-type case in this file could have caught it.
+    """
+    hit = {FIRE: 1, SLASHING: 5, COLD: 5}
+    resisted = [SLASHING, COLD]
+    five = mitigate(hit, ledger(resist=resisted, reductions=[(None, 5)]), rng=no_dice())
+    six = mitigate(hit, ledger(resist=resisted, reductions=[(None, 6)]), rng=no_dice())
+    assert dict(five.amounts) == dict(six.amounts) == {FIRE: 0, SLASHING: 1, COLD: 1}
+    assert five.total == six.total == 2
+
+    # The whole sweep, not just the pair the paradox happened to surface on —
+    # and the same sweep with fire vulnerable, which is where it cost double.
+    plain = [
+        mitigate(hit, ledger(resist=resisted, reductions=[(None, r)]), rng=no_dice())
+        for r in range(1, 12)
+    ]
+    doubled = [
+        mitigate(
+            hit,
+            ledger(resist=resisted, vulnerable=[FIRE], reductions=[(None, r)]),
+            rng=no_dice(),
+        )
+        for r in range(1, 12)
+    ]
+    assert [r.total for r in plain] == [4, 4, 4, 3, 2, 2, 2, 1, 0, 0, 0]
+    assert [r.total for r in doubled] == [4, 4, 4, 3, 2, 2, 2, 1, 0, 0, 0]
 
 
 def test_the_spend_does_not_depend_on_the_order_the_parts_arrived() -> None:
