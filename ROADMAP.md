@@ -216,7 +216,9 @@ is already in `docs/decisions.md`; what follows is the part that changes *the
 plan*.
 
 The wave produced twenty-two deliberate stand-ins and deferred obligations —
-seventeen from `w0a`-`w0i` and five more from `w0g3`; eighteen are still open.
+seventeen from `w0a`-`w0i` and five more from `w0g3`; seventeen of those are
+still open, and `w1e` added a twenty-third row of its own, so the table stands at
+eighteen.
 Every one of them was the right thing to write — a hostile spike needs real
 machinery now, not finished machinery later — and every one of them is invisible
 six months from now, when the file around it has grown and the paragraph
@@ -229,14 +231,14 @@ an agent will actually look. This table is the index, not the specification.
 **A row leaves the table when its task lands**, and the numbers of the rows left
 do not move — they are cited from code and from `docs/decisions.md`, and a
 register that renumbered itself would make every citation say something else.
-Retired so far: **#1, #2, #4 and #10 by `w1a`** (`docs/decisions.md` § w1a).
+Retired so far: **#1, #2, #4 and #10 by `w1a`** and **#7 by `w1e`**
+(`docs/decisions.md` § w1a, § w1e).
 
 | # | The stand-in or debt | Where | Retired by | What it costs if nobody does |
 |---|---|---|---|---|
 | 3 | `Weapon` carries `name` and nothing else | `hooks/contexts.py` | `w1f` | no feature can ask whether the weapon is Heavy — Great Weapon Master, and every mastery, is unwritable |
 | 5 | `_refuse_pending()` raises on a queued effect | `engine/damage.py` | `w1c` | every effect a handler applies is refused; the raise is the reminder |
 | 6 | `attack_once()` hand-sequences the attack | `tools/skeleton.py`, imported by `tools/spike.py` | `w1f` | a second attack order beside `engine/attack.py` — **and a benchmark that defends the budget on a sequence the project does not ship** |
-| 7 | Two inline rulings and one open question — **now checked: the flat-after-resistance ruling is wrong, flat-before-halving survives, the question is answered**; the code still resolves damage in `w0g2`'s order | `engine/damage.py`, restated in `hooks/contexts.py` and `tests/contract/test_damage.py` | `w1e` | every number a Heavy Armor Master, Uncanny Dodge or vulnerability build reports disagrees with the 2024 text — which is quoted in DESIGN.md § Structural prevention and in this row's task |
 | 8 | `on_reduced_to_zero` never fires; hit points clamp at 0 | `engine/damage.py` | `w1j` | nothing is ever dying, and Relentless Endurance has no moment to attach to |
 | 9 | `Size` reaches geometry nowhere | `core/geometry.py` | `w1d` | every Large creature is Medium — exact for W1–W3's combatants, silently wrong for the first ogre |
 | 11 | The `Gate` protocol has no contract test | `hooks/dispatch.py` | `w2e` | as above, for every gated handler |
@@ -251,6 +253,7 @@ Retired so far: **#1, #2, #4 and #10 by `w1a`** (`docs/decisions.md` § w1a).
 | 20 | `provokes=False` has no caller | `engine/triggers.py` | `w2b`, `w2c` | Disengage, forced movement and teleportation all provoke — the valve is there and nothing sets it |
 | 21 | No visibility gate on the offer | `engine/triggers.py` | `w2c`, needs `w1h` | the rule is "a creature **you can see** leaves your reach"; a Blinded or Invisible-adjacent creature takes opportunity attacks it cannot legally take. Exact while nothing is blind, wrong the first time something is |
 | 22 | No hook for *entering* reach | `hooks/definitions.py` | `w3f`, via `w3e` | 2024 Polearm Master is unwritable — the registry is closed at 39 and this was not the task to open it (same shape as #17) |
+| 23 | A reduction carries no damage type, so it is spent over every type that survived immunity | `hooks/contexts.py`, spent in `engine/damage.py` | `w3f`, via `w3e` | 2024 Heavy Armor Master reduces Bludgeoning, Piercing and Slashing only, and this one eats the fire half of a flame tongue's hit as readily as the slashing half. Exact while a hit carries one type, wrong the first time one carries two — and `w1e`'s reorder is what makes the spend decide *which* types shrink |
 
 ### What else the review changed
 

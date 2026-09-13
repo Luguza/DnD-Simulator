@@ -470,21 +470,25 @@ asserting the first.
   the *pure* resolution order over a `MitigationLedger`, so `w1e` can pin every
   step with a table of cases and no fight around it; `resolve_damage()` is the
   event — dispatch, apply, hit points.
-- **Vulnerability before resistance is load-bearing arithmetic.** `(2n) // 2 ==
-  n` for every integer, so that order *is* the rule that resistance and
-  vulnerability to the same type cancel, with no special case written. The
-  reverse order loses a point on every odd number.
+- **Vulnerability before resistance is load-bearing arithmetic** — *overturned
+  by `w1e`; see § w1e.* `(2n) // 2 == n` for every integer, so that order *is*
+  the rule that resistance and vulnerability to the same type cancel, with no
+  special case written. The reverse order loses a point on every odd number. The
+  2024 text orders resistance first regardless, and losing that point is the
+  book's answer.
 - **Two steps are rulings, not quotations, and `damage.py` says so inline**
   (DESIGN.md asks for exactly this): flat reductions apply *after* resistance,
   and halvings apply *after* the flat reductions. Each changes every number a
-  build with Heavy Armor Master or Uncanny Dodge reports. `w1e` owns confirming
-  them against the 2024 text; nobody re-litigates them in a review without
-  reading the argument that is written there.
+  build with Heavy Armor Master or Uncanny Dodge reports. `w1e` owned confirming
+  them against the 2024 text and **found the first one wrong** — adjustments
+  precede Resistance — while the second survives inside the adjustment step it
+  moved into. § w1e has both arguments in their final form.
 - **Reductions and halvings act on the total, not per type** — Heavy Armor
   Master reduces *the damage*, not the fire part of it — which is why
   `Mitigated` carries both the per-type picture after the typed steps and the
-  one total after the untyped ones. `on_damage_taken` gets that total plus the
-  surviving types, exactly as its context is shaped.
+  one total after the untyped ones. *`w1e` inverted this*: with the untyped
+  steps first, the total has to be spread back over the types in proportion, and
+  the two numbers agree from there on.
 - **A veto on `on_incoming_damage` means zero damage**, checked in
   `resolve_damage()` rather than modelled as one more kind of mitigation: the
   Chain of Responsibility element is about whether the event happens at all.
@@ -497,8 +501,8 @@ asserting the first.
 - **Halvings stack where resistances do not.** `_resist` is a set because the
   rules say multiple instances of resistance count once; `_halvings` is a list
   because no rule says the same of two features that halve, and Uncanny Dodge on
-  top of Rage quartering a hit is the known-correct answer. `w1e` owns
-  confirming that against the 2024 text.
+  top of Rage quartering a hit is the known-correct answer. *`w1e` confirmed it*:
+  the "counts once" clause names Resistance, and a halving is not Resistance.
 - **A reduction's dice come out of the caller's `rng`**, after the attacker's
   damage dice in the same stream, so `w1f` must hand `mitigate()` the generator
   the attack is using. A second generator reproduces a different fight from the
@@ -1380,3 +1384,121 @@ baseline whose one fixture change has been priced.
   the stealth penalty, because a combat simulator has no stealth check and the
   speed penalty needs the effect machinery `w1c` builds. `w2a` imports both
   fields and the first feature that needs them is where they land.
+
+## w1e — the damage resolution order, against the 2024 text
+
+The spec review that produced `w1e`'s row (PR #23) found the XPHB sentence that
+settles the order and overturned one of `w0g2`'s two rulings with it. This task
+is that finding turned into arithmetic. What follows is what the reorder decided
+beyond the reorder itself.
+
+### One quotation, one surviving ruling, one question answered
+
+- **Adjustments, then Resistance, then Vulnerability is quoted, not ruled**:
+  *"Modifiers to damage are applied in the following order: adjustments such as
+  bonuses, penalties, or multipliers are applied first; Resistance is applied
+  second; and Vulnerability is applied third"* (XPHB, "Damage and Healing"). A
+  flat reduction is a penalty and a halving is a multiplier, so Heavy Armor
+  Master and Uncanny Dodge both land in the first band. The book ships its own
+  worked example — 28 fire, reduced by 5 to 23, halved to 11, doubled to 22 —
+  and it is the first case in `tests/contract/test_damage.py`, which is the one
+  assertion in that file that is not an argument.
+- **`w0g2`'s flat-after-resistance ruling is gone and its argument with it.**
+  That ruling reasoned that "the damage you take" is what arrives past your
+  resistances, and noticed — correctly — that the consequence of the other order
+  is a reduction worth half to the creature that also invested in resistance.
+  The consequence is real and the book orders it that way anyway. A feature
+  reading how it ought to work is not a rule.
+- **Flat-before-halving survives, and its argument moved rather than changed.**
+  The text bundles penalties and multipliers into one band without sequencing
+  them against each other, so this pair is the project's to fix: `(20 - 4) // 2
+  = 8` rather than `20 // 2 - 4 = 6`, because halving last is what stops two
+  mitigation features being worth more together than the sum of their parts.
+  What changed is what the citation argues *against* — it used to argue against
+  resistance, and now argues inside a step the text draws a box around.
+- **Immunity leads, and that is load-bearing rather than tidy.** The adjustments
+  subtract from *the damage you take*, and damage you are immune to is not
+  damage you take. Immunity placed any later would let a reduction be spent on
+  the half of a mixed hit that was never going to land — 10 fire and 10 poison
+  against a poison-immune creature with a -4 would leak 8 fire instead of 6.
+- **The open question is answered from the text, not from silence.** The "counts
+  once" clause names *Resistance*; a halving is not Resistance; so two halvings
+  halve twice and `_halvings` stays a list against the three sets. `w0g2` argued
+  this by analogy and said so; it is now a reading of the clause.
+
+### How an untyped adjustment is spent, which is the reorder's own question
+
+Putting the untyped steps first creates a problem the old order did not have:
+adjustments act on one number, Resistance and Vulnerability act per type, and
+the order now needs a per-type picture on the far side of a step that has none.
+No sentence in the book covers it — the rules contemplate neither a mixed-type
+instance of damage nor an untyped reduction of one. Two properties decided it:
+
+- **The spend may not consult the steps that follow it.** Spending the reduction
+  on whatever is not resisted is the better play and is exactly what the
+  quotation forbids: an adjustment applied *first* cannot know what Resistance
+  will do with what it leaves. A look-ahead rule would keep the sequencing in
+  form and invert it in fact — which is the failure the whole reorder exists to
+  fix, wearing the fix's own clothes.
+- **It may not depend on the order the damage parts arrived.** That order is an
+  authoring artefact — Sneak Attack appends after the dagger — and a reported
+  number that moved when a feature registered earlier is a reproducibility break
+  with no error anywhere, which is the class of bug `core/rng.py` exists to make
+  impossible.
+
+What survives both is proportion: **an adjustment changes the size of the hit,
+not its composition.** Each surviving type keeps its share; the points that do
+not divide evenly go to the largest fractional remainders, ties broken by the
+larger component and then by the type's name. That is the standard
+largest-remainder apportionment, `_apportion()` is ten lines of it, and the
+comparison is on `share * total` rather than on a float so the ordering is exact.
+
+The alternative was spending the whole adjustment against one component,
+largest first. One case killed it: 5 fire and 5 slashing under Uncanny Dodge
+would delete the fire outright and leave 5 slashing — not what happened to the
+creature, and it flips to deleting the slashing on a one-point change in either.
+
+### What inverted on `Mitigated`
+
+`w0g2` had `total` and `sum(amounts.values())` deliberately disagree, with the
+module saying in as many words that there was "no honest way to spread the
+subtraction back over the types". Under the old order that was true, because the
+untyped steps ran last. Under this one the typed steps run last, the
+apportionment above *is* that honest way, and the two agree — `total` is the sum
+of `amounts`, floored at zero, and the floor is the only thing that can separate
+them. Two consequences worth naming because both look like regressions:
+
+- **`types` can now lose a type to an untyped step.** Half of one point of fire
+  is no fire, and a reduction that ate the whole hit ate every type in it. The
+  report is what the creature *took*, which is the question `on_damage_taken`
+  and the log are both asking, so this is the honest answer and not a lost one.
+- **The `untouched` fast path still skips every step and still clamps.** The
+  clamp is the one step of the sequence that is not the identity on an empty
+  ledger (DESIGN.md names this failure mode, and `w0i` found it twice), so the
+  shortcut keeps it and the contract test that pins it is unchanged.
+
+### What this task deliberately did not do
+
+- **Reductions are still untyped.** 2024 Heavy Armor Master reduces
+  Bludgeoning, Piercing and Slashing only, and `ctx.reduce()` takes no damage
+  type, so its reduction is spent over every surviving type in a mixed hit. The
+  reorder did not create that gap — `w0g2` spent the reduction over the total
+  too — but it makes it visible, because the spend now decides *which* types
+  shrink. Nothing in W1–W3 writes a reduction feature, and typing one is a
+  `hooks/contexts.py` signature change that belongs with the rest of the paper
+  pass's structural findings. It is **debt register #23**, retired by `w3f` via
+  `w3e`, rather than guessed at here.
+- **No log records, no dying, no effects.** `w0g2`'s module docstring claimed
+  `w1e` would bring all three; it was written before those tasks had rows. The
+  log is `w1i`, dying is `w1j`, and draining a queued effect is `w1c` — which
+  still owns deleting `_refuse_pending()` and its two tests. The stale sentence
+  is corrected rather than honoured.
+- **The benchmark was measured, not assumed.** `mitigate()` is on the hot path
+  and the apportionment is new work on it, so the spike was run both ways on the
+  same container: 26,267/sec before the change and 26,649/sec after, inside a
+  ±10% run-to-run spread. Both are under the 30k budget because this container is
+  slower than the one `w0i` measured ~31.5k on — the number moves with the box,
+  which is why `w3i` gates on a same-run baseline. The apportionment costs
+  nothing in practice because it runs only when a ledger has an untyped step
+  *and* more than one type survived immunity, and the spike's hot path takes the
+  `untouched` shortcut.
