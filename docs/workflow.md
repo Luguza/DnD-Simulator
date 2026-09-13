@@ -74,10 +74,33 @@ milestone.
 
 - **Fast path.** On merging, the session creates the next session with the same
   `/next-task` prompt, tagged `dnd-task`, then archives itself.
-- **Watchdog.** An hourly Routine starts a task session only if the queue has a
-  `next` row, no `claude/task-*` PR is open, and no `dnd-task` session is live.
-  It is what makes the chain survive a session dying mid-task; the three
-  conditions are what stop it double-starting one.
+- **Watchdog.** An hourly Routine that starts a task session only when three
+  things hold at once: the queue has a `next` row, no `claude/task-*` PR is
+  open, and nothing is `held`. It is what makes the chain survive a session
+  dying mid-task; the three conditions are what stop it double-starting one.
+
+  **Set it up from the claude.ai Routines UI**, not from a session — a Routine
+  created through the MCP tool stores no connector grants, and its fired
+  sessions would come up without the GitHub and session tools all three checks
+  need. Hourly, new session per firing, push notifications on, this repository
+  as the source, with this prompt:
+
+  ```text
+  Watchdog for the DnD-Simulator task loop. Be brief and cheap: make the three
+  checks below and nothing else. Do not read DESIGN.md, ROADMAP.md or
+  docs/decisions.md.
+
+  1. Read docs/progress.md on main. If it does not exist there, stop silently.
+  2. Find the row whose status is `next`. If there is none, or it is a ⏸ row,
+     or any row is `held`: stop, notifying the user in one sentence only for a
+     ⏸ or `held` row.
+  3. If a pull request with a `claude/task-*` head branch is open, stop
+     silently — a task is in flight. Exception: if its last activity is over
+     two hours old, say so in one sentence naming the PR and what it waits on.
+
+  Only if all three pass: create a session with the prompt `/next-task`, tagged
+  ["dnd-task"], titled with the task id, and stop. Never do the task yourself.
+  ```
 
 Neither path ever passes a `⏸` row or a `held` row.
 
