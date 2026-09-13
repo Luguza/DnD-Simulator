@@ -320,14 +320,37 @@ work that would otherwise be procedural code an author could misplace:
   idempotent, so ordering cannot matter.
 - **Resistance.** `_resist` is a `set`, so a type can't be resisted twice.
 - **Damage resolution order** lives in exactly one file, `engine/damage.py` — a
-  **Policy object owned by the engine, not by features**: immunity →
-  vulnerability → resistance → flat reductions → halvings (Uncanny Dodge) →
-  temp HP → HP. Documented verbatim in the skill doc. Two of those steps are
-  *rulings* rather than quotations — flat reductions applying after resistance,
-  and Uncanny Dodge's halving applying after the flat reduction — so
-  `engine/damage.py` carries the citation for each inline. Both change every
-  reported number, and neither should be re-argued in a code review three years
-  from now with no record of what was decided.
+  **Policy object owned by the engine, not by features**: immunity → flat
+  reductions → halvings (Uncanny Dodge) → resistance → vulnerability → temp HP →
+  HP. Documented verbatim in the skill doc. The middle of that sequence is a
+  **quotation, not a ruling**: *"Modifiers to damage are applied in the following
+  order: adjustments such as bonuses, penalties, or multipliers are applied
+  first; Resistance is applied second; and Vulnerability is applied third"*
+  (XPHB, "Damage and Healing"), with the book's own worked example — 28 fire
+  damage, reduced by 5 to 23, halved by Resistance to 11, doubled by
+  Vulnerability to 22. A flat reduction and a halving are both *adjustments*, so
+  both land in that first step. **One ruling survives** — the order between the
+  two of them, which the text bundles into one step without sequencing — and
+  `engine/damage.py` carries its citation inline.
+- **Two consequences of that order, because both read as bugs otherwise.**
+  Resistance and Vulnerability to the same type no longer cancel exactly: 7
+  damage halves to 3 and doubles to 6, and the missing point is the book's
+  answer rather than a rounding slip. And a flat reduction is worth **half** to a
+  creature with resistance what it is worth to one without, because it is
+  subtracted from the full amount and then halved along with it: against 20
+  damage, a 4-point reduction saves an unresisting creature 4 and a resisting one
+  2. That second consequence is the one `w0g2` saw coming and ruled against —
+  `engine/damage.py` argues in as many words that subtracting first "makes a
+  defensive feature worth *less* to the creature that invested in resistance,
+  which is the opposite of how both features read". It does, and the book orders
+  it that way regardless; a feature reading how it ought to work is not a rule.
+  `w0g2` placed both of those steps the other way round — vulnerability before
+  resistance, and the reduction after it — reasoning from `(2n) // 2 == n` and
+  from what "the damage you take" ought to mean; the `w1e`
+  spec review found the 2024 text that settles it, before any number the project
+  reports was computed the wrong way.
+  Nobody re-argues this in a code review three years from now: the quotation is
+  above and the worked example is in `engine/damage.py`.
 
 This is *"make illegal states unrepresentable"* rather than *"test for illegal
 states"*. Every rule made structural is one that never needs a test — the

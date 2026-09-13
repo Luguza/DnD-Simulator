@@ -115,8 +115,10 @@ authors cannot make the common mistakes:
 - Advantage is a collection of sources appended via `grant_advantage()`, never a
   boolean — so it is idempotent and order-independent.
 - Damage resolution order lives in exactly one file, `engine/damage.py`:
-  immunity → vulnerability → resistance → flat reductions → halvings → temp HP →
-  HP.
+  immunity → flat reductions → halvings → resistance → vulnerability → temp HP →
+  HP. The adjustments-then-resistance-then-vulnerability run is quoted from the
+  XPHB, not a house ruling; resistance and vulnerability therefore do **not**
+  cancel exactly on odd damage.
 - Contexts are attribute-locked Parameter Objects. Features call mutators
   (`ctx.damage.add(...)`, `ctx.apply_effect(...)`); direct field assignment
   raises.
