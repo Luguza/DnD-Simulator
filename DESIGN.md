@@ -344,8 +344,9 @@ work that would otherwise be procedural code an author could misplace:
   defensive feature worth *less* to the creature that invested in resistance,
   which is the opposite of how both features read". It does, and the book orders
   it that way regardless; a feature reading how it ought to work is not a rule.
-  `w0g2` wrote this order the other way round on both counts, reasoning from
-  `(2n) // 2 == n` and from what "the damage you take" ought to mean; the `w1e`
+  `w0g2` placed both of those steps the other way round — vulnerability before
+  resistance, and the reduction after it — reasoning from `(2n) // 2 == n` and
+  from what "the damage you take" ought to mean; the `w1e`
   spec review found the 2024 text that settles it, before any number the project
   reports was computed the wrong way.
   Nobody re-argues this in a code review three years from now: the quotation is
