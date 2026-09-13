@@ -60,10 +60,13 @@ the quoted adjustment step, and answers the open question about two halvings
 from the "counts once" clause. The reorder's own question is the one to know
 before touching this file: **the untyped steps now run before the typed ones, so
 an untyped adjustment is spent across a mixed-type hit in proportion** — never
-by looking ahead to which types are resisted, and never in the order the damage
-parts arrived. `Mitigated.total` is therefore the sum of `Mitigated.amounts`
-again, where `w0g2` had the two deliberately disagree. `docs/decisions.md` § w1e
-has the arguments; it retires debt-register row #7 and opens #23.
+by looking ahead to which types are resisted, never in the order the damage
+parts arrived, and by a method that cannot let a larger reduction land more
+damage. `Mitigated.total` is therefore the sum of `Mitigated.amounts` again,
+where `w0g2` had the two deliberately disagree. `docs/decisions.md` § w1e has
+the arguments; it retires debt-register row #7 and opens #23. Its review is also
+the project's clearest case that **a citation's reasoning is load-bearing like
+code**: five rounds, every finding in the prose, none in the arithmetic.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
