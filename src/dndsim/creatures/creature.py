@@ -42,6 +42,7 @@ the two numbers and the guarantee that they are the creature's own.
 Sources: DESIGN.md § Hook system, § Levers; ROADMAP w0g2, w1a.
 """
 
+from collections.abc import Mapping
 from typing import Final
 
 from dndsim.core.geometry import Cell
@@ -90,6 +91,8 @@ class Creature:
         "__weakref__",
         "_armour",
         "_armour_class",
+        "_modifiers",
+        "_proficiency_bonus",
         "_shield",
         "_stats",
         "crit_threshold",
@@ -97,10 +100,8 @@ class Creature:
         "economy",
         "hp",
         "initiative",
-        "modifiers",
         "name",
         "position",
-        "proficiency_bonus",
         "temp_hp",
         "weapon",
     )
@@ -132,11 +133,13 @@ class Creature:
         self.hp = stats.max_hp
         self.temp_hp = 0
         # Read off the stat block once. Both are pure functions of a frozen
-        # object, the attack pipeline reads them three times per resolution, and
-        # `stats` is read-only below so that neither can go stale (w0i measured
-        # recomputing them at ~1.5% of the budget).
-        self.modifiers = stats.modifiers
-        self.proficiency_bonus = stats.proficiency_bonus
+        # object and the attack pipeline reads them three times per resolution
+        # (w0i measured recomputing them at ~1.5% of the budget). Both are
+        # private, and read back through properties with no setter, because a
+        # cache anybody can write to is a cache that says what the creature used
+        # to be — which is the same reason `stats` is read-only.
+        self._modifiers = stats.modifiers
+        self._proficiency_bonus = stats.proficiency_bonus
         # Where this creature's attacks start critting. A derived stat rather
         # than a constant the attack reads, because Improved Critical lowers
         # the *character's* threshold to 19 and nothing about one attack roll
@@ -153,12 +156,24 @@ class Creature:
     def stats(self) -> StatBlock:
         """The frozen numbers this creature was built from.
 
-        Read-only rather than a plain field: `modifiers`, `proficiency_bonus`
-        and the derived AC are read off it once at construction, so a stat block
-        swapped in afterwards would leave three numbers describing the creature
-        this one used to be. A creature whose build changed is a new creature.
+        Read-only, like the three numbers derived from it — `modifiers`,
+        `proficiency_bonus` and the AC. A stat block swapped in afterwards would
+        leave all three describing the creature this one used to be, and a
+        creature whose build changed is a new creature rather than a mutated
+        one.
         """
         return self._stats
+
+    @property
+    def modifiers(self) -> Mapping[Ability, int]:
+        """Every ability modifier, settled at construction. A read-only view of
+        the stat block's own mapping, so neither the creature nor a feature can
+        write one."""
+        return self._modifiers
+
+    @property
+    def proficiency_bonus(self) -> int:
+        return self._proficiency_bonus
 
     @property
     def max_hp(self) -> int:
@@ -174,7 +189,7 @@ class Creature:
 
     def modifier(self, ability: Ability) -> int:
         """The modifier for one ability score."""
-        return self.modifiers[ability]
+        return self._modifiers[ability]
 
     # -- what it is wearing, and the AC that follows ---------------------------
 

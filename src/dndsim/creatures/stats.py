@@ -236,11 +236,16 @@ class Armour:
     def unarmoured(cls, *also: Ability, name: str = "Unarmoured") -> "Armour":
         """No armour: 10 plus the Dexterity modifier.
 
-        Every Unarmored Defense variant is this with one more modifier added
-        and nothing else changed — the Barbarian's adds Constitution, the Monk's
-        adds Wisdom — so the class feature (W4) equips one of these rather than
-        reaching into an AC calculation that would then have to know about
-        classes.
+        Every Unarmored Defense variant is this with one more modifier added —
+        the Barbarian's adds Constitution, the Monk's adds Wisdom — so the class
+        feature (W4) equips one of these rather than reaching into an AC
+        calculation that would then have to know about classes.
+
+        What this shape does *not* carry is who may also hold a Shield: the
+        Barbarian's works with one and the Monk's does not. That is a legality
+        rule about a build rather than an arithmetic one about an AC, so it
+        belongs to `builds/schema.py` (w2f) beside every other "this class may
+        not take that"; nothing here can express it and nothing here should.
         """
         return cls(
             name=name,

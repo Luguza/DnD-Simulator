@@ -158,11 +158,17 @@ class Combatant(Protocol):
     **The three hit-point numbers are `w1a`'s widening**, and they are one
     promise rather than three: what `engine/damage.py` spends, in the order it
     spends it. Without them no `on_hit` handler could ask whether its target is
-    bloodied — `w0i`'s own rider had to interrogate the damage bag instead and
-    say so in a paragraph — and "when the target is below half its hit points"
-    is a condition dozens of the ~630 features are written around. `temp_hp` is
-    in because leaving it out would make a creature at full hit points behind 20
-    temporary ones read as untouched, which is the opposite of the truth.
+    Bloodied — `w0i`'s own rider had to interrogate the damage bag instead and
+    say so in a paragraph — and "half its hit points or fewer" is a condition
+    dozens of the ~630 features are written around. `temp_hp` is here because it
+    is the first thing a hit is spent against, so a handler asking what its
+    damage will actually remove needs it.
+
+    **The two are not added together.** Bloodied is `hp * 2 <= max_hp`, hit
+    points alone: temporary hit points are a buffer in front of hit points and
+    are not hit points (XPHB, Rules Glossary). The sum is the pool a hit comes
+    out of; it is not the creature's hit points, and the reason both are exposed
+    is that features need to ask each question separately.
 
     **What is still deliberately absent is as load-bearing as what is here.**
     No Armor Class: what reads a target's AC is a policy decision, and the APL

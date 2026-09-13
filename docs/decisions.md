@@ -1234,8 +1234,12 @@ read, three times per resolution — ~1.5% of the budget (§ w0i). Both are pure
 functions of a frozen stat block, so both are settled in `StatBlock.__post_init__`
 and read off the creature as plain slots.
 
-A cache is only worth having if it cannot lie, and there were two ways for this
-one to:
+Both are private and read back through properties with no setter, for the same
+reason `stats` is: a cache anybody can assign to is a cache that says what the
+creature used to be.
+
+A cache is only worth having if it cannot lie, and there were two further ways
+for this one to:
 
 - **The caller keeps the ability dict.** `StatBlock` now copies the scores
   behind a `MappingProxyType` before deriving anything from them, so a caller
@@ -1308,15 +1312,50 @@ rather than through an event's view of it; and **`is_alive`**, because dying is
 does not exist. `w3e`'s paper pass confirms the shape before ~400 features are
 written against it.
 
+### The bloodied rider, which was never the rider it said it was
+
+Widening the protocol let `w0i`'s fixture ask the question it was named for, and
+asking it turned up two things worth recording.
+
+**Bloodied is hit points alone.** The first cut of the rewritten rider asked
+`(hp + temp_hp) * 2 > max_hp`, which is wrong: temporary hit points are a buffer
+in front of hit points and are not hit points (XPHB, Rules Glossary), so a
+creature at 30 of 100 behind 21 temporary ones is Bloodied and that predicate
+says it is not. It changed no number here — nothing in the spike has temporary
+hit points — which is exactly why it was worth catching now rather than in W4,
+when it would have been copied into every feature written against a target's
+pool. Both numbers stay on the protocol because they answer different questions:
+`hp` against `max_hp` is Bloodied, and `hp + temp_hp` is the pool the next hit
+comes out of.
+
+**The old fixture applied on every hit.** Counted over twenty encounters from
+seed 0: the four riders ahead of it in the order each apply on all 287 hits, so
+the bag was never shorter than four and `len(ctx.damage) < 3` was never true.
+The rider that the file's own docstring called "the sometimes-true rider" was a
+constant, and nothing was watching. It now applies on 104 of those 287 — the
+first version of it that is what it claims. That is `w3i`'s lesson arriving from
+the other direction: a benchmark must witness its own fixtures, and "sometimes
+true" is a claim to be counted rather than asserted in prose.
+
 ### What this cost the benchmark
 
-Nothing measurable. Interleaved runs of `dndsim.tools.spike` against the same
-container, alternating the W0 tree and this one, put the median at ~33.0k before
-and ~34.5k after — but run-to-run spread on this machine is ±10%, which is wider
-than the difference, so the honest claim is **no regression**, not a gain. The
-cache removes three function calls per resolution and the widened rider adds two
-attribute reads; both are small, and `w1k` is the task that measures W1's per-
-round cost properly.
+Nothing measurable, and that was checked rather than assumed — because a rider
+that stopped applying on 64% of hits is precisely the shape of a benchmark
+getting faster by doing less work.
+
+- **The rider's applies-rate is worth nothing at this resolution.** Seven
+  measurements of each, interleaved in one process, honest predicate against the
+  same fixture forced back to always-applying: medians **37.7k** and **37.3k** —
+  a difference in the wrong direction and an order of magnitude inside the
+  noise. One `damage.add(flat=2)` out of ~20 handler calls and nine dispatches
+  per resolution does not show up.
+- **The wave's own change is the same story.** Interleaved runs of the W0 tree
+  against this one put the medians at ~33.0k and ~34.5k. Run-to-run spread on
+  this container is ±10%, wider than the gap, so the honest claim is **no
+  regression** rather than a gain.
+
+`w1k` is the task that measures W1's per-round cost properly, and it inherits a
+baseline whose one fixture change has been priced.
 
 ### What w1a deliberately did not do
 
@@ -1329,6 +1368,13 @@ round cost properly.
   written by hand are in `tools/spike.py` and `tools/skeleton.py`, where they
   hold the AC those benchmarks have always run against — fixtures, not domain
   constants, and neither is a second `GREATSWORD`.
+- **No movement accounting in the spike.** `turn_started()` now hands the hero
+  30 feet it never spends: the benchmark's `_step` walks the grid without asking
+  the economy, because charging movement per square is the turn loop's job and
+  `w2c` owes that measurement. Handing out a budget nobody draws on costs one
+  store per turn and measures nothing — which is worth saying plainly, since the
+  per-step economy call `w2c` will add is a cost this number still does not
+  include.
 - **No speed modifiers.** Heavy armour's Strength requirement costs 10 feet of
   speed, and nothing here reads it: `Armour` carries neither the requirement nor
   the stealth penalty, because a combat simulator has no stealth check and the

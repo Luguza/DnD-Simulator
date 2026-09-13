@@ -233,7 +233,11 @@ class BloodiedBonus(Fixture):
     @hook("on_hit")
     def bloodied(self, ctx: HitContext) -> R:
         defender = ctx.defender
-        if (defender.hp + defender.temp_hp) * 2 > defender.max_hp:
+        # Hit points only. A creature is Bloodied while it has half its hit
+        # points or fewer, and temporary hit points are not hit points — they
+        # are a buffer in front of them (XPHB, Rules Glossary). Adding the two
+        # would read a creature at 30 of 100 behind 21 temporary as unhurt.
+        if defender.hp * 2 > defender.max_hp:
             return R.SKIPPED
         ctx.damage.add(flat=2)
         return R.APPLIED

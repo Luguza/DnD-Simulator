@@ -113,20 +113,27 @@ def test_a_creature_is_the_combatant_a_context_carries() -> None:
 
 
 def test_the_defenders_hit_points_are_readable_from_inside_an_event() -> None:
-    """w1a's widening, and the reason for it: "when the target is below half its
-    hit points" is a condition dozens of features are written around, and
-    through W0 no `on_hit` handler could ask it — `w0i`'s own bloodied rider had
-    to interrogate the damage bag instead (ROADMAP § The W0 debt register, #2).
+    """w1a's widening, and the reason for it: "half its hit points or fewer" is
+    a condition dozens of features are written around, and through W0 no
+    `on_hit` handler could ask it — `w0i`'s own bloodied rider had to
+    interrogate the damage bag instead (ROADMAP § The W0 debt register, #2).
     The three numbers are one promise: what `engine/damage.py` spends, in the
-    order it spends it — and all three are readable and none writable, because a
+    order it spends it, each declared read-only on the protocol, because a
     handler that could set hit points would be a second place the resolution
-    order lives."""
+    order lives.
+
+    **Bloodied is hit points alone.** Temporary hit points are a buffer in front
+    of hit points rather than hit points (XPHB, Rules Glossary), so a creature
+    at 11 of 30 is Bloodied whatever temporary pool is stacked on top of it.
+    The sum of the two is the pool the *next hit* comes out of, which is a
+    different question and the reason both numbers are exposed."""
     wounded = creature(max_hp=30)
     wounded.hp = 11
     wounded.temp_hp = 4
 
     defender: Combatant = wounded
-    assert (defender.hp + defender.temp_hp) * 2 <= defender.max_hp
+    assert defender.hp * 2 <= defender.max_hp, "Bloodied at 11 of 30"
+    assert defender.hp + defender.temp_hp == 15, "the pool a hit is spent from"
 
 
 def test_a_real_weapon_is_the_weapon_a_context_carries() -> None:

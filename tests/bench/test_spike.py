@@ -163,7 +163,7 @@ def test_the_riders_that_should_land_do_land() -> None:
         "rage_damage.rage",  # state-dependent
         "frenzy_dice.frenzy",  # state-dependent
         "sneak_attack.sneak",  # once per turn and state-dependent
-        "bloodied_bonus.bloodied",  # conditional on the bag
+        "bloodied_bonus.bloodied",  # conditional on the target being Bloodied
         "vex_spender.spend",  # conditional on the roll
         "uncanny_dodge.dodge",  # gated *and* costed — the victim's side
     ):
