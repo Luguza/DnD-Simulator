@@ -959,15 +959,17 @@ class D20TestContext(Context):
 class MitigationLedger(_Bag):
     """Everything a victim's handlers did to incoming damage before it landed.
 
-    A ledger rather than an arithmetic result because `engine/damage.py` (w1e)
-    owns the resolution order — immunity → vulnerability → resistance → flat
-    reductions → halvings → temp HP → HP — and a context that pre-applied any
-    of it would be a second place that order is written.
+    A ledger rather than an arithmetic result because `engine/damage.py` owns
+    the resolution order — immunity → flat reductions → halvings → resistance →
+    vulnerability → temp HP → HP — and a context that pre-applied any of it
+    would be a second place that order is written.
 
     The three type collections are **sets**, which is the third piece of
     structural prevention (DESIGN.md): a damage type cannot be resisted twice,
     so two features granting fire resistance halve the damage once, and neither
-    author has to know the other exists.
+    author has to know the other exists. `_halvings` is a **list** against them
+    on purpose: the "counts once" clause names Resistance, and a halving is not
+    Resistance, so two of them halve twice.
     """
 
     __slots__ = ("_halvings", "_immune", "_reductions", "_resist", "_vulnerable")
@@ -1265,10 +1267,10 @@ class IncomingDamageContext(Context):
     """`on_incoming_damage` — TARGET: the victim's one chance to change it.
 
     Everything a handler does here is recorded, never applied: `engine/damage.py`
-    (w1e) runs the single resolution order over the ledger afterwards. Uncanny
-    Dodge halves, Heavy Armor Master reduces, Rage resists — and the order those
-    three interact in is a decision made once, in one file, with the ruling for
-    each non-quoted step cited inline.
+    runs the single resolution order over the ledger afterwards. Uncanny Dodge
+    halves, Heavy Armor Master reduces, Rage resists — and the order those three
+    interact in is a decision made once, in one file, quoted from the 2024 text
+    with its one remaining ruling argued inline.
 
     The damage arrives here **rolled**, as an amount per type, rather than as
     the `DamageBag` the attacker built. The dice were thrown at `on_damage_roll`
@@ -1296,11 +1298,14 @@ class IncomingDamageContext(Context):
         self._mitigation.vulnerable(damage_type)
 
     def reduce(self, *, dice: str | Dice | None = None, flat: int = 0) -> Modifier:
-        """Subtract a flat amount after resistance (Heavy Armor Master)."""
+        """Subtract a flat amount from the hit, before resistance and
+        vulnerability (Heavy Armor Master). Untyped: it is spent over every type
+        that survived immunity, in proportion."""
         return self._mitigation.reduce(dice, flat)
 
     def halve(self, reason: str) -> None:
-        """Halve what is left after the reductions (Uncanny Dodge)."""
+        """Halve what the reductions left, still before resistance and
+        vulnerability (Uncanny Dodge)."""
         self._mitigation.halve(reason)
 
     @property
