@@ -27,9 +27,9 @@ the two levers deliberately not taken. **W1 is under way.**
 The plans were then re-read against what the wave measured
 (`docs/decisions.md` § The W0 plan review). Two things came out of it that
 matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
-first cuts and deferred obligations W0 left behind — eighteen of the
-twenty-two still open — and the task that retires each; check it for the file
-you are about to touch. And **`w1k` is a
+first cuts and deferred obligations W0 left behind — eighteen rows open, of
+which seventeen are W0's and one is `w1e`'s — and the task that retires each;
+check it for the file you are about to touch. And **`w1k` is a
 new task**, an M0 re-measure at the end of W1, because the measured ~31.5k has
 5% of headroom and W1 adds the per-round cost the spike does not model.
 
@@ -51,6 +51,22 @@ its target is bloodied. Derived stats (`modifiers`, `proficiency_bonus`,
 `crit_threshold`) are settled at construction and `Creature.stats` is read-only
 so they cannot go stale. `docs/decisions.md` § w1a has the reasoning; it retires
 debt-register rows #1, #2, #4 and #10.
+
+Then `w1e` **completed `engine/damage.py`**, and it moves numbers rather than
+files: the resolution order is now the 2024 text's — immunity → flat reductions
+→ halvings → resistance → vulnerability → temp HP → HP — which overturns
+`w0g2`'s flat-after-resistance ruling, keeps its flat-before-halving one inside
+the quoted adjustment step, and answers the open question about two halvings
+from the "counts once" clause. The reorder's own question is the one to know
+before touching this file: **the untyped steps now run before the typed ones, so
+an untyped adjustment is spent across a mixed-type hit in proportion** — never
+by looking ahead to which types are resisted, never in the order the damage
+parts arrived, and by a method that cannot let a larger reduction land more
+damage. `Mitigated.total` is therefore the sum of `Mitigated.amounts` again,
+where `w0g2` had the two deliberately disagree. `docs/decisions.md` § w1e has
+the arguments; it retires debt-register row #7 and opens #23. Its review is also
+the project's clearest case that **a citation's reasoning is load-bearing like
+code**: five rounds, every finding in the prose, none in the arithmetic.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
@@ -245,7 +261,8 @@ there is local to a module.
 | `hooks/registry.py`, `hooks/definitions.py` | § w0e |
 | `hooks/contexts.py`, `core/errors.py` | § w0f |
 | `hooks/decorator.py`, `hooks/source.py`, `hooks/dispatch.py` | § w0g |
-| `creatures/`, `engine/damage.py`, `core/geometry.py` | § w0g2 |
+| `creatures/`, `core/geometry.py` | § w0g2 |
+| `engine/damage.py`, the resolution order | § w0g2, § w1e |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |

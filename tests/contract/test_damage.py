@@ -1,33 +1,13 @@
-"""The w0g2 damage contract: the crit rule, and the one order damage resolves in.
+"""The damage contract: the crit rule, and the one order damage resolves in.
 
-**immunity -> vulnerability -> resistance -> flat reductions -> halvings ->
-temporary hit points -> hit points.** DESIGN.md fixes that order and fixes the
-file it is written in; this is the file that says what it *means* in integers.
-Every case below carries its arithmetic in a comment, because the point of a
-contract test on an ordering is that the number and the reasoning are read
-together — a bare `== 6` proves nothing about which order produced it.
+**immunity -> flat reductions -> halvings -> resistance -> vulnerability ->
+temporary hit points -> hit points.** Every case carries its arithmetic, because
+a bare `== 6` proves nothing about which order produced it, and where `w0g2`
+resolved a case differently the case says what its order gave.
 
-Four properties carry the file:
-
-- **Dice double on a critical hit and flat bonuses never do.** Rolled through a
-  scripted generator so that the assertion is an exact integer and so that a
-  crit is seen to *re-roll* a doubled pool rather than multiply a total: 1d6
-  that rolled a 6 crits for 6 + the next die, not for 12.
-- **Three steps are quotations and two are rulings.** Immunity, vulnerability
-  and resistance come from the XPHB Rules Glossary. That a flat reduction
-  applies after resistance, and a halving after the flat reduction, are the
-  project's own rulings — they change every number a build with Heavy Armor
-  Master or Uncanny Dodge reports, so each has a test of its own that says so
-  and shows what the other order would have given.
-- **The victim's handlers record; this module applies.** `mitigate()` is pure
-  arithmetic over a ledger, which is what lets the order be pinned case by case
-  with no fight around it.
-- **What is not built yet fails loudly.** A queued effect has nothing to drain
-  it until w1c, so it raises instead of being dropped.
-
-Sources: XPHB (2024) Rules Glossary "Immunity", "Vulnerability", "Resistance",
-"Round Down", "Temporary Hit Points"; DESIGN.md § Structural prevention over
-testing, § Hook system; ROADMAP w0g2, w1e, w1j, w1c.
+Sources: XPHB (2024) "Damage and Healing", Rules Glossary "Immunity",
+"Vulnerability", "Resistance", "Round Down", "Temporary Hit Points"; ROADMAP
+w0g2, w1e.
 """
 
 from collections.abc import Iterable
@@ -59,6 +39,7 @@ SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 10))
 
 FIRE: Final = DamageType.FIRE
 SLASHING: Final = DamageType.SLASHING
+COLD: Final = DamageType.COLD
 PIERCING: Final = DamageType.PIERCING
 POISON: Final = DamageType.POISON
 
@@ -245,6 +226,17 @@ def test_no_contributions_is_no_damage() -> None:
 # --- The resolution order, step by step -------------------------------------
 
 
+def test_the_books_own_worked_example() -> None:
+    """XPHB, "Damage and Healing", written out: 28 fire damage, reduced by 5 to
+    23, halved by Resistance to 11, doubled by Vulnerability to 22."""
+    result = mitigate(
+        {FIRE: 28},
+        ledger(vulnerable=[FIRE], resist=[FIRE], reductions=[(None, 5)]),
+        rng=no_dice(),
+    )
+    assert result.total == 22
+
+
 def test_immunity_removes_a_type_before_anything_doubles_or_halves_it() -> None:
     """Immunity is not a multiplier of zero applied somewhere in the middle: the
     type leaves the event. Here the victim is both immune *and* vulnerable to
@@ -260,12 +252,28 @@ def test_immunity_removes_a_type_before_anything_doubles_or_halves_it() -> None:
     assert result.types == frozenset({SLASHING})
 
 
-def test_vulnerability_and_resistance_to_the_same_type_cancel() -> None:
-    """The 2024 cancellation rule, falling out of the order rather than being
-    written: 7 doubled is 14, halved is 7. Resistance first would give
-    7 // 2 * 2 = 6 and quietly lose a point on every odd number."""
+def test_immunity_runs_first_so_the_adjustments_are_not_spent_on_it() -> None:
+    """10 fire and 10 poison against a poison-immune creature with Heavy Armor
+    Master's -4: the poison is gone first, so the whole 4 comes off the fire and
+    6 lands. Immunity applied after the adjustments would split the 4 across both
+    piles and let 8 fire through — the reduction spent on damage that was never
+    going to be taken."""
+    result = mitigate(
+        {FIRE: 10, POISON: 10},
+        ledger(immune=[POISON], reductions=[(None, 4)]),
+        rng=no_dice(),
+    )
+    assert dict(result.amounts) == {FIRE: 6}
+    assert result.total == 6
+
+
+def test_vulnerability_and_resistance_to_the_same_type_no_longer_cancel() -> None:
+    """7 halved by Resistance is 3 and doubled by Vulnerability is 6, so the pair
+    loses a point on every odd number. `w0g2` ran vulnerability first for exactly
+    that reason — `(2n) // 2 == n` — and the 2024 text orders it the other way
+    regardless."""
     both = ledger(vulnerable=[FIRE], resist=[FIRE])
-    assert mitigate({FIRE: 7}, both, rng=no_dice()).total == 7
+    assert mitigate({FIRE: 7}, both, rng=no_dice()).total == 6
 
 
 def test_vulnerability_doubles() -> None:
@@ -287,25 +295,31 @@ def test_two_resistances_to_the_same_type_halve_once() -> None:
     assert mitigate({FIRE: 7}, twice, rng=no_dice()).total == 3
 
 
-def test_a_flat_reduction_applies_after_resistance() -> None:
-    """**A ruling, pinned here.** No XPHB sentence settles a subtraction against
-    a halving, and the two orders disagree by half the reduction on every hit.
-    10 slashing, resisted to 5, then Heavy Armor Master's -3 leaves 2. The other
-    order — (10 - 3) // 2 — would leave 3, and would make the reduction worth
-    less to the creature that invested in the resistance."""
+def test_a_flat_reduction_applies_before_resistance() -> None:
+    """A penalty is an *adjustment*, and adjustments are applied first. 10
+    slashing less Heavy Armor Master's 3 is 7, and resistance halves that to 3.
+    `w0g2` ruled the other way — resist to 5, then subtract 3, for 2 — and the
+    2024 text settles it: the reduction is worth half to the creature that also
+    has the resistance."""
     result = mitigate(
         {SLASHING: 10},
         ledger(resist=[SLASHING], reductions=[(None, 3)]),
         rng=no_dice(),
     )
-    assert result.total == 2
+    assert result.total == 3
 
 
 def test_a_halving_applies_after_the_flat_reduction() -> None:
-    """**The second ruling, pinned here.** 10 slashing, Heavy Armor Master's -4
-    leaves 6, and Uncanny Dodge halves that to 3. The other order — 10 // 2 = 5
-    then -4 — would leave 1, which is two mitigation features worth more
-    together than the sum of their parts."""
+    """**The one surviving ruling, pinned here.** The text bundles penalties and
+    multipliers into one adjustment step without sequencing them against each
+    other, so the order of these two is the project's. 10 slashing, Heavy Armor
+    Master's -4 leaves 6, and Uncanny Dodge halves that to 3.
+
+    The other order — 10 // 2 = 5, then -4 — leaves 1. Both features together
+    save 9, which is exactly what they save apart (4 and 5): halving first makes
+    them additive, while a reduction is sub-additive with Resistance under the
+    quoted order. Subtracting first keeps one reduction behaving the same way
+    against Uncanny Dodge as against Rage."""
     result = mitigate(
         {SLASHING: 10},
         ledger(reductions=[(None, 4)], halvings=["uncanny dodge"]),
@@ -314,15 +328,86 @@ def test_a_halving_applies_after_the_flat_reduction() -> None:
     assert result.total == 3
 
 
-def test_the_whole_order_over_one_hit() -> None:
-    """Every step at once, which is what w1e's "Rage + Uncanny Dodge +
-    vulnerability produces the hand-computed number" asks for:
+def test_a_halving_is_an_adjustment_and_so_precedes_the_typed_steps() -> None:
+    """A multiplier is named in the quotation, so Uncanny Dodge sits in the first
+    step with the reductions. 9 slashing halved is 4, doubled by vulnerability is
+    8; halving after the typed steps would double first, 18 halved to 9."""
+    result = mitigate(
+        {SLASHING: 9},
+        ledger(vulnerable=[SLASHING], halvings=["uncanny dodge"]),
+        rng=no_dice(),
+    )
+    assert result.total == 8
 
-        poison 6   immune                      -> gone
-        fire 5     vulnerable                  -> 10
-        slashing 11  resisted                  -> 5
-        total 15, less a flat 3                -> 12
-        halved once                            -> 6
+
+def test_resistance_and_a_halving_quarter_the_hit() -> None:
+    """Uncanny Dodge halves 10 to 5 and a raging barbarian's resistance halves
+    that to 2 — rounding down twice, not once from 2.5, because a halving is not
+    a resistance and does not merge with one."""
+    result = mitigate(
+        {SLASHING: 10},
+        ledger(resist=[SLASHING], halvings=["uncanny dodge"]),
+        rng=no_dice(),
+    )
+    assert result.total == 2
+
+
+def test_two_halvings_halve_twice() -> None:
+    """The "counts once" clause names *Resistance*, and a halving is not
+    Resistance, so halvings are a *list* where the three type collections are
+    sets: two of them apply twice, 9 -> 4 -> 2."""
+    result = mitigate(
+        {SLASHING: 9},
+        ledger(halvings=["uncanny dodge", "a second halving"]),
+        rng=no_dice(),
+    )
+    assert result.total == 2
+
+
+def test_rage_uncanny_dodge_and_vulnerability_over_one_type() -> None:
+    """Every band of the order against a single type:
+
+        slashing 25   less Heavy Armor Master's 3   -> 22
+                      halved by Uncanny Dodge       -> 11
+                      halved by Rage's resistance   ->  5
+                      doubled by vulnerability      -> 10
+
+    `w0g2`'s order gave 11: 25 doubled to 50, resisted to 25, less 3 is 22,
+    halved is 11.
+    """
+    result = mitigate(
+        {SLASHING: 25},
+        ledger(
+            vulnerable=[SLASHING],
+            resist=[SLASHING],
+            reductions=[(None, 3)],
+            halvings=["uncanny dodge"],
+        ),
+        rng=no_dice(),
+    )
+    assert result.total == 10
+
+
+def test_the_whole_order_over_one_mixed_hit() -> None:
+    """The same, with the untyped steps spread across two surviving types:
+
+        poison 6      immune                        -> gone
+        fire 5, slashing 11                         -> 16 left
+        less a flat 4                               -> 12
+        halved once                                 -> 6
+        apportioned 16 -> 6                         -> fire 2, slashing 4
+        slashing resisted                           -> 2
+        fire doubled                                -> 4
+
+    The six points go one at a time to whichever type is furthest from its
+    share, `amount / (points it holds + 1)`:
+
+        1. slashing 11/1 beats fire 5/1     -> slashing 1
+        2. slashing 11/2 beats fire 5/1     -> slashing 2
+        3. fire 5/1 beats slashing 11/3     -> fire 1
+        4. slashing 11/3 beats fire 5/2     -> slashing 3
+        5. slashing 11/4 beats fire 5/2     -> slashing 4
+        6. fire 5/2 beats slashing 11/5     -> fire 2
     """
     result = mitigate(
         {POISON: 6, FIRE: 5, SLASHING: 11},
@@ -330,13 +415,109 @@ def test_the_whole_order_over_one_hit() -> None:
             immune=[POISON],
             vulnerable=[FIRE],
             resist=[SLASHING],
-            reductions=[(None, 3)],
+            reductions=[(None, 4)],
             halvings=["uncanny dodge"],
         ),
         rng=no_dice(),
     )
-    assert dict(result.amounts) == {FIRE: 10, SLASHING: 5}
+    assert dict(result.amounts) == {FIRE: 4, SLASHING: 2}
     assert result.total == 6
+
+
+# --- Spending an untyped adjustment across a mixed hit -----------------------
+
+
+def test_an_untyped_adjustment_is_spent_in_proportion() -> None:
+    """An adjustment changes the size of the hit, not its composition, so 5 fire
+    and 5 slashing under Uncanny Dodge become 3 and 2 rather than 5 and 0.
+
+    Asserted from **both** insertion orders: a dead tie is the only case the
+    name tie-break decides, so feeding the types one way round would leave
+    `damage_type.value` deletable with the suite green."""
+    halved = ledger(halvings=["uncanny dodge"])
+    forwards = mitigate({FIRE: 5, SLASHING: 5}, halved, rng=no_dice())
+    backwards = mitigate({SLASHING: 5, FIRE: 5}, halved, rng=no_dice())
+    assert dict(forwards.amounts) == {FIRE: 3, SLASHING: 2}
+    assert dict(backwards.amounts) == {FIRE: 3, SLASHING: 2}
+    assert forwards.total == backwards.total == 5
+
+
+def test_more_mitigation_never_means_more_damage() -> None:
+    """**The property that picked the apportionment method.** 1 fire beside 5
+    slashing and 5 cold, resisting the latter two: under the largest-remainder
+    method this started as, a 5-point reduction landed 2 damage and a 6-point
+    reduction landed **3**, because the odd point moved off a resisted pile onto
+    the unresisted one. That is the Alabama paradox; it needs three types, so no
+    two-type case here could have caught it.
+    """
+    hit = {FIRE: 1, SLASHING: 5, COLD: 5}
+    resisted = [SLASHING, COLD]
+    five = mitigate(hit, ledger(resist=resisted, reductions=[(None, 5)]), rng=no_dice())
+    six = mitigate(hit, ledger(resist=resisted, reductions=[(None, 6)]), rng=no_dice())
+    assert dict(five.amounts) == dict(six.amounts) == {FIRE: 0, SLASHING: 1, COLD: 1}
+    assert five.total == six.total == 2
+
+    # The whole sweep, not just the pair the paradox happened to surface on —
+    # and the same sweep with fire vulnerable, which is where it cost double.
+    plain = [
+        mitigate(hit, ledger(resist=resisted, reductions=[(None, r)]), rng=no_dice())
+        for r in range(1, 12)
+    ]
+    doubled = [
+        mitigate(
+            hit,
+            ledger(resist=resisted, vulnerable=[FIRE], reductions=[(None, r)]),
+            rng=no_dice(),
+        )
+        for r in range(1, 12)
+    ]
+    assert [r.total for r in plain] == [4, 4, 4, 3, 2, 2, 2, 1, 0, 0, 0]
+    assert [r.total for r in doubled] == [4, 4, 4, 3, 2, 2, 2, 1, 0, 0, 0]
+
+
+def test_the_spend_does_not_depend_on_the_order_the_parts_arrived() -> None:
+    """Which of the dagger and Sneak Attack appended first is an authoring
+    artefact. The two dicts differ only in insertion order."""
+    reduced = ledger(reductions=[(None, 5)])
+    forwards = mitigate({FIRE: 7, SLASHING: 4}, reduced, rng=no_dice())
+    backwards = mitigate({SLASHING: 4, FIRE: 7}, reduced, rng=no_dice())
+    assert dict(forwards.amounts) == dict(backwards.amounts) == {FIRE: 4, SLASHING: 2}
+    assert forwards.total == backwards.total == 6
+
+
+def test_the_spend_does_not_look_ahead_to_resistance() -> None:
+    """10 fire and 10 slashing against a fire-resistant creature with a 10-point
+    reduction: split 5/5 in proportion, fire resists to 2, and 7 lands. Spending
+    all 10 on the unresisted slashing would have left 5 — the better play, and
+    what "adjustments are applied first" forbids."""
+    result = mitigate(
+        {FIRE: 10, SLASHING: 10},
+        ledger(resist=[FIRE], reductions=[(None, 10)]),
+        rng=no_dice(),
+    )
+    assert dict(result.amounts) == {FIRE: 2, SLASHING: 5}
+    assert result.total == 7
+
+
+def test_an_adjustment_can_round_a_type_out_of_the_report() -> None:
+    """Under `w0g2` an untyped step could never change `types`; now it can. One
+    point of fire beside 99 of slashing, halved: half a point of fire is no
+    fire, so the creature took 50 slashing and nothing else."""
+    result = mitigate(
+        {FIRE: 1, SLASHING: 99}, ledger(halvings=["uncanny dodge"]), rng=no_dice()
+    )
+    assert dict(result.amounts) == {FIRE: 0, SLASHING: 50}
+    assert result.types == frozenset({SLASHING})
+    assert result.total == 50
+
+
+def test_the_two_numbers_agree_because_the_typed_steps_run_last() -> None:
+    """`w0g2` had these two deliberately disagree, because the untyped steps ran
+    last and nothing could reconcile them. The apportionment is that
+    reconciliation, so anything downstream may now read either."""
+    result = mitigate({FIRE: 8}, ledger(reductions=[(None, 3)]), rng=no_dice())
+    assert dict(result.amounts) == {FIRE: 5}
+    assert result.total == 5 == sum(result.amounts.values())
 
 
 def test_damage_never_goes_negative() -> None:
@@ -357,54 +538,15 @@ def test_a_reduction_bigger_than_the_hit_does_not_survive_a_halving() -> None:
 
 
 def test_a_reduction_may_roll_dice_and_they_come_from_this_generator() -> None:
-    """A reduction is a `Modifier`: dice and flat, and its dice never double.
-    1d4 rolled 3, plus a flat 1, taken off 10 leaves 6."""
+    """1d4 rolled 3, plus a flat 1, taken off 10 leaves 6. A reduction's dice
+    never double."""
     rng = ScriptedRng([3])
     result = mitigate({SLASHING: 10}, ledger(reductions=[("1d4", 1)]), rng=rng)
     assert result.total == 6
     assert rng.exhausted
 
 
-def test_resistance_and_a_halving_quarter_the_hit() -> None:
-    """The case `mitigate()` names as known-correct: a raging barbarian's
-    resistance halves 10 to 5 and Uncanny Dodge halves that to 2 (rounding down
-    twice, not once from 2.5). It is the argument for halvings being a list —
-    a halving is not a resistance and does not merge with one."""
-    result = mitigate(
-        {SLASHING: 10},
-        ledger(resist=[SLASHING], halvings=["uncanny dodge"]),
-        rng=no_dice(),
-    )
-    assert result.total == 2
-
-
-def test_two_halvings_halve_twice() -> None:
-    """The ruling extended one step further than the example: halvings are a
-    *list* where the three type collections are sets, so two of them apply
-    twice, 9 -> 4 -> 2. No 2024 sentence covers two literal "halve the damage"
-    features — the module argues it by analogy with the case above — so it is
-    pinned here for w1e rather than discovered in a build's numbers."""
-    result = mitigate(
-        {SLASHING: 9},
-        ledger(halvings=["uncanny dodge", "a second halving"]),
-        rng=no_dice(),
-    )
-    assert result.total == 2
-
-
-def test_the_two_numbers_report_different_halves_of_the_order() -> None:
-    """`amounts` is the per-type picture after the typed steps and `total` is
-    what the creature takes, so they deliberately disagree once an untyped
-    reduction has run: Heavy Armor Master reduces *the damage*, not the fire
-    part of it, and there is no honest way to spread the subtraction back over
-    the types. Anything downstream that sums `amounts` is reading the wrong
-    number."""
-    result = mitigate({FIRE: 8}, ledger(reductions=[(None, 3)]), rng=no_dice())
-    assert dict(result.amounts) == {FIRE: 8}
-    assert result.total == 5
-
-
-def test_a_type_reduced_to_nothing_did_not_get_through() -> None:
+def test_a_type_resisted_to_nothing_did_not_get_through() -> None:
     """`types` is what the log and `on_damage_taken` report, so a single point
     of fire resisted to zero is not a type this creature took damage from."""
     result = mitigate({FIRE: 1, SLASHING: 4}, ledger(resist=[FIRE]), rng=no_dice())
@@ -610,10 +752,11 @@ def test_a_hit_that_landed_on_nothing_does_not_reach_on_damage_taken() -> None:
 
 
 def test_a_hit_a_reduction_ate_whole_does_not_reach_it_either() -> None:
-    """The other way to land on nothing, and the one where `types` still names
-    a type: Heavy Armor Master's -10 against a 3-point hit leaves 0, so nothing
-    was taken and nothing is reported, even though the hit was slashing and
-    `Mitigated.types` says so."""
+    """The other way to land on nothing: Heavy Armor Master's -10 against a
+    3-point hit leaves 0, so nothing was taken and nothing is reported. Since
+    `w1e` the reduction is spent over the types rather than over a total they
+    never see again, so `Mitigated.types` is empty here too — the hit was
+    slashing, and no slashing damage was taken."""
     dummy = creature(hp=20)
     dummy.attach(HeavyArmour(dummy))
     watcher = Watcher(dummy)
