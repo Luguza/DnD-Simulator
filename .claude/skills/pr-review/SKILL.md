@@ -73,10 +73,10 @@ Rank findings: **correctness bugs → boundary violations → everything else.**
   work Y out; where Y is arithmetic, try it either side of the case it was
   written from. A correct decision defended by a consequence it does not have is
   a finding — it is what a later agent disproves before reopening the decision
-  for the wrong reason. Watch for the three shapes `w1e` produced: an appeal to
-  what the rules "went out of their way to close", a vivid case that does not
-  actually turn on the decision, and a worked example derived by a method the
-  code has since replaced.
+  for the wrong reason. Watch for the three shapes `w1e` produced: a consequence
+  that does not occur, a case that holds either way in place of the one that
+  turns on the decision, and a derivation by a method the code has since
+  replaced.
 - **One golden test with exact-integer assertions**, its arithmetic written out
   in a comment. Distributions prove nothing; a hand-computed number does.
 - **The author did not write the tests.** One agent producing both the feature

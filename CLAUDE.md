@@ -343,13 +343,15 @@ end of `ROADMAP.md` is what a delegated agent receives.
   would cause Y"*, check Y — and where Y is arithmetic, check it over a range
   rather than on the one case that suggested it. Prefer the case that actually
   turns on the decision to the vivid case that does not.
-- **Everything past that consequence is where citations go wrong.** A flourish
-  about what the rules "went out of their way to close"; a worked example
-  derived by a method the code no longer uses; a second and third restatement of
-  an argument the tests already carry. That layer reads as authority and has
-  nothing holding it up. `w1e` is the case that taught this — five review
-  rounds, every finding in the prose, none in the arithmetic, and the fix was
-  -239 lines with no assertion changed (`docs/decisions.md` § w1e).
+- **Everything past that consequence is where citations go wrong**, and it reads
+  as authority while having nothing holding it up. `w1e` produced the three
+  shapes to recognise: a consequence that does not occur (flat-before-halving
+  defended by a stacking the rejected order does not cause), a case that holds
+  either way in place of the one that turns on the decision (`_halvings`
+  defended by Rage plus Uncanny Dodge), and a derivation by a method the code
+  has since replaced (a worked example computed by the abandoned apportionment).
+  Five review rounds, every finding in the prose, none in the arithmetic, and
+  the fix was -239 lines with no assertion changed (`docs/decisions.md` § w1e).
 - **Do not comment code that does not need explaining.** A comment restating the
   line below it is surface to maintain and to get wrong. Comment the trap, the
   citation, and the ordering that is not obvious from the code.
