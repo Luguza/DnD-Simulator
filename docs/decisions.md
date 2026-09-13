@@ -1424,7 +1424,14 @@ beyond the reorder itself.
 - **The open question is answered from the text, not from silence.** The "counts
   once" clause names *Resistance*; a halving is not Resistance; so two halvings
   halve twice and `_halvings` stays a list against the three sets. `w0g2` argued
-  this by analogy and said so; it is now a reading of the clause.
+  this by analogy and said so; it is now a reading of the clause. The case that
+  actually turns on the list is two halvings (9 → 4 → 2), **not** Rage plus
+  Uncanny Dodge quartering a hit: one resistance and one halving come out the
+  same however halvings are counted, so that case argues for the two being
+  separate collections and nothing more. `w0g2` reached for it as the
+  justification and `w1e`'s first draft repeated the slip — a citation that
+  defends a decision with a consequence it does not have is how a later agent
+  comes to change the decision for the wrong reason.
 
 ### How an untyped adjustment is spent, which is the reorder's own question
 

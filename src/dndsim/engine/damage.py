@@ -44,8 +44,12 @@ review three years from now.
   names Resistance — `MitigationLedger` keeps the three type collections as
   *sets*, so that rule is structural rather than checked — and a halving is not
   Resistance. So `_halvings` is a list and each one halves. That is a reading of
-  the clause, not an argument from silence, and it is why a raging barbarian's
-  Uncanny Dodge quarters a hit.
+  the clause, not an argument from silence, and the case that turns on it is two
+  features that both halve: 9 becomes 4 and then 2, where the "counts once"
+  treatment Resistance gets would stop at 4. Rage plus Uncanny Dodge quartering a
+  hit is *not* that case — one resistance and one halving come out the same
+  however halvings are counted. It argues for the two being separate collections,
+  which is a different claim.
 
 Two consequences of this order read as bugs and are not:
 
