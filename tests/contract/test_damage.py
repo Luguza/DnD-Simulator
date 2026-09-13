@@ -436,8 +436,20 @@ def test_the_whole_order_over_one_mixed_hit() -> None:
         slashing resisted                           -> 2
         fire doubled                                -> 4
 
-    Fire takes the odd point because 5/16 of 6 is 1.875 against slashing's
-    4.125: both floor, and the larger remainder gets the one point left over.
+    The six points are handed out one at a time, each to whichever type is
+    furthest from its share — `amount / (points it holds + 1)`, which is
+    Jefferson's method and not the largest-remainder one it replaced:
+
+        1. slashing 11/1 beats fire 5/1     -> slashing 1
+        2. slashing 11/2 beats fire 5/1     -> slashing 2
+        3. fire 5/1 beats slashing 11/3     -> fire 1
+        4. slashing 11/3 beats fire 5/2     -> slashing 3
+        5. slashing 11/4 beats fire 5/2     -> slashing 4
+        6. fire 5/2 beats slashing 11/5     -> fire 2
+
+    The two methods agree here, as they do on every two-type case in this file,
+    which is exactly why the one that separates them is written out in
+    `test_more_mitigation_never_means_more_damage` rather than left implicit.
     """
     result = mitigate(
         {POISON: 6, FIRE: 5, SLASHING: 11},
@@ -465,7 +477,7 @@ def test_an_untyped_adjustment_is_spent_in_proportion() -> None:
     name sorts first — arbitrary, but fixed, which is the whole requirement.
 
     Asserted from **both** insertion orders, because this is the only shape of
-    case whose outcome the tie-break decides: with distinct remainders the sort
+    case whose outcome the tie-break decides: with distinct quotients the sort
     would land the same way without it, so a test that fed the types in one
     order only would leave `damage_type.value` deletable and the suite green.
 
