@@ -74,32 +74,47 @@ milestone.
 
 - **Fast path.** On merging, the session creates the next session with the same
   `/next-task` prompt, tagged `dnd-task`, then archives itself.
-- **Watchdog.** An hourly Routine that starts a task session only when three
-  things hold at once: the queue has a `next` row, no `claude/task-*` PR is
-  open, and nothing is `held`. It is what makes the chain survive a session
-  dying mid-task; the three conditions are what stop it double-starting one.
+- **Watchdog.** An hourly Routine. When the queue has a `next` row and no
+  `claude/task-*` PR is open, the fired session runs `/next-task` itself — it
+  already has the repository and the command, and doing the task in the session
+  that noticed it is one moving part instead of two. It also takes over a task
+  PR left idle for more than two hours, which is the failure this exists for: a
+  session that ended its turn waiting for a wake that never arrived.
 
-  **Set it up from the claude.ai Routines UI**, not from a session — a Routine
-  created through the MCP tool stores no connector grants, and its fired
-  sessions would come up without the GitHub and session tools all three checks
-  need. Hourly, new session per firing, push notifications on, this repository
-  as the source, with this prompt:
+  **Create it from the claude.ai Routines UI**, not from a session — a Routine
+  created through the MCP tool stores no connector grants, so its fired sessions
+  come up without the GitHub tools every check below is made of.
+
+  Hourly (`0 * * * *`), a new session each run, `Luguza/DnD-Simulator` on `main`
+  as the source, GitHub connector on, push notifications on, Opus (a
+  pass-through run is three tool calls, and when the checks pass this session
+  *is* the task session). The prompt, verbatim:
 
   ```text
-  Watchdog for the DnD-Simulator task loop. Be brief and cheap: make the three
-  checks below and nothing else. Do not read DESIGN.md, ROADMAP.md or
-  docs/decisions.md.
+  Watchdog for the DnD-Simulator task loop (Luguza/DnD-Simulator, main). Be brief
+  and cheap: this run is three checks, then either one action or nothing. Do not
+  read DESIGN.md, ROADMAP.md or docs/decisions.md to make the checks.
 
-  1. Read docs/progress.md on main. If it does not exist there, stop silently.
-  2. Find the row whose status is `next`. If there is none, or it is a ⏸ row,
-     or any row is `held`: stop, notifying the user in one sentence only for a
-     ⏸ or `held` row.
-  3. If a pull request with a `claude/task-*` head branch is open, stop
-     silently — a task is in flight. Exception: if its last activity is over
-     two hours old, say so in one sentence naming the PR and what it waits on.
+  1. Read docs/progress.md on main. If it is missing, stop silently — the loop is
+     not merged yet.
+  2. Find the row whose status is `next`. If there is none, or it is a ⏸ plan
+     review, or any row is `held`: stop, and say so in one sentence. Never run a
+     plan review or clear a `held` row yourself — both are the human's gate.
+  3. List open pull requests whose head branch matches `claude/task-*`, then act
+     on exactly one of these:
+     - None open → run /next-task and drive that task per docs/workflow.md.
+     - One open, with activity in the last two hours → stop silently. A session
+       is already on it.
+     - One open, idle for more than two hours → take it over. Read its verdict
+       comment and CI, continue docs/workflow.md § The review loop (CONFIRMED
+       fixed, PLAUSIBLE fixed or rebutted, three-round cap counting rounds
+       already on the PR), and merge when it is clean.
+     - More than one open → stop and tell the user. The queue is serial, so that
+       is a bug in the loop, not a state to work through.
 
-  Only if all three pass: create a session with the prompt `/next-task`, tagged
-  ["dnd-task"], titled with the task id, and stop. Never do the task yourself.
+  Never work on more than one task in a run. Never merge a pull request whose
+  `human-merge-required` check is red — that check failing means a human merges
+  it, and saying so to the user is the whole of your job on such a PR.
   ```
 
 Neither path ever passes a `⏸` row or a `held` row.
