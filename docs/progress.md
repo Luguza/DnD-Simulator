@@ -6,7 +6,10 @@ the queue — the ledger cannot desync from git because advancing it *is* a
 merged diff.
 
 A `⏸` row halts the chain: it is a plan review, and the session that reaches it
-stops and hands back to the human (`docs/workflow.md` § Plan reviews).
+stops and hands back to the human (`docs/workflow.md` § Plan reviews). A `held`
+row halts it too, and while one stands **no row is `next`** — the row below a
+held task advances only when that task's diff merges, and a `next` row sitting
+under a hold is an invitation to start work on a dependency that never landed.
 
 Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 
@@ -14,7 +17,7 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 |---|---|---|---|
 | 1 | w1a — `Creature`, `StatBlock`, `ActionEconomy` | done | #21 |
 | 2 | w1e — damage resolution order completed 🔒 | held | #24 |
-| 3 | w1f — attack pipeline 🔒 | next | |
+| 3 | w1f — attack pipeline 🔒 | queued | |
 | — | ⏸ plan review — the critical-path pair | queued | |
 | 4 | w1c — `Effect`, `EffectStore`, stacking | queued | |
 | 5 | w1b — resources, `SpellSlots`, `transaction()` | queued | |
