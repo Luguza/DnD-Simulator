@@ -252,6 +252,17 @@ there is local to a module.
 
 Add a section there when a task lands, rather than growing this file.
 
+## How work is scheduled
+
+Tasks are taken one at a time off [`docs/progress.md`](docs/progress.md), the
+serial queue, and driven to a merged pull request by the loop in
+[`docs/workflow.md`](docs/workflow.md): `/next-task` implements, the
+`claude-code-review.yml` reviewer answers, and the queue advances only by a
+merged diff. A `⏸` row is a plan review (`/plan-review`) and stops the chain.
+A PR touching the plans, the agent configuration or the dependency set fails
+CI's `human-merge-required` job on purpose — the loop may not merge its own
+contract.
+
 ## Sequencing rules
 
 `ROADMAP.md` has 77 tasks across waves W0–W8 with explicit dependency edges.
