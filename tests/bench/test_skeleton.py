@@ -22,7 +22,7 @@ from typing import Final
 from dndsim.core.geometry import Cell
 from dndsim.core.rng import MersenneRng, ScriptedRng
 from dndsim.creatures.creature import Creature
-from dndsim.creatures.stats import StatBlock
+from dndsim.creatures.stats import Armour, StatBlock
 from dndsim.hooks.contexts import (
     AttackDeclaredContext,
     AttackResolvedContext,
@@ -175,9 +175,9 @@ def test_a_natural_1_always_misses_even_against_a_total_that_would_hit() -> None
         stats=StatBlock(
             abilities=MappingProxyType(dict.fromkeys(Ability, 10)),
             max_hp=10,
-            armour_class=5,
         ),
         position=Cell(1, 0),
+        armour=Armour.natural(5),
     )
     rng = ScriptedRng([1])
 

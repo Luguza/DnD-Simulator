@@ -242,7 +242,7 @@ def test_a_wounded_hero_takes_second_wind_and_still_swings() -> None:
 
     resolutions = _hero_turn(spike, rng, 1)
 
-    assert not spike.economy.bonus, "the wounded hero never took Second Wind"
+    assert not spike.economy.bonus_actions, "the wounded hero never took Second Wind"
     assert resolutions == ATTACKS_PER_TURN, (
         "a Bonus Action entry ate the hero's Attack action"
     )

@@ -37,6 +37,7 @@ from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.geometry import Cell, distance_ft, in_reach
 from dndsim.core.timeline import InitiativeKey
 from dndsim.creatures.creature import Creature
+from dndsim.creatures.economy import ActionEconomy
 from dndsim.creatures.stats import GREATSWORD, StatBlock
 from dndsim.engine.triggers import walk_provoking, watch_movement
 from dndsim.hooks.contexts import Cell as CellRef
@@ -51,22 +52,6 @@ _GATE_ID: Final = "attack.opportunity_attack"
 
 
 # --- the pieces w2b and w2e own, standing in for themselves ------------------
-
-
-class Economy:
-    """One reaction, as much of `w1a`'s `ActionEconomy` as the dispatcher asks."""
-
-    __slots__ = ("reaction",)
-
-    def __init__(self) -> None:
-        self.reaction = True
-
-    def can_spend(self, cost: ActionCost) -> bool:
-        return self.reaction if cost is ActionCost.REACTION else True
-
-    def spend(self, cost: ActionCost) -> None:
-        if cost is ActionCost.REACTION:
-            self.reaction = False
 
 
 class Policy:
@@ -146,7 +131,7 @@ def _seat(initiative: int) -> InitiativeKey:
 def _creature(name: str, at: Cell, *, initiative: int = 10) -> Creature:
     return Creature(
         name=name,
-        stats=StatBlock(abilities=SCORES, max_hp=30, armour_class=15, level=5),
+        stats=StatBlock(abilities=SCORES, max_hp=30, level=5),
         position=at,
         weapon=GREATSWORD,
         initiative=_seat(initiative),
@@ -155,14 +140,20 @@ def _creature(name: str, at: Cell, *, initiative: int = 10) -> Creature:
 
 def _threatener(
     name: str, at: Cell, *, initiative: int = 10, takes: bool = True
-) -> tuple[Creature, OpportunityAttack, Economy, Policy]:
-    """A creature that owns an opportunity attack, its economy and its policy."""
+) -> tuple[Creature, OpportunityAttack, ActionEconomy, Policy]:
+    """A creature that owns an opportunity attack, its economy and its policy.
+
+    The economy is the creature's own (`w1a`): a `Creature` builds an
+    `ActionEconomy` and hands it to its dispatcher, so what a reaction is paid
+    for out of here is what it would be paid for out of in a real encounter.
+    Only the policy is still a stand-in, because `w2e` owns the compiler.
+    """
     creature = _creature(name, at, initiative=initiative)
-    economy, policy = Economy(), Policy(takes=takes)
-    creature.dispatcher.bind(economy=economy, gate=policy)
+    policy = Policy(takes=takes)
+    creature.dispatcher.bind(gate=policy)
     reaction = OpportunityAttack(creature)
     creature.attach(reaction)
-    return creature, reaction, economy, policy
+    return creature, reaction, creature.economy, policy
 
 
 def _east(start: Cell, squares: int) -> tuple[Cell, ...]:
@@ -216,7 +207,7 @@ def test_reach_is_re_read_each_step_and_one_reaction_is_all_there_is() -> None:
     walk_provoking(mover, (Cell(1, 0), Cell(2, 0), Cell(1, 0), Cell(2, 0)), [guard])
 
     assert len(reaction.swings) == 1, "a second reaction was spent in one turn"
-    assert not economy.reaction
+    assert not economy.can_spend(ActionCost.REACTION)
     assert policy.asked == [_GATE_ID], "the policy was asked about a spent reaction"
 
 
@@ -227,7 +218,7 @@ def test_a_move_that_never_leaves_reach_provokes_nothing() -> None:
     walk_provoking(mover, (Cell(1, 1), Cell(1, 0)), [guard])
 
     assert reaction.swings == []
-    assert economy.reaction
+    assert economy.can_spend(ActionCost.REACTION)
 
 
 # --- whose decision it is ----------------------------------------------------
@@ -242,7 +233,9 @@ def test_a_declined_offer_spends_nothing_and_comes_again() -> None:
     walk_provoking(mover, (Cell(1, 0), Cell(2, 0), Cell(1, 0), Cell(2, 0)), [guard])
 
     assert reaction.swings == []
-    assert economy.reaction, "a declined opportunity attack spent the reaction"
+    assert economy.can_spend(ActionCost.REACTION), (
+        "a declined opportunity attack spent the reaction"
+    )
     assert policy.asked == [_GATE_ID, _GATE_ID], "the second offer was never made"
 
 
@@ -258,17 +251,18 @@ def test_a_reaction_no_action_list_mentions_is_off() -> None:
     """
     mover = _creature("Runner", Cell(0, 0))
     guard = _creature("Guard", Cell(0, -1))
-    economy = Economy()
     # The one difference from `_threatener`: this build's list claims a
     # different reaction, so `_GATE_ID` is an id nobody asked for.
-    guard.dispatcher.bind(economy=economy, gate=Policy(claims="rogue.uncanny_dodge"))
+    guard.dispatcher.bind(gate=Policy(claims="rogue.uncanny_dodge"))
     reaction = OpportunityAttack(guard)
     guard.attach(reaction)
 
     walk_provoking(mover, _east(Cell(0, 0), 3), [guard])
 
     assert reaction.swings == []
-    assert economy.reaction, "an unmentioned reaction spent something"
+    assert guard.economy.can_spend(ActionCost.REACTION), (
+        "an unmentioned reaction spent something"
+    )
 
 
 def test_two_watchers_left_at_once_are_asked_in_initiative_order() -> None:
@@ -320,7 +314,7 @@ def test_the_per_step_cost_is_linear_in_watchers_not_in_the_room(
     """
     mover = _creature("Runner", Cell(0, 0))
     watcher = _creature("Watcher", Cell(0, -1))
-    watcher.dispatcher.bind(economy=Economy(), gate=Policy())
+    watcher.dispatcher.bind(gate=Policy())
     watcher.attach(Bystander(watcher))
     room = [_creature(f"Extra{i}", Cell(0, 1)) for i in range(19)]
 
@@ -376,9 +370,8 @@ def test_a_costless_observer_is_offered_the_move_with_no_reaction_in_hand() -> N
     is offered every step it is owed whatever the economy says."""
     mover = _creature("Runner", Cell(0, 0))
     watcher = _creature("Watcher", Cell(0, -1))
-    economy = Economy()
-    economy.reaction = False
-    watcher.dispatcher.bind(economy=economy, gate=Policy())
+    watcher.economy.spend(ActionCost.REACTION)
+    watcher.dispatcher.bind(gate=Policy())
     tally = Bystander(watcher)
     watcher.attach(tally)
 
@@ -390,7 +383,7 @@ def test_a_costless_observer_is_offered_the_move_with_no_reaction_in_hand() -> N
 def test_a_watcher_with_only_a_spent_reaction_is_dropped_before_it_is_asked() -> None:
     mover = _creature("Runner", Cell(0, 0))
     guard, _, economy, policy = _threatener("Guard", Cell(0, -1))
-    economy.reaction = False
+    economy.spend(ActionCost.REACTION)
 
     assert watch_movement(mover, [guard], squares=3) is None
     assert policy.asked == [], "the expensive question was asked anyway"
@@ -398,7 +391,7 @@ def test_a_watcher_with_only_a_spent_reaction_is_dropped_before_it_is_asked() ->
 
 def test_the_dead_and_the_mover_itself_are_never_in_the_audience() -> None:
     mover = _creature("Runner", Cell(0, 0))
-    mover.dispatcher.bind(economy=Economy(), gate=Policy())
+    mover.dispatcher.bind(gate=Policy())
     mover.attach(OpportunityAttack(mover))
     corpse, _, _, _ = _threatener("Corpse", Cell(0, -1))
     corpse.hp = 0
@@ -420,7 +413,7 @@ def test_disengaging_provokes_nobody() -> None:
     assert walked == _east(Cell(0, 0), 3)
     assert mover.position == Cell(3, 0)
     assert reaction.swings == []
-    assert economy.reaction
+    assert economy.can_spend(ActionCost.REACTION)
 
 
 def test_a_mover_dropped_on_the_way_stops_where_it_fell() -> None:

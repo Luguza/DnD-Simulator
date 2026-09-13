@@ -5,11 +5,17 @@ hangs something off, so the properties below are the ones that would be
 expensive to change once ~630 features assume them:
 
 - **A stat block that is missing something says so, as it is built.** A
-  defaulted ability score, hit point total or AC is a number nobody chose that
-  silently changes every save, every attack and every hit made against it, so
-  the three have no defaults at all and a partial ability map is refused; a
-  level off the table is refused in the same breath rather than a fight later
-  (DESIGN.md § Fail at the earliest moment).
+  defaulted ability score or hit point total is a number nobody chose that
+  silently changes every save and every attack made with it, so neither has a
+  default and a partial ability map is refused; a level off the table is refused
+  in the same breath rather than a fight later (DESIGN.md § Fail at the earliest
+  moment).
+- **AC is derived from equipment and cannot be typed in** (w1a). There is no
+  `armour_class` on a stat block to set and no setter on the creature: what a
+  creature is wearing decides it, which is what DESIGN.md § Reconnaissance is
+  most emphatic about. The four shapes the rules have — heavy, medium, light and
+  the Unarmored Defense variants — are one value object with a list of ability
+  modifiers and their caps.
 - **A weapon carries dice, never a modifier.** `Weapon.damage` is a `Dice` pool
   and `Dice` has nowhere to put a flat bonus, which is what makes "dice double
   on a crit and flat never does" structural rather than remembered: the
@@ -35,15 +41,18 @@ from typing import Final
 import pytest
 
 from dndsim.core.dice import Dice
+from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.geometry import Cell
 from dndsim.core.timeline import TimeKey, TurnPhase
 from dndsim.creatures.creature import UNSEATED, Creature
-from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
+from dndsim.creatures.economy import ActionEconomy
+from dndsim.creatures.stats import GREATSWORD, UNARMOURED, Armour, StatBlock, Weapon
 from dndsim.hooks.contexts import Combatant, TurnContext
 from dndsim.hooks.contexts import Weapon as WeaponProtocol
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.definitions import ON_TURN_END, ON_TURN_START
 from dndsim.hooks.source import HookSource
+from dndsim.rules.constants import CRITICAL_HIT_THRESHOLD
 from dndsim.rules.enums import Ability, DamageType, Mastery, Size, WeaponProperty
 
 SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 10))
@@ -61,13 +70,12 @@ PIKE: Final = Weapon(
 supply the 38 XPHB weapons, and this test needs one whose reach is not 5."""
 
 
-def stats(*, level: int = 1, max_hp: int = 20, armour_class: int = 15) -> StatBlock:
+def stats(*, level: int = 1, max_hp: int = 20, **scores: int) -> StatBlock:
     """A stat block with every ability score named, so a test that cares about
     one of them changes only that one."""
     return StatBlock(
-        abilities=SCORES,
+        abilities={**SCORES, **{Ability(key): value for key, value in scores.items()}},
         max_hp=max_hp,
-        armour_class=armour_class,
         level=level,
     )
 
@@ -93,8 +101,32 @@ def test_a_creature_is_the_combatant_a_context_carries() -> None:
     checks, and the membership assertion is what fails loudly if the protocol
     grows a member `Creature` does not have."""
     combatant: Combatant = creature(name="rogue")
-    assert protocol_members(Combatant) == {"name", "initiative"}
+    assert protocol_members(Combatant) == {
+        "name",
+        "initiative",
+        "hp",
+        "max_hp",
+        "temp_hp",
+    }
     assert (combatant.name, combatant.initiative) == ("rogue", UNSEATED)
+    assert (combatant.hp, combatant.max_hp, combatant.temp_hp) == (20, 20, 0)
+
+
+def test_the_defenders_hit_points_are_readable_from_inside_an_event() -> None:
+    """w1a's widening, and the reason for it: "when the target is below half its
+    hit points" is a condition dozens of features are written around, and
+    through W0 no `on_hit` handler could ask it — `w0i`'s own bloodied rider had
+    to interrogate the damage bag instead (ROADMAP § The W0 debt register, #2).
+    The three numbers are one promise: what `engine/damage.py` spends, in the
+    order it spends it — and all three are readable and none writable, because a
+    handler that could set hit points would be a second place the resolution
+    order lives."""
+    wounded = creature(max_hp=30)
+    wounded.hp = 11
+    wounded.temp_hp = 4
+
+    defender: Combatant = wounded
+    assert (defender.hp + defender.temp_hp) * 2 <= defender.max_hp
 
 
 def test_a_real_weapon_is_the_weapon_a_context_carries() -> None:
@@ -116,7 +148,7 @@ def test_a_missing_ability_score_is_refused_rather_than_defaulted() -> None:
         ability: 14 for ability in Ability if ability is not Ability.CHARISMA
     }
     with pytest.raises(ValueError, match="all six ability scores"):
-        StatBlock(abilities=partial, max_hp=20, armour_class=15)
+        StatBlock(abilities=partial, max_hp=20)
 
 
 def test_the_refusal_names_what_is_absent() -> None:
@@ -130,28 +162,35 @@ def test_the_refusal_names_what_is_absent() -> None:
                 if ability not in {Ability.CONSTITUTION, Ability.WISDOM}
             },
             max_hp=20,
-            armour_class=15,
         )
 
 
-def test_the_three_numbers_nobody_can_guess_have_no_defaults() -> None:
-    """Ability scores, hit points and AC must all be given: a defaulted 10 is a
-    number nobody chose that silently changes every save, every attack and every
-    hit made against it, which is the same argument that refuses a *partial*
-    ability map. Omitting one is a `TypeError` at the point of construction —
-    the same failure as omitting it from the build."""
+def test_the_two_numbers_nobody_can_guess_have_no_defaults() -> None:
+    """Ability scores and hit points must both be given: a defaulted 10 is a
+    number nobody chose that silently changes every save and every attack made
+    with it, which is the same argument that refuses a *partial* ability map.
+    Omitting one is a `TypeError` at the point of construction — the same
+    failure as omitting it from the build."""
     with pytest.raises(TypeError, match="abilities"):
         StatBlock()  # type: ignore[call-arg]
     with pytest.raises(TypeError, match="max_hp"):
         StatBlock(abilities=SCORES)  # type: ignore[call-arg]
+
+
+def test_an_armour_class_cannot_be_typed_onto_a_stat_block() -> None:
+    """The W0 literal is *gone*, not defaulted (ROADMAP § The W0 debt register,
+    #1). A stat block that still accepted the keyword would keep accepting it
+    from a build YAML, which is precisely the number DESIGN.md refuses to let
+    anybody choose by hand."""
+    assert "armour_class" not in {field.name for field in fields(StatBlock)}
     with pytest.raises(TypeError, match="armour_class"):
-        StatBlock(abilities=SCORES, max_hp=20)  # type: ignore[call-arg]
+        StatBlock(abilities=SCORES, max_hp=20, armour_class=15)  # type: ignore[call-arg]
 
 
 def test_the_three_that_the_rules_themselves_default_still_do() -> None:
     """Level 1 is the bottom of the table, and 30 feet and Medium are what the
     rules default to — none of the three is a guess about this creature."""
-    block = StatBlock(abilities=SCORES, max_hp=20, armour_class=15)
+    block = StatBlock(abilities=SCORES, max_hp=20)
     assert (block.level, block.speed_ft, block.size) == (1, 30, Size.MEDIUM)
 
 
@@ -190,12 +229,27 @@ def test_an_ability_modifier_rounds_down_including_below_ten() -> None:
     directions: a 7 is -2 and a 1 is -5, not -1 and -4."""
     expected = {1: -5, 3: -4, 7: -2, 8: -1, 10: 0, 11: 0, 15: 2, 20: 5}
     for score, modifier in expected.items():
-        block = StatBlock(
-            abilities={**SCORES, Ability.STRENGTH: score},
-            max_hp=20,
-            armour_class=15,
-        )
+        block = StatBlock(abilities={**SCORES, Ability.STRENGTH: score}, max_hp=20)
         assert block.modifier(Ability.STRENGTH) == modifier, score
+
+
+def test_the_derived_numbers_are_settled_once_and_cannot_go_stale() -> None:
+    """`proficiency_bonus` walked the XPHB table and `modifier()` divided on
+    every read, three times per attack resolution — ~1.5% of the budget
+    (docs/decisions.md § w0i, ROADMAP § The W0 debt register, #4). Both are pure
+    functions of a frozen stat block, so both are settled at construction; the
+    scores are copied behind a read-only view first, so that a caller still
+    holding the dict it passed in cannot leave them describing a creature that
+    no longer exists."""
+    scores = dict(SCORES) | {Ability.STRENGTH: 18}
+    block = StatBlock(abilities=scores, max_hp=20, level=5)
+    scores[Ability.STRENGTH] = 8
+
+    assert block.proficiency_bonus == 3
+    assert block.modifier(Ability.STRENGTH) == 4
+    assert block.modifiers[Ability.STRENGTH] == 4
+    with pytest.raises(TypeError):
+        block.modifiers[Ability.STRENGTH] = 0  # type: ignore[index]
 
 
 def test_a_stat_block_is_frozen_and_shareable() -> None:
@@ -207,6 +261,108 @@ def test_a_stat_block_is_frozen_and_shareable() -> None:
     assert first.stats is second.stats is shared
     with pytest.raises(AttributeError):
         shared.max_hp = 40  # type: ignore[misc]
+
+
+# --- Armour, and the AC derived from it --------------------------------------
+
+
+def test_a_creature_wearing_nothing_is_ten_plus_dexterity() -> None:
+    """The rule every other shape restates: a creature wearing no armour has an
+    AC of 10 plus its Dexterity modifier (XPHB, "Armor Class"). It is a default
+    in the sense that a speed of 30 feet is one — what the rules say about an
+    unequipped creature, not a stand-in for a number somebody forgot."""
+    assert creature().armour_class == 10
+    nimble = Creature(name="monk", stats=stats(dex=18), position=Cell(0, 0))
+    assert nimble.armour is UNARMOURED
+    assert nimble.armour_class == 14
+
+
+def test_light_armour_takes_all_of_dexterity_and_medium_caps_it_at_two() -> None:
+    """Studded Leather is 12 plus the whole Dexterity modifier; Half Plate is 15
+    plus a Dexterity modifier capped at +2. A Dexterity of 18 is +4, so the cap
+    is the whole difference between the two rows and is worth a test that would
+    notice it going."""
+    block = stats(dex=18)
+    assert Armour.light("Studded Leather", 12).armour_class(block) == 16
+    assert Armour.medium("Half Plate", 15).armour_class(block) == 17
+
+
+def test_heavy_armour_leaves_dexterity_out_rather_than_capping_it_at_zero() -> None:
+    """The distinction only shows up on a *negative* modifier, and it is the
+    likeliest way to get this class wrong: a Strength build in Plate with a
+    Dexterity of 8 wears it for 18, not 17. The rules do not cap Dexterity for
+    heavy armour, they do not add it at all."""
+    clumsy = stats(dex=8)
+    assert Armour.heavy("Plate", 18).armour_class(clumsy) == 18
+    assert Armour.light("Leather", 11).armour_class(clumsy) == 10
+
+
+def test_a_shield_is_two_whatever_is_underneath_it() -> None:
+    """+2 in every row of the Armor table, and v1 has no magic items to make it
+    anything else (DESIGN.md § Settled decisions)."""
+    fighter = Creature(
+        name="fighter",
+        stats=stats(dex=12),
+        position=Cell(0, 0),
+        armour=Armour.heavy("Chain Mail", 16),
+    )
+    assert fighter.armour_class == 16
+    fighter.shield = True
+    assert fighter.armour_class == 18
+    fighter.armour = Armour.medium("Breastplate", 14)
+    assert fighter.armour_class == 17
+
+
+def test_unarmored_defense_is_the_unarmoured_shape_with_one_more_modifier() -> None:
+    """The Barbarian's is 10 plus Dexterity and Constitution; the Monk's
+    substitutes Wisdom. Both are this value object with a second ability and
+    nothing else changed, which is what keeps class features out of the AC
+    calculation — the feature (W4) equips one of these."""
+    barbarian = stats(dex=14, con=16)
+    assert Armour.unarmoured(Ability.CONSTITUTION).armour_class(barbarian) == 15
+    monk = stats(dex=16, wis=14)
+    assert Armour.unarmoured(Ability.WISDOM).armour_class(monk) == 15
+
+
+def test_a_printed_armour_class_is_the_one_number_somebody_may_type() -> None:
+    """A monster's stat block prints its AC and a target dummy's is a knob to
+    sweep (w2d) — both legitimate, because the number is published rather than
+    chosen. It is the heavy shape: a printed AC already includes whatever
+    Dexterity the creature has."""
+    dummy = Creature(
+        name="dummy",
+        stats=stats(dex=18),
+        position=Cell(0, 0),
+        armour=Armour.natural(15),
+    )
+    assert dummy.armour_class == 15
+
+
+def test_an_armour_class_is_derived_and_has_nowhere_to_be_assigned() -> None:
+    """No setter, on either class. An AC is what the armour, the shield and the
+    Dexterity add up to; a creature that could be told its AC is a build that
+    can type one into a YAML file."""
+    fighter = creature()
+    with pytest.raises(AttributeError):
+        fighter.armour_class = 22  # type: ignore[misc]
+
+
+def test_swapping_the_stat_block_out_from_under_a_creature_is_refused() -> None:
+    """Three numbers are read off it once — the modifiers, the proficiency
+    bonus and the derived AC — so a stat block swapped in afterwards would
+    leave all three describing the creature this one used to be. A creature
+    whose build changed is a new creature."""
+    fighter = creature()
+    with pytest.raises(AttributeError):
+        fighter.stats = stats(level=9)  # type: ignore[misc]
+
+
+def test_armour_is_a_frozen_value_object() -> None:
+    """Shared by every creature wearing one, exactly like a weapon."""
+    plate = Armour.heavy("Plate", 18)
+    with pytest.raises(AttributeError):
+        plate.base_ac = 20  # type: ignore[misc]
+    assert str(plate) == "Plate"
 
 
 # --- A weapon ----------------------------------------------------------------
@@ -286,25 +442,50 @@ def test_reach_comes_from_the_weapon() -> None:
 
 
 def test_what_the_stat_block_knows_the_creature_answers_for() -> None:
-    """One place holds the number: the creature delegates rather than copying,
-    so a derived AC (w1a) has one place to land."""
+    """One place holds the number: the creature answers for its stat block
+    rather than carrying a second copy of it, and the AC is derived from the
+    equipment beside it."""
     fighter = Creature(
         name="fighter",
         stats=StatBlock(
             abilities={**SCORES, Ability.STRENGTH: 18},
             level=5,
             max_hp=44,
-            armour_class=18,
             speed_ft=25,
             size=Size.SMALL,
         ),
         position=Cell(2, 2),
+        armour=Armour.heavy("Plate", 18),
     )
     assert fighter.armour_class == 18
     assert fighter.speed_ft == 25
     assert fighter.size is Size.SMALL
     assert fighter.proficiency_bonus == 3
     assert fighter.modifier(Ability.STRENGTH) == 4
+
+
+def test_where_a_creature_starts_critting_is_a_stat_it_carries() -> None:
+    """A natural 20 by default, and 19 for a Champion — Improved Critical lowers
+    the *character's* threshold, never one attack's. That is why it lives here
+    and why `AttackRollContext` has no mutator for it: the engine reads it when
+    it builds the context, and a handler that could edit it per attack would be
+    a second way to spell a permanent feature."""
+    fighter = creature()
+    assert fighter.crit_threshold == CRITICAL_HIT_THRESHOLD == 20
+    fighter.crit_threshold = 19
+    assert fighter.crit_threshold == 19
+
+
+def test_a_creature_owns_the_economy_its_dispatcher_spends_from() -> None:
+    """Wired here rather than by the build loader: a creature paying out of
+    somebody else's economy is the same class of mistake as a handler owned by
+    somebody else, and construction is the one place that can rule it out.
+    `Dispatcher.bind()` is left for the gate (w2f), which has a cycle this does
+    not."""
+    fighter = creature()
+    assert isinstance(fighter.economy, ActionEconomy)
+    with pytest.raises(EngineAssemblyError, match="already has an action economy"):
+        fighter.dispatcher.bind(economy=ActionEconomy())
 
 
 def test_a_creature_does_not_know_how_to_take_damage() -> None:

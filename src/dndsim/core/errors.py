@@ -17,10 +17,14 @@ first object in the project with a lifetime shorter than the run.
 which is the first code able to observe a handler at all — one at the moment the
 handler's class is created, one at the moment it returns, and one for the
 machinery it declared that nobody wired in.
+
+`EconomyError` arrives with the action economy (w1a), which is the first thing
+in the project that can be *overdrawn*.
 """
 
 __all__ = [
     "DndSimError",
+    "EconomyError",
     "EngineAssemblyError",
     "FeatureContractError",
     "FeatureDeclarationError",
@@ -56,6 +60,24 @@ class PhaseError(DndSimError):
     It is not an `AttributeError`: the attribute exists and the mutator is the
     right one to call, which is precisely why the timing is worth naming
     separately from "you assigned to a field".
+    """
+
+
+class EconomyError(DndSimError):
+    """Something was spent that the action economy did not have to give.
+
+    One of DESIGN.md § Failing loudly's named runtime invariants — "a second
+    reaction spent before the creature's own turn has begun" — and the general
+    case of it: an Action, a Bonus Action or a foot of movement taken by a
+    creature with none left.
+
+    It is a contract violation rather than a fight outcome because **asking is
+    free**. `can_spend()` answers before anything is spent, the dispatcher calls
+    it for every costed handler and the turn loop (w2c) filters its offers
+    through it, so reaching here means a caller decided not to ask. Silently
+    clamping instead would hand back the bug M0 found by accident — a creature
+    spending an Action on something that costs a Bonus Action — as a fight that
+    merely reports a disappointing average.
     """
 
 

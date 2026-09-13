@@ -1,12 +1,29 @@
 """`Creature` — something that stands somewhere, has hit points, and answers when
 the engine asks.
 
-A first cut (ROADMAP w0g2), built so that `w0h`'s walking skeleton and `w0i`'s
-benchmark run against a real object rather than a stub: real hit points, a real
-position on the grid, and a real `Dispatcher` carrying real handlers. `w1a`
-completes it with derived stats, AC from equipment and the action economy; `w1b`
-and `w1c` hang resources and effects off it. Nothing here is rewritten by those
-tasks.
+`w0g2` cut the first version so that `w0h`'s walking skeleton and `w0i`'s
+benchmark ran against a real object rather than a stub — real hit points, a real
+position on the grid, a real `Dispatcher` carrying real handlers — and `w1a`
+completed it with equipment, a derived Armor Class and the action economy,
+rewriting none of it. `w1b` and `w1c` hang resources and effects off it next.
+
+**A creature's AC is a fact about what it is wearing.** `armour` and `shield`
+are equipment, beside the weapon, and `armour_class` is derived from them and
+from the stat block's Dexterity (DESIGN.md § Reconnaissance: "AC is derived from
+equipment, never written into a build"). It is derived *once* and cached, since
+every attack made against this creature reads it and the inputs change only when
+something is equipped. What changes AC for the length of one attack — Shield,
+cover, Shield of Faith — is not equipment and does not belong here: it rides on
+`AttackDeclaredContext.ac_bonus`, which is the defender's one lever in the
+attack pipeline and the reason no hook in the closed registry recomputes AC.
+
+**A creature owns its action economy and its dispatcher spends from it.** The
+two are wired to each other here rather than by the build loader, because a
+creature paying out of somebody else's economy is the same class of mistake as a
+handler owned by somebody else, and this is the one place that can rule it out.
+`Dispatcher.bind()` is left for the gate (w2f), which genuinely cannot be
+wired at construction — the APL's namespace is built over the creature that owns
+the dispatcher.
 
 **A creature owns its dispatch table.** DESIGN.md § Levers asks for per-creature
 precomputed tables and refuses a global bus, so the table is a field of the
@@ -29,11 +46,13 @@ from typing import Final
 
 from dndsim.core.geometry import Cell
 from dndsim.core.timeline import InitiativeKey
-from dndsim.creatures.stats import StatBlock, Weapon
+from dndsim.creatures.economy import ActionEconomy
+from dndsim.creatures.stats import UNARMOURED, Armour, StatBlock, Weapon
 from dndsim.hooks.contexts import Context
 from dndsim.hooks.dispatch import Dispatcher
 from dndsim.hooks.registry import HookSpec
 from dndsim.hooks.source import HookSource
+from dndsim.rules.constants import CRITICAL_HIT_THRESHOLD, SHIELD_AC_BONUS
 from dndsim.rules.enums import Ability, Size
 
 __all__ = ["UNSEATED", "Creature"]
@@ -55,9 +74,10 @@ undecided one."""
 class Creature:
     """One combatant: its numbers, where it stands, and what is attached to it.
 
-    Satisfies the `Combatant` protocol `hooks/contexts.py` declares — `name` and
-    `initiative` — which is the contract `w0f` deferred to this task, and the
-    contract test that says so is the reason the protocol may stay narrow.
+    Satisfies the `Combatant` protocol `hooks/contexts.py` declares — a name, a
+    place in the order and the pool a hit comes out of — which is the contract
+    `w0f` deferred to `w0g2` and `w1a`, and the contract test that says so is the
+    reason the protocol may stay narrow.
     """
 
     __slots__ = (
@@ -68,12 +88,19 @@ class Creature:
         # impossible or would keep dead combatants alive for the length of a
         # run. One pointer per creature, nothing on the hot path (w0i).
         "__weakref__",
+        "_armour",
+        "_armour_class",
+        "_shield",
+        "_stats",
+        "crit_threshold",
         "dispatcher",
+        "economy",
         "hp",
         "initiative",
+        "modifiers",
         "name",
         "position",
-        "stats",
+        "proficiency_bonus",
         "temp_hp",
         "weapon",
     )
@@ -85,46 +112,110 @@ class Creature:
         stats: StatBlock,
         position: Cell,
         weapon: Weapon | None = None,
+        armour: Armour = UNARMOURED,
+        shield: bool = False,
         initiative: InitiativeKey = UNSEATED,
     ) -> None:
         # `position` has no default: two creatures defaulted onto the same cell
         # would be a fight in which everything is in everyone's reach and every
         # distance is zero, which is the kind of silence this design refuses.
+        # `armour` does have one, because 10 + DEX is what the rules say about a
+        # creature wearing nothing rather than a number standing in for one
+        # somebody forgot.
         self.name = name
-        self.stats = stats
+        self._stats = stats
         self.weapon = weapon
+        self._armour = armour
+        self._shield = shield
         self.position = position
         self.initiative = initiative
         self.hp = stats.max_hp
         self.temp_hp = 0
-        self.dispatcher = Dispatcher()
+        # Read off the stat block once. Both are pure functions of a frozen
+        # object, the attack pipeline reads them three times per resolution, and
+        # `stats` is read-only below so that neither can go stale (w0i measured
+        # recomputing them at ~1.5% of the budget).
+        self.modifiers = stats.modifiers
+        self.proficiency_bonus = stats.proficiency_bonus
+        # Where this creature's attacks start critting. A derived stat rather
+        # than a constant the attack reads, because Improved Critical lowers
+        # the *character's* threshold to 19 and nothing about one attack roll
+        # changes it — which is the reason `AttackRollContext` has no mutator
+        # for it (`hooks/contexts.py`). A feature that lowers it sets it here.
+        self.crit_threshold = CRITICAL_HIT_THRESHOLD
+        self._armour_class = self._derive_armour_class()
+        self.economy = ActionEconomy()
+        self.dispatcher = Dispatcher(economy=self.economy)
 
     # -- what the stat block already knows ------------------------------------
 
     @property
-    def max_hp(self) -> int:
-        return self.stats.max_hp
+    def stats(self) -> StatBlock:
+        """The frozen numbers this creature was built from.
+
+        Read-only rather than a plain field: `modifiers`, `proficiency_bonus`
+        and the derived AC are read off it once at construction, so a stat block
+        swapped in afterwards would leave three numbers describing the creature
+        this one used to be. A creature whose build changed is a new creature.
+        """
+        return self._stats
 
     @property
-    def armour_class(self) -> int:
-        """This creature's AC. A literal until `w1a` derives it from equipment."""
-        return self.stats.armour_class
+    def max_hp(self) -> int:
+        return self._stats.max_hp
 
     @property
     def speed_ft(self) -> int:
-        return self.stats.speed_ft
+        return self._stats.speed_ft
 
     @property
     def size(self) -> Size:
-        return self.stats.size
-
-    @property
-    def proficiency_bonus(self) -> int:
-        return self.stats.proficiency_bonus
+        return self._stats.size
 
     def modifier(self, ability: Ability) -> int:
         """The modifier for one ability score."""
-        return self.stats.modifier(ability)
+        return self.modifiers[ability]
+
+    # -- what it is wearing, and the AC that follows ---------------------------
+
+    @property
+    def armour_class(self) -> int:
+        """This creature's Armor Class, derived from its equipment.
+
+        No setter: an AC is what the armour, the shield and the Dexterity add up
+        to, and a build that could assign one would be back to typing the number
+        into the YAML. A bonus lasting one attack is `ac_bonus` on the attack's
+        context; a bonus lasting longer is an `Effect` (w1c) that equips or
+        changes something here.
+        """
+        return self._armour_class
+
+    @property
+    def armour(self) -> Armour:
+        return self._armour
+
+    @armour.setter
+    def armour(self, armour: Armour) -> None:
+        self._armour = armour
+        self._armour_class = self._derive_armour_class()
+
+    @property
+    def shield(self) -> bool:
+        """Whether a Shield is in hand: +2, the same for every shield in v1,
+        which has no magic items (DESIGN.md § Settled decisions)."""
+        return self._shield
+
+    @shield.setter
+    def shield(self, shield: bool) -> None:
+        self._shield = shield
+        self._armour_class = self._derive_armour_class()
+
+    def _derive_armour_class(self) -> int:
+        """The one place an AC is computed. Called when equipment changes, and
+        never per attack — the inputs cannot change without coming through
+        here."""
+        armour_class = self._armour.armour_class(self._stats)
+        return armour_class + SHIELD_AC_BONUS if self._shield else armour_class
 
     # -- what changes during a fight ------------------------------------------
 

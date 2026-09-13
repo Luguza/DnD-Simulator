@@ -217,21 +217,23 @@ class SavageAttacker(Fixture):
 
 
 class BloodiedBonus(Fixture):
-    """Applies to a hit that is already big — the sometimes-true rider.
+    """Applies against a target already below half its hit points — the
+    sometimes-true rider.
 
-    A real one would read the defender's hit points; the `Combatant` protocol
-    contexts hand out carries `name` and `initiative` and nothing else
-    yet (`hooks/contexts.py`, w0f), and widening it is `w1a`'s. So the
-    condition is asked of the bag instead, which costs the same and, unlike a
-    comparison of two fixed initiative seats, is **sometimes true**: a rider
-    whose condition can never hold is the exact thing the no-op detector exists
-    to find (DESIGN.md § No-op detector), and one hiding in the benchmark would
+    It reads the defender's pool, which is what a real one does and what this
+    fixture could not do until `w1a` widened the `Combatant` protocol: through
+    W0 the condition was asked of the damage bag instead, with a paragraph here
+    saying why. What has not changed is the property that paragraph was
+    defending — the condition is **sometimes true**, because a rider whose
+    condition can never hold is the exact thing the no-op detector exists to
+    find (DESIGN.md § No-op detector), and one hiding in the benchmark would
     quietly make the measurement cheaper than the thing it stands for.
     """
 
     @hook("on_hit")
     def bloodied(self, ctx: HitContext) -> R:
-        if len(ctx.damage) < 3:
+        defender = ctx.defender
+        if (defender.hp + defender.temp_hp) * 2 > defender.max_hp:
             return R.SKIPPED
         ctx.damage.add(flat=2)
         return R.APPLIED

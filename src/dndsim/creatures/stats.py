@@ -1,30 +1,45 @@
-"""What a creature is made of, and the one weapon the spike swings.
+"""What a creature is made of: its numbers, its armour and the one weapon the
+spike swings.
 
-A first cut (ROADMAP w0g2). `w1a` completes this module with derived stats, the
-`Armour` value object and the AC derivation that follows from it; `w2a` imports
-the 38 XPHB weapons through the content ACL into the `Weapon` class below. The
-two shapes here are the ones `w0h`'s walking skeleton and `w0i`'s benchmark
-cannot run without, and both are **Value Objects**: frozen, slotted, and shared
-by every creature that has them rather than copied per creature (DESIGN.md §
-Levers).
+`w0g2` cut the first version of this module and `w1a` completes it — nothing here
+was rewritten. `w2a` imports the 38 XPHB weapons and every armour entry through
+the content ACL into the two classes below. All three shapes are **Value
+Objects**: frozen, slotted, and shared by every creature that has them rather
+than copied per creature (DESIGN.md § Levers).
 
-**`armour_class` is a literal here, and that is temporary.** DESIGN.md is
-emphatic that AC is *derived* from equipment — armour plus the DEX cap plus a
-shield plus the Unarmored Defense variants — and never a number typed into a
-build (ROADMAP w1a). Until `Armour` exists there is nothing to derive it from,
-so the spike carries the number and this paragraph is the reason a reviewer
-finds it here rather than a silent literal in a YAML file.
+**AC is derived, and `Armour` is what it is derived from.** `StatBlock` carried
+an `armour_class` literal through W0 because there was nothing to derive one
+from; the field is gone rather than defaulted, because a default is how a number
+nobody chose gets into a build and stays there. What replaced it is one small
+object that answers a single question — *how much does wearing this raise a
+creature's Armor Class* — and that is enough for all four of the shapes the
+rules have: armour with no Dexterity at all (heavy), armour with a capped
+Dexterity (medium), armour with an uncapped one (light and unarmoured), and the
+Unarmored Defense variants, which are the unarmoured shape with a second ability
+modifier added. A monster's printed AC is the heavy shape with a different name.
 
-Sources: DESIGN.md § Structural prevention over testing, § Levers; ROADMAP w0g2,
-w1a, w2a.
+**The derived numbers are computed once, here.** `proficiency_bonus` walked the
+XPHB table and `modifier()` divided on every read, three times per attack
+resolution, which `w0i` measured at ~1.5% of the budget (docs/decisions.md §
+w0i). A stat block is frozen, so both can be settled in `__post_init__` and read
+as attributes for the life of the run.
+
+Sources: XPHB (2024) "Equipment" (the Armor table, Armor Class); DESIGN.md
+§ Structural prevention over testing, § Levers; ROADMAP w0g2, w1a, w2a.
 """
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Final
 
 from dndsim.core.dice import Dice
-from dndsim.rules.constants import ability_modifier, proficiency_bonus
+from dndsim.rules.constants import (
+    BASE_ARMOUR_CLASS,
+    MEDIUM_ARMOUR_DEX_CAP,
+    ability_modifier,
+    proficiency_bonus,
+)
 from dndsim.rules.enums import (
     Ability,
     DamageType,
@@ -33,7 +48,9 @@ from dndsim.rules.enums import (
     WeaponProperty,
 )
 
-__all__ = ["GREATSWORD", "StatBlock", "Weapon"]
+__all__ = ["GREATSWORD", "UNARMOURED", "Armour", "StatBlock", "Weapon"]
+
+_DEX: Final = Ability.DEXTERITY
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,21 +111,29 @@ class StatBlock:
     split is what lets one stat block be shared by the four identical dummies in
     an encounter.
 
-    **The three numbers nobody can guess have no defaults.** All six ability
-    scores, the hit points and the AC must be given: a defaulted 10 is a number
-    nobody chose that silently changes every save, every attack and every hit
-    made against it, which is the same argument that refuses a *partial* ability
-    map below. Speed and size do have defaults, because 30 feet and Medium are
-    what the rules themselves default to, and level defaults to 1 because that
-    is the bottom of the table rather than a guess.
+    **The two numbers nobody can guess have no defaults.** All six ability scores
+    and the hit points must be given: a defaulted 10 is a number nobody chose
+    that silently changes every save and every attack made with it, which is the
+    same argument that refuses a *partial* ability map below. Speed and size do
+    have defaults, because 30 feet and Medium are what the rules themselves
+    default to, and level defaults to 1 because that is the bottom of the table
+    rather than a guess. **AC is not among them at all**: it is derived from what
+    the creature is wearing, and what it is wearing is equipment on the
+    `Creature`, beside the weapon.
+
+    `modifiers` and `proficiency_bonus` are settled in `__post_init__` rather
+    than recomputed per read. Both are pure functions of fields that cannot
+    change — the class is frozen — and the attack pipeline reads them three
+    times per resolution (docs/decisions.md § w0i).
     """
 
     abilities: Mapping[Ability, int]
     max_hp: int
-    armour_class: int
     level: int = 1
     speed_ft: int = 30
     size: Size = Size.MEDIUM
+    modifiers: Mapping[Ability, int] = field(init=False, repr=False)
+    proficiency_bonus: int = field(init=False)
 
     def __post_init__(self) -> None:
         missing = [
@@ -122,15 +147,123 @@ class StatBlock:
             )
         if self.max_hp < 1:
             raise ValueError(f"a creature has at least 1 hit point, got {self.max_hp}")
-        # `proficiency_bonus` would raise on a level off the table, but only
-        # once somebody read it — a fight in, and attributed to the reader.
-        proficiency_bonus(self.level)
-
-    @property
-    def proficiency_bonus(self) -> int:
-        """The XPHB proficiency bonus for this creature's level."""
-        return proficiency_bonus(self.level)
+        # A level off the table raises here — at the earliest moment the
+        # information exists — rather than a fight later, attributed to whoever
+        # first read the number.
+        object.__setattr__(self, "proficiency_bonus", proficiency_bonus(self.level))
+        # The scores are copied behind a read-only view before anything is
+        # derived from them: a caller holding the dict it passed in could
+        # otherwise raise a Strength score after construction and leave the
+        # modifier below saying what it used to be.
+        object.__setattr__(self, "abilities", MappingProxyType(dict(self.abilities)))
+        object.__setattr__(
+            self,
+            "modifiers",
+            MappingProxyType(
+                {
+                    ability: ability_modifier(score)
+                    for ability, score in self.abilities.items()
+                }
+            ),
+        )
 
     def modifier(self, ability: Ability) -> int:
         """The modifier for one ability score."""
-        return ability_modifier(self.abilities[ability])
+        return self.modifiers[ability]
+
+
+@dataclass(frozen=True, slots=True)
+class Armour:
+    """What a creature is wearing, as an Armor Class.
+
+    One question, asked of four different-looking rules: *how much does this
+    raise the wearer's AC*. `base_ac` is the number the Armor table prints, and
+    `abilities` is which ability modifiers are added to it and how far each one
+    counts — which is the whole of the difference between light, medium and
+    heavy armour, and what makes an Unarmored Defense variant a value rather
+    than a special case.
+
+    **Heavy armour has an empty `abilities`, not a cap of zero.** The rules do
+    not cap Dexterity for heavy armour, they leave it out: a wearer with a
+    Dexterity of 8 wears plate for 18, not 17. A cap of 0 would quietly answer
+    the second.
+
+    Build one through the named constructors below rather than by hand — they
+    are what stops `w2a`'s importer from having to know that a medium-armour row
+    caps Dexterity at +2, and what makes the four shapes enumerable by reading
+    five lines.
+    """
+
+    name: str
+    base_ac: int
+    abilities: tuple[tuple[Ability, int | None], ...] = ()
+    """Which ability modifiers this armour adds, each with its cap or `None` for
+    no cap. A tuple rather than a mapping because it is compared, hashed and
+    shared, and because two entries is as long as it has ever needed to be."""
+
+    @classmethod
+    def light(cls, name: str, base_ac: int) -> "Armour":
+        """Light armour: the table's number plus the whole Dexterity modifier."""
+        return cls(name=name, base_ac=base_ac, abilities=((_DEX, None),))
+
+    @classmethod
+    def medium(cls, name: str, base_ac: int) -> "Armour":
+        """Medium armour: the table's number plus Dexterity, capped at +2."""
+        return cls(
+            name=name, base_ac=base_ac, abilities=((_DEX, MEDIUM_ARMOUR_DEX_CAP),)
+        )
+
+    @classmethod
+    def heavy(cls, name: str, base_ac: int) -> "Armour":
+        """Heavy armour: the printed number, and no Dexterity at all."""
+        return cls(name=name, base_ac=base_ac)
+
+    @classmethod
+    def natural(cls, base_ac: int, name: str = "Natural Armor") -> "Armour":
+        """A creature whose AC the book simply states — a monster's stat block
+        (w7), and the target dummy's AC knob (w2d).
+
+        The same shape as heavy armour because a printed AC already includes
+        whatever Dexterity the creature has. This is the *only* legitimate way
+        for an AC to arrive as a number somebody typed, and it is legitimate
+        because for a monster the number is what the rules publish; a character
+        build that reached for it would be the thing DESIGN.md § Reconnaissance
+        refuses, and `builds/schema.py` (w2f) is where that is refused.
+        """
+        return cls(name=name, base_ac=base_ac)
+
+    @classmethod
+    def unarmoured(cls, *also: Ability, name: str = "Unarmoured") -> "Armour":
+        """No armour: 10 plus the Dexterity modifier.
+
+        Every Unarmored Defense variant is this with one more modifier added
+        and nothing else changed — the Barbarian's adds Constitution, the Monk's
+        adds Wisdom — so the class feature (W4) equips one of these rather than
+        reaching into an AC calculation that would then have to know about
+        classes.
+        """
+        return cls(
+            name=name,
+            base_ac=BASE_ARMOUR_CLASS,
+            abilities=((_DEX, None), *((ability, None) for ability in also)),
+        )
+
+    def armour_class(self, stats: StatBlock) -> int:
+        """This armour's AC on a given creature, shield not included."""
+        total = self.base_ac
+        for ability, cap in self.abilities:
+            modifier = stats.modifiers[ability]
+            total += modifier if cap is None or modifier < cap else cap
+        return total
+
+    def __str__(self) -> str:
+        return self.name
+
+
+UNARMOURED: Final = Armour.unarmoured()
+"""What a creature with nothing on is wearing: 10 + DEX.
+
+A default in the same sense that a speed of 30 feet is one — it is what the
+rules themselves say about a creature nobody has equipped, not a guess standing
+in for a number somebody forgot.
+"""

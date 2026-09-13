@@ -70,10 +70,11 @@ class Economy(Protocol):
     """As much of the action economy as the dispatcher needs to see.
 
     A `Protocol` rather than an import for the reason `hooks/contexts.py` gives
-    for `Combatant`: `creatures/economy.py` (w1a) sits above this package and
-    imports it, so the dependency can only point one way. `ActionEconomy` will
-    satisfy this by having the methods, and w1a owes the contract test that says
-    so — the same debt w0g2 owes for the participant protocols.
+    for `Combatant`: `creatures/economy.py` sits above this package and imports
+    it, so the dependency can only point one way. `ActionEconomy` (w1a) satisfies
+    it by having the methods, and `tests/contract/test_economy.py` is the
+    contract test that says so — without which the protocol and the class drift
+    and `costs=` quietly stops being paid.
     """
 
     def can_spend(self, cost: ActionCost) -> bool: ...
@@ -204,12 +205,19 @@ class Dispatcher:
     def bind(self, *, economy: Economy | None = None, gate: Gate | None = None) -> None:
         """Wire in the economy and the action list once the build is assembled.
 
-        Both are constructor arguments as well, and both need this because of a
-        cycle the constructor cannot break: the APL's namespace is built over
-        the creature (DESIGN.md § Condition language — proxies holding weak
-        references to live state), and the creature owns the dispatcher, so the
-        gate does not exist yet when the dispatcher is made. The build loader
-        (w2f) calls this once; `w0i` is what found it.
+        Both are constructor arguments as well, and the **gate** needs this
+        because of a cycle the constructor cannot break: the APL's namespace is
+        built over the creature (DESIGN.md § Condition language — proxies
+        holding weak references to live state), and the creature owns the
+        dispatcher, so the gate does not exist yet when the dispatcher is made.
+        The build loader (w2f) calls this once; `w0i` is what found it.
+
+        The economy has no such cycle and in practice does not arrive here at
+        all: a `Creature` builds its own `ActionEconomy` and hands it to this
+        constructor (w1a), so that a creature cannot end up spending out of
+        another one's. The parameter stays because a bare `Dispatcher` — every
+        contract test in `tests/contract/test_dispatch.py` — is assembled
+        without a creature around it.
 
         Rebinding raises rather than replacing. A dispatcher that swapped action
         lists mid-run would make two attacks in the same fight answer to

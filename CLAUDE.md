@@ -11,33 +11,46 @@ dependency-ordered build plan (`ROADMAP.md`), the uv/pre-commit toolchain, CI,
 and five packages — `rules/` (the vocabulary every later package imports),
 `core/` (randomness, dice, the clock, the grid, the error hierarchy), `hooks/`
 (the closed registry of 39 extension points, the 31 contexts they hand out, and
-the decorator, source base class and dispatcher that run them), `creatures/` (a
-first-cut `Creature` and `StatBlock`) and `engine/` (the damage resolution
-order).
+the decorator, source base class and dispatcher that run them), `creatures/`
+(`Creature`, `StatBlock`, `Armour` and the action economy) and `engine/` (the
+damage resolution order and the movement observer).
 
-Work is at wave **W0**, and **M0 is met**: `w0a`–`w0i` are done and the
-pessimistic performance spike runs at **~31.5k attack resolutions/sec/core**
+Work is at wave **W1**; **W0 is complete and M0 is met**: `w0a`–`w0i` are done
+and the pessimistic performance spike runs at **~31.5k attack resolutions/sec/core**
 against a budget of 30k. The gate fired on the way — the spike came in at 17k
 against the 50k the design had assumed, a revision pass across the hot path
 took it to ~31.5k, and the budget was revised to 30k because 50k turned out to
 sit at the theoretical floor of this object model in CPython.
 `docs/decisions.md` § w0i has the measurements, what each change bought, and
-the two levers deliberately not taken. **W1 may start.**
+the two levers deliberately not taken. **W1 is under way.**
 
 The plans were then re-read against what the wave measured
 (`docs/decisions.md` § The W0 plan review). Two things came out of it that
 matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
-twenty-two first cuts and deferred obligations W0 left behind and the task that
-retires each — check it for the file you are about to touch — and **`w1k` is a
+first cuts and deferred obligations W0 left behind — eighteen of the
+twenty-two still open — and the task that retires each; check it for the file
+you are about to touch. And **`w1k` is a
 new task**, an M0 re-measure at the end of W1, because the measured ~31.5k has
 5% of headroom and W1 adds the per-round cost the spike does not model.
 
-One task has landed since: `w0g3`, a first cut of `engine/triggers.py` holding
+Two tasks have landed since. `w0g3` cut `engine/triggers.py`, holding
 the **movement observer** — who is offered a reaction to a move, on every
 five-foot step, and in what order. It is the audience for an opportunity attack
 and not the attack itself, which is still `w2b`'s Command and `w2c`'s turn loop.
 Read `docs/decisions.md` § w0g3 before touching movement, reactions or the
 `Gate` path.
+
+And `w1a`, the first task of W1, **completed `Creature` and `StatBlock`** and
+added `creatures/economy.py`. Three things changed that every later task builds
+on: **AC is derived from an `Armour` value object** and `StatBlock.armour_class`
+is gone rather than defaulted, so a build can no longer type a number in; a
+creature **owns an `ActionEconomy` and hands it to its own dispatcher**, so
+`Dispatcher.bind()` is now the gate's alone; and the `Combatant` protocol
+**carries the three hit-point numbers**, so a handler can finally ask whether
+its target is bloodied. Derived stats (`modifiers`, `proficiency_bonus`,
+`crit_threshold`) are settled at construction and `Creature.stats` is read-only
+so they cannot go stale. `docs/decisions.md` § w1a has the reasoning; it retires
+debt-register rows #1, #2, #4 and #10.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
@@ -231,6 +244,7 @@ there is local to a module.
 | `hooks/contexts.py`, `core/errors.py` | § w0f |
 | `hooks/decorator.py`, `hooks/source.py`, `hooks/dispatch.py` | § w0g |
 | `creatures/`, `engine/damage.py`, `core/geometry.py` | § w0g2 |
+| `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |
 | `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review |
