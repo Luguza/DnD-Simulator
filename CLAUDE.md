@@ -64,9 +64,8 @@ by looking ahead to which types are resisted, never in the order the damage
 parts arrived, and by a method that cannot let a larger reduction land more
 damage. `Mitigated.total` is therefore the sum of `Mitigated.amounts` again,
 where `w0g2` had the two deliberately disagree. `docs/decisions.md` § w1e has
-the arguments; it retires debt-register row #7 and opens #23. Its review is also
-the project's clearest case that **a citation's reasoning is load-bearing like
-code**: five rounds, every finding in the prose, none in the arithmetic.
+the arguments; it retires debt-register row #7 and opens #23, and its review is
+the case behind the citation rule in § Working rules.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
@@ -318,7 +317,8 @@ end of `ROADMAP.md` is what a delegated agent receives.
   (linter-enforced); `rg "PHASE:"` should stay under ~30 hits.
 - Every feature needs an XPHB `source_ref` carrying the quoted rules sentence,
   one golden test with exact-integer assertions, and a declared analytic
-  `expectation` that never imports `dndsim`.
+  `expectation` that never imports `dndsim`. The citation rule in § Working
+  rules governs what may be written around that sentence.
 - `data/` is gitignored — fetched 5etools JSON, reproducible via
   `dndsim content fetch`. Hand-authored `builds/*.yaml` are in git.
 
@@ -335,5 +335,23 @@ end of `ROADMAP.md` is what a delegated agent receives.
   packets in `ROADMAP.md`, the contracts in `DESIGN.md`, and any task given in
   chat. Check them against the rest of the design for gaps, contradictions and
   unstated assumptions.
+- **A citation carries the quotation and the consequence that actually follows,
+  and stops there.** An argument in a comment, a docstring or
+  `docs/decisions.md` is load-bearing exactly like code, and it fails the same
+  way: a later agent checks the stated consequence, finds it false, and reopens
+  a settled decision for the wrong reason. So before writing *"the other way
+  would cause Y"*, check Y — and where Y is arithmetic, check it over a range
+  rather than on the one case that suggested it. Prefer the case that actually
+  turns on the decision to the vivid case that does not.
+- **Everything past that consequence is where citations go wrong.** A flourish
+  about what the rules "went out of their way to close"; a worked example
+  derived by a method the code no longer uses; a second and third restatement of
+  an argument the tests already carry. That layer reads as authority and has
+  nothing holding it up. `w1e` is the case that taught this — five review
+  rounds, every finding in the prose, none in the arithmetic, and the fix was
+  -239 lines with no assertion changed (`docs/decisions.md` § w1e).
+- **Do not comment code that does not need explaining.** A comment restating the
+  line below it is surface to maintain and to get wrong. Comment the trap, the
+  citation, and the ordering that is not obvious from the code.
 - Ask the user for clarification when something is ambiguous or looks wrong
   instead of guessing.
