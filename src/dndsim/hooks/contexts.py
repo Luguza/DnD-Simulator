@@ -146,13 +146,38 @@ __all__ = [
 
 
 class Combatant(Protocol):
-    """A creature as a context needs to know it: a place in the order, and a name.
+    """A creature as a context needs to know it: a name, a place in the order,
+    and the pool a hit comes out of.
 
     `initiative` is here because `core/timeline.py` already builds on it —
     `Duration` anchors on an `InitiativeKey` rather than on a creature, precisely
     so that `core/` need not know what a creature is. It is a key and never a
     seat index, so a creature entering or leaving the encounter moves nobody
     else (`core/timeline.py`, docs/decisions.md § w0d).
+
+    **The three hit-point numbers are `w1a`'s widening**, and they are one
+    promise rather than three: what `engine/damage.py` spends, in the order it
+    spends it. Without them no `on_hit` handler could ask whether its target is
+    Bloodied — `w0i`'s own rider had to interrogate the damage bag instead and
+    say so in a paragraph — and "half its hit points or fewer" is a condition
+    dozens of the ~630 features are written around. `temp_hp` is here because it
+    is the first thing a hit is spent against, so a handler asking what its
+    damage will actually remove needs it.
+
+    **The two are not added together.** Bloodied is `hp * 2 <= max_hp`, hit
+    points alone: temporary hit points are a buffer in front of hit points and
+    are not hit points (XPHB, Rules Glossary). The sum is the pool a hit comes
+    out of; it is not the creature's hit points, and the reason both are exposed
+    is that features need to ask each question separately.
+
+    **What is still deliberately absent is as load-bearing as what is here.**
+    No Armor Class: what reads a target's AC is a policy decision, and the APL
+    asks the live creature through its namespace rather than through an event's
+    view of it. No `is_alive`: dying is `w1j`'s and a protocol that promised it
+    now would be promising a definition that does not exist yet. The rule this
+    protocol lives by is that it declares only what is already settled elsewhere
+    in the design; `w3e` confirms the shape before ~400 features are written
+    against it, and `w3f` is where a gap the paper pass finds gets filled.
     """
 
     @property
@@ -160,6 +185,15 @@ class Combatant(Protocol):
 
     @property
     def initiative(self) -> InitiativeKey: ...
+
+    @property
+    def hp(self) -> int: ...
+
+    @property
+    def max_hp(self) -> int: ...
+
+    @property
+    def temp_hp(self) -> int: ...
 
 
 class Weapon(Protocol):
@@ -1133,8 +1167,9 @@ class AttackRollContext(Context):
 
     Read-only about the roll itself. There is deliberately no mutator for the
     critical threshold: Improved Critical lowers the *character's* threshold, so
-    it is a derived stat on the creature (w1a) that the engine reads when it
-    builds this context, not something a handler edits per attack.
+    it is a derived stat on the creature (`Creature.crit_threshold`, w1a) that
+    the engine reads when it builds this context, not something a handler edits
+    per attack.
     """
 
     attacker: Combatant

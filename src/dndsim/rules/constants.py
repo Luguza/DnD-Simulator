@@ -19,8 +19,9 @@ the earliest possible warning that the dataset moved under us. Deriving them at
 runtime instead would make every W1 test depend on a fetch of gitignored data.
 
 Sources: XPHB (2024) "Playing the Game" (ability modifiers, the 5-foot grid),
-"Character Creation" (the Proficiency Bonus table), the class tables for the
-slot progressions, and the Rules Glossary entries for Death Saving Throws.
+"Character Creation" (the Proficiency Bonus table), "Equipment" (the Armor table
+and the Armor Class rule), the class tables for the slot progressions, and the
+Rules Glossary entries for Death Saving Throws.
 Every table below was checked against the XPHB entries in the 5etools dataset.
 """
 
@@ -31,7 +32,9 @@ from typing import Final
 from dndsim.rules.enums import CasterProgression, DamageType, Size
 
 __all__ = [
+    "BASE_ARMOUR_CLASS",
     "CELL_SIZE_FT",
+    "CRITICAL_HIT_THRESHOLD",
     "DEATH_SAVE_DC",
     "DEATH_SAVE_FAILURES_TO_DIE",
     "DEATH_SAVE_SUCCESSES_TO_STABILIZE",
@@ -39,9 +42,11 @@ __all__ = [
     "HALF_CASTER_SLOTS",
     "MAX_CHARACTER_LEVEL",
     "MAX_SPELL_LEVEL",
+    "MEDIUM_ARMOUR_DEX_CAP",
     "PACT_MAGIC_SLOTS",
     "PHYSICAL_DAMAGE_TYPES",
     "PROFICIENCY_BONUS",
+    "SHIELD_AC_BONUS",
     "SIZE_ORDER",
     "THIRD_CASTER_SLOTS",
     "ability_modifier",
@@ -58,6 +63,32 @@ MAX_SPELL_LEVEL: Final = 9
 CELL_SIZE_FT: Final = 5
 """One grid square. Distances are measured in feet everywhere; this is the only
 place the grid's resolution is written down."""
+
+BASE_ARMOUR_CLASS: Final = 10
+"""The 10 every Armor Class starts from — a creature wearing no armour has an AC
+of 10 plus its Dexterity modifier (XPHB, "Armor Class"). Every Unarmored Defense
+variant is that same 10 with one more modifier added, which is why
+`creatures/stats.py` builds all of them from this one number."""
+
+MEDIUM_ARMOUR_DEX_CAP: Final = 2
+"""How much of a Dexterity modifier medium armour lets through: every medium row
+of the XPHB Armor table caps the Dexterity it adds at +2. Light armour caps
+nothing and heavy armour adds no Dexterity at all, so this is the only cap the
+rules state and therefore the only one written down."""
+
+SHIELD_AC_BONUS: Final = 2
+"""What a Shield adds: +2, in every shield row of the XPHB Armor table. It is
+here rather than on an imported item because v1 has no magic items (DESIGN.md
+§ Settled decisions), so the number the rules state once is the number every
+shield gives; `w2a`'s import checks its entry against this the way the slot
+tables check theirs."""
+
+CRITICAL_HIT_THRESHOLD: Final = 20
+"""The natural roll a Critical Hit starts at (XPHB, "Attack Rolls": a natural 20
+hits and is a Critical Hit). It is where a *character's* threshold starts rather
+than a fact about one attack — Improved Critical lowers the character's to 19 —
+which is why it is a derived stat on the creature and never something a handler
+edits per attack (`hooks/contexts.py`)."""
 
 DEATH_SAVE_DC: Final = 10
 DEATH_SAVE_SUCCESSES_TO_STABILIZE: Final = 3

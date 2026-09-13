@@ -90,8 +90,9 @@ Null Object policy of DESIGN.md § APL.
   that does not exist, `_offer()` raises if a handler queues one.
 - **Speed set to zero**, which is what 2024 Sentinel does to a creature it hits
   on the way past. The walk below stops on the mover going down because hit
-  points exist; it cannot stop on a speed of zero until `w1a`'s `ActionEconomy`
-  and `w1c`'s effects do.
+  points exist; `w1a`'s `ActionEconomy` now holds the feet a mover has left, so
+  what remains is `w1c`'s effect to set them to nought and this file's walk to
+  ask — neither of which is this task's.
 - **Disengage, forced movement and teleportation**, which do not provoke. The
   valve is here — `provokes=False` — but what sets it is the Command and the
   condition, and both are `w2b`/`w2c`'s.

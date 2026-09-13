@@ -216,28 +216,29 @@ is already in `docs/decisions.md`; what follows is the part that changes *the
 plan*.
 
 The wave produced twenty-two deliberate stand-ins and deferred obligations —
-seventeen from `w0a`-`w0i` and five more from `w0g3`. Every
-one of them was the right thing to write — a hostile spike needs real machinery
-now, not finished machinery later — and every one of them is invisible six
-months from now, when the file around it has grown and the paragraph explaining
-it reads as description rather than as a debt. Sequencing principle 7 is the
+seventeen from `w0a`-`w0i` and five more from `w0g3`; eighteen are still open.
+Every one of them was the right thing to write — a hostile spike needs real
+machinery now, not finished machinery later — and every one of them is invisible
+six months from now, when the file around it has grown and the paragraph
+explaining it reads as description rather than as a debt. Sequencing principle 7 is the
 general rule; this is the ledger it refers to.
 
 **Each row is now also in the retiring task's *Done when* cell**, which is where
 an agent will actually look. This table is the index, not the specification.
 
+**A row leaves the table when its task lands**, and the numbers of the rows left
+do not move — they are cited from code and from `docs/decisions.md`, and a
+register that renumbered itself would make every citation say something else.
+Retired so far: **#1, #2, #4 and #10 by `w1a`** (`docs/decisions.md` § w1a).
+
 | # | The stand-in or debt | Where | Retired by | What it costs if nobody does |
 |---|---|---|---|---|
-| 1 | `StatBlock.armour_class` is a literal | `creatures/stats.py` | `w1a` | AC becomes a number typed into build YAML — the thing DESIGN.md § Reconnaissance is most emphatic about |
-| 2 | `Combatant` carries `name` and `initiative` and nothing else | `hooks/contexts.py` | `w1a` | no `on_hit` feature can read the defender's hit points; the spike's own "bloodied" rider had to ask the damage bag instead |
 | 3 | `Weapon` carries `name` and nothing else | `hooks/contexts.py` | `w1f` | no feature can ask whether the weapon is Heavy — Great Weapon Master, and every mastery, is unwritable |
-| 4 | Derived stats recomputed per attack | `creatures/creature.py` | `w1a` | ~1.5%, out of a 5% headroom |
 | 5 | `_refuse_pending()` raises on a queued effect | `engine/damage.py` | `w1c` | every effect a handler applies is refused; the raise is the reminder |
 | 6 | `attack_once()` hand-sequences the attack | `tools/skeleton.py`, imported by `tools/spike.py` | `w1f` | a second attack order beside `engine/attack.py` — **and a benchmark that defends the budget on a sequence the project does not ship** |
 | 7 | Two inline rulings and one open question, unconfirmed against the 2024 text | `engine/damage.py` | `w1e` | every number a Heavy Armor Master or Uncanny Dodge build reports rests on an argument nobody checked |
 | 8 | `on_reduced_to_zero` never fires; hit points clamp at 0 | `engine/damage.py` | `w1j` | nothing is ever dying, and Relentless Endurance has no moment to attach to |
 | 9 | `Size` reaches geometry nowhere | `core/geometry.py` | `w1d` | every Large creature is Medium — exact for W1–W3's combatants, silently wrong for the first ogre |
-| 10 | The `Economy` protocol has no real implementer or contract test | `hooks/dispatch.py` | `w1a` | the protocol and the class drift, and `costs=` stops being paid |
 | 11 | The `Gate` protocol has no contract test | `hooks/dispatch.py` | `w2e` | as above, for every gated handler |
 | 12 | `Dispatcher.bind()` is never called | `hooks/dispatch.py` | `w2f` | every gated handler raises `EngineAssemblyError` at the first gate |
 | 13 | `GREATSWORD` is hardcoded | `creatures/stats.py` | `w2a` | a second weapon definition beside the imported 38 |

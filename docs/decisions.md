@@ -1164,3 +1164,219 @@ cheaper to keep honest: the two places that already encode "don't swing at your
 own side" are the `opportunity_attack` Command's legality check (`w2b`) and the
 APL entry's `if:`. A third copy, in the file least able to see what a build
 means, is the copy that would go stale.
+
+## w1a — the creature completed: equipment, a derived AC, and the economy
+
+The first task of W1, and the one four of W0's twenty-two debts were filed
+against: `creatures/creature.py` and `creatures/stats.py` finished rather than
+rewritten, a new `creatures/economy.py`, and the widening of `Combatant` that
+`hooks/contexts.py` has been waiting for since `w0f`. Retires debt-register rows
+**#1** (the AC literal), **#2** (`Combatant` carries a name and nothing else),
+**#4** (derived stats recomputed per attack) and **#10** (the `Economy` protocol
+with no implementer and no contract test).
+
+### AC is derived, and `Armour` is the one shape that derives it
+
+DESIGN.md is emphatic that AC comes from equipment and never from a number in a
+build, and `StatBlock.armour_class` is now **gone rather than defaulted** — a
+default is precisely how a number nobody chose gets into a build and stays
+there. `StatBlock(..., armour_class=15)` is a `TypeError`, which is the same
+failure as writing it in the YAML.
+
+What replaced it is one frozen value object answering one question — *how much
+does wearing this raise the wearer's AC* — with two fields: `base_ac`, and the
+ability modifiers it adds with the cap on each. That covers the four shapes the
+rules have without a branch anywhere:
+
+| Shape | `base_ac` | `abilities` |
+|---|---|---|
+| Unarmoured (and Unarmored Defense) | 10 | DEX, uncapped (+ CON or WIS) |
+| Light | the table's | DEX, uncapped |
+| Medium | the table's | DEX, capped at 2 |
+| Heavy, and a monster's printed AC | the table's | none |
+
+Three things about that table are load-bearing:
+
+- **Heavy armour has no Dexterity entry; it does not cap Dexterity at zero.**
+  The two differ only on a *negative* modifier, which is exactly the build that
+  wears plate: a Strength fighter with a Dexterity of 8 wears it for 18, not 17.
+  A cap of zero is the natural way to write it and is wrong for every heavy
+  build in the game, so the field is a list of contributions rather than a cap
+  and the named constructors are what a caller reaches for.
+- **Unarmored Defense is a value, not a special case.** Barbarian is the
+  unarmoured shape plus Constitution, Monk plus Wisdom; the class feature (W4)
+  equips one of these rather than reaching into an AC calculation that would
+  then have to know about classes. This is the sub-item ROADMAP `w1a` names and
+  the reason the field is a tuple rather than one optional ability.
+- **`Armour.natural(15)` is the only legitimate way an AC arrives as a typed
+  number**, and it is legitimate because for a monster the number is what the
+  rules publish and for the target dummy (`w2d`) it is the knob being swept. It
+  is the heavy shape, since a printed AC already includes whatever Dexterity the
+  creature has. A *character* build reaching for it is what `w2f`'s schema
+  refuses.
+
+A shield is `+2` and a `bool` on the creature. It is not an item because v1 has
+no magic items (DESIGN.md § Settled decisions), so the number the rules state
+once is the number every shield gives; `rules/constants.py` holds it and `w2a`'s
+import checks its entry against it the way the slot tables check theirs.
+
+**What does not go through `Armour` is a bonus that lasts one attack.** Shield,
+cover and Shield of Faith ride on `AttackDeclaredContext.ac_bonus`, which is the
+defender's one lever in the attack pipeline and the reason the closed registry
+has no hook that recomputes an AC. So `Creature.armour_class` is derived once,
+cached in a slot, and recomputed only when something is equipped — which matters
+because every attack made against a creature reads it.
+
+### The derived-stat cache, and the two ways it could have gone stale
+
+`proficiency_bonus` walked the XPHB table and `modifier()` divided on every
+read, three times per resolution — ~1.5% of the budget (§ w0i). Both are pure
+functions of a frozen stat block, so both are settled in `StatBlock.__post_init__`
+and read off the creature as plain slots.
+
+Both are private and read back through properties with no setter, for the same
+reason `stats` is: a cache anybody can assign to is a cache that says what the
+creature used to be.
+
+A cache is only worth having if it cannot lie, and there were two further ways
+for this one to:
+
+- **The caller keeps the ability dict.** `StatBlock` now copies the scores
+  behind a `MappingProxyType` before deriving anything from them, so a caller
+  raising a Strength score after construction cannot leave the modifiers
+  describing a creature that no longer exists.
+- **Somebody swaps the stat block.** `Creature.stats` is a read-only property
+  over `_stats`. Three numbers are read off it at construction — the modifiers,
+  the proficiency bonus and the derived AC — and a creature whose build changed
+  is a new creature, not a mutated one.
+
+`crit_threshold` joins them as a derived stat, which `hooks/contexts.py` and
+`tools/skeleton.py` both said in as many words was this task's: Improved
+Critical lowers the *character's* threshold, so `AttackRollContext` deliberately
+has no mutator for it and the engine reads it off the creature when it builds
+the context.
+
+### `ActionEconomy`: four things, and the refusal
+
+Counts, not flags, because Action Surge is a second Action and a creature
+granted two and having spent one has one left — which no boolean can say. That
+is the whole of Action Surge from this side: `grant()`, and the turn loop
+re-polls (DESIGN.md § APL).
+
+Three decisions worth keeping:
+
+- **Overdrawing raises `EconomyError` rather than clamping.** Asking is free —
+  `can_spend()` is what the dispatcher calls for every costed handler and what
+  `w2c` filters its offers through — so reaching the refusal means a caller
+  decided not to ask. The bug this catches is M0's own: an entry charging an
+  Action for what XPHB gives a Bonus Action, at 0.07% of the rate (§ The W0 plan
+  review). A ledger that clamped would have hidden it completely.
+- **The reaction comes back in `turn_started()` and nowhere else**, which is
+  DESIGN.md § Failing loudly's invariant stated on the turn boundary rather than
+  the round: a creature high in initiative may react on an enemy's turn, take
+  its own turn, and react again in the same round. A fresh economy starts with
+  its reaction in hand and nothing else — a creature may take an opportunity
+  attack in round one before its own turn, and may not take an Action until it.
+- **`turn_started()` is given the speed rather than storing one.** A Rage, a
+  Longstrider or a set of heavy armour changes a creature's speed between turns,
+  and a ledger holding its own copy would be a second place a speed is written.
+
+**A creature owns its economy and hands it to its own dispatcher** at
+construction. That makes "a creature spending out of somebody else's economy"
+the same kind of impossible as "a handler owned by somebody else", and it leaves
+`Dispatcher.bind()` for the gate alone — which is the one of the two that
+genuinely has a cycle, since the APL's namespace is built over the creature that
+owns the dispatcher. `tools/spike.py`'s `SpikeEconomy` went with it: the
+protocol now has a real implementer, and a benchmark measuring a fake economy
+would be a stand-in nobody re-measures.
+
+### Widening `Combatant`: three numbers, and what stayed out
+
+`hp`, `max_hp` and `temp_hp` — one promise rather than three, since they are
+what `engine/damage.py` spends and the order it spends them in. Without them no
+`on_hit` handler could ask whether its target is bloodied, and "below half its
+hit points" is a condition dozens of the ~630 features are written around;
+`w0i`'s own bloodied rider had to interrogate the damage bag and said so in a
+paragraph. That rider now reads the pool, and the property its paragraph was
+defending is unchanged: the condition is still sometimes true, which is what
+keeps the benchmark's mix honest.
+
+All three are read-only on the protocol. A handler that could set hit points
+would be a second place the damage resolution order lives, and the engine
+mutates them through the concrete `Creature` instead.
+
+What stayed out, deliberately: **Armor Class**, because reading a target's AC is
+a policy question and the APL asks the live creature through its namespace
+rather than through an event's view of it; and **`is_alive`**, because dying is
+`w1j`'s and a protocol promising it now would be promising a definition that
+does not exist. `w3e`'s paper pass confirms the shape before ~400 features are
+written against it.
+
+### The bloodied rider, which was never the rider it said it was
+
+Widening the protocol let `w0i`'s fixture ask the question it was named for, and
+asking it turned up two things worth recording.
+
+**Bloodied is hit points alone.** The first cut of the rewritten rider asked
+`(hp + temp_hp) * 2 > max_hp`, which is wrong: temporary hit points are a buffer
+in front of hit points and are not hit points (XPHB, Rules Glossary), so a
+creature at 30 of 100 behind 21 temporary ones is Bloodied and that predicate
+says it is not. It changed no number here — nothing in the spike has temporary
+hit points — which is exactly why it was worth catching now rather than in W4,
+when it would have been copied into every feature written against a target's
+pool. Both numbers stay on the protocol because they answer different questions:
+`hp` against `max_hp` is Bloodied, and `hp + temp_hp` is the pool the next hit
+comes out of.
+
+**The old fixture applied on every hit.** Counted over twenty encounters from
+seed 0: the four riders ahead of it in the order each apply on all 287 hits, so
+the bag was never shorter than four and `len(ctx.damage) < 3` was never true.
+The rider that the file's own docstring called "the sometimes-true rider" was a
+constant, and nothing was watching. It now applies on 104 of those 287 — the
+first version of it that is what it claims. That is `w3i`'s lesson arriving from
+the other direction: a benchmark must witness its own fixtures, and "sometimes
+true" is a claim to be counted rather than asserted in prose.
+
+### What this cost the benchmark
+
+Nothing measurable, and that was checked rather than assumed — because a rider
+that stopped applying on 64% of hits is precisely the shape of a benchmark
+getting faster by doing less work.
+
+- **The rider's applies-rate is worth nothing at this resolution.** Seven
+  measurements of each, interleaved in one process, honest predicate against the
+  same fixture forced back to always-applying: medians **37.7k** and **37.3k** —
+  a difference in the wrong direction and an order of magnitude inside the
+  noise. One `damage.add(flat=2)` out of ~20 handler calls and nine dispatches
+  per resolution does not show up.
+- **The wave's own change is the same story.** Interleaved runs of the W0 tree
+  against this one put the medians at ~33.0k and ~34.5k. Run-to-run spread on
+  this container is ±10%, wider than the gap, so the honest claim is **no
+  regression** rather than a gain.
+
+`w1k` is the task that measures W1's per-round cost properly, and it inherits a
+baseline whose one fixture change has been priced.
+
+### What w1a deliberately did not do
+
+- **No proficiency system.** `tools/skeleton.py` adds a proficiency bonus
+  unconditionally and says why (§ w0h); weapon proficiency belongs to the
+  attack (`w1f`) and save proficiency to saving throws (`w1g`), and a flag with
+  one caller invented here would be in both their way.
+- **No armour catalogue.** `Armour` is the class; the 5etools entries arrive
+  through `content/` in `w2a`, exactly as the 38 weapons do. The two armours
+  written by hand are in `tools/spike.py` and `tools/skeleton.py`, where they
+  hold the AC those benchmarks have always run against — fixtures, not domain
+  constants, and neither is a second `GREATSWORD`.
+- **No movement accounting in the spike.** `turn_started()` now hands the hero
+  30 feet it never spends: the benchmark's `_step` walks the grid without asking
+  the economy, because charging movement per square is the turn loop's job and
+  `w2c` owes that measurement. Handing out a budget nobody draws on costs one
+  store per turn and measures nothing — which is worth saying plainly, since the
+  per-step economy call `w2c` will add is a cost this number still does not
+  include.
+- **No speed modifiers.** Heavy armour's Strength requirement costs 10 feet of
+  speed, and nothing here reads it: `Armour` carries neither the requirement nor
+  the stealth penalty, because a combat simulator has no stealth check and the
+  speed penalty needs the effect machinery `w1c` builds. `w2a` imports both
+  fields and the first feature that needs them is where they land.

@@ -66,7 +66,7 @@ POISON: Final = DamageType.POISON
 def creature(name: str = "dummy", *, hp: int = 20, temp_hp: int = 0) -> Creature:
     subject = Creature(
         name=name,
-        stats=StatBlock(abilities=SCORES, max_hp=hp, armour_class=15),
+        stats=StatBlock(abilities=SCORES, max_hp=hp),
         position=Cell(0, 0),
     )
     subject.temp_hp = temp_hp
