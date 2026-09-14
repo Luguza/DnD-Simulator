@@ -146,8 +146,8 @@ class InitiativeKey:
     keeps `Rng`'s primitive a die face — a golden test scripts the face, and the
     protocol gains no float method it cannot script. The quotient is a dyadic
     rational, so it is exact in binary and round-trips through the event log.
-    `2**32` is also the widest die `PcgRng.roll` can serve: it draws one 32-bit
-    word per face.
+    `2**32` is also the widest die the production generator can serve: `roll()`
+    draws one 32-bit word per face (`MersenneRng`, as `PcgRng` did before w0i).
 
     `after` is empty for a creature that rolled its own initiative. It carries
     XPHB's summon rule instead — see `sharing_turn()`.

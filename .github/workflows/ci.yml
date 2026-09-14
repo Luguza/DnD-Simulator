@@ -53,3 +53,56 @@ jobs:
       - name: pytest
         if: ${{ !cancelled() }}
         run: uv run --frozen pytest
+
+  # Which PRs the task loop may merge itself (docs/workflow.md § Merge
+  # authority). Red here is not a defect — it is this job's only way of saying
+  # "a human merges this one", which is why it is named for what it wants
+  # rather than for what it checks.
+  classify:
+    name: human-merge-required
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # 0, not 1: the classification is a diff against the base branch, and
+          # a shallow clone has no base to diff against.
+          fetch-depth: 0
+
+      - name: Classify the diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          # -e because an errored `git diff` returns no filenames, and an empty
+          # list is indistinguishable from "touched nothing contractual" — which
+          # would wave a contract change straight through.
+          set -euo pipefail
+          git fetch --no-tags --quiet origin "${BASE_REF}"
+          files=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+          if [ -z "$files" ]; then
+            echo "No files changed; nothing to classify." >&2
+            exit 1
+          fi
+          printf 'Changed files:\n%s\n' "$files"
+          # The contract: the plans, the agent configuration, the CI that gates
+          # all of it, and the dependency set. A task PR that edits its own
+          # reviewer is caught by the .github/ and .claude/ entries — which
+          # matters because claude-code-action skips itself when the workflow
+          # differs from the default branch, and exits successfully when it does.
+          contract=$(printf '%s\n' "$files" | grep -E \
+            '^(DESIGN\.md|ROADMAP\.md|CLAUDE\.md|pyproject\.toml|uv\.lock|\.github/|\.claude/)' || true)
+          if [ -n "$contract" ]; then
+            {
+              echo '## A human merges this one'
+              echo
+              echo 'This pull request changes the contract, so the task loop may not'
+              echo 'merge it. That is what this job failing means; nothing is broken.'
+              echo
+              echo 'Contract paths touched:'
+              echo
+              printf '%s\n' "$contract" | sed 's/^/- `/;s/$/`/'
+            } >> "$GITHUB_STEP_SUMMARY"
+            printf 'Contract change; a human merges this PR:\n%s\n' "$contract"
+            exit 1
+          fi
+          echo 'Code change; the task loop may merge this PR on a clean review.'

@@ -38,7 +38,7 @@ from typing import Final, Protocol
 from dndsim.core.geometry import Cell, in_reach
 from dndsim.core.rng import MersenneRng, Rng
 from dndsim.creatures.creature import Creature
-from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
+from dndsim.creatures.stats import GREATSWORD, Armour, StatBlock, Weapon
 from dndsim.engine.damage import FreshDamageContexts, resolve_damage, roll_damage
 from dndsim.hooks.contexts import (
     AttackDeclaredContext,
@@ -216,7 +216,7 @@ class FreshContexts(FreshDamageContexts):
             weapon=weapon,
             natural=natural,
             total=total,
-            crit_threshold=_CRIT_THRESHOLD,
+            crit_threshold=attacker.crit_threshold,
             had_advantage=had_advantage,
             had_disadvantage=had_disadvantage,
         )
@@ -403,7 +403,7 @@ class PooledContexts:
             weapon=weapon,
             natural=natural,
             total=total,
-            crit_threshold=_CRIT_THRESHOLD,
+            crit_threshold=attacker.crit_threshold,
             had_advantage=had_advantage,
             had_disadvantage=had_disadvantage,
         )
@@ -524,10 +524,6 @@ class PooledContexts:
 FRESH: Final[AttackContexts] = FreshContexts()
 """The default: allocate. Stateless, so one instance serves every caller."""
 
-_CRIT_THRESHOLD: Final = 20
-"""Where a natural roll starts critting. A derived stat on the creature once
-`w1a` lands (Improved Critical lowers the character's, never the attack's)."""
-
 _FIGHTER_SCORES: Final[Mapping[Ability, int]] = MappingProxyType(
     {
         Ability.STRENGTH: 16,
@@ -542,6 +538,11 @@ _DUMMY_SCORES: Final[Mapping[Ability, int]] = MappingProxyType(
     dict.fromkeys(Ability, 10)
 )
 
+_CHAIN_MAIL: Final = Armour.heavy("Chain Mail", 16)
+"""AC 16, and no Dexterity: the fighter's AC was a literal on the stat block
+until `w1a` derived it from equipment, and chain mail is the XPHB entry that
+gives the number this script has always run with (`w2a` imports the rest)."""
+
 _MAX_ROUNDS: Final = 50
 """A safety cap, not a rule: a level-5 fighter vs. an AC-15, 40-hp dummy
 resolves in a handful of attacks, and a fight that has not ended by 50 is a
@@ -550,14 +551,22 @@ bug in this script rather than an unlucky streak worth waiting out."""
 
 def build_fighter(name: str = "Fighter") -> Creature:
     """A featureless level-5 fighter swinging the spike's one weapon."""
-    stats = StatBlock(abilities=_FIGHTER_SCORES, max_hp=44, armour_class=16, level=5)
-    return Creature(name=name, stats=stats, position=Cell(0, 0), weapon=GREATSWORD)
+    stats = StatBlock(abilities=_FIGHTER_SCORES, max_hp=44, level=5)
+    return Creature(
+        name=name,
+        stats=stats,
+        position=Cell(0, 0),
+        weapon=GREATSWORD,
+        armour=_CHAIN_MAIL,
+    )
 
 
 def build_dummy(name: str = "Dummy") -> Creature:
     """A featureless AC-15 dummy with nothing attached — the target."""
-    stats = StatBlock(abilities=_DUMMY_SCORES, max_hp=40, armour_class=15)
-    return Creature(name=name, stats=stats, position=Cell(1, 0))
+    stats = StatBlock(abilities=_DUMMY_SCORES, max_hp=40)
+    return Creature(
+        name=name, stats=stats, position=Cell(1, 0), armour=Armour.natural(15)
+    )
 
 
 def attack_once(

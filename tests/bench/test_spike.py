@@ -163,7 +163,7 @@ def test_the_riders_that_should_land_do_land() -> None:
         "rage_damage.rage",  # state-dependent
         "frenzy_dice.frenzy",  # state-dependent
         "sneak_attack.sneak",  # once per turn and state-dependent
-        "bloodied_bonus.bloodied",  # conditional on the bag
+        "bloodied_bonus.bloodied",  # conditional on the target being Bloodied
         "vex_spender.spend",  # conditional on the roll
         "uncanny_dodge.dodge",  # gated *and* costed — the victim's side
     ):
@@ -242,7 +242,7 @@ def test_a_wounded_hero_takes_second_wind_and_still_swings() -> None:
 
     resolutions = _hero_turn(spike, rng, 1)
 
-    assert not spike.economy.bonus, "the wounded hero never took Second Wind"
+    assert not spike.economy.bonus_actions, "the wounded hero never took Second Wind"
     assert resolutions == ATTACKS_PER_TURN, (
         "a Bonus Action entry ate the hero's Attack action"
     )

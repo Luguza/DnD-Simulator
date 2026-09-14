@@ -57,10 +57,16 @@ def seat(n: int) -> InitiativeKey:
 
 @dataclass(frozen=True, slots=True)
 class FakeCreature:
-    """The narrowest thing that satisfies `Combatant`."""
+    """The narrowest thing that satisfies `Combatant`.
+
+    The hit-point numbers are `w1a`'s widening of the protocol; nothing in this
+    file reads them, which is why they have defaults."""
 
     name: str
     initiative: InitiativeKey = seat(0)
+    hp: int = 20
+    max_hp: int = 20
+    temp_hp: int = 0
 
 
 ATTACKER = FakeCreature("attacker", seat(0))

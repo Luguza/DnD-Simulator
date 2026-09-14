@@ -21,6 +21,7 @@ re-litigated by the next agent through the area.
 | `creatures/`, `engine/damage.py`, `core/geometry.py` | [w0g2](#w0g2--spike-substrate) |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | [w0h](#w0h--walking-skeleton) |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | [w0i](#w0i--the-pessimistic-performance-spike-m0) |
+| `ROADMAP.md`, `DESIGN.md`, planning a wave | [the W0 plan review](#the-w0-plan-review--what-m0-changed-in-the-plan) |
 
 ## w0a — scaffold
 
@@ -35,14 +36,61 @@ re-litigated by the next agent through the area.
 - `.github/workflows/ci.yml` runs the same five checks as the pre-commit hook
   (`uv lock --check`, ruff check, ruff format, mypy, pytest) through
   `uv run --frozen`, each guarded by `if: ${{ !cancelled() }}` so one push
-  reports every failure rather than the first. Later gates — frozen-registry
-  diff (`w3b`), benchmark regression (`w3c`), stale generated docs (`w3i`) —
-  join this workflow as their tasks land.
+  reports every failure rather than the first. Later gates — the feature linter
+  (`w3b`), stale generated docs (`w3c`), the benchmark regression gate (`w3i`)
+  and the frozen-registry diff (`w3f`, after the paper pass has added what it
+  proves missing) — join this workflow as their tasks land.
 - Ruff excludes `*.md` and `.claude/skills`, so `ruff format` never rewrites
   `DESIGN.md`'s code samples or vendored skills; the hook only sees `.py`/`.pyi`,
   so this keeps hook and CI in agreement.
 - `cli.py` is a placeholder that exits non-zero pointing at `w2h`, so the
   `dndsim` entry point gives a message rather than an ImportError.
+
+### The review workflow's two reviews
+
+`claude-code-review.yml` ran one configuration — the general-purpose
+`code-review` plugin at `high` effort on Opus — against every pull request, on
+every event, with no concurrency group. Measured against what this repo actually
+opens, that was wrong in three ways at once, and #19 showed all three: 27
+pushes, every file in the diff markdown, and a full code review of prose on each
+one.
+
+- **Two reviews, chosen by the diff.** A `.md`-only diff goes to a short prompt
+  on Sonnet that checks four things — self-contradiction, contradiction against
+  CLAUDE.md/DESIGN.md/ROADMAP.md, arithmetic and counts, and obligations with no
+  owning task. Everything else goes to the code review. The split is not a
+  cost dodge: the #19 findings were almost all of the first kind, and a reviewer
+  hunting for crit-split bugs in a document cannot find them.
+- **The checklist is this repo's, not a plugin's.** `.claude/skills/pr-review/SKILL.md`
+  is 93 lines and already names the failures that matter here; the plugin's
+  prompt is much larger and knows none of them. What the plugin was worth
+  keeping for — a verification pass and a fixed finding shape — is asked for in
+  the prompt instead: pass 1 collects candidates, pass 2 re-reads the cited
+  lines in the file and drops anything whose concrete failure cannot be
+  constructed, and each survivor is reported as CONFIRMED or PLAUSIBLE against a
+  named rule, two sentences, at most eight. The output shape is load-bearing in
+  both directions — a review nobody reads is a review that does not run.
+- **Do not review the same PR twice.** A concurrency group keyed on the PR
+  number with `cancel-in-progress`, matching `ci.yml`, so a burst of pushes does
+  not run a burst of reviews to completion on diffs already superseded. Drafts
+  are skipped; `ready_for_review` stays in the trigger list, so a draft is
+  reviewed once, when it stops being one.
+
+`--disallowedTools Agent,Task` survives unchanged and for the original reason:
+in headless CI there is no next turn in which a subagent's completion
+notification can be delivered, so a fan-out ends the run with the findings
+uncollected. The `high` effort level does not survive, because it was the
+plugin's knob and there is no plugin.
+
+Two silent-failure guards, because a review that did not run and a review that
+found nothing look identical from the outside — the reason the post step exists
+at all. The classifier runs under `set -e` and fetches the base ref explicitly:
+a `git diff` that errors yields no filenames, an empty list is indistinguishable
+from "markdown only", and the failure would route a code PR to the prose
+reviewer with nothing to show for it. And the "did not run" comment now names
+both causes, the workflow-file mismatch and a failed classification, rather than
+asserting the first.
+
 
 ## w0b — rules vocabulary
 
@@ -422,21 +470,26 @@ re-litigated by the next agent through the area.
   the *pure* resolution order over a `MitigationLedger`, so `w1e` can pin every
   step with a table of cases and no fight around it; `resolve_damage()` is the
   event — dispatch, apply, hit points.
-- **Vulnerability before resistance is load-bearing arithmetic.** `(2n) // 2 ==
-  n` for every integer, so that order *is* the rule that resistance and
-  vulnerability to the same type cancel, with no special case written. The
-  reverse order loses a point on every odd number.
-- **Two steps are rulings, not quotations, and `damage.py` says so inline**
-  (DESIGN.md asks for exactly this): flat reductions apply *after* resistance,
+- **Vulnerability before resistance is load-bearing arithmetic** — *overturned
+  by `w1e`; see § w1e.* `(2n) // 2 == n` for every integer, so that order *is*
+  the rule that resistance and vulnerability to the same type cancel, with no
+  special case written. The reverse order loses a point on every odd number. The
+  2024 text orders resistance first regardless, and losing that point is the
+  book's answer.
+- **Two steps are rulings, not quotations** — argued inline in `damage.py` at
+  the time, and since PR #25 argued in § w1e with `damage.py` pointing at it:
+  flat reductions apply *after* resistance,
   and halvings apply *after* the flat reductions. Each changes every number a
-  build with Heavy Armor Master or Uncanny Dodge reports. `w1e` owns confirming
-  them against the 2024 text; nobody re-litigates them in a review without
-  reading the argument that is written there.
+  build with Heavy Armor Master or Uncanny Dodge reports. `w1e` owned confirming
+  them against the 2024 text and **found the first one wrong** — adjustments
+  precede Resistance — while the second survives inside the adjustment step it
+  moved into. § w1e has both arguments in their final form.
 - **Reductions and halvings act on the total, not per type** — Heavy Armor
   Master reduces *the damage*, not the fire part of it — which is why
   `Mitigated` carries both the per-type picture after the typed steps and the
-  one total after the untyped ones. `on_damage_taken` gets that total plus the
-  surviving types, exactly as its context is shaped.
+  one total after the untyped ones. *`w1e` inverted this*: with the untyped
+  steps first, the total has to be spread back over the types in proportion, and
+  the two numbers agree from there on.
 - **A veto on `on_incoming_damage` means zero damage**, checked in
   `resolve_damage()` rather than modelled as one more kind of mitigation: the
   Chain of Responsibility element is about whether the event happens at all.
@@ -449,8 +502,8 @@ re-litigated by the next agent through the area.
 - **Halvings stack where resistances do not.** `_resist` is a set because the
   rules say multiple instances of resistance count once; `_halvings` is a list
   because no rule says the same of two features that halve, and Uncanny Dodge on
-  top of Rage quartering a hit is the known-correct answer. `w1e` owns
-  confirming that against the 2024 text.
+  top of Rage quartering a hit is the known-correct answer. *`w1e` confirmed it*:
+  the "counts once" clause names Resistance, and a halving is not Resistance.
 - **A reduction's dice come out of the caller's `rng`**, after the attacker's
   damage dice in the same stream, so `w1f` must hand `mitigate()` the generator
   the attack is using. A second generator reproduces a different fight from the
@@ -788,3 +841,654 @@ measure, which is the whole subject of this section.
 
 Sources: DESIGN.md § Performance, § The spike must be pessimistic, § Levers,
 § The benchmark gate, § Condition language; ROADMAP w0i, w1a, w1f, w2e, w3i.
+
+## The W0 plan review — what M0 changed in the plan
+
+Not a task. W0 is complete and M0 is met, so `ROADMAP.md` and `DESIGN.md` were
+re-read against what the wave measured rather than against what it assumed. The
+findings are recorded here so the *reasoning* survives even though the documents
+now simply state the conclusions.
+
+**The wave's own record was in good shape and this pass changed very little of
+it.** Every finding below was already written down somewhere in the code or in
+this file — usually in the module docstring of the file that owes the debt. What
+none of them had was a home in the plan. That distinction is the whole content
+of this review: a paragraph explaining a stand-in ages into a paragraph
+describing the code, and the reader who needed to act on it is the one who never
+opens that file.
+
+### The one structural change: `w1k`
+
+`w0i` measured ~31,500 against a budget of 30,000 and states in its own record
+that what the spike understates is the per-round cost, "because effects (`w1c`)
+and resources (`w1b`) do not exist, so there is no per-boundary expiry sweep and
+no pool arithmetic". W1 is the wave that builds both. The next task in the plan
+that re-measured anything was `w2e`, twenty tasks downstream.
+
+Five percent of headroom, twenty tasks, and a known-missing cost that lands in
+the very next wave is not a gap the M0 gate can be said to have covered. So
+`w1k` re-runs the spike at the end of W1 with the fixtures' hand-built effect
+and resource stand-ins replaced by the real ones. It is the same argument `w0i`
+made for the APL compiler, applied to the two stand-ins it named itself: **a
+stand-in a later task has to beat is a budget; a stand-in nobody re-measures is
+a stub.** That sentence is now sequencing principle 7 in `ROADMAP.md`, because
+W0 produced sixteen more stand-ins after writing it.
+
+### The debt register, and why a table rather than more prose
+
+Seventeen deliberate first cuts and deferred obligations came out of W0. Every one
+is explained where it lives, and the explanations are good — `_refuse_pending()`
+raises with a sentence naming `w1c`, `stats.py`'s docstring says why
+`armour_class` is a literal and until when. The problem is discovery, not
+documentation: an agent picking up `w1c` reads the `w1c` row of `ROADMAP.md`,
+not the docstring of a function in a file it may have no reason to open.
+
+So each debt now appears twice: once in `ROADMAP.md` § The W0 debt register, as
+an index with the task that retires it and what it costs if nobody does, and
+once in that task's **Done when** cell, which is the sentence the agent actually
+reads. The register is the map; the done-when is the instruction.
+
+Two of the seventeen are worth naming here because they are the ones that would
+have cost the most:
+
+- **`skeleton.attack_once()` becomes a second attack order the moment
+  `engine/attack.py` exists** — and `tools/spike.py` imports it. Left alone,
+  the benchmark that defends the performance budget, that `w2e` must beat and
+  that `w3i` turns into a CI gate would go on measuring a hand-sequenced attack
+  the project does not ship. The project's hardest structural rule is that the
+  damage order is written in exactly one place; the attack order has the same
+  property and had no rule protecting it. `w1f` retires it.
+- **The `Combatant` and `Weapon` protocols are too narrow to write a real
+  feature against.** `w0i` found this and worked around it in two fixtures with
+  a paragraph each. No `on_hit` handler can read the defender's hit points or
+  ask whether the weapon is Heavy — which is Great Weapon Master, every
+  mastery, and every bloodied-target rider in the game. `w1a` and `w1f` widen
+  them, `w3e` confirms the shape before ~400 features are written through it,
+  and `w3f` fixes a structural gap if the pass finds one. Those two sub-items
+  are the only W1 work that touches `hooks/contexts.py`, so they are solo inside
+  otherwise delegable tasks.
+
+### Three lessons that generalise past their tasks
+
+Each was learned once in W0 at some cost, and each has an obvious later victim
+that the plan did not previously warn:
+
+1. **A benchmark must witness its own fixtures** (`w3i`). The spike ran for a
+   while with its only gated reaction never firing, because the hero's hit point
+   pool was sized so the gate's condition could not hold. The rate was fine
+   throughout. The cheapest way to speed up a benchmark is to stop a rider
+   firing, so a gate watching only the rate cannot tell a fix from a fixture
+   that broke.
+2. **A harness with exact-integer assertions must fix its unit of work**
+   (`w3a`). The spike's counts were facts about seed 0. The fix was an invariant
+   — a configuration resolving the same number of attacks whatever the dice do —
+   not a bigger sample, and it is the harness's job rather than each author's.
+3. **An optimisation that skips a step must prove every skipped step was the
+   identity** (DESIGN.md § Structural prevention). Two of `w0i`'s three review
+   findings had exactly that shape. A structural guarantee is only as strong as
+   the fastest path around it.
+
+### The turn-loop finding, which is a design note and not a bug
+
+`w0i` charged an Action for what XPHB gives a Bonus Action, and the entry sat
+above `attack` with an `if:` that its own effect did not clear — so the creature
+bought the buff once and stopped attacking for the rest of the encounter. It
+cost 0.07% of the rate. **That is why it is worth recording: nothing watching
+the rate could ever have found it**, and it was caught only because the
+exact-integer assertions moved when the seeds changed.
+
+Two consequences are now in the plan. `w2c` charges real action costs and
+filters offers to what the economy can pay, which is correctness rather than
+policy. And `w2g`'s `SimResult` reports actions and attack resolutions per
+round, so a policy that starves itself shows up as a count rather than as a
+disappointing average — the same failure DESIGN.md § APL already warns about for
+a melee build that stands still, arriving through the economy instead of the
+grid.
+
+### Stale statements corrected
+
+- `ROADMAP.md` w0c named `PcgRng` as the production generator; `w0i` replaced it
+  with `MersenneRng`. The row now names both and which superseded which.
+- This file's § w0a listed the later CI gates against the wrong task ids
+  (frozen-registry diff as `w3b`, benchmark regression as `w3c`, stale docs as
+  `w3i`). The registry freeze is `w3f`'s, after the paper pass; the benchmark
+  gate is `w3i`'s; stale generated docs are `w3c`'s.
+- `core/timeline.py`'s `tiebreak` docstring justified `2**32` as the widest die
+  `PcgRng.roll` can serve. Still true of `MersenneRng` — one 32-bit word per
+  face — but by the old generator's name.
+- DESIGN.md § Levers listed "contexts reset and reused per attack" without the
+  finding that makes it true: the general `reopen()` was *slower* than
+  allocating, and only the per-class compiled one is a win. A later reader
+  simplifying that generated code back to a general implementation would re-take
+  a lever that does not work, which is precisely the re-litigation this file
+  exists to prevent.
+- DESIGN.md § Biggest risks still listed "the performance spike passes on a
+  stub" as risk 1. It fired, the mitigation worked, and it is closed. Its
+  successor — the headroom eroding between M0 and the gate that guards it — is
+  a different risk with different mitigations, and pretending it is the same one
+  would leave the register describing a danger that is already behind us.
+
+Sources: `docs/decisions.md` § w0c, § w0d, § w0f, § w0g, § w0g2, § w0h, § w0i;
+DESIGN.md § Performance, § The spike must be pessimistic, § Levers, § The
+benchmark gate, § APL, § Structural prevention over testing, § Biggest risks;
+ROADMAP § Sequencing principles, § The W0 debt register, w1a–w1k, w2c, w2e–w2g,
+w3a, w3e, w3f, w3i, w5a.
+## w0g3 — the movement observer
+
+`engine/triggers.py`, the audience half of the opportunity attack, and
+`Dispatcher.responsive()` underneath it. The task was set in chat: *"make sure
+the opportunity attacks are handled efficiently with an observer strategy where
+all enemies in the room are notified on every 5 ft move action what the position
+is and where the designated square is of that move. they then decide if they
+want to use their reaction. we should also have a reaction apl."*
+
+### Why this is in W0 at all
+
+`w2c` owns the turn loop, opportunity attacks and the trigger audience, and W2
+has not started. What moved forward is the audience and nothing else, on the
+`w0g2` precedent: a spike that walks a grid but fires no trigger is a stub of
+the most flattering kind, because the distance queries are paid for and the
+provocation they exist to produce costs nothing. The same sentence that pulled
+`core/geometry.py` into W0 pulls this in behind it. What deliberately did **not**
+move is the opportunity attack itself — it is a Command, Commands are `w2b`'s,
+and DESIGN.md § Module layout draws that line for the reason it is worth
+keeping: *what can be done* versus *when you are asked*.
+
+### An observer, but not a broadcast
+
+The request as put is O(combatants x squares): everybody hears about every step.
+That is the pub-sub bus DESIGN.md rejects, priced per square. What is
+implemented has the same semantics and a different cost, and the reason it is
+allowed to is that every filter is on the *offer* rather than on the answer — a
+bystander is dropped only where it provably could not have acted:
+
+1. **Nothing attached to `on_leave_reach`.** One dict lookup on the creature's
+   own dispatch table. In a fight where one creature owns an opportunity attack,
+   this alone takes an audience of twenty down to one.
+2. **Every handler it has costs a reaction it has already spent.** Also asked of
+   the dispatcher, because the dispatcher is what owns the economy.
+3. **Further from the mover than its own reach plus the length of the route.**
+   A step is one square in Chebyshev whatever its direction, so no square of an
+   n-square route is more than 5n feet from where it started; a creature beyond
+   `reach + 5n` can never have the mover in reach and so can never be left.
+
+Filters 1 and 2 are `Dispatcher.responsive(spec)`, added for this. It is
+deliberately a **conservative over-approximation**: it may answer True where a
+dispatch would run nothing (one wasted dispatch) and never False where one would
+run something (a silently skipped reaction). That is why it asks about `costs`
+and not about `gate` or `once_per` — the gate is the policy question, needs a
+context that does not exist yet, and is the expensive one of the dispatcher's
+three; a spent `once_per` would be exact but buys a ledger lookup per handler
+for a case the reaction cost already covers.
+
+What falls out is broad phase once per move, narrow phase once per square per
+survivor. When the broad phase comes back empty — most moves in most fights —
+`watch_movement()` returns `None` rather than an empty watch, which is the
+caller's licence to assign the destination in one statement and pay nothing per
+square. An empty **Null Object** would have cost a call and a loop over nothing
+on the one path whose whole claim is that it is free.
+
+### Two orderings that are not free to get wrong
+
+**The offer is made from the square being left.** XPHB puts the reaction right
+before the creature leaves your reach, so `walk_provoking()` offers, then
+assigns the position — and `LeaveReachContext.origin` is where the mover is
+standing while the attack resolves. Resolve it a square late and a 5-foot reach
+finds the mover out of range about half the time, on a route that provoked
+correctly. This is why the stepping loop lives in `engine/triggers.py` next to
+the offer rather than at each call site: it is one rule, and a second copy of it
+is an off-by-one square nothing would catch.
+
+**Two watchers left by the same step are asked in initiative order**, sorted
+once per move rather than per square. Any order produces legal D&D; only a
+stated one produces the same fight twice from the same seed, and determinism is
+what `trace`, the goldens and every regression diff stand on.
+
+### Measured, not asserted
+
+The efficiency claim is checked as a **count**, in `tests/contract/test_triggers.py`:
+twenty combatants, one of them owning a movement observer, a six-square move —
+eight grid queries, being two broad-phase questions for the creature that got
+past the dict lookup plus one per square for the same creature. A broadcast is
+120. The other nineteen never reach the geometry. A wall-clock assertion of the
+same claim on a shared runner fires on noise and is deleted within a month
+(DESIGN.md § The benchmark gate), so there isn't one.
+
+The spike's `_step()` now moves creatures through `walk_provoking()`, so the
+audience computation is inside the M0 measurement. Nothing in the spike owns an
+`on_leave_reach` handler, so what is measured there is the case the design
+claims is free. Measured **A/B in one session**, which is the only comparison
+this container supports: three baseline runs returned 26.5k / 26.6k / 26.6k and
+three with the observer wired in returned 26.6k / 25.8k / 26.6k — the same
+number. The fast path costs, per move, one dict lookup per combatant and a
+`None`.
+
+**That container is not the one M0 was measured on**, and the gap is not small:
+it misses the 30k budget with the observer removed entirely, and the same
+baseline measured 22.0k earlier the same day under different load. So these are
+a *delta* and nothing else — an absolute figure from here is worthless, and
+re-running the gate for real belongs on the machine § w0i quotes. Two sessions'
+numbers are not comparable; only two runs in one session are.
+`BUDGET_PER_SECOND` was not touched, and the one edit `tools/spike.py` warns
+must never be made quietly was not made.
+
+A configuration in which the offers actually fire is `w2c`'s, and its acceptance
+criterion says so — not out of caution but because an opportunity attack made by
+the spike's featureless enemies would be a *cheap* attack resolution added to the
+numerator of a rate quoted in attack resolutions per second. It would raise the
+reported number by making the average resolution less like a real one, which is
+the exact failure DESIGN.md § The spike must be pessimistic exists to prevent.
+
+### The reaction APL
+
+There is no second list, and the chat request for one is answered by pointing at
+what was already there: DESIGN.md § APL's unifying idea is that a turn action, a
+reaction and a mid-attack rider are all the same question, and the dispatcher
+already asks it — a handler declaring
+`@hook("on_leave_reach", costs=ActionCost.REACTION, gate="attack.opportunity_attack")`
+gets its economy checked and then its owner's action list asked, and the
+reaction is taken only if it answered `APPLIED`. So the opportunity attack needs
+no engine support to be a policy decision; it needs an audience, which is what
+this task built. What was added is the contract: DESIGN.md § Reactions in the
+APL, and `w2e`'s acceptance criteria.
+
+One consequence is worth naming because it will look like a bug in a report
+before it looks like a decision: **unmentioned is OFF applies to opportunity
+attacks**, so a melee build whose list never claims one never swings at a
+runner. That is the existing Null Object default and it was not carved out for
+this case. The alternative — a free attack taken by default — silently spends a
+reaction slot contested by Shield, Counterspell and Uncanny Dodge, and would
+change the numbers of every build that already had a reaction entry on the day
+opportunity attacks landed. Movement stays the one exception to OFF-by-default,
+because a melee build that stands still reports *zero* damage, which is a
+different order of wrong from one that declines a free swing.
+
+### Two things left loud rather than guessed
+
+`hooks/dispatch.py` deliberately does not drain `ctx.pending_effects` — the
+engine that owns the event must, and for this one that is `w2c`'s turn loop.
+There are no effects to queue until `w1c`, so rather than write a drain against
+a class that does not exist, `_offer()` raises `EngineAssemblyError` if a handler
+queues one. A silently dropped 2024 Sentinel is a wrong number nobody would ever
+chase to this file.
+
+**Entering** reach — which is what 2024 Polearm Master reacts to — has no hook.
+The registry is closed at 39 and this was not the task to open it: a hook
+addition is a deliberate batched core change, and one added on the way past
+while implementing something else is exactly the drift the freeze exists to
+stop. It is recorded here as a genuine gap for `w3e`'s paper pass to find and
+`w3f`'s batch to close.
+
+### And one left quiet, which is worse
+
+The quoted rule is "a creature **you can see** leaves your reach", and there is
+no visibility gate anywhere in this file. That is exact today — nothing in the
+project is Blinded or Invisible until `w1h` builds the conditions — and it is
+the debt most likely to be forgotten precisely because it costs nothing yet.
+The review of this change caught it, and the answer was not to invent a
+visibility model against conditions that do not exist but to put it where the
+other four debts live: row 21 of ROADMAP.md § The W0 debt register, retired by
+`w2c` once `w1h` gives it something to ask.
+
+All five of this task's debts are rows 18-22 of that register, which post-dates
+the first draft of this section. The register is the record and the module
+docstring is a local copy of it; when the two disagree, the register wins.
+
+### Reach is asked through `in_reach()`, not inlined
+
+The first draft wrote `distance_ft(a, b) <= reach` at both query sites, on the
+grounds that it is `in_reach`'s own body and the narrow phase runs per square.
+The review of it pointed at `core/geometry.py`, which claims `in_reach` is the
+one query "the attack pipeline, **the opportunity-attack trigger** and the APL's
+`enemies.in_reach` selector all ask, in one place so that 'reach' means the same
+thing to all three" — and called the mismatch doc drift.
+
+It is more than that, which is why the code moved rather than the docstring.
+Debt 9 is `Size` reaching geometry nowhere, retired by `w1d`, and what `w1d`
+does is give a Large creature a reach its square does not describe. On that day
+`in_reach` learns something and an inlined Chebyshev does not, and the failure
+is an opportunity attack that a Large creature silently does not get — the exact
+class of bug the sentence in `core/geometry.py` was written to prevent. Both
+sites now ask `in_reach`. The broad phase keeps a raw `distance_ft` alongside it
+for the horizon cut, because that is a question about the length of the route
+rather than about reach; `w1d` owes that bound the same second look, since a
+footprint wider than one square widens it too.
+
+The cost is one function call per candidate per move and one per watcher per
+square — paid only when somebody in the room actually owns a movement reaction,
+which is the case that was going to dispatch an attack anyway. The spike's
+measurement is unchanged, because the filter that empties the audience runs
+before either call.
+
+### Hostility is not asked about here
+
+The request says "all enemies in the room". `watch_movement()` takes the roster
+minus the mover and does not filter by side, which is both closer to the rules —
+an opportunity attack against an ally is legal and merely pointless — and
+cheaper to keep honest: the two places that already encode "don't swing at your
+own side" are the `opportunity_attack` Command's legality check (`w2b`) and the
+APL entry's `if:`. A third copy, in the file least able to see what a build
+means, is the copy that would go stale.
+
+## w1a — the creature completed: equipment, a derived AC, and the economy
+
+The first task of W1, and the one four of W0's twenty-two debts were filed
+against: `creatures/creature.py` and `creatures/stats.py` finished rather than
+rewritten, a new `creatures/economy.py`, and the widening of `Combatant` that
+`hooks/contexts.py` has been waiting for since `w0f`. Retires debt-register rows
+**#1** (the AC literal), **#2** (`Combatant` carries a name and nothing else),
+**#4** (derived stats recomputed per attack) and **#10** (the `Economy` protocol
+with no implementer and no contract test).
+
+### AC is derived, and `Armour` is the one shape that derives it
+
+DESIGN.md is emphatic that AC comes from equipment and never from a number in a
+build, and `StatBlock.armour_class` is now **gone rather than defaulted** — a
+default is precisely how a number nobody chose gets into a build and stays
+there. `StatBlock(..., armour_class=15)` is a `TypeError`, which is the same
+failure as writing it in the YAML.
+
+What replaced it is one frozen value object answering one question — *how much
+does wearing this raise the wearer's AC* — with two fields: `base_ac`, and the
+ability modifiers it adds with the cap on each. That covers the four shapes the
+rules have without a branch anywhere:
+
+| Shape | `base_ac` | `abilities` |
+|---|---|---|
+| Unarmoured (and Unarmored Defense) | 10 | DEX, uncapped (+ CON or WIS) |
+| Light | the table's | DEX, uncapped |
+| Medium | the table's | DEX, capped at 2 |
+| Heavy, and a monster's printed AC | the table's | none |
+
+Three things about that table are load-bearing:
+
+- **Heavy armour has no Dexterity entry; it does not cap Dexterity at zero.**
+  The two differ only on a *negative* modifier, which is exactly the build that
+  wears plate: a Strength fighter with a Dexterity of 8 wears it for 18, not 17.
+  A cap of zero is the natural way to write it and is wrong for every heavy
+  build in the game, so the field is a list of contributions rather than a cap
+  and the named constructors are what a caller reaches for.
+- **Unarmored Defense is a value, not a special case.** Barbarian is the
+  unarmoured shape plus Constitution, Monk plus Wisdom; the class feature (W4)
+  equips one of these rather than reaching into an AC calculation that would
+  then have to know about classes. This is the sub-item ROADMAP `w1a` names and
+  the reason the field is a tuple rather than one optional ability.
+- **`Armour.natural(15)` is the only legitimate way an AC arrives as a typed
+  number**, and it is legitimate because for a monster the number is what the
+  rules publish and for the target dummy (`w2d`) it is the knob being swept. It
+  is the heavy shape, since a printed AC already includes whatever Dexterity the
+  creature has. A *character* build reaching for it is what `w2f`'s schema
+  refuses.
+
+A shield is `+2` and a `bool` on the creature. It is not an item because v1 has
+no magic items (DESIGN.md § Settled decisions), so the number the rules state
+once is the number every shield gives; `rules/constants.py` holds it and `w2a`'s
+import checks its entry against it the way the slot tables check theirs.
+
+**What does not go through `Armour` is a bonus that lasts one attack.** Shield,
+cover and Shield of Faith ride on `AttackDeclaredContext.ac_bonus`, which is the
+defender's one lever in the attack pipeline and the reason the closed registry
+has no hook that recomputes an AC. So `Creature.armour_class` is derived once,
+cached in a slot, and recomputed only when something is equipped — which matters
+because every attack made against a creature reads it.
+
+### The derived-stat cache, and the two ways it could have gone stale
+
+`proficiency_bonus` walked the XPHB table and `modifier()` divided on every
+read, three times per resolution — ~1.5% of the budget (§ w0i). Both are pure
+functions of a frozen stat block, so both are settled in `StatBlock.__post_init__`
+and read off the creature as plain slots.
+
+Both are private and read back through properties with no setter, for the same
+reason `stats` is: a cache anybody can assign to is a cache that says what the
+creature used to be.
+
+A cache is only worth having if it cannot lie, and there were two further ways
+for this one to:
+
+- **The caller keeps the ability dict.** `StatBlock` now copies the scores
+  behind a `MappingProxyType` before deriving anything from them, so a caller
+  raising a Strength score after construction cannot leave the modifiers
+  describing a creature that no longer exists.
+- **Somebody swaps the stat block.** `Creature.stats` is a read-only property
+  over `_stats`. Three numbers are read off it at construction — the modifiers,
+  the proficiency bonus and the derived AC — and a creature whose build changed
+  is a new creature, not a mutated one.
+
+`crit_threshold` joins them as a derived stat, which `hooks/contexts.py` and
+`tools/skeleton.py` both said in as many words was this task's: Improved
+Critical lowers the *character's* threshold, so `AttackRollContext` deliberately
+has no mutator for it and the engine reads it off the creature when it builds
+the context.
+
+### `ActionEconomy`: four things, and the refusal
+
+Counts, not flags, because Action Surge is a second Action and a creature
+granted two and having spent one has one left — which no boolean can say. That
+is the whole of Action Surge from this side: `grant()`, and the turn loop
+re-polls (DESIGN.md § APL).
+
+Three decisions worth keeping:
+
+- **Overdrawing raises `EconomyError` rather than clamping.** Asking is free —
+  `can_spend()` is what the dispatcher calls for every costed handler and what
+  `w2c` filters its offers through — so reaching the refusal means a caller
+  decided not to ask. The bug this catches is M0's own: an entry charging an
+  Action for what XPHB gives a Bonus Action, at 0.07% of the rate (§ The W0 plan
+  review). A ledger that clamped would have hidden it completely.
+- **The reaction comes back in `turn_started()` and nowhere else**, which is
+  DESIGN.md § Failing loudly's invariant stated on the turn boundary rather than
+  the round: a creature high in initiative may react on an enemy's turn, take
+  its own turn, and react again in the same round. A fresh economy starts with
+  its reaction in hand and nothing else — a creature may take an opportunity
+  attack in round one before its own turn, and may not take an Action until it.
+- **`turn_started()` is given the speed rather than storing one.** A Rage, a
+  Longstrider or a set of heavy armour changes a creature's speed between turns,
+  and a ledger holding its own copy would be a second place a speed is written.
+
+**A creature owns its economy and hands it to its own dispatcher** at
+construction. That makes "a creature spending out of somebody else's economy"
+the same kind of impossible as "a handler owned by somebody else", and it leaves
+`Dispatcher.bind()` for the gate alone — which is the one of the two that
+genuinely has a cycle, since the APL's namespace is built over the creature that
+owns the dispatcher. `tools/spike.py`'s `SpikeEconomy` went with it: the
+protocol now has a real implementer, and a benchmark measuring a fake economy
+would be a stand-in nobody re-measures.
+
+### Widening `Combatant`: three numbers, and what stayed out
+
+`hp`, `max_hp` and `temp_hp` — one promise rather than three, since they are
+what `engine/damage.py` spends and the order it spends them in. Without them no
+`on_hit` handler could ask whether its target is bloodied, and "below half its
+hit points" is a condition dozens of the ~630 features are written around;
+`w0i`'s own bloodied rider had to interrogate the damage bag and said so in a
+paragraph. That rider now reads the pool, and the property its paragraph was
+defending is unchanged: the condition is still sometimes true, which is what
+keeps the benchmark's mix honest.
+
+All three are read-only on the protocol. A handler that could set hit points
+would be a second place the damage resolution order lives, and the engine
+mutates them through the concrete `Creature` instead.
+
+What stayed out, deliberately: **Armor Class**, because reading a target's AC is
+a policy question and the APL asks the live creature through its namespace
+rather than through an event's view of it; and **`is_alive`**, because dying is
+`w1j`'s and a protocol promising it now would be promising a definition that
+does not exist. `w3e`'s paper pass confirms the shape before ~400 features are
+written against it.
+
+### The bloodied rider, which was never the rider it said it was
+
+Widening the protocol let `w0i`'s fixture ask the question it was named for, and
+asking it turned up two things worth recording.
+
+**Bloodied is hit points alone.** The first cut of the rewritten rider asked
+`(hp + temp_hp) * 2 > max_hp`, which is wrong: temporary hit points are a buffer
+in front of hit points and are not hit points (XPHB, Rules Glossary), so a
+creature at 30 of 100 behind 21 temporary ones is Bloodied and that predicate
+says it is not. It changed no number here — nothing in the spike has temporary
+hit points — which is exactly why it was worth catching now rather than in W4,
+when it would have been copied into every feature written against a target's
+pool. Both numbers stay on the protocol because they answer different questions:
+`hp` against `max_hp` is Bloodied, and `hp + temp_hp` is the pool the next hit
+comes out of.
+
+**The old fixture applied on every hit.** Counted over twenty encounters from
+seed 0: the four riders ahead of it in the order each apply on all 287 hits, so
+the bag was never shorter than four and `len(ctx.damage) < 3` was never true.
+The rider that the file's own docstring called "the sometimes-true rider" was a
+constant, and nothing was watching. It now applies on 104 of those 287 — the
+first version of it that is what it claims. That is `w3i`'s lesson arriving from
+the other direction: a benchmark must witness its own fixtures, and "sometimes
+true" is a claim to be counted rather than asserted in prose.
+
+### What this cost the benchmark
+
+Nothing measurable, and that was checked rather than assumed — because a rider
+that stopped applying on 64% of hits is precisely the shape of a benchmark
+getting faster by doing less work.
+
+- **The rider's applies-rate is worth nothing at this resolution.** Seven
+  measurements of each, interleaved in one process, honest predicate against the
+  same fixture forced back to always-applying: medians **37.7k** and **37.3k** —
+  a difference in the wrong direction and an order of magnitude inside the
+  noise. One `damage.add(flat=2)` out of ~20 handler calls and nine dispatches
+  per resolution does not show up.
+- **The wave's own change is the same story.** Interleaved runs of the W0 tree
+  against this one put the medians at ~33.0k and ~34.5k. Run-to-run spread on
+  this container is ±10%, wider than the gap, so the honest claim is **no
+  regression** rather than a gain.
+
+`w1k` is the task that measures W1's per-round cost properly, and it inherits a
+baseline whose one fixture change has been priced.
+
+### What w1a deliberately did not do
+
+- **No proficiency system.** `tools/skeleton.py` adds a proficiency bonus
+  unconditionally and says why (§ w0h); weapon proficiency belongs to the
+  attack (`w1f`) and save proficiency to saving throws (`w1g`), and a flag with
+  one caller invented here would be in both their way.
+- **No armour catalogue.** `Armour` is the class; the 5etools entries arrive
+  through `content/` in `w2a`, exactly as the 38 weapons do. The two armours
+  written by hand are in `tools/spike.py` and `tools/skeleton.py`, where they
+  hold the AC those benchmarks have always run against — fixtures, not domain
+  constants, and neither is a second `GREATSWORD`.
+- **No movement accounting in the spike.** `turn_started()` now hands the hero
+  30 feet it never spends: the benchmark's `_step` walks the grid without asking
+  the economy, because charging movement per square is the turn loop's job and
+  `w2c` owes that measurement. Handing out a budget nobody draws on costs one
+  store per turn and measures nothing — which is worth saying plainly, since the
+  per-step economy call `w2c` will add is a cost this number still does not
+  include.
+- **No speed modifiers.** Heavy armour's Strength requirement costs 10 feet of
+  speed, and nothing here reads it: `Armour` carries neither the requirement nor
+  the stealth penalty, because a combat simulator has no stealth check and the
+  speed penalty needs the effect machinery `w1c` builds. `w2a` imports both
+  fields and the first feature that needs them is where they land.
+
+## w1e — the damage resolution order, against the 2024 text
+
+The spec review that produced `w1e`'s row (PR #23) found the XPHB sentence that
+settles the order and overturned one of `w0g2`'s two rulings with it. This is
+that finding turned into arithmetic, plus the decisions the reorder forced.
+
+### One quotation, one surviving ruling, one question answered
+
+- **Adjustments, then Resistance, then Vulnerability is quoted, not ruled**
+  (XPHB, "Damage and Healing"). A flat reduction is a penalty and a halving is a
+  multiplier, so Heavy Armor Master and Uncanny Dodge both land in the first
+  band. The book ships its own worked example — 28 fire, reduced by 5 to 23,
+  halved to 11, doubled to 22 — and it is the first contract case.
+- **`w0g2`'s flat-after-resistance ruling is gone.** It reasoned that "the damage
+  you take" is what arrives past your resistances, and noticed correctly that the
+  consequence of the other order is a reduction worth half to the creature that
+  also invested in resistance. The consequence is real and the book orders it
+  that way anyway.
+- **Flat-before-halving survives**, and its argument had to be replaced twice
+  before it was right. What it is now: the one thing the text *does* settle about
+  a reduction is that Resistance halves it along with everything else, and a
+  halving is the same ×½ operation the text simply declined to sequence — so
+  subtracting first makes a reduction meet Uncanny Dodge exactly as the book has
+  it meet Rage. Halving first would make those two exactly additive while a
+  reduction stays sub-additive with Resistance.
+- **Immunity leads, and that is load-bearing.** Adjustments subtract from *the
+  damage you take*; damage you are immune to is not that. Placed later, a -4
+  against 10 fire and 10 poison on a poison-immune creature would leak 8 fire
+  instead of 6.
+- **The open question is answered from the text.** The "counts once" clause names
+  *Resistance*, a halving is not Resistance, so two halvings halve twice. The
+  case that turns on it is two halvings (9 → 4 → 2), **not** Rage plus Uncanny
+  Dodge quartering a hit — one resistance and one halving come out the same
+  however halvings are counted.
+
+### How an untyped adjustment is spent, which is the reorder's own question
+
+Adjustments act on one number and the typed steps act per type, so putting the
+untyped steps first leaves the order needing a per-type picture on the far side
+of a step that has none. No sentence covers it. Two properties decided it:
+
+- **The spend may not consult the steps that follow it.** Spending the reduction
+  on whatever is not resisted is the better play and is what the quotation
+  forbids: an adjustment applied *first* cannot know what Resistance will do with
+  what it leaves.
+- **It may not depend on the order the damage parts arrived** — an authoring
+  artefact, and a number that moved when a feature registered earlier is a
+  reproducibility break with no error anywhere.
+
+What survives both is proportion: an adjustment changes the size of the hit, not
+its composition. A third property decided *which* proportional method, and the
+review found it rather than the design: **more mitigation must never mean more
+damage taken.** `_apportion()` was first written as largest remainder, which is
+not house-monotone — the Alabama paradox — and it showed in the fight: 1 fire
+beside 5 slashing and 5 cold, resisting the latter two, took **2** damage through
+a 5-point reduction and **3** through a 6-point one. Jefferson's method has the
+property by construction, since the allocation of `n` points is the allocation of
+`n - 1` plus one more. Three types are needed to see the paradox, which is why
+every two-type case passed under both methods.
+
+### What inverted on `Mitigated`
+
+`w0g2` had `total` and `sum(amounts.values())` deliberately disagree, because the
+untyped steps ran last and there was then no honest way to spread a subtraction
+back over the types. The apportionment is that way, so the two now agree, and
+`types` can lose a type to an untyped step: half of one point of fire is no fire.
+The `untouched` fast path still skips every step and still clamps, the clamp
+being the one step that is not the identity on an empty ledger.
+
+### What the review cost, and what that is worth recording
+
+Five rounds. **The first found a real bug** — `_apportion()` written as largest
+remainder, so a larger reduction could leave the creature taking more damage —
+**and a test gap**, the tie-break no case pinned. **The other four were prose**:
+three arguments that defended a correct decision with a consequence it did not
+have — flat-before-halving justified by a stacking that does not occur (the
+rejected order is exactly additive, never more), `_halvings` justified by a case
+that works either way, a worked comment that derived the apportionment by the
+method the code had just abandoned — and one queue row left in a state that
+would have started `w1f` on an unmerged dependency. Each of the four was found
+by checking a stated consequence and finding it false.
+
+The lesson is not "write less down" — the citations are contract. It is that an
+argument in a decision record is load-bearing exactly like code, and the ones
+that failed here were the decorative extensions past the citation: the flourish
+about what the rules "went out of their way to close", the vivid case reached for
+instead of the case that applies. A citation carries the quotation and the one
+consequence that actually follows. Everything past that is surface for a later
+agent to disprove, and disproving it is how a settled decision gets reopened for
+the wrong reason.
+
+### What this task deliberately did not do
+
+- **Reductions are still untyped.** 2024 Heavy Armor Master reduces Bludgeoning,
+  Piercing and Slashing only, and `ctx.reduce()` takes no damage type. `w0g2`
+  spent the reduction over the total too, but the reorder makes the spend decide
+  *which* types shrink. Debt register #23, retired by `w3f` via `w3e`.
+- **No log records, no dying, no effects.** `w0g2`'s module docstring claimed
+  `w1e` would bring all three, before those tasks had rows: the log is `w1i`,
+  dying is `w1j`, draining a queued effect is `w1c`.
+- **The benchmark was measured, not assumed.** The spike ran both ways on the
+  same container — 26,267/sec before, 26,649/sec after, inside a ±10% spread.
+  Both are under the 30k budget because this container is slower than the one
+  `w0i` measured ~31.5k on, which is what `w3i`'s same-run baseline is for. The
+  apportionment runs only when a ledger has an untyped step *and* more than one
+  type survived immunity.

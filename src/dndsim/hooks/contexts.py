@@ -146,13 +146,38 @@ __all__ = [
 
 
 class Combatant(Protocol):
-    """A creature as a context needs to know it: a place in the order, and a name.
+    """A creature as a context needs to know it: a name, a place in the order,
+    and the pool a hit comes out of.
 
     `initiative` is here because `core/timeline.py` already builds on it —
     `Duration` anchors on an `InitiativeKey` rather than on a creature, precisely
     so that `core/` need not know what a creature is. It is a key and never a
     seat index, so a creature entering or leaving the encounter moves nobody
     else (`core/timeline.py`, docs/decisions.md § w0d).
+
+    **The three hit-point numbers are `w1a`'s widening**, and they are one
+    promise rather than three: what `engine/damage.py` spends, in the order it
+    spends it. Without them no `on_hit` handler could ask whether its target is
+    Bloodied — `w0i`'s own rider had to interrogate the damage bag instead and
+    say so in a paragraph — and "half its hit points or fewer" is a condition
+    dozens of the ~630 features are written around. `temp_hp` is here because it
+    is the first thing a hit is spent against, so a handler asking what its
+    damage will actually remove needs it.
+
+    **The two are not added together.** Bloodied is `hp * 2 <= max_hp`, hit
+    points alone: temporary hit points are a buffer in front of hit points and
+    are not hit points (XPHB, Rules Glossary). The sum is the pool a hit comes
+    out of; it is not the creature's hit points, and the reason both are exposed
+    is that features need to ask each question separately.
+
+    **What is still deliberately absent is as load-bearing as what is here.**
+    No Armor Class: what reads a target's AC is a policy decision, and the APL
+    asks the live creature through its namespace rather than through an event's
+    view of it. No `is_alive`: dying is `w1j`'s and a protocol that promised it
+    now would be promising a definition that does not exist yet. The rule this
+    protocol lives by is that it declares only what is already settled elsewhere
+    in the design; `w3e` confirms the shape before ~400 features are written
+    against it, and `w3f` is where a gap the paper pass finds gets filled.
     """
 
     @property
@@ -160,6 +185,15 @@ class Combatant(Protocol):
 
     @property
     def initiative(self) -> InitiativeKey: ...
+
+    @property
+    def hp(self) -> int: ...
+
+    @property
+    def max_hp(self) -> int: ...
+
+    @property
+    def temp_hp(self) -> int: ...
 
 
 class Weapon(Protocol):
@@ -925,15 +959,17 @@ class D20TestContext(Context):
 class MitigationLedger(_Bag):
     """Everything a victim's handlers did to incoming damage before it landed.
 
-    A ledger rather than an arithmetic result because `engine/damage.py` (w1e)
-    owns the resolution order — immunity → vulnerability → resistance → flat
-    reductions → halvings → temp HP → HP — and a context that pre-applied any
-    of it would be a second place that order is written.
+    A ledger rather than an arithmetic result because `engine/damage.py` owns
+    the resolution order — immunity → flat reductions → halvings → resistance →
+    vulnerability → temp HP → HP — and a context that pre-applied any of it
+    would be a second place that order is written.
 
     The three type collections are **sets**, which is the third piece of
     structural prevention (DESIGN.md): a damage type cannot be resisted twice,
     so two features granting fire resistance halve the damage once, and neither
-    author has to know the other exists.
+    author has to know the other exists. `_halvings` is a **list** against them
+    on purpose: the "counts once" clause names Resistance, and a halving is not
+    Resistance, so two of them halve twice.
     """
 
     __slots__ = ("_halvings", "_immune", "_reductions", "_resist", "_vulnerable")
@@ -1133,8 +1169,9 @@ class AttackRollContext(Context):
 
     Read-only about the roll itself. There is deliberately no mutator for the
     critical threshold: Improved Critical lowers the *character's* threshold, so
-    it is a derived stat on the creature (w1a) that the engine reads when it
-    builds this context, not something a handler edits per attack.
+    it is a derived stat on the creature (`Creature.crit_threshold`, w1a) that
+    the engine reads when it builds this context, not something a handler edits
+    per attack.
     """
 
     attacker: Combatant
@@ -1230,10 +1267,10 @@ class IncomingDamageContext(Context):
     """`on_incoming_damage` — TARGET: the victim's one chance to change it.
 
     Everything a handler does here is recorded, never applied: `engine/damage.py`
-    (w1e) runs the single resolution order over the ledger afterwards. Uncanny
-    Dodge halves, Heavy Armor Master reduces, Rage resists — and the order those
-    three interact in is a decision made once, in one file, with the ruling for
-    each non-quoted step cited inline.
+    runs the single resolution order over the ledger afterwards. Uncanny Dodge
+    halves, Heavy Armor Master reduces, Rage resists — and the order those three
+    interact in is decided once, in one file, which cites where each step comes
+    from (`docs/decisions.md` § w1e).
 
     The damage arrives here **rolled**, as an amount per type, rather than as
     the `DamageBag` the attacker built. The dice were thrown at `on_damage_roll`
@@ -1261,11 +1298,14 @@ class IncomingDamageContext(Context):
         self._mitigation.vulnerable(damage_type)
 
     def reduce(self, *, dice: str | Dice | None = None, flat: int = 0) -> Modifier:
-        """Subtract a flat amount after resistance (Heavy Armor Master)."""
+        """Subtract a flat amount from the hit, before resistance and
+        vulnerability (Heavy Armor Master). Untyped: it is spent over every type
+        that survived immunity, in proportion."""
         return self._mitigation.reduce(dice, flat)
 
     def halve(self, reason: str) -> None:
-        """Halve what is left after the reductions (Uncanny Dodge)."""
+        """Halve what the reductions left, still before resistance and
+        vulnerability (Uncanny Dodge)."""
         self._mitigation.halve(reason)
 
     @property
@@ -1552,6 +1592,16 @@ class LeaveReachContext(Context):
     The project's one `OBSERVER` hook and the opportunity-attack trigger: the
     owner neither acted nor was acted upon, it merely has reach where the
     `mover` used to be.
+
+    **One five-foot step, not a whole move.** `origin` is the square the mover
+    is standing on *right now* and `destination` the single square it is about
+    to step into — adjacent, always, and the pair the observer was handed
+    because it is the pair that decides the offer. A route of six squares that
+    leaves the owner's reach on its fourth step dispatches this once, with the
+    third and fourth squares in it, and never with the whole route: the mover is
+    still on `origin` while the reaction resolves, which is what lets a
+    five-foot reach find it there at all (`engine/triggers.py`). Compare
+    `MoveContext.route`, which is the mover's own view and does carry the lot.
     """
 
     creature: Combatant

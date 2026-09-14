@@ -62,7 +62,9 @@ from dndsim.core.geometry import Cell, distance_ft, route, steps_within
 from dndsim.core.rng import MersenneRng, Rng, mix
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import Creature
-from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
+from dndsim.creatures.economy import ActionEconomy
+from dndsim.creatures.stats import GREATSWORD, Armour, StatBlock, Weapon
+from dndsim.engine.triggers import walk_provoking
 from dndsim.hooks.contexts import MoveContext, TurnContext
 from dndsim.hooks.definitions import ON_MOVE, ON_TURN_START
 from dndsim.rules.enums import Ability, ActionCost, DamageType
@@ -168,6 +170,13 @@ the measured path — and no bigger, because the enemies exist to make the hero'
 four defensive sources run rather than to end the encounter. `RageResistance`
 halves it, which is most of why 70 hp lasts five rounds."""
 
+_PLATE: Final = Armour.heavy("Plate", 18)
+"""AC 18, and no Dexterity: the hero's AC was a literal on its stat block until
+`w1a` derived it from equipment, and plate is the XPHB entry that gives the 18
+this benchmark has always run against. The enemies wear natural armour for 16
+— they are stand-ins for monsters, and a monster's AC is the number its stat
+block prints (`creatures/stats.py`)."""
+
 _TURN_COSTS: Final = MappingProxyType(
     {
         "rage": ActionCost.BONUS_ACTION,
@@ -221,58 +230,16 @@ def _offer_table() -> tuple[frozenset[str], ...]:
 _OFFERS: Final = _offer_table()
 
 
-class SpikeEconomy:
-    """The action economy, as much of it as the dispatcher asks for.
-
-    Satisfies the `Economy` protocol in `hooks/dispatch.py`; `w1a` owns the real
-    `ActionEconomy` with movement, grants and Action Surge. What matters here is
-    that a costed handler pays for a `can_spend()` call on the hot path and that
-    a reaction really does run out — Uncanny Dodge spends one a few times in ten
-    encounters, and `can_spend()` then answers False for the enemies still to
-    swing that round — because a spike whose reaction was free would measure the
-    cheap half of the dispatcher's three escape valves.
-    """
-
-    __slots__ = ("action", "bonus", "reaction")
-
-    def __init__(self) -> None:
-        self.action = True
-        self.bonus = True
-        self.reaction = True
-
-    def can_spend(self, cost: ActionCost) -> bool:
-        if cost is ActionCost.ACTION:
-            return self.action
-        if cost is ActionCost.BONUS_ACTION:
-            return self.bonus
-        return self.reaction
-
-    def spend(self, cost: ActionCost) -> None:
-        if cost is ActionCost.ACTION:
-            self.action = False
-        elif cost is ActionCost.BONUS_ACTION:
-            self.bonus = False
-        else:
-            self.reaction = False
-
-    def turn_started(self) -> None:
-        """Everything back. The reaction comes back at the *start of your turn*
-        (`core/timeline.py` on `Reset.TURN` vs `Reset.OWN_TURN`), which is the
-        boundary this method is called on."""
-        self.action = True
-        self.bonus = True
-        self.reaction = True
-
-
 @dataclass(slots=True)
 class Spike:
     """One assembled encounter: a hostile hero, its enemies, and its policy."""
 
     hero: Creature
     enemies: tuple[Creature, ...]
+    combatants: tuple[Creature, ...]
     apl: Apl
     state: SpikeState
-    economy: SpikeEconomy
+    economy: ActionEconomy
     contexts: AttackContexts
     enemy_contexts: tuple[AttackContexts, ...]
     sources: tuple[Fixture, ...]
@@ -289,7 +256,7 @@ class Spike:
         self.hero.position = _HERO_START
         self.state.raging = False
         self.state.slots_highest = 5
-        self.economy.turn_started()
+        self.economy.turn_started(self.hero.speed_ft)
         for enemy, start in zip(self.enemies, _ENEMY_STARTS, strict=True):
             enemy.hp = enemy.max_hp
             enemy.position = start
@@ -311,20 +278,18 @@ def build_spike(seed: int = 0, *, pooled: bool = True) -> tuple[Spike, Rng]:
     """
     hero = Creature(
         name="Spike",
-        stats=StatBlock(
-            abilities=_HERO_SCORES, max_hp=_HERO_HP, armour_class=18, level=12
-        ),
+        stats=StatBlock(abilities=_HERO_SCORES, max_hp=_HERO_HP, level=12),
         position=_HERO_START,
         weapon=GREATSWORD,
+        armour=_PLATE,
         initiative=_HERO_SEAT,
     )
     enemies = tuple(
         Creature(
             name=f"Enemy{index}",
-            stats=StatBlock(
-                abilities=_ENEMY_SCORES, max_hp=_ENEMY_HP, armour_class=16, level=5
-            ),
+            stats=StatBlock(abilities=_ENEMY_SCORES, max_hp=_ENEMY_HP, level=5),
             position=start,
+            armour=Armour.natural(16),
             weapon=_MAUL,
             initiative=_seat(index + 1),
         )
@@ -343,15 +308,19 @@ def build_spike(seed: int = 0, *, pooled: bool = True) -> tuple[Spike, Rng]:
         allies=AlliesProxy((hero,)),
     )
     apl = Apl(_entries(), namespace)
-    economy = SpikeEconomy()
-    hero.dispatcher.bind(economy=economy, gate=apl)
+    hero.dispatcher.bind(gate=apl)
 
     spike = Spike(
         hero=hero,
         enemies=enemies,
+        # The roster, built once: `engine/triggers.py` walks it per move to work
+        # out who could react to it, and rebuilding it there would put a tuple
+        # allocation on a path whose whole claim is that it costs nothing when
+        # nobody in the room owns a reaction.
+        combatants=(hero, *enemies),
         apl=apl,
         state=state,
-        economy=economy,
+        economy=hero.economy,
         contexts=PooledContexts(hero, enemies[0], GREATSWORD) if pooled else FRESH,
         enemy_contexts=tuple(
             PooledContexts(enemy, hero, _MAUL) if pooled else FRESH for enemy in enemies
@@ -456,7 +425,7 @@ def run_encounter(spike: Spike, rng: Rng, rounds: int = ROUNDS_PER_ENCOUNTER) ->
 def _hero_turn(spike: Spike, rng: Rng, number: int) -> int:
     hero = spike.hero
     hero.dispatcher.resets.turn_started(own=True)
-    spike.economy.turn_started()
+    spike.economy.turn_started(hero.speed_ft)
     turn = TurnContext(
         creature=hero,
         time=TimeKey(round=number, initiative=_HERO_SEAT, phase=TurnPhase.START),
@@ -478,10 +447,11 @@ def _offered(spike: Spike) -> frozenset[str]:
 
     "The engine filters to currently-offered ids" (DESIGN.md § APL), and what
     makes an id offered is that the economy can still pay for it — so this is
-    `_TURN_COSTS` read through `SpikeEconomy`, indexed rather than rebuilt.
+    `_TURN_COSTS` read through the hero's `ActionEconomy`, indexed rather than
+    rebuilt.
     """
     economy = spike.economy
-    return _OFFERS[2 * economy.action + economy.bonus]
+    return _OFFERS[2 * (economy.actions > 0) + (economy.bonus_actions > 0)]
 
 
 def _execute(spike: Spike, entry: Entry, rng: Rng) -> int:
@@ -561,9 +531,7 @@ def _step(spike: Spike, mover: Creature, destination: Cell) -> None:
     every turn.
     """
     blocked = frozenset(
-        creature.position
-        for creature in (spike.hero, *spike.enemies)
-        if creature is not mover
+        creature.position for creature in spike.combatants if creature is not mover
     )
     if destination in blocked:
         return
@@ -573,11 +541,20 @@ def _step(spike: Spike, mover: Creature, destination: Cell) -> None:
     reachable = walked[: steps_within(mover.speed_ft)]
     if not reachable:
         return
-    mover.position = reachable[-1]
+    # `engine/triggers.py` is what actually moves the creature, because the
+    # opportunity-attack offer has to be made from the square being left rather
+    # than the one being entered. Nothing in this spike owns an `on_leave_reach`
+    # handler, so what is in the measurement here is the audience computation
+    # and its verdict — the case the design claims costs nothing, measured
+    # rather than asserted. A configuration where the offers actually fire is
+    # `w2c`'s to add when the turn loop and the Command exist to fire them.
+    stepped = walk_provoking(mover, reachable, spike.combatants)
+    if not stepped:
+        return
     move = MoveContext(
         creature=mover,
-        route=reachable,
-        distance_ft=len(reachable) * 5,
+        route=stepped,
+        distance_ft=len(stepped) * 5,
     )
     mover.dispatch(ON_MOVE, move)
     move.close()

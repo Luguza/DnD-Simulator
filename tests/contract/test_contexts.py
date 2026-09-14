@@ -66,10 +66,18 @@ def seat(n: int) -> InitiativeKey:
 @dataclass(frozen=True, slots=True)
 class FakeCreature:
     """The narrowest thing that satisfies `Combatant` — which is the point of
-    the protocol being narrow."""
+    the protocol being narrow.
+
+    The three hit-point numbers arrived with `w1a`, which widened the protocol
+    so that an `on_hit` handler can ask whether its target is bloodied. They
+    carry defaults here because no test in this file is about a pool; a test
+    that cares says so."""
 
     name: str
     initiative: InitiativeKey
+    hp: int = 20
+    max_hp: int = 20
+    temp_hp: int = 0
 
 
 @dataclass(frozen=True, slots=True)

@@ -19,6 +19,14 @@ not for licensing reasons.
 rests between them, *how far into the adventuring day does the party get before
 resources run dry?* Attrition, not single-fight DPR.
 
+That question is only well posed once "played how?" is answered, and it must not
+be answered by whoever wrote the build file. A party's attrition depends at least
+as much on its action priorities as on its class features, so a hand-authored
+policy makes every reported number a measurement of build *plus author*. **The
+policy is therefore derived by search per build, not authored** — see § APL
+derivation. An authored APL survives as the baseline the derived one is scored
+against, and nothing else.
+
 **What "runs dry" means, precisely.** A metric this vague is a metric that
 cannot be implemented, so the stop condition is settled here rather than
 discovered in W6:
@@ -50,7 +58,9 @@ settled decisions and not implementation detail.
 | Positioning | Square grid, 5 ft cells, real distance, opportunity attacks, true AoE templates |
 | Movement | **An APL decision, not an engine heuristic** — a `move:` clause, same grammar as `if:` |
 | Targeting | **An APL decision** — a `target:` selector expression per entry |
-| Policy | SimC-style Action Priority List in build YAML |
+| Policy | SimC-style Action Priority List — the *language*; see the next row for where the list comes from |
+| **Policy derivation** | **In scope for v1 — derived by statistical search per build, never authored.** A hand-written `apl:` is a baseline, not an input |
+| Policy structure | Two layers: a **global fitted scorer** (`best_scored`) under a **per-build searched overlay** of departures. Score is in expected-damage points, gauged so a plain attack is 1 and doing nothing is 0 |
 | v1 output | Adventuring-day attrition |
 | Death & stop condition | Death saves rolled; healing is an APL action; day ends on TPK or a declared retreat threshold |
 | Content order | **Martials first, full vertical slice** (Barbarian/Fighter/Rogue/Monk, 16 subclasses, levels 1–12, masteries, martial feats) |
@@ -310,18 +320,53 @@ work that would otherwise be procedural code an author could misplace:
   idempotent, so ordering cannot matter.
 - **Resistance.** `_resist` is a `set`, so a type can't be resisted twice.
 - **Damage resolution order** lives in exactly one file, `engine/damage.py` — a
-  **Policy object owned by the engine, not by features**: immunity →
-  vulnerability → resistance → flat reductions → halvings (Uncanny Dodge) →
-  temp HP → HP. Documented verbatim in the skill doc. Two of those steps are
-  *rulings* rather than quotations — flat reductions applying after resistance,
-  and Uncanny Dodge's halving applying after the flat reduction — so
-  `engine/damage.py` carries the citation for each inline. Both change every
-  reported number, and neither should be re-argued in a code review three years
-  from now with no record of what was decided.
+  **Policy object owned by the engine, not by features**: immunity → flat
+  reductions → halvings (Uncanny Dodge) → resistance → vulnerability → temp HP →
+  HP. Documented verbatim in the skill doc. The middle of that sequence is a
+  **quotation, not a ruling**: *"Modifiers to damage are applied in the following
+  order: adjustments such as bonuses, penalties, or multipliers are applied
+  first; Resistance is applied second; and Vulnerability is applied third"*
+  (XPHB, "Damage and Healing"), with the book's own worked example — 28 fire
+  damage, reduced by 5 to 23, halved by Resistance to 11, doubled by
+  Vulnerability to 22. A flat reduction and a halving are both *adjustments*, so
+  both land in that first step. **One ruling survives** — the order between the
+  two of them, which the text bundles into one step without sequencing — and
+  `docs/decisions.md` § w1e argues it.
+- **Two consequences of that order, because both read as bugs otherwise.**
+  Resistance and Vulnerability to the same type no longer cancel exactly: 7
+  damage halves to 3 and doubles to 6, and the missing point is the book's
+  answer rather than a rounding slip. And a flat reduction is worth **half** to a
+  creature with resistance what it is worth to one without, because it is
+  subtracted from the full amount and then halved along with it: against 20
+  damage, a 4-point reduction saves an unresisting creature 4 and a resisting one
+  2. That second consequence is the one `w0g2` saw coming and ruled against, on the
+  argument that subtracting first makes a defensive feature worth *less* to the
+  creature that invested in resistance. It does, and the book orders it that way
+  regardless; a feature reading how it ought to work is not a rule.
+  `w0g2` placed both of those steps the other way round — vulnerability before
+  resistance, and the reduction after it — reasoning from `(2n) // 2 == n` and
+  from what "the damage you take" ought to mean; the `w1e`
+  spec review found the 2024 text that settles it, before any number the project
+  reports was computed the wrong way.
+  Nobody re-argues this in a code review three years from now: the quotation is
+  above and the worked example is `test_the_books_own_worked_example`.
 
 This is *"make illegal states unrepresentable"* rather than *"test for illegal
 states"*. Every rule made structural is one that never needs a test — the
 highest-leverage move available when ~630 units are written by different hands.
+
+**The failure mode this creates, named by M0 so it is recognised next time: an
+optimisation that skips a step it believed was the identity.** Two of the three
+findings in `w0i`'s review had that exact shape — a `mitigate()` fast path that
+skipped the floor-at-zero clamp along with the steps it was right to skip (so a
+reduction larger than the hit arrived as negative damage, which is temporary hit
+points granted by a sword), and a compiled `reopen()` that overwrote the raising
+body meant to catch a context class which had escaped its decorator (so such a
+class silently inherited a `reopen()` that left its own fields holding the
+previous attack's values). A structural guarantee is only as strong as the
+fastest path around it, and the hot path is where the paths around things get
+written. **When a fast path skips a sequence, every step in that sequence needs
+to be checked for being the identity — the clamp usually is not.**
 
 ## Durations: one mechanism, three shapes
 
@@ -443,11 +488,22 @@ The APL as a whole is a **Strategy**: the creature's decision-making is a
 pluggable policy object. That is what makes build-vs-build comparison possible at
 all — swap the policy, hold everything else fixed. A built-in scoring heuristic
 can later be dropped in as an alternative `Policy` implementation without the
-engine noticing.
+engine noticing — and § The scorer is that heuristic arriving, as a *layer*
+under this list rather than as a rival to it.
 
 **The unifying idea:** a turn action, a reaction, and a mid-attack rider are all
 "the engine has an offer; does the APL take it?" One flat ordered list; the
 engine filters to currently-offered ids and takes the first passing entry.
+**Filtering to what the action economy can still pay is part of that filter,
+not an optimisation of it** — M0 found the alternative by accident: a self-buff
+charged an Action instead of a Bonus Action, sitting above `attack` with an
+`if:` its own effect did not clear, so the creature bought the buff once and
+never swung again for the rest of the encounter. It cost 0.07% of the rate,
+which is precisely why nothing watching the rate would ever have found it. The
+sibling of "a melee build that stands still and reports zero damage", through
+the economy rather than the grid, and the reason `SimResult` reports actions and
+attack resolutions per round: a starved policy should be visible as a count and
+not only as a disappointing average.
 Individual actions are **Command** objects (`is_legal()` / `execute()`), which is
 what lets the turn loop re-poll after every action — and is why Action Surge
 needs no special case: it simply grants another action slot and the loop asks
@@ -504,6 +560,53 @@ to see it. Movement is the one exception to OFF-by-default: a build with no
 `move:` clause anywhere closes to reach of its nearest enemy, because the
 alternative is a melee build that stands still and reports zero damage.
 
+### Reactions in the APL
+
+There is no second list. "A turn action, a reaction, and a mid-attack rider are
+all 'the engine has an offer; does the APL take it?'" is the unifying idea
+above, and a reaction is that sentence with a different offer:
+
+```yaml
+apl:
+  - { action: opportunity_attack, if: "trigger.mover.hp_pct < 0.5" }
+  - { action: uncanny_dodge,      if: "trigger.damage_estimate >= self.hp * 0.25" }
+```
+
+What differs from a turn entry is only *when* the question is asked. A turn
+entry is filtered against the ids the turn loop is currently offering; a
+reaction entry is answered through `Apl.allows()` at the moment
+`engine/triggers.py` makes the offer — inside somebody else's move, or inside
+the attack that is landing on you. Four consequences are worth stating because
+each one is a rule somewhere else in this document paying off here:
+
+- **The trigger condition is the engine's, the decision is the APL's.** Whether
+  a step leaves your reach is arithmetic out of the rulebook and belongs to
+  `Scope.OBSERVER`; whether that is worth your reaction is policy and belongs to
+  the list. No feature writes a reach check, and no engine file holds a
+  heuristic about when to swing.
+- **A declined offer costs nothing.** `once_per` and `costs` are spent only on
+  `APPLIED`, so a reaction the list turns down is still in hand for the next
+  square, the next attacker, the next round. That is what makes "hold it for
+  something better" an expressible policy rather than an accident of ordering.
+- **Unmentioned is OFF, opportunity attacks included.** A build whose list never
+  claims `opportunity_attack` never makes one. This is the Null Object default,
+  and it is deliberate even though it costs a melee build free damage: the
+  reaction is one slot contested by Shield, Counterspell and Uncanny Dodge, and
+  a default that quietly spent it would change the numbers of every build that
+  already had a reaction entry the moment opportunity attacks were implemented.
+  Movement is the one exception to OFF-by-default and stays the only one — a
+  build that stands still reports zero damage, which is a different order of
+  wrong from a build that declines a free swing.
+- **The reaction invariant is checked on the turn boundary**, never the round
+  one, for the reason given under *Failing loudly* — a creature high in
+  initiative may legitimately react before its turn and again after it.
+
+The `trigger.*` root is populated per offer by `engine/triggers.py`, which for a
+movement offer means the mover and the squares: `trigger.mover`,
+`trigger.origin`, `trigger.destination`. It is bound by the engine and never
+scraped off the context, so a gate never has to ask what kind of event it is
+looking at.
+
 **Condition language: the Interpreter pattern, over an AST whitelist.** The `if:`
 clauses are a small expression grammar with its own compile step, not `eval` of
 source: parse, walk, reject any node outside an allowlist (no comprehensions,
@@ -521,6 +624,1348 @@ The namespace roots (`self`, `target`, `trigger`, `enemies`, …) are **Proxy**
 objects built once per creature holding weak references to live state, so
 evaluation is attribute access rather than object construction.
 
+## APL derivation — the policy is a result, not an input
+
+The section above describes how a policy is *expressed*. This one describes
+where it comes from, and it is the more important half.
+
+**The problem with an authored APL.** A hand-written `apl:` block makes every
+number the sim reports a measurement of *build plus author*. `compare A B` then
+answers "which build did I write a better APL for?", which is the one question a
+simulator exists to stop people asking. There is no prior knowledge of correct
+5e play at this granularity — nobody knows the HP threshold below which Reckless
+Attack stops paying, and the honest answer is that it depends on the build, the
+AC, the party and the encounter count in ways no author can hold in their head.
+
+So the quantity that is actually a property of a build is not `E[objective |
+apl]` but
+
+```
+value(build) = max over policies of  E[objective | build, policy, scenario]
+```
+
+and the argmax is unknown. **The policy is therefore derived by search, and the
+derivation is part of the product rather than a spreadsheet exercise done once
+by hand.** A hand-written APL keeps exactly one job: it is the **baseline** the
+derived policy is scored against.
+
+This is the reason for every statistical commitment the rest of this document
+makes. Determinism was justified above by reproducibility and readable
+regression diffs; its larger payoff is here, because it is what makes common
+random numbers exact and therefore what makes the search affordable at all.
+
+### What it changes architecturally: almost nothing
+
+> Amended by § The scorer below, which adds two files and two of the seams
+> listed here — the reserved `best_scored` id in W2, and the `Perturbation`
+> profile in W3. The claim that *derivation* touches no engine file survives;
+> the claim that the whole feature does not, does not.
+
+The APL is already a **Strategy** — a pluggable policy object the engine knows
+nothing about. Derivation is a *generator of Strategy objects* that uses the
+simulator as a noisy oracle. It lives in `search/`, sits above `sim/` and
+`api.py`, imports `apl/`, and **changes no engine file, no hook, and no
+feature**. That property is the whole reason this is affordable to add, and it
+is worth defending: anything in `search/` that wants an engine change is a
+design error in `search/`, not a missing hook.
+
+It costs four seams. Three are cut in W2, while the code they shape is being
+written and before a single build YAML exists in git: the first two are
+signatures every later caller is built against, and the third is a schema
+migration across every file in `builds/` once builds exist. The fourth lands in
+W3, because it is authoring surface rather than a signature, and retrofitting
+*it* is a migration across every buff in `features/`:
+
+1. **`Apl` is constructible programmatically and serialisable back to YAML**,
+   round-tripping exactly. The search builds millions of policies; not one of
+   them may go through a text file.
+2. **The API accepts an APL override and returns per-seed results.** `run_sim`
+   and `run_day` take an explicit seed list and return the objective *vector*,
+   not only its mean. Aggregates are useless to a paired comparison, and a
+   paired comparison is the entire variance-reduction strategy below.
+3. **`best_scored` is reserved in the action vocabulary.** The scorer below
+   enters the APL as one action id, and that vocabulary is closed — reserving
+   the id costs a line in W2 and is a schema migration across every build file
+   afterwards, exactly as the APL's three clauses were.
+4. **A buff or debuff feature declares a `Perturbation` profile** (W3, not W2).
+   The scorer reads the closed key vocabulary of § Buffs and debuffs off the
+   feature itself, so the declaration must be in the authoring skill and the
+   linter before the grind writes 400 features. This is the expensive one to
+   miss: only ~30–50 effects need it, but declared after the grind it is a
+   retrofit across every one of them, written by whoever is free months after
+   the authors who understood the features moved on.
+
+### The scorer: one global value model under the per-build search
+
+The per-build search described below starts every build from nothing. That is
+wasteful and it is also wrong about where the knowledge lives: *most* of what
+makes a turn good is not build-specific. "Hit the thing you are most likely to
+hit, with the option that deals the most damage, unless you are spending
+something scarce to do it" is true for every class at every level, and
+re-searching it once per build spends the budget proving the obvious.
+
+So the policy is two layers:
+
+1. **A scorer** — a global value model that scores every offered action at every
+   decision point, with **coefficients fitted once across a whole corpus of
+   builds** and reused by all of them.
+2. **The per-build overlay** — the searched APL of the sections below, which
+   now carries only this build's *departures* from generic good play.
+
+The layering is what makes the per-build search cheap and its output readable.
+A derived APL stops being a policy and becomes a diff.
+
+**The obvious objection first.** A fixed scoring formula with fitted coefficients
+is a hardcoded functional form, which is exactly what § The candidate space is
+generated says not to do. That trade is deliberate and it is made falsifiable
+rather than argued: the scorer competes for its place in the ordered list like
+any other candidate entry (below), so if the model is wrong for a build the
+search routes around it and the ablation table reports the scorer carrying no
+marginal value.
+**A scorer that cannot be shown to beat its own absence is cut.** That is an
+acceptance criterion of `w8h`, not a matter of taste.
+
+#### The score function
+
+Every offered action is scored in one currency — **points of expected damage** —
+so that damage, prevented damage and spent resources are directly comparable:
+
+```
+score(a, T) =   w[a]     · Ê_eff(a, T)                       # damage now
+              + w_off[a] · ΔÊ_ours(a, T)                      # our output, later
+              + w_def[a] · ΔÊ_theirs(a, T) · w_ally            # their output, later
+              + w_ally   · Ê_ally_hp(a, T)                    # pool put back now
+              − Σ_r  c[r](day) · spend_r/pool_r               # what it costs
+              + b[a]                                          # the residual, only that
+```
+
+`pool_r` is the resource's own capacity, and it is the one place in this document
+where `pool` does not mean a target's temporary plus current hit points.
+
+Both `ΔÊ` terms carry the horizon and the landing probability **inside** their
+per-target sums, because an area effect rolls a separate save against a separate
+creature with its own remaining life; `p_land` is `1` for anything not gated on a
+save, so only a debuff pays it. Both are signed so that positive is good — see
+§ Buffs and debuffs, where getting that backwards is the one sign error the fit
+cannot rescue.
+
+Four families of fitted coefficients, and nothing else:
+
+- **`w[a]`, a slope per action id**, multiplying the engine's expected-damage
+  estimate. For a plain attack it is pinned (below); elsewhere it absorbs the
+  residual the estimator cannot see — rider damage, follow-on attacks, the
+  tempo the action costs.
+- **`w_off[a]` and `w_def[a]`, two slopes on *rates*** rather than on damage,
+  multiplying the change an action makes to expected damage per round over the
+  rounds that change survives. Rage, Bless, Hunter's Mark, Faerie Fire,
+  Frightened, Slow and Reckless Attack all deal zero damage on the turn you spend
+  them and are among the strongest actions in the game; these terms are the whole
+  reason they can be scored at all rather than left to a constant. **A killing
+  blow scores here too** — killing an enemy is the debuff that removes all of its
+  remaining output, so `p_kill · Ê_dpr(e) · H` rides the same `w_def`, and focus
+  fire stops needing a protocol (§ Party tactics). The split is
+  **offensive versus defensive — what changes, not whom it is cast on** — so a
+  stun scores in both with no special case. Both are computed counterfactually,
+  not declared as numbers, and `p_land` is the save-gating a debuff has and a
+  buff does not. See § Buffs and debuffs below.
+- **`b[a]`, an intercept per action id**, for whatever remains after all three.
+  With the two rate terms present this is a genuine residual rather than the
+  entire value of every non-damaging action, which is a large improvement in what
+  the model can be trusted with — but it stays, because a closed perturbation
+  vocabulary will never cover every feature, and positioning control is the
+  standing example of one it does not.
+- **`w_ally` and `c[r]`, the two exchange rates.** `w_ally` is what one point of
+  ally HP is worth in enemy damage; `c[r]` is the scarcity price of one unit of
+  resource `r`, modulated by how much of the day remains. These two numbers are
+  not bookkeeping — **they are the attrition question in scalar form**, and
+  discovering them is arguably the most interesting single output the project
+  can produce. One fitted `w_ally` drives healing, Dodge, Uncanny Dodge, Shield
+  and friendly-fire avoidance simultaneously, which is a very large compression
+  of the policy space for one parameter.
+
+**The gauge — two pins, plus one assumption that is not a pin.** A ranking is
+invariant under any positive affine transform of the scores, so exactly two
+degrees of freedom must be removed before the model is identifiable. Three
+quantities are nonetheless fixed, and **conflating them would hide a real
+modelling choice inside what looks like bookkeeping**:
+
+- **`score(null) = 0` fixes the offset.** `null` is the explicit end-your-turn
+  option, and it contributes to no term but its own intercept, so this is
+  `b[null] = 0`. It earns its place twice over: it makes every score a value
+  *relative to doing nothing*, and it is what lets the scorer decide to **hold a
+  resource** rather than spend it. A model in which "do nothing" is not on the
+  ballot cannot answer the attrition question, because conserving is half of it.
+- **`w[attack] = 1` fixes the scale.** Every other coefficient is then
+  denominated in *plain attacks*, which is the unit a reader already has
+  intuition for: "Reckless Attack is worth 1.4 attacks against AC 17" is a
+  sentence; "Reckless Attack scores 8.3" is not.
+
+Those two exhaust the gauge freedom. **`b[attack] = 0` is therefore not a third
+pin but a declared assumption** — that a plain attack carries no value the damage
+term has not already counted, so the reference action is fully explained by
+`w[attack]·Ê_eff`. It is a defensible assumption and probably a true one, but it
+is a claim about the game rather than a choice of coordinates, and it is
+**relaxable**: let `b[attack]` float and the model stays identifiable, so the
+ablation machinery can be asked whether the freedom earns its coefficient.
+Relaxing it changes the score-model version, like any other change to the term
+set.
+
+#### The estimator is computed, never fitted
+
+The damage estimate is the part the user's question is really about — *number
+of targets, and hit chance from our attack modifiers and our save DC* — and it
+is **closed-form engine code, not a learned number and not per-feature**:
+
+- **Attack rolls:** `Σ_t [ p_hit(t)·(dice_mean + flat) + p_crit·dice_mean ]`,
+  with `p_hit` from the real attack bonus against that target's AC and
+  advantage folded in as `1 − (1−p)²` (disadvantage `p²`), since advantage is
+  already a collection of sources rather than a boolean.
+- **Saving throws:** `Σ_t [ p_fail(t)·full + (1−p_fail(t))·half ]`, with
+  `p_fail` from this creature's spell save DC against that target's save bonus.
+- **Defences applied in the resolver's order**, so a Fireball against fire-immune
+  enemies scores zero rather than full.
+
+**Two quantities, not one, and the difference is what stops overkill.** Damage
+*dealt* and hit points *removed* are the same number only while the target can
+absorb it, so the estimator computes both:
+
+```
+Ê_raw(a, t)  =  E[X]                 expected damage dealt, unbounded
+Ê_eff(a, t)  =  E[min(X, pool(t))]   expected pool removed
+```
+
+where `pool(t)` is the target's temporary hit points plus its remaining HP, in
+that order because that is the order `engine/damage.py` spends them: temporary
+hit points absorb what they can and hit points take the rest. **The score's
+damage term uses `Ê_eff`**; `Ê_raw` exists because it is what the resolver's
+damage roll produces and therefore what the property test can bind.
+
+**`Ê_eff` is pool removed, not hit points removed, and the distinction is not
+pedantry** — it is what keeps the invariant below satisfiable. Against a target
+with 5 temporary hit points and 10 hit points, a 12-damage hit leaves
+`min(X, pool) = 12`, of which the resolver puts 5 into temporary hit points and 7
+into hit points. The quantity the scorer wants is the 12 — that is what the
+target no longer has to spend — so the empirical side of the binding measures
+temporary hit points depleted **plus** hit points lost. Binding `Ê_eff` to hit
+points alone would fail by construction on every target carrying temporary hit
+points.
+
+`Ê_eff` costs nothing extra to compute. The estimator precomputes the survival
+function `S(k) = P(X ≥ k)` per weapon and spell — it owns that table, and
+§ Lethality's `p_kill` is a later reader of it rather than its author — and
+
+```
+E[min(X, h)]  =  Σ_{k=1..h} S(k)
+```
+
+is that table's running sum — so **storing `S` alongside its prefix sums makes
+both `p_kill` and `Ê_eff` a single lookup**, off one precompute that the
+lethality term then costs nothing to add.
+
+**The restoration term is pool *restored*, and only that.** `Ê_ally_hp(a, A)` —
+the score's *pool put back now* term — is not a third primitive; it is computed
+by `w8a2` out of the two above, summed over the allies `a` affects, and it
+covers the three ways a creature's pool goes up — **healing, granted temporary
+hit points, and a raised hit point maximum**:
+
+```
+Ê_ally_hp(a, A)  =  Σ_ally [ E[min(heal, missing(ally))]              healing
+                           + E[max(0, temp − temp_now(ally))]         temp HP
+                           + E[hp_max_increase] ]                     raised maximum
+```
+
+**Three mechanisms, three caps, and no cap is another's.** Healing is bounded by
+`missing`, maximum minus *current hit points*, because hit points restored above
+the maximum are not restored at all. Temporary hit points are bounded by what
+they *replace*: they do not stack, so a grant adds only the excess over whatever
+the ally already carries — and by nothing else, since they are pool an undamaged
+ally can still gain. A raised maximum is bounded by neither, because the ceiling
+moves with the floor: Aid raises hit point maximum *and* current hit points by
+five, so `missing` is unchanged and the pool added is exactly the increase.
+
+Each case exists because the other two score it zero. Capping a temp-HP grant at
+`missing` would score False Life, Heroism, Inspiring Leader and Armor of Agathys
+at nothing on a healthy party, which is the whole point of most of them — and
+Aid is that same failure one mechanism further over, invisible to both of the
+others: healing sees no gap to fill, and no temporary hit points are granted.
+
+**Mitigation that a perturbation can express does not belong here**, and the
+boundary is a rule rather than a matter of taste: Dodge, Uncanny Dodge, Shield,
+a granted resistance and Protection all *change an enemy's output against a
+creature*, which is exactly what `ΔÊ_theirs` measures, and § The horizon already
+multiplies them by `H` "on exactly the same footing as Frightened and Slow".
+Pricing them here as well would score them twice — once as a shortened enemy
+output over the horizon and once as damage prevented now — which is the error
+`ends_on_damage` is already legislated against in § What debuffs need. **The
+partition is by mechanism: if the effect perturbs someone's output, it is
+`ΔÊ_theirs`; if it puts pool back, it is `Ê_ally_hp`.** The term's file is
+`terms/restoration.py` for the same reason — a file called `mitigation.py` here
+is an invitation to re-merge the two, and mitigation is what `defensive.py`
+already holds. Healing is the case no perturbation can reach, which is why the
+term exists at all — and it is also what keeps `w_ally` identifiable, since it
+is the one place that coefficient appears alone.
+
+**The cap is the point of stating it here.** Revision 5 of § The score function
+exists because an uncapped estimate does not penalise overkill; this term is
+that bug's mirror image, and an uncapped `Ê_ally_hp` scores a 30-point heal on
+an ally missing 4 hit points as 30. `missing` is the cap, and it is the same
+`E[min(·, pool-like bound)]` shape as `Ê_eff`.
+
+It lives in one file, `engine/estimate.py`, for the same reason the damage
+resolution order does — and it is bound to the resolver by an invariant that is
+the linchpin of this whole scheme:
+
+> **The estimator and the resolver share the crit rule, the advantage rule and
+> the defence order by construction, and a property test asserts that `Ê_raw`
+> matches the empirical mean of damage dealt over 10⁵ resolutions of the same
+> action, and `Ê_eff` the empirical mean of pool removed — temporary hit points
+> depleted plus hit points lost — both to within Monte Carlo error.**
+
+Splitting the quantity **strengthens** that binding rather than weakening it:
+capping a single `Ê_dmg` in place would have made the estimator disagree with the
+resolver's damage roll by construction, which is exactly the divergence the test
+exists to catch. Two quantities, two assertions, one pass over the same 10⁵
+resolutions.
+
+If those two ever disagree about whether `flat` doubles on a crit, the scorer is
+systematically wrong at every decision point and no amount of fitting repairs it
+— the fit would simply absorb the bug into `w[a]` and hide it. This test is the
+one that keeps the model honest, and it is cheap.
+
+**One stated modelling assumption:** the estimator reads the target's true AC,
+save bonuses, resistances and immunities. That is perfect information about
+defences, which a real party does not have. Modelling belief and scouting is a
+subsystem, not a parameter, and it is out of v1 — but it is written down here
+because it is the kind of assumption that is invisible in results and
+embarrassing when discovered later. It inflates AoE and damage-type selection
+specifically.
+
+#### Buffs and debuffs: one counterfactual, split by what changes
+
+A buff's value is the damage it adds to future rounds; a debuff's is the damage
+it adds *or removes* from them. Both are evaluated the same way — **perturb the
+estimator and take the difference** — and the useful axis between them is not who
+they target:
+
+```
+C(a) = the creatures action a perturbs        # who rolls the save, whose horizon
+
+ΔÊ_ours(a, T)   = Σ_c∈C(a) p_land(c)·H_c · Σ_i∈allies  [ Ê_dpr(i | c) − Ê_dpr(i | ·) ]
+ΔÊ_theirs(a, T) = Σ_c∈C(a) p_land(c)·H_c · Σ_e∈enemies [ Ê_dpr(e | ·) − Ê_dpr(e | c) ]
+```
+
+where `(· | c)` is the estimate with `c` perturbed and `(· | ·)` the estimate
+with the effect never applied.
+
+**Two sums, and they run over different creatures.** The outer sum is over the
+creatures the action *perturbs*; the inner is over the creatures whose output
+*changes* as a result. **`p_land` and the horizon belong to the outer one**,
+because the creature that rolls the save and the creature whose damage moves are
+not always the same creature.
+
+For an ally-targeted buff they are the same — Bless perturbs three allies and
+changes exactly those three allies' output, so the two sums collapse and you get
+the one-sum form anybody would write first. That collapse is precisely why the
+error is easy to miss: **it is only cross-side effects that separate the
+indices**, and those are the effects this section exists to handle.
+
+- **Faerie Fire** scores offensively, and its Dex save is rolled by the *enemy*.
+  Indexed by the ally whose `p_hit` improved, `p_land` would be `1` by this
+  document's own rule — an ally rolls nothing — and the spell would be priced as
+  though it always lands, overstated by `1/p_fail`. Indexed by the perturbed
+  enemy it pays its save like everything else.
+- **Shield of Faith** is the same error mirrored: it scores *defensively* by
+  raising our AC, but the creature perturbed is our own ally, so `p_land` is `1`
+  and the horizon is the ally's — not that of whichever enemy's output happens
+  to drop.
+- **A stun** takes `p_land(e)` and `H_e` on *both* halves, because both halves
+  perturb the same creature `e`. That is what "scores in both terms with no
+  special case" has to mean arithmetically; indexed the other way the two halves
+  of one save would carry different landing probabilities, which is the special
+  case the split was introduced to abolish.
+- **Legendary resistance** zeroing `p_land(e)` therefore zeroes both halves,
+  rather than leaving the offensive half full value with nothing to apply to.
+
+Keeping them inside the outer sum rather than factoring them out is the other
+half of the rule. An area control spell rolls a separate save for every creature
+it catches, so a single scalar `p_land` over the whole term would price Hypnotic
+Pattern against a goblin and an archmage as though they were the same creature.
+The horizon is per-perturbed-creature for the same reason — one enemy may be
+about to die while another has full hit points. Factoring either out is only
+correct for a single-target effect, which is the case that makes *that* error
+easy to miss.
+
+**Note the enemy term subtracts the other way round.** Both are written so that
+*positive is good* — `ΔÊ_ours` is damage per round gained, `ΔÊ_theirs` is damage
+per round denied — because a single sign convention across the two terms is what
+lets one fitted exchange rate convert between them. Written the naive way, with
+both differences taken in the same direction, every debuff would score negative
+and the scorer would refuse to cast any of them; that is the sort of bug a fit
+cannot rescue you from, because the coefficient would simply go negative and the
+model would still be wrong about everything else it touches.
+
+**The ally-side re-estimate includes target availability, not only the attack
+math.** Removing an enemy from the board — by hypnotising it, or by killing it —
+changes what this creature's allies can profitably do next, and that change is
+part of `ΔÊ_ours`. It rides the outer sum like everything else, so the targets a
+control spell strands are stranded only as often as that spell lands. § Party
+tactics is the whole argument for why; it is stated here because an
+implementation that perturbed only the attack math would satisfy every word of
+the paragraph above and still be wrong about every control spell.
+
+**The axis is what changes, not whom it is cast on.** Bless raises our output;
+Faerie Fire raises our output too, by lowering an enemy's effective defence;
+Frightened lowers theirs; Shield of Faith lowers theirs as well, by raising our
+AC. A "buff versus debuff" split would cut across all four and need special cases
+for each. The offensive/defensive split does not, and it pays for itself the
+first time it meets a **stun**, which is both at once — the enemy loses its turn
+*and* becomes far easier to hit — and therefore simply scores in both terms with
+no special case anywhere.
+
+`+2` to hit is `p_hit(atk + 2, AC)` instead of `p_hit(atk, AC)`. Advantage is
+`1 − (1−p)²`. Lowering an enemy's AC is the same call from the other side.
+Removing the enemy's action zeroes its whole contribution to `Ê_dpr(e)`. In every
+case it is the same closed form run twice and subtracted — no dispatch, no
+dry-run context, no hook change.
+
+Three properties fall out of the counterfactual form, and they are the reason to
+prefer it over a declared scalar:
+
+- **Re-applying an active effect scores zero, structurally.** Perturbing a state
+  that already carries it produces no difference. Nobody writes
+  `if: "not self.raging"` or `if: "not target.frightened"` — the arithmetic
+  refuses on its own.
+- **Non-stacking is respected for free.** A second source of advantage against an
+  already-advantaged target changes `p_hit` by nothing, so the second Faerie
+  Fire scores ~0 without anyone encoding the rule that advantage does not stack.
+  That is one of the classic policy errors, gone by construction.
+- **It scales with who is actually there.** Bless on three allies sums three
+  perturbations. Faerie Fire on one enemy sums over **every ally who will attack
+  that enemy**, so it is worth roughly four times as much to a party of four as
+  to a lone character — which no per-action constant can express. That inner sum
+  is then discounted once, by the one save the one enemy rolls.
+
+Note what the enemy-side inner sum requires: **the estimator must run over
+enemies as well as allies.** `Ê_dpr(e)` is the enemy's own expected output, computed from
+its own attack bonuses against our ACs. This is free in the architecture — the
+target dummy implements the full `Creature` interface and a monster is not
+special-cased anywhere — but it is a real requirement on `engine/estimate.py`
+that the offensive-only version would not have had, and it roughly doubles
+estimator work on a turn where control is offered.
+
+#### What debuffs need that buffs do not
+
+Here the symmetry stops, and treating a debuff as "a buff with the sign flipped"
+would be wrong in four ways that all matter:
+
+**1. It has to land.** A buff on an ally always applies; a debuff is usually
+gated on a saving throw, so its whole value is multiplied by
+`p_land = p_fail_save(c)` for the creature `c` it is applied to — *applied to*,
+not *scored over*, which is the distinction the two sums above exist to keep. It
+is computed from this creature's spell save DC against that target's save bonus,
+the same arithmetic the estimator already does for save-for-half damage. This is
+what makes Hold Person excellent against a low-WIS brute and a wasted slot
+against a high-WIS caster, and the scorer gets the distinction for free rather
+than needing a condition per spell.
+
+> **Legendary resistance sets `p_land` to zero while any remain**, because the
+> target will simply succeed — in both terms, since both index the creature that
+> rolls. The value of *burning* one falls to the intercept,
+> which is a known approximation rather than a modelled effect — worth stating
+> because a scorer that valued legendary resistances correctly would be making a
+> multi-turn plan, and § The known weakness says it cannot.
+
+**2. Its duration is stochastic, not fixed.** A repeated save is not a duration,
+it is a geometric process — and **which end of the turn the save comes at changes
+the answer by a whole round**, so the vocabulary carries the timing rather than
+assuming one:
+
+```
+save at the END of each of its turns    E[N] = Σ_{k≥1} p_fail^(k−1) = 1 / (1 − p_fail)
+save at the START of each of its turns  E[N] = Σ_{k≥1} p_fail^k     = p_fail / (1 − p_fail)
+```
+
+The common case is the first, and the reason it is not the second is worth
+stating because it is easy to get backwards: an end-of-turn save means the target
+has **already spent that turn affected** before it rolls, so `N ≥ 1` always. A
+start-of-turn save means a first-roll success costs the target nothing, so `N` can
+be zero.
+
+Both are capped by the stated duration and by the horizon. A buff's
+`duration_remaining` is read off the effect; a repeat-save debuff's must be
+computed. The difference is large and it is not a correction factor: against a
+target failing half its end-of-turn saves the effect is worth **two** of that
+creature's turns, not the ten the spell's duration claims — and since the value
+also carries `p_land`, getting the exponent wrong makes a debuff score
+`p²/(1−p)` where the truth is `p/(1−p)`, which is wrong by a factor of `p` on
+every control spell in the game.
+
+**3. Its horizon is the target's, not the encounter's.** Debuffing an enemy about
+to die is waste, so the horizon for a single-target debuff is bounded by how long
+that enemy has left:
+
+```
+H_target = min( H_encounter,  pool_target / Ê_dpr_directed_at_it )
+```
+
+This is the per-target refinement of the encounter-wide horizon below, and it is
+what stops the scorer from casting Hold Person on the enemy sitting at 3 hit
+points — `pool_target`, not `hp_target`, for the reason `Ê_eff` caps against the
+pool: temporary hit points are rounds the effect still gets to be worth
+something — the other half of the same instinct that stops it buffing on the
+killing round.
+
+**4. Some of them are destroyed by your own follow-up.** Hypnotic Pattern is the
+canonical case: *"The spell ends for an affected creature if it takes any
+damage."* A scorer that only ever asked "what does this action change?" would
+cast it on a cluster for a large `ΔÊ_theirs`, and then on the next turn happily
+drop a Fireball on the same cluster — scoring the damage, ignoring the control it
+just destroyed, and teaching the fit that Hypnotic Pattern is worthless. The
+failure would be the policy's, and the coefficient would take the blame.
+
+The fix is not lookahead. **Breaking an effect is itself a perturbation, so it
+belongs in the breaking action's own counterfactual.** Attacking a creature whose
+control `ends_on_damage` restores that creature's output, so `ΔÊ_theirs` for the
+*attack* is negative by exactly the control it destroys, and the attack's score
+drops by that much. The scorer then targets elsewhere because the arithmetic says
+to — one step, no plan, no condition written by anyone. It flows into AoE
+placement for free, since placement scores candidate origins with the same
+estimator: an origin covering hypnotised enemies pays for each one it wakes, and
+the coverage-maximising placement stops being the highest-scoring one.
+
+This is why `ends_on_damage` is in the perturbation vocabulary rather than left
+to the intercept, and it carries one rule with it: **an effect that ends on
+damage does not take the per-target pool horizon.** That bound exists because a
+dying enemy stops being worth debuffing, but it presumes the party keeps
+attacking the target — and for this class of effect the correct policy
+stops. Applying both would double-count the same consideration, once as a
+shortened horizon and once as a penalty on the breaking action, and the penalty
+is the one that is actually true.
+
+Control that works through **positioning** — Push, Thorn Whip, Repelling Blast —
+is deliberately outside this. Its value depends on where everyone ends up and on
+the route back, which is a pathing question the design does not answer even for
+the policy's own movement. Those features declare nothing and fall back to the
+intercept, which is the honest outcome rather than a number invented to look
+complete.
+
+#### The perturbation vocabulary is closed and CI-guarded
+
+A buff or debuff feature declares what it does to the attack math as data,
+exactly like the hook registry and for the same reason:
+
+```python
+BUFF_PROFILE = Perturbation(
+    to_hit=+Dice("1d4"),               # Bless
+    targets="allies.within(30)",
+    max_targets=3,
+    duration=Duration.rounds(10),
+    concentration=True,
+)
+
+DEBUFF_PROFILE = Perturbation(
+    action_denied=True, speed=0,        # Hypnotic Pattern
+    targets="enemies.in(template)",     # a 30-foot cube; one save each
+    save=Save(Ability.WIS),             # no repeat save — it just holds
+                                        # a repeating one declares repeat="turn_end"
+                                        # or "turn_start"; the two differ by a
+                                        # whole round of value, see above
+    ends_on_damage=True,                # so nobody in the party may hit them
+    duration=Duration.minutes(1),
+    concentration=True,
+)
+```
+
+A profile has two halves, and only the first is the closed vocabulary.
+
+**The perturbation keys — *what* changes.** Offensive (`to_hit`, `advantage`,
+`damage_per_hit`, `extra_attacks`, `crit_range`) and defensive (`target_ac`,
+`target_save`, `advantage_against`, `their_disadvantage`, `damage_taken`,
+`action_denied`, `speed`). **This is the closed list**, appended to deliberately
+and never improvised, and it is the one `w3b`'s linter checks a profile's keys
+against.
+
+**The structural fields — *who*, *how long*, *at what cost*, *how it ends*.** A
+fixed set every profile may set, and not perturbations at all: `targets=` and
+`max_targets=`, which are the outer sum `C(a)` of § Buffs and debuffs;
+`duration=`, which § The horizon reads as `duration_or_E[rounds]`;
+`concentration=`, which is what prices the effect through `c[concentration]`;
+and the three that say how it ends — `save=`, its optional `repeat=`
+(`"turn_end"` or `"turn_start"`, which select between the two `E[N]` formulas
+above), and `ends_on_damage=`.
+
+Keeping them apart is what makes the closed list closable: the perturbation keys
+are a claim about attack mathematics and each one costs a branch in the
+estimator, while the structural fields are the same four questions for every
+effect. Merging them would either reject the Bless and Hypnotic Pattern profiles
+above — four structural fields on the first, five on the second — or force
+"closed" to mean a list that grows with every new way of scoping an effect.
+**An effect that does not fit declares nothing and falls back to `b[a]`**, which is the
+`NEEDS_HOOK` escape valve applied to the scorer: blocked and visible beats
+approximated and wrong.
+
+Only buff, debuff and control features need this — on the order of 30–50
+implementations across the whole project, not 630. But **it is authoring surface,
+so it is a W3 decision, not a W8 one.** The declaration must be in the authoring
+skill and the linter before the grind writes 400 features, or it is a retrofit
+across every one of them. That is the one place the seam rule lands outside W2,
+and it is the fourth seam in § What it changes architecturally.
+
+**It can disagree with the implementation, so it is checked against it.** A
+declared `+2` where the code grants `+1d4`, or a declared `save=WIS` where the
+spell calls for CON, is a silent systematic scoring error of exactly the kind the
+estimator/resolver property test exists to prevent — so the same statistical
+harness that already validates a feature's `expectation` validates its profile,
+by measuring the real DPR difference on both sides with and without the feature
+attached and comparing it to the perturbation's prediction. A profile more than
+10% off its own implementation fails the batch, on the same terms and in the same
+run as everything else `w3l` checks.
+
+#### The horizon is computed too, and it is what fixes myopia
+
+`ΔÊ_ours` and `ΔÊ_theirs` are rates; the score needs quantities. The multiplier
+is how many rounds the effect will actually be worth something for:
+
+```
+H = clamp( min( duration_or_E[rounds],  Σ_enemies pool_remaining / Ê_party_dpr ),  0,  h_max )
+```
+
+— computed per target, and narrowed to `H_target` above for an effect that
+persists through damage. The second term is the estimated rounds left in the
+fight, and **the scorer can compute it**: it knows the enemies' remaining pool,
+and `Ê_eff` over the party is precisely an estimate of how fast that pool
+disappears. The numerator is the same `pool` the damage term caps against, not
+hit points alone, because a denominator measuring pool removed against a
+numerator counting only hit points would under-read the fight by every temporary
+hit point on the far side. A fitted correction absorbs the rest.
+
+Its weakest moment is the one Hypnotic Pattern creates. Neutralised enemies are
+not being killed, so counting their pool in the numerator says the fight
+has longer to run than it does for the enemies that still matter — which
+*under*-values the control that neutralised them, the wrong direction for a
+heuristic to fail in. The numerator therefore runs over enemies the party is
+actually still fighting. That is a refinement, not a repair: `H_encounter` stays
+a heuristic with a fitted correction, and control-heavy states remain where it is
+least trustworthy.
+
+This is the part worth dwelling on, because it repairs the model's worst failure.
+A myopic scorer buffs in the last round of a fight and stuns the enemy on 3 hit
+points — the two most recognisable marks of a bad policy — and a fitted
+per-action constant cannot avoid either, because the constant is the same on
+round one and round six. With a computed horizon, `H → 0` as the last enemy
+drops and every buff, debuff and control effect collapses to its cost,
+automatically and in every build. **Rage is worth ten rounds of extra damage at
+the start of a fight and nothing at the end of one, and the scorer now says so
+without being told.**
+
+The same `H` multiplies the defensive term, so Dodge and Shield of Faith get the
+horizon treatment on exactly the same footing as Frightened and Slow — each
+measured on the creature the effect is applied to, which for those two is the
+defender itself and for Frightened and Slow is the enemy. **That is the whole of
+what they score**: mitigation priced here is not priced again in `Ê_ally_hp`,
+which holds pool restored alone (§ The estimator is computed).
+
+**These coefficients are fitted with more freedom than anything else, and pay for
+it with more scrutiny.** This is where the model's structural form is weakest —
+the horizon is an estimate of an estimate, `p_land` compounds it, and the
+perturbation vocabulary approximates a rules text — so `w_off[a]` and `w_def[a]`
+are given **wider priors than `w[a]` in the hierarchical fit**, shrunk toward the
+global mean far less aggressively. That is the principled version of "learn these
+harder": not a separate procedure, just less pooling where the prior deserves
+less trust. The cost is more effective parameters on the smallest subset of
+actions, which is the classic way to overfit — so these coefficients carry their
+own ablation rows, and the held-out *builds* check of § Fitting the priors is
+what stops the extra freedom from being spent on noise.
+
+One trap the exchange rates already handle: a concentration effect blocks every
+other concentration option, and its value must be net of the best one it
+displaces. No new machinery is needed — **concentration is modelled as a resource
+with a pool of one**, so `c[concentration]` prices it through the term that is
+already there, and the scorer declines Hunter's Mark when Faerie Fire wants the
+slot more.
+
+#### Party tactics: composition is an input, not a coordination protocol
+
+A party plays differently from four soloists, and the difference is most of what
+makes a composition good or bad. The design's position is that **almost none of
+it needs a coordination mechanism** — three additions to the estimator make the
+tactics fall out of per-creature scoring, and only one thing genuinely has to be
+handed to the derivation.
+
+**Rejected first, because it is the obvious answer: a shared blackboard.** A
+party-level "focus target" that members write and read would work, and it would
+be a second policy mechanism running beside the first, with its own coordination
+bugs, its own failure modes, and no rows in the ablation table. Everything below
+produces the same behaviour out of the scoring already there.
+
+#### Lethality, and why focus fire needs no protocol
+
+The score prices damage dealt, and prices an enemy's output denied — but nothing
+yet connects them, and the connection is the single most important party tactic
+in the game. **Killing an enemy is a debuff that removes all of its remaining
+output**, so a killing blow belongs in the defensive term:
+
+```
+p_kill(a, e) = P( damage(a, e) ≥ pool_remaining(e) )
+```
+
+— the **pool** again, for the reason `Ê_eff` caps against it: the resolver spends
+temporary hit points first, so a target with 5 temporary and 10 hit points drops
+at 15 damage and not at 10, and `P(X ≥ hp_remaining)` would overstate lethality
+on every target carrying any. It is also the cheaper lookup, being the survival
+function read at exactly the index its own prefix sum stops at. Computable,
+because the estimator has the dice and `core/dice.py` can give the survival
+function; precomputed per weapon and spell, memoised, a table lookup at decision
+time. The killing blow then denies `Ê_dpr(e) · H` through the same `w_def` term
+that prices Frightened, and four things follow with no further machinery:
+
+- **Focus fire emerges.** The fighter acting after the rogue sees a softened
+  target, `p_kill` is high, and finishing it outscores starting a fresh one.
+  Nobody nominated a focus target; the arithmetic converged on one.
+- **The opening attack of a round has the right heuristic too.** With nothing
+  softened, `p_kill` is flat and the defensive term ranks targets by
+  `Ê_dpr(e)` — so the first attacker goes for the most dangerous enemy, and
+  across a round the ordering is threat per effective hit point. That is the
+  right opening, and it is free.
+- **Overkill is priced, and the trade is made honestly.** Against a five-hit-point
+  enemy a forty-damage nova has `Ê_eff ≈ 5` and a dagger nearly as much, so the
+  nova earns almost no more damage credit than the dagger does — and the same
+  kill credit. Against a fresh enemy it earns all forty. So the nova prefers the
+  fresh target and the dagger finishes the wounded one, which is the behaviour a
+  mean-damage score can never produce.
+  It is a weighing rather than a prohibition, and deliberately so: the nova still
+  takes the dying enemy when `w·(Ê_eff_fresh − Ê_eff_dying)` is smaller than the
+  kill credit `w_def·Ê_dpr·H` that removing *that* enemy denies. Killing a nearly
+  dead archmage with a fireball is correct play, and the scorer now reaches it by
+  comparison instead of by never overkilling or always overkilling.
+- **It is why a party out-damages four soloists**, and the scorer now knows that.
+
+#### The ally-side counterfactual is what makes composition matter
+
+This is the answer to "do we have AoE casters?", and it needs no composition
+feature anywhere in the coefficient vector.
+
+`ΔÊ_ours` for a control spell is **generally negative**. Hypnotising four enemies
+does not only deny their output; it removes four targets the party was going to
+hit. So the ally-side re-estimate must include **target availability**, not only
+the attack math:
+
+- A party of four melee bruisers, engaged, with nothing else in reach, loses most
+  of its damage for the duration — a large negative `ΔÊ_ours` that can swamp the
+  denial and correctly make the spell a bad idea.
+- A party with reach, a sniper, or a second cluster to work on loses almost
+  nothing, and the same spell is excellent.
+
+The net of the two terms is the true value, and **it is a function of who is
+actually standing there**, computed fresh at every decision point. The same
+mechanism handles the inverse question the user's example raises: a Fighter's own
+best line changes when a Hypnotic Pattern wizard is in the party, because the
+targets available to it change. Neither creature needs to know the other's
+policy; both read the same battlefield.
+
+> **This is the load-bearing reason the coefficients stay global.** Every term is
+> already computed over the actual party, so composition enters through the
+> *inputs* rather than through the fit. Adding composition features to the
+> coefficient vector would multiply the parameter count by the number of party
+> archetypes and learn separately what the estimator can compute exactly.
+
+#### Horizons are counted in turns, not rounds
+
+Initiative order is known, so the horizon a buff earns is measured in **the
+buffed creature's remaining turns**, not in rounds of wall clock. Bless cast
+before the martials act helps them this round; cast after they have gone, its
+first round of value is the next one. The difference is one whole application on
+a three-round fight, which is large, and it is exactly the consideration that
+makes a caster's place in the initiative order matter. It costs a lookup, because
+`engine/turn.py` already owns the roster and the `InitiativeKey`.
+
+#### What the derivation has to be told, because it cannot be computed
+
+**A derived APL is conditional on its party.** A Fighter derived beside a
+Hypnotic Pattern wizard is a different policy from the same Fighter derived
+solo — it should hold position differently, pick different targets, and value its
+own AoE differently. So:
+
+- **The scenario spec gains a party axis**, alongside enemy AC, count and
+  movement profile. The scenario-set hash already in the provenance then covers
+  composition, and comparing two builds derived in different parties is a
+  category error the tooling refuses rather than performs.
+- **The corpus spans compositions, not only builds.** Coefficients fitted only
+  against solo builds and target dummies would be composition-blind in exactly
+  the terms that matter most — `w_def` and `w_ally` — because nothing in the
+  fitting set would ever have had an ally worth protecting or a target worth
+  leaving alone.
+
+#### What coordinate ascent still cannot do
+
+Cyclic best response converges to a **mutual best response** given every other
+member's policy held fixed. It cannot discover a convention that requires two
+members to change *together* — the classic coordination-game failure, where
+neither the wizard's control nor the fighter's repositioning pays unless the
+other is already doing its half, so neither moves and the pair is never found.
+
+Three things contain it, and none of them is a proof:
+
+- **Seeding from the scorer**, which already handles the reactive half: the
+  fighter declines to break control it can see, so the wizard's half pays on its
+  own and the pair is reachable one member at a time.
+- **Sweeping in initiative order**, so each member optimises against the party
+  state it will actually observe on its turn rather than against an arbitrary
+  one.
+- **Multiple restarts with different member orders**, with the trajectory
+  reported. A composition whose derived policies depend on the sweep order has
+  found more than one mutual best response, and that is a result about the party
+  rather than a defect in the search.
+
+#### Extensibility: the score is a registry, not a formula
+
+The architecture question has an unusually well-evidenced answer here, because
+this design produced the evidence while being written. **The score function was
+revised six times before a line of it was implemented** — four in the sitting
+that wrote this section, and two more in successive reviews of it — and every
+revision added, split or narrowed a term rather than changing anything else:
+
+| Revision | What changed |
+|---|---|
+| 1 | `w·Ê_dmg + w_ally·Ê_ally_hp − Σc[r] + b` — the first cut |
+| 2 | `+ w_buff·ΔÊ_dpr·H` — buffs, because a constant cannot depend on rounds remaining |
+| 3 | split to `w_off`/`w_def`, `p_land` added — debuffs, because "buff vs debuff" was the wrong axis |
+| 4 | `p_land` and `H` folded inside the sums, `p_kill` added to `w_def`, availability added to `ΔÊ_ours` — party tactics |
+| 5 | the damage term moved from `Ê_dmg` to `Ê_eff` — a review found "overkill is penalised" did not follow from an uncapped estimate |
+| 6 | the mitigation term narrowed to pool *restored* — a review found it double-counted Dodge and Shield against the defensive term's own horizon |
+
+Six revisions, one afternoon and the reviews that followed it, all the same
+shape. That is not a prediction that the formula will keep changing; it is a
+measurement that it does — and revisions 5 and 6 arriving from a reviewer rather
+than from the author is the sharper half of the measurement, because they are
+the ones the author could not have scheduled. Both were a term boundary drawn in
+the wrong place rather than a formula needing a rewrite, which is the registry's
+case made twice over. **This is the one place in the scorer where
+generality is earned rather than speculative**, and everything below is scoped to
+it.
+
+**So the score is a closed-but-appendable registry of independently declared
+terms, shaped exactly like the hook registry.** Not because registries are nice,
+but because this repository already teaches that shape once — a closed registry,
+an attribute-locked pooled context, a uniform handler signature — and the
+project's central bet is that learning one such surface teaches the others:
+
+```python
+@score_term("lethality")
+class Lethality(ScoreTerm):
+    coefficient = "w_def"        # which fitted family it multiplies
+    unit = Unit.DAMAGE           # the only unit there is; declared, not assumed
+    def value(self, ctx: ScoreContext) -> float: ...
+```
+
+It is **strictly simpler than the hook registry in one respect that matters**:
+scoring terms are summed, and addition commutes, so there are no phase bands, no
+ordering, and no `# PHASE:` justifications. A term cannot break another term by
+running at the wrong time. What the context does carry is memoised shared
+sub-results — one survival-function lookup feeds the damage term, the lethality
+term and the AoE placement search, and computing it three times is the obvious
+way to lose the performance budget.
+
+#### Extensibility without falsification is just rot
+
+A registry makes terms cheap to add, and cheap-to-add is how a value model
+accumulates six years of plausible-sounding corrections that nobody can show help.
+The mechanism that prevents it already exists and only needs pointing at a second
+target: **every term is ablatable exactly as every APL entry is.** Drop the term,
+refit, re-evaluate on held-out builds, report the marginal value with an interval.
+
+> **A term that cannot show marginal value on held-out builds is cut.** Not
+> deprecated, not left in with a small coefficient — cut, so the next person
+> reading `docs/score.md` sees only terms that earned their place.
+
+`docs/score.md` is generated from the registry, on the same footing as
+`docs/hooks.md` and `docs/apl.md`, and CI fails if it is stale. The registry is
+CI-diffed like the hook registry, so adding a term is a deliberate reviewed
+change rather than drift.
+
+#### Two more seams, both already named by this document
+
+- **Perturbation kinds.** The vocabulary is closed and CI-guarded already; what
+  should also be open is the *application* — a mapping from vocabulary key to a
+  small function folding that key into the estimator's inputs. Adding
+  `crit_range` should be adding a file, not editing a fifteen-branch conditional
+  that every other key also passes through.
+- **`Horizon` is a Strategy.** `H` was the most-revised quantity in the whole
+  design — encounter-wide, then per-target, then counted in turns rather than
+  rounds, then with neutralised enemies out of the numerator. And § The known
+  weakness already names its eventual successor: a learned state-value function,
+  which is a different project but *this* seam is where it would land, replacing
+  one implementation and touching no term. Naming the seam costs an interface
+  now; discovering it later costs every term that inlined the closed form.
+
+#### Versioning, which is what makes extensibility safe
+
+An extensible score model silently invalidates its own archive. A derived APL is
+only comparable with another derived under **the same set of terms**, and the
+coefficient-set hash does not capture that — refitting produces new numbers for
+the same terms, while adding a term changes what the numbers mean.
+
+So the provenance gains an eighth field, a **score-model version**: a hash over
+the registered term ids and their coefficient families. Two consequences, both
+fail-loud in the project's usual way:
+
+- A coefficient set whose score-model version does not match the running registry
+  is **refused at load**, not used with the missing term treated as zero. A
+  stale fit is not a slightly worse fit; the remaining coefficients absorbed the
+  variance of the term that has since changed.
+- `compare` refuses two derivations from different score-model versions, on the
+  same terms it already refuses two derived against different scenario sets.
+
+#### What is deliberately *not* extensible
+
+Naming the closed parts matters as much, because a seam in the wrong place is how
+an invariant stops being one:
+
+- **`engine/estimate.py` is concrete, with no Strategy in front of it.** Its
+  entire correctness argument is that it is the single closed-form partner to
+  `engine/damage.py`, bound by the property test against 10⁵ real resolutions.
+  A swappable estimator is a way to bypass that binding, and the binding is the
+  linchpin of the whole scheme.
+- **The damage resolution order stays one file**, for the reason it always was.
+- **The gauge is not configurable.** Identifiability requires exactly two pins —
+  `score(null) = 0` and `w[attack] = 1` — and offering a knob over *those*
+  invites a fit that cannot converge and a reader who cannot tell what a
+  coefficient means. The third fixed quantity, `b[attack] = 0`, is an assumption
+  rather than a pin (§ The score function) and *is* open, on the same terms as
+  any term change: relax it deliberately, refit, and the score-model version
+  moves.
+- **There is one unit.** Terms declare `Unit.DAMAGE` so the invariant is
+  structural rather than remembered, but a second unit would need an exchange
+  rate nobody can fit, and the two that exist — `w_ally` and `c[r]` — are fitted
+  precisely because they are the only conversions the model admits.
+
+#### What it costs, and the escape if it costs too much
+
+A registry is virtual dispatch per term per action per target, against an inlined
+formula's straight-line arithmetic, and § Performance has already spent its
+headroom twice. Three answers, in order:
+
+- Terms are few (~6), and the loop runs over actions × targets regardless.
+- **Per-creature applicable-term lists**, precomputed — a build with no buffs
+  never evaluates the offensive term. This is the dispatch-table lever § Levers
+  already lists, applied to a second registry.
+- If it still misses, **the fallback is code generation, not abandoning the
+  registry**: emit a flat scoring function per build from the registered terms,
+  exactly as `reopen()` is already generated per context class. The repository
+  has done this once and the reasoning is in `docs/decisions.md` § w0i.
+
+`w8g` measures it. As everywhere else in § Performance, the number decides.
+
+#### `best_scored` — how the two layers compose
+
+The scorer does **not** replace the ordered list. It enters it as one new action
+id in the closed vocabulary:
+
+```yaml
+apl:
+  - { action: rage, if: "not self.raging and enemies.within(30) >= 1" }
+  - { action: best_scored }
+```
+
+`best_scored` means *take the highest-scoring offered action*. The consequences
+are worth being explicit about, because they are most of the value of this
+design:
+
+- **The default policy for any build is a single entry**, `[{action:
+  best_scored}]` — a strong default rather than the Null Object of § APL. A
+  build with no APL at all now plays competently instead of falling through.
+  **That competence arrives with `w8b`, not with W2.** `w2e` reserves the id and
+  `w2f` makes `apl:` optional with this as the default, so the shape is in place
+  before the scorer exists and the two layers compose with no migration when it
+  does; in between, `best_scored` offers nothing and such a build falls through
+  to the Null Object with `APL_FALLTHROUGH` ticking. One consequence binds W2:
+  the load-time check *APL action id no attached feature provides* (§ Failing
+  loudly) **exempts the reserved id**, or the loader would refuse the default
+  policy it was just given.
+- **A derived APL is a sparse diff.** The entries the search places *above*
+  `best_scored` are precisely this build's departures from generic play, and
+  "how many lines does this build need beyond the scorer?" becomes a reportable
+  per-build number. This is the parsimony rule of the previous section getting a
+  much better-conditioned problem to work on.
+- **The search gets a warm start** instead of a cold one, which is the largest
+  single cut to the derivation budget in this document.
+- **`APL_FALLTHROUGH` sharpens** — once the scorer exists. With `best_scored`
+  implemented and present, falling through is nearly impossible; a build that
+  still does is one where the *search chose to exclude the scorer*, which is a
+  far more informative signal than the old counter. Between `w2f` and `w8b` the
+  same counter reads the other way, high for every build authored without an
+  `apl:` block, and that is the honest reading: no policy has been written and
+  none has been derived yet.
+- **The grammar does not change.** `best_scored` is an action id, so the AST
+  whitelist, the three clauses and the loader are all untouched — but the action
+  vocabulary is closed, which is why `w2e` must reserve the id now. Adding it
+  after builds exist in git is the same migration the three clauses were.
+
+#### Fitting the priors: a declared corpus, and held-out *builds*
+
+The coefficients are fitted on **`builds/corpus.yaml`** — a declared, versioned
+list of builds spanning class family × level (1 / 5 / 11 at minimum) × role,
+hashed into the derivation provenance and **refitted deliberately once per
+content wave**, never continuously. Corpus membership is a review decision. The
+alternative — fitting on whatever happens to be in `builds/` — makes the priors
+drift silently and makes two derivations months apart incomparable, which is the
+same failure the content-version pin exists to prevent.
+
+**The fit is validated on builds that are not in the corpus.** This is the
+build-level analogue of the holdout seed set, and without it "global priors help"
+is unfalsifiable: coefficients fitted and evaluated on the same builds will
+always look good. Held-out builds are also the only way to detect the risk that
+one `w[attack]` shared between a Wizard and a Barbarian is a number that fits
+neither, and the fit therefore reports **per-build residuals** so that failure is
+visible as a row rather than as a slightly worse average. Splitting the priors by
+class family is the remedy if the residuals demand it — but it is a response to a
+measurement, not a precaution.
+
+**Two tiers, gated by measurement** — the same shape as `w0i` and `w8g`:
+
+1. **Pooled black-box fit.** Treat the coefficient vector as one policy and
+   search it against the corpus's pooled holdout objective, restricted to the
+   ~15 most common action ids. ~30 parameters, the existing machinery, no new
+   concepts. Try this first.
+2. **Decision-level regression**, only if tier 1 stalls on parameter count.
+   Roll the corpus out under the current coefficients with ε-greedy exploration,
+   log every decision point (the offered set, each option's feature vector, the
+   choice, and the realised return-to-go), and regress return on features. **A
+   day-run yields one number to a black-box search and ~200 labelled decisions
+   to a regression**, which is the ~10²× sample-efficiency difference that makes
+   a hundred shared coefficients affordable when twenty per-build ones were
+   already the expensive part.
+
+Tier 2 is approximate policy iteration and inherits its known failure: the
+regression is fitted on the state distribution the *current* coefficients visit,
+and the improved ones visit a different one. The mitigation is not clever, it is
+mandatory — **every iterate is validated on the held-out builds and seeds before
+it is accepted, and a step that does not improve is rejected rather than
+compounded.** An unguarded policy-iteration loop that diverges looks exactly like
+one that is still converging.
+
+#### AoE: placement is searched, and it is part of the estimator
+
+For an area spell, "number of targets" is not given — it is chosen, and choosing
+it well is most of what the spell is worth. Placement is therefore **searched at
+the decision point**, and the search is bounded by geometry rather than by the
+grid: for a fixed-radius template the coverage-maximising origins are generated
+by the enemy positions and the pairwise intersections of radius-circles around
+them, so the candidate set is **O(n²) in enemies (≤ ~64 in practice), not O(grid
+cells)**. Each candidate is scored by the same `Ê_eff` summed over what it
+covers — **per target, so the cap bites here hardest**: a placement catching five
+enemies on four hit points each is worth twenty, not five times the fireball's
+average roll, and the coverage-maximising origin is routinely not the best one.
+
+Two points keep this consistent with everything above:
+
+- **Placement is an estimator, not a policy.** It answers "what is the best this
+  spell can do from here"; the *decision* — whether that best is worth the slot —
+  stays with the scorer comparing that number against the alternatives. So a
+  hand-written max-coverage enumeration is not a hardcoded tactic, any more than
+  `p_hit` is.
+- **The friendly-fire coefficient is fitted, not assumed.** Allies inside the
+  template subtract `w_ally · Ê_eff` — the same exchange rate as everywhere else,
+  which is exactly the reuse that justified having one. Whether a point of ally
+  HP is worth more or less than a point of enemy damage is a result, not an
+  assumption, and asserting `1.0` would be the hardcoded heuristic this section
+  exists to avoid.
+
+The code lands with the spell engine (`w5a`), because templates do not exist
+before it; the *decision* is settled here. M5 is reachable on martials, so this
+sits off the critical path to it.
+
+#### What it costs, and the correction it forces
+
+The scorer runs per decision point over every offered action × its candidate
+targets — on the order of 30 estimator calls per decision, against ~2 attack
+resolutions per turn at ~32 µs each. Naively that is a **3–10× regression on the
+turn**, which would be fatal. It is brought back by the fact that almost
+everything in the estimate is static: dice means are memoised per weapon and spell,
+`p_hit` is a lookup on `(attack_bonus − AC, advantage_state)` over a small
+integer table, and the score vector is cached within a turn until something it
+reads changes. The target is **under 30% turn overhead**, and it is a measured
+number, not an argued one — `w8g` measures it, and if it misses, the scorer is
+revised there rather than after the grind.
+
+This also forces a correction to the claim two sections above. **§ What it
+changes architecturally is no longer strictly true:** derivation still changes no
+engine file, but *the scorer does*. It adds `engine/estimate.py` and
+`apl/score/`, and it puts a third item on W2's seam list — the reserved
+`best_scored` action id. The layering rule survives intact and is what matters:
+`engine/estimate.py` is engine code, `apl/score/` is policy code that runs in
+the hot path, the fitted coefficients are **data** that `apl/` loads, and
+`search/` only *produces* those coefficients. Nothing in `search/` imports
+`engine/`.
+
+#### The known weakness: one round of lookahead, and no more
+
+The buff term buys exactly one step of foresight — *this action changes the rate
+at which damage happens, for this many rounds* — and that covers the large,
+recognisable failures. What it does not buy is planning.
+
+The scorer still cannot represent a **sequence** whose value is not the sum of
+its parts: holding Action Surge for the round the enemy clusters, opening with
+the control spell so the damage spell lands better next turn, or declining a kill
+now to set up two next round. Each step is scored against the state in front of
+it, and a plan that is worth less at step one than its alternative is never
+reached, however good step two would have been. Second-order interactions between
+two buffs are the same gap seen from another angle: perturbations are evaluated
+one at a time against the current state, so Bless plus Faerie Fire is scored as
+the sum of two independent deltas when the truth is superadditive.
+
+Three things contain what remains, in order of how much they are relied on. The
+**per-build overlay** exists precisely to carry the entries the scorer gets
+wrong, and a combination that needs an explicit opener gets an explicit entry —
+this is the case the two-layer design was built for, and a build whose overlay is
+mostly buff-sequencing entries is telling you something real about that build.
+`rounds_elapsed` and `encounters_remaining` are available to the intercept and the
+resource price, which recovers the first-order timing effect the horizon does not.
+And the **ablation table reports the scorer's marginal value per build**, so a
+class the model serves badly surfaces as a row rather than as a quietly mediocre
+number.
+
+What is explicitly *not* proposed is a learned state-value function or a search
+over action sequences. Both are a different project; the overlay is the cheaper
+answer to the same problem, and it is the answer that stays readable.
+
+### The candidate space is generated, never enumerated by hand
+
+This is what "derived, not hardcoded" has to mean in practice. If the search
+space were a hand-written list of plausible entries, the search would be an
+elaborate way to launder the author's priors — the exact failure it exists to
+avoid. So all three clause types are generated mechanically from artefacts that
+already exist:
+
+- **Actions** come from the *resolved build*: every action id its attached
+  features offer, plus every rider and every reaction. `dndsim inspect` already
+  computes this list; the generator reads it.
+- **Conditions** come from the `NamespaceSchema` — the same declared schema the
+  APL compiler resolves paths against. A boolean path `p` yields `p` and
+  `not p`; an enum path yields `p == v` for each declared `v`; a numeric path
+  yields `p <cmp> θ`, where θ is a searched parameter over the grid the schema
+  declares for that path (`hp_pct` steps of 0.1, counts 0–4, AC 12–20). The
+  schema gains one field — a candidate grid per numeric path — and nothing else.
+- **Targets and movement** come from the closed selector grammar's own cross
+  product: `{lowest_hp, highest_hp, nearest, farthest} of enemies.{in_reach, all}`
+  and the three `move:` forms.
+- **`best_scored`** is always in the pool, and its *priority* is searched like
+  any other entry's. Where it lands is the result that matters: entries the
+  search places above it are this build's departures from generic play, and a
+  build whose derived APL is `best_scored` alone is a build with nothing special
+  to say — which is a finding, not a failure.
+
+Nothing in `search/` knows what a Barbarian is. **The acceptance test for this
+package is that adding a class, a subclass or a spell requires zero lines of
+change in it** — a feature authored in W5 is searched the day it lands, because
+it arrived in the resolved build and its namespace paths arrived in the schema.
+A generator that needed a per-class table would reintroduce exactly the prior
+knowledge the search is meant to replace.
+
+The cross product is large, and the answer to that is staging (below), not
+pruning it by taste.
+
+### Encoding: random keys, so every point in the space is legal
+
+A policy is a *subset* of the candidate pool, in an *order*, with *thresholds* —
+a mixed combinatorial and numeric object that most samplers handle badly.
+Searching permutations directly means every mutation and every crossover needs a
+repair step, and the neighbourhood structure is poor.
+
+Instead each candidate entry `i` is encoded as `(enabled_i: bool, priority_i:
+float ∈ [0,1), θ_i...)`, and decoding is: keep the enabled entries, sort by
+priority, emit. This is the **random-key** encoding (Bean, 1994). Every vector in
+the box decodes to a legal APL, no repair operator exists, the dimension is
+fixed, and any off-the-shelf sampler works on it unmodified. The decoder is
+canonical, so two different vectors decoding to the same policy hash to the same
+string — which is what makes the evaluation cache below actually hit.
+
+### The oracle is noisy, so the statistics are the hard part
+
+The search is the easy half. Every evaluation is a Monte Carlo estimate, the
+differences being chased are a few percent, and a search that treats a lucky
+sample as a discovery will confidently report a policy that is not better. Four
+commitments, in descending order of how much they matter:
+
+**1. Common random numbers, and paired comparisons.** Every candidate is
+evaluated on the *same* seed set, and candidates are compared on the vector of
+per-seed differences, never on two independent means. Two APLs differing in one
+entry produce nearly identical runs on the same seed, so the difference has a far
+smaller variance than either mean — the paired test resolves a gap that an
+unpaired one would need roughly an order of magnitude more seeds to see. This is
+free, and it is free *because* seed + build + engine + content already reproduces
+a run byte for byte. Nothing else in the design pays off this hard here.
+
+**2. Racing, not fixed budgets.** Successive halving: evaluate every candidate on
+a small seed count, keep the top fraction, multiply the seed count, repeat. Most
+candidates are obviously bad and should die at 32 seeds rather than consume 512.
+This is the largest lever inside the search loop, worth roughly 10× on its own
+(see below) — the scorer's warm start cuts more, but it does so by shrinking what
+has to be searched at all rather than by searching it cheaper.
+
+**3. Held-out seeds, and a reported optimism gap.** The search runs on a
+*derivation* seed set and the answer is reported on a **disjoint evaluation seed
+set**. With thousands of candidates scored against one seed set, the winner is
+partly noise-selected; the search-set number is therefore biased upward and must
+never be the headline. Every derivation reports both, and their difference as
+`optimism`. **A large optimism gap means the fix is more seeds, not more
+candidates** — which is the sort of thing that is obvious in a report and
+invisible in a single number.
+
+**4. Parsimony — the one-standard-error rule.** Among policies within one
+standard error of the best on the holdout, return the *simplest*: fewest entries,
+then fewest conditions. Then ablate: drop each surviving entry, re-evaluate on
+the holdout, and report that entry's marginal value with a confidence interval.
+Entries whose ablation is inside noise are dropped from the emitted APL. The
+output is a short readable policy in which every line has a measured reason to
+exist, rather than a thirty-entry thicket nobody can check — and the ablation
+table is the derivation's most useful artefact for a human, because it is the
+part that says *why*.
+
+### The party is a joint problem, and coordinate ascent is a compromise
+
+Four PCs means the policy space is a product of four spaces, and a joint search
+over it is hopeless. The derivation therefore does cyclic best response: fix
+three members, derive the fourth, rotate, and repeat until a full sweep produces
+no holdout improvement beyond noise.
+
+This converges to a **mutual best response, not a global optimum**, and it can
+cycle. Both facts are reported rather than hidden: the sweep count is capped, the
+per-sweep trajectory is in the result, and the result names which member's policy
+changed last. A coordinate-ascent answer presented as "optimal" is a false claim,
+and the difference matters most exactly where party composition is interesting —
+a healer's policy and a tank's policy are each other's inputs.
+
+It is also not where most party play comes from. § Party tactics argues
+that focus fire, target selection, not breaking your own control and the value of
+an AoE caster to the melee standing next to them all fall out of per-creature
+scoring over the actual party, and that coordinate ascent is left with the much
+smaller job of the conventions that need two members to move at once — which is
+also the one thing it provably cannot do.
+
+### The objective is a knob, and a scalar objective hides variance
+
+For v1 the objective is the attrition metric: encounters cleared before the stop
+condition. But `objective:` is declared and pluggable (`attrition`, `dpr`,
+`survival`, `time_to_kill`), because a policy derived to maximise DPR and one
+derived to maximise attrition are *different policies*, and the size of that
+difference is itself a result worth reporting.
+
+Any scalar objective can be raised by trading away something it does not measure.
+So a derivation reports the objective's whole holdout distribution, not its mean
+— a policy that gains 4% expected encounters while doubling the TPK rate is then
+visible rather than silently preferred. Constrained objectives ("maximise
+encounters subject to TPK rate ≤ 5%") are expressible for the same reason.
+
+### Scenario dependence — the trap that invalidates the answer
+
+**There is no "best Champion APL".** There is a best Champion APL against AC 16,
+two enemies that close to melee, six encounters and two short rests. A derivation
+therefore names its scenario set, the result is labelled with it, and comparing
+two policies derived against different scenarios is a category error the tooling
+refuses rather than performs.
+
+Because deriving against one scenario overfits to it as surely as against one
+seed set, the default derives against a *distribution* of scenarios — the same
+sweep axes `compare --sweep` already uses — with the objective averaged over
+them, and reports the per-scenario breakdown. A policy that is excellent at AC 12
+and terrible at AC 20 is a finding, not a defect to average away.
+
+### Cost, honestly
+
+An adventuring-day run is on the order of 300 attack resolutions, so at the M0
+budget of 30k/sec/core one core does roughly 100 day-runs per second. A staged
+search of ~2,000 candidates with racing (most dying at 32 seeds, finalists at
+512) is on the order of 10^5 day-runs — **about 15 core-minutes per character**,
+and about 3 core-hours for a four-member party over three coordinate-ascent
+sweeps. Without racing the same search is ~10^6 runs **per character** — 2.8
+core-hours each, so roughly 34 for that same four-member, three-sweep party;
+a five-scenario distribution multiplies both by five.
+
+Those numbers are an order-of-magnitude estimate to be replaced by a measurement
+(`w8g`), and they carry one conclusion that must be stated plainly so it is not
+re-litigated: **the answer to derivation cost is not a faster engine.** Derivation
+multiplies sample count by two to three orders of magnitude, and no plausible
+CPython speedup covers that. `w0i`'s budget is not reopened. The levers are all
+on the sampling side:
+
+- **the scorer's warm start** — searching departures from a fitted global policy
+  rather than a policy from scratch, which is the largest single cut and the main
+  reason § The scorer earns its complexity;
+- **racing**, as above — worth ~10× on its own, and the largest lever inside the
+  search loop;
+- **common random numbers**, as above — free, and what makes the paired
+  comparison the racing decisions rest on possible at all;
+- **staged search**: first search structure (which entries, in what order) with
+  default conditions, then search thresholds only on the entries that survived;
+- **a cheap proxy objective in the early rungs** — a single encounter against a
+  dummy, ~50× cheaper per sample than a full day — promoted to the true objective
+  only for finalists, with the promotion validated by checking that proxy rank
+  order correlates with true rank order on the finalists;
+- **memoisation on the canonical policy hash**, since under CRN an identical
+  decoded policy on an identical seed set is an identical result, and a search
+  revisits policies constantly.
+
+### A derived APL is an artefact with provenance
+
+Derivation is reproducible or it is worthless: **seed + build hash + engine
+version + content version + derivation-config hash + scenario-set hash +
+coefficient-set hash + score-model version** produces the same APL byte for byte.
+All eight go in the result, exactly as the four already do for a simulation. The
+last is a hash over the registered score terms and their coefficient families,
+and it is not redundant with the one before it: refitting produces new numbers
+for the same terms, while adding a term changes what the numbers mean
+(§ Extensibility).
+
+The output is written as **ordinary build YAML** — a normal `apl:` block under a
+provenance comment header — so it can be pinned into the build file, reviewed in
+a diff, and hand-edited. There is no second policy format and no binary policy
+blob: a derived APL is indistinguishable from an authored one to the loader,
+which is the Single Source of Truth rule applied to policy. Re-deriving a pinned
+policy and diffing it is then an ordinary regression check, and one that catches
+a content change that quietly invalidates a line of play.
+
+### The optimizer is an adversary, and that is the point
+
+A search that runs 10^5 evaluations against the engine will find every place the
+rules are implemented too generously. This is not a hazard to be defended
+against so much as the most valuable secondary output in the project: it is to
+the content grind what the canary batch is to the API, an outsider that cannot
+be argued with.
+
+It does need a guard, because an exploit reported as a strategy is worse than no
+report. Two are cheap:
+
+- **Plausibility band.** A derived policy whose holdout objective exceeds a
+  declared band — or that rests on an entry whose measured marginal value is
+  implausible — is triaged as a suspected engine or feature bug *before* it is
+  reported as a finding, and `dndsim derive` exits non-zero with the offending
+  entries listed.
+- **The baseline comparison.** Every build keeps its hand-written APL as
+  `baseline_apl`, and the derivation reports Δ against it on the holdout. Two
+  signals fall out for free: derived ≈ baseline across many builds means the
+  search is not searching, and derived ≫ baseline by an implausible margin means
+  either an exploit or a genuinely non-obvious line — which is precisely the
+  output this project exists to produce. There will never be a ground truth to
+  check the derivation against; this is the substitute, and it is self-checking
+  in both directions.
+
+### Libraries
+
+`optuna` for the search itself — TPE over the define-by-run mixed space, its
+successive-halving and Hyperband pruners for racing, seeded samplers, and
+resumable study storage, none of which is worth hand-rolling. `scipy.stats` for
+the paired tests and intervals. Hand-written: the candidate generator and the
+decoder, because both are specific to this project's schema and neither is a
+solved problem in a library.
+
+One ladder rung is worth naming, because it is the common case and the fancy
+answer is the wrong one: a level 1–3 martial often generates six or fewer
+candidate entries, and there **exhaustive enumeration with racing dominates any
+sampler**. `optuna.samplers.BruteForceSampler` covers it, so the ladder — brute
+force when the decoded space is small, TPE when it is not — is one configuration
+switch rather than a second implementation.
+
 ## Failing loudly — layered
 
 This is **Design by Contract** with **Fail-Fast** escalation: each layer states a
@@ -534,8 +1979,11 @@ missing return annotation; duplicate/malformed feature id; missing `source_ref`
 rulebook citation.
 
 **Load time:** unknown feature id (with suggestions); APL action id no attached
-feature provides; unparseable condition or unknown namespace path; `with:` params
-not matching the feature's declared `params`; declared features cross-checked
+feature provides — with `best_scored` permanently exempt, per § `best_scored`:
+no *feature* ever provides it, the scorer does, and it is the default policy
+from `w2f` while the scorer arrives only in `w8b`; unparseable condition or
+unknown namespace path; `with:` params not matching the feature's declared
+`params`; declared features cross-checked
 against the class progression table, warning on omissions.
 
 **Runtime invariants (cheap, always on):** non-`HookResult` return; mutator
@@ -670,17 +2118,72 @@ So the spike benchmarks a deliberately hostile synthetic creature:
   every worker re-imports the package and rebuilds every character from YAML.
   At 10k iterations that amortises to nothing; at `compare --sweep dummy.ac=10:22`
   it is paid 13 times over, and it is the cost most likely to be missed by a
-  benchmark that only times the inner loop.
+  benchmark that only times the inner loop. **Measured at M0: 0.167 s per
+  worker**, so that sweep spends two seconds on startup before a die is rolled —
+  which is an argument for reusing one pool across sweep points rather than
+  building one per point. Measuring it is itself hazardous: `spawn` brings a
+  worker up by re-importing the parent's `__main__`, so a pool started from a
+  module without a main guard re-runs that module in every worker. The first
+  version of this measurement fork-bombed the machine it was measuring.
 
 If that configuration misses the budget, the architecture is revised in W0. That
 is the whole point of the milestone — and it is what happened: see the note
 above and `docs/decisions.md` § w0i.
 
+**Two things the spike taught about benchmarks, which its own review found the
+hard way and which every later harness inherits:**
+
+- **A benchmark must witness its own fixtures.** The one handler that paid for
+  the dispatcher's two expensive escape valves — a gate answered mid-attack, a
+  reaction spent — ran for a while without ever firing, because the hero's hit
+  point pool was sized so its condition could never hold. The rate looked fine
+  the whole time. A benchmark that watches only the rate cannot tell an
+  optimisation from a rider that quietly stopped working, so the fixtures now
+  carry a test naming the handlers that must have applied at least once, read
+  off the no-op detector's counters. The CI gate (`w3i`) inherits the
+  requirement.
+- **A benchmark whose unit of work depends on the dice cannot carry
+  exact-integer assertions.** The spike's counts were true of the seed they were
+  written on and false on 3 seeds in 60. The fix is an invariant — a
+  configuration that resolves the same number of attacks whatever the dice do —
+  not a larger sample, and the golden harness (`w3a`) inherits that too.
+
+> **A second reader of this budget arrived after M0.** § APL derivation turns the
+> simulator into the inner loop of an optimiser, which multiplies the sample count
+> by two to three orders of magnitude. That does *not* reopen this number: no
+> plausible CPython speedup covers 10²–10³, so derivation buys its budget on the
+> sampling side (common random numbers, racing, staged search, a cheap proxy
+> objective, memoisation) rather than on the engine side. What it does change is
+> the value of two levers already listed below — **adaptive stopping** and
+> **per-iteration seeding** — from conveniences into load-bearing requirements,
+> because paired evaluation on a fixed seed set is what makes the search affordable.
+
+> **A third reader arrived with the scorer.** It runs per decision point over
+> every offered action and its candidate targets, and on a turn where control is
+> offered it estimates the *enemies'* output too, plus an ally-side pass for
+> target availability — ~30 estimator calls against a turn's ~2 attack
+> resolutions, roughly doubling where a debuff is on the ballot — so the naive
+> implementation is a 3–10× regression on the turn rather than a rounding error.
+> The budget stands because almost all of the estimate is static (memoised dice
+> means, a `p_hit` lookup table on `(attack_bonus − AC, advantage_state)`, a
+> **precomputed survival function per weapon and spell with its prefix sums**, so
+> `p_kill` and `Ê_eff` are both a lookup rather than a convolution, and a
+> per-turn score cache), and the target is **under 30% turn overhead** —
+> measured by `w8g`, not argued here. It is the one part of § APL derivation
+> that touches the hot path at all.
+
 ### Levers
 
 Per-creature precomputed dispatch tables (never scan a global bus); `__slots__`
 on every hot object; contexts reset and reused per attack rather than allocated,
-which matters at 4M resolutions; immutable specs (`ResourceSpec`, `Duration`,
+which matters at 4M resolutions — **but only with `reopen()` compiled per
+context class**: the general version, which validated its keyword arguments
+against the field list at every call, cost more per call than constructing the
+context from scratch, and pooling was a net *loss* until `w0i` moved that check
+to class-creation time and let Python's own argument binding do it (that one
+change is 26k against 20k). A later reader who simplifies the generated
+`reopen()` back into a general one will re-take a lever that does not work;
+immutable specs (`ResourceSpec`, `Duration`,
 weapon definitions) shared across every creature; APL compiled once per build;
 structured tuple logging with string formatting deferred to the reporter — worth
 ~2–3× on its own (`--log-level=summary`); multiprocessing across iterations;
@@ -708,10 +2211,26 @@ contact with a shared CI runner:
 - **Median of N runs with a warmup**, never a single timing.
 - **Compared against a same-run microbenchmark baseline**, not an absolute
   number, so a slow runner scales both sides.
+- **Enough work per timed run.** M0 measured a 9% spread across three
+  consecutive 200-encounter runs on one machine and 0.2% at a thousand. A gate
+  looking for a 10% regression inside a 9% spread is a coin toss, so a thousand
+  encounters is a floor rather than the first number to trim when the suite
+  feels slow.
 
 A gate that fires on noise gets disabled within a month, at which point
 performance decays exactly as predicted. Run it tracked-but-non-blocking until
 its variance is known, then turn on the failure.
+
+**When it does fire, the levers are ordered and the order is a decision, not a
+preference.** M0 spent the cheap ones already (see `docs/decisions.md` § w0i);
+what is left in reserve is the *shape* of `DamagePart` and `Modifier` — a
+`NamedTuple` constructs in ~0.38 µs and a plain slotted class in ~0.28 µs
+against a frozen dataclass's ~0.9 µs, and there are six of them per hit. What is
+**not** in reserve is the object model: collapsing an attack's contexts into one
+or dropping per-part provenance buys real time and costs `parts_by_source`, the
+no-op detector and the trace, which are what make ~630 agent-written features
+safe to accept. M0 declined that trade with the numbers in front of it; a later
+agent under CI pressure should not re-open it without them.
 
 ---
 
@@ -770,6 +2289,9 @@ dndsim content fetch                                  # populate gitignored data
 dndsim sim BUILD --dummy ac=16 -n 10000 [--format text|json] [-o result.json]
 dndsim day PARTY --encounters 6 --short-rests 2
 dndsim compare A B --sweep dummy.ac=10:22
+dndsim derive BUILD --scenarios scenarios.yaml --budget 2000  # search the APL
+dndsim derive PARTY --joint --sweeps 3                        # coordinate ascent
+dndsim fit builds/corpus.yaml                                 # refit the scorer
 dndsim inspect BUILD                                  # resolved character, readable
 dndsim validate BUILD                                 # schema + APL check; exit code
 dndsim trace BUILD --seed 42                          # replay one fight, blow by blow
@@ -779,7 +2301,7 @@ dndsim bench                                          # asserts the sims/sec bud
 
 Global options: `--seed`, `--log-level=summary|full`, `--jobs`.
 
-Three of these exist because of decisions made elsewhere in this document:
+Five of these exist because of decisions made elsewhere in this document:
 
 - **`inspect`** dumps the *resolved* build — every feature actually attached,
   every resource with its recovery rule, the APL as parsed, and which entries are
@@ -791,6 +2313,17 @@ Three of these exist because of decisions made elsewhere in this document:
   responsible. Only possible because runs are reproducible.
 - **`validate`** applies the load-time failures above as a fast exit code, so CI
   and batch authors can check a build without simulating it.
+- **`derive`** searches the APL rather than reading it, and emits ordinary build
+  YAML plus the ablation and optimism report (§ APL derivation). It is the
+  command that makes `compare` a comparison of builds rather than of authors, and
+  it exits non-zero when the winning policy leaves the plausibility band — an
+  optimiser that beats the baseline by 40% has usually found a bug, not a line.
+- **`fit`** refits the scorer's coefficients across the declared corpus and
+  reports them in attacks-worth units with per-build residuals on **held-out
+  builds**. It is run once per content wave, deliberately, never continuously —
+  a coefficient set that drifts silently makes every archived derivation
+  incomparable, which is the failure the content-version pin already exists to
+  prevent.
 
 ---
 
@@ -807,30 +2340,37 @@ src/dndsim/
   creatures/  creature.py character.py monster.py dummy.py stats.py
               resources.py economy.py effects.py
   conditions/
-  features/   base.py params.py TEMPLATE.py
+  features/   base.py params.py perturbation.py TEMPLATE.py
               classes/<class>/[subclasses/<subclass>/] feats/ masteries/
               fighting_styles/ species/
   actions/    base.py attack.py opportunity_attack.py dash.py dodge.py
               disengage.py cast_spell.py
   spells/     base.py concentration.py templates.py level0..level6/
   apl/        expr.py schema.py namespace.py apl.py
+              score/  registry.py context.py horizon.py coefficients.py
+                      terms/ damage.py offensive.py defensive.py
+                             lethality.py restoration.py resources.py
   builds/     schema.py loader.py
   engine/     world.py query.py attack.py damage.py saves.py turn.py
-              encounter.py adventuring_day.py triggers.py
+              encounter.py adventuring_day.py triggers.py estimate.py
   content/    fetch.py loader.py refs.py tables.py weapons.py
   sim/        runner.py day.py compare.py sweep.py
+  search/     candidates.py encoding.py evaluate.py driver.py
+              ablate.py party.py emit.py objectives.py fit.py
   reporting/  result.py collect.py stats.py render_text.py render_json.py
   tools/      check_features.py noop_report.py gen_docs.py skeleton.py
 
 builds/     # hand-authored YAML: characters, parties, encounters — in git
+            # corpus.yaml declares the builds the scorer's coefficients fit on
 data/       # gitignored: fetched 5etools JSON
-docs/       # hooks.md + apl.md GENERATED; feature-hook-map.md + patterns.md authored
+docs/       # hooks.md + apl.md + score.md GENERATED; feature-hook-map.md,
+            # patterns.md + decisions.md authored
 tests/      contract/ golden/ interaction/ statistical/ bench/
 .claude/skills/  feature-authoring/  feature-review/  statblock-import/
 ```
 
 The pattern-name rationale for each package lives in
-[docs/patterns.md](docs/patterns.md), not here. Three boundaries are load-bearing
+[docs/patterns.md](docs/patterns.md), not here. Five boundaries are load-bearing
 enough to restate in place:
 
 - **`actions/` vs `engine/triggers.py`.** `actions/` holds every **Command**,
@@ -843,15 +2383,52 @@ enough to restate in place:
   special case, since granting a slot and re-polling touches neither file.
   The name matches the APL's `trigger.*` namespace root, which this module
   populates.
+
+  **The movement audience is an Observer, and a filtered one.** Every creature
+  that could react is told, on every five-foot step, which square the mover is
+  standing on and which one it is stepping into, and each decides for itself.
+  What is not done is a message to every combatant in the room per step: a
+  bystander is dropped from the audience only on facts that cannot change its
+  answer — nothing attached to `on_leave_reach` at all, or every handler it has
+  costing a reaction it has already spent (`Dispatcher.responsive()`), or a
+  position further from the whole route than its own reach can span. The
+  filtered audience and a broadcast produce the same fight; the filtered one
+  does not dispatch twenty times a square to learn that nineteen combatants own
+  no reaction feature. The shape is broad phase once per move (walk the roster,
+  sort the survivors into initiative order, record who currently threatens),
+  narrow phase once per square per survivor (one Chebyshev distance). Cost is
+  linear in creatures that could react, which in a real fight is nought, one or
+  two — and when it is nought the mover is put on its destination in a single
+  assignment.
+
+  Two orderings inside it are load-bearing. **The offer is made from the square
+  being left**, with the mover still standing on it, because "you can make an
+  opportunity attack when a creature you can see leaves your reach" happens
+  right before it leaves — resolve it a square late and a 5-foot reach misses
+  about half the time. And **two watchers left by the same step are asked in
+  initiative order**, sorted once per move: any order is legal D&D, only a
+  stated one reproduces from a seed.
 - **`api.py` vs `cli.py`.** The CLI holds no simulation logic. A UI added later
   is another adapter against the same API, never a scraper of CLI output.
+- **`apl/score/` is the hook registry's shape, deliberately.** A closed
+  CI-diffed registry, an attribute-locked pooled context, a uniform handler
+  signature — the same surface `hooks/` teaches, so learning one teaches the
+  other. It is simpler in one respect: terms are summed and addition commutes, so
+  there are no phase bands and no ordering to get wrong.
+- **`search/` imports downward and is imported by nobody.** It consumes `api.py`
+  and `apl/` and is consumed only by `cli.py`. Nothing in `sim/`, `engine/`,
+  `hooks/` or `features/` may import it, and it may not import `engine/` or
+  `hooks/` directly. This is what keeps the claim in § APL derivation true — that
+  policy search is a client of the simulator rather than a second engine — and it
+  is a one-line import check in `dndsim check`.
 - **`content/loader.py`.** 5etools' vocabulary (`dmg1`, `atkr`,
   `classTableGroups`, `refSubclassFeature`) stops at this boundary and never
   reaches the domain model. The dataset is a third-party artefact that changes
   without notice, so this is the difference between "a schema change breaks the
   importer" and "a schema change breaks everything".
 
-`docs/hooks.md` and `docs/apl.md` are **generated** from the registries —
+`docs/hooks.md`, `docs/apl.md` and `docs/score.md` are **generated** from the
+registries —
 **Single Source of Truth** applied to documentation. Hand-maintained docs drift,
 and a drifted doc is how you get 40 wrong features in one batch.
 
@@ -961,8 +2538,10 @@ Great Weapon Master stops being worth it, exactly as a WoW sim would.
 
 ## Build order
 
-Eight waves, `W0`–`W7`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
-60 tasks, their dependency edges, delegation modes and the task-packet template.
+Nine waves, `W0`–`W8`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
+77 tasks, their dependency edges, delegation modes and the task-packet template.
+Its § The W0 debt register is the ledger of what W0 left for later waves to
+retire, and which task retires each.
 
 | Wave | Content | Exit |
 |---|---|---|
@@ -974,11 +2553,27 @@ Eight waves, `W0`–`W7`. This is the summary; [ROADMAP.md](ROADMAP.md) carries 
 | **W5** | Spell engine, then Paladin/Ranger, then full casters; spells on demand | casters playable |
 | **W6** | Rests, encounter chaining, attrition metrics, compare + sweep | **M4:** attrition v1 — the project's stated goal |
 | **W7** | Stat-block parser, bestiary import | real monsters |
+| **W8** | **Policy derivation** — the expected-damage estimator, buff evaluation by counterfactual, the global scorer and its corpus fit, candidate generation, paired evaluation, racing search, ablation, coordinate ascent, `dndsim derive` | **M5:** attrition under a *derived* policy — the number that is about the build |
 
-W0–W4 are the commitment being made now; W5–W7 are sketched to prove the
+W0–W4 are the commitment being made now; W5–W8 are sketched to prove the
 architecture doesn't paint itself into a corner. **W6 depends only on W4**, not
 on W5 — attrition against target dummies is reachable with martials alone, so
 M4 does not wait for casters.
+
+**W8 is last in sequence and first in importance**, and the tension is real
+rather than a scheduling accident: derivation is a consumer of everything else,
+so it cannot be built before there are features to search over and an objective
+to search against. What that means for now is not "start it earlier" but "cut its
+seams earlier" — the three W2 seams named in § APL derivation (programmatic `Apl`
+construction, the **reserved `best_scored` action id**, and an API that takes an
+explicit seed list and returns per-seed results), plus the one W3 seam that is
+authoring surface (the `Perturbation` profile on a buff or debuff). All are cheap
+where they land: programmatic `Apl` construction and the per-seed API are
+signatures every later caller is built against, while the reserved id is a
+schema migration across every file in `builds/` afterwards and the
+`Perturbation` profile one across every buff in `features/`. M4 remains the
+stated v1 goal; M5 is what makes M4's
+number a property of the build rather than of its author.
 
 Two of the exits above changed shape after review, and both changes are the same
 argument: **a milestone that can be met by inspection has not been met.** M0 on
@@ -1001,25 +2596,41 @@ dndsim sim builds/fighter_gwm_l5.yaml --dummy ac=16 -n 10000
 dndsim trace builds/fighter_gwm_l5.yaml --seed 42
 dndsim day builds/party.yaml --encounters 6 --short-rests 2
 dndsim compare builds/a.yaml builds/b.yaml --sweep dummy.ac=10:22
+dndsim derive builds/fighter_gwm_l5.yaml --scenarios builds/scenarios.yaml
 ```
 
 Determinism is the backbone: identical seed + identical build ⇒ byte-identical
 event log, so every bug is reproducible and every regression diff is readable.
 `compare` and `--sweep` are what make this a sim rather than a calculator, and
-are the primary manual check that results are sane.
+are the primary manual check that results are sane. `derive` is what makes
+`compare` honest: without it, a comparison of two builds is partly a comparison
+of the two APLs somebody wrote for them.
 
 ## Biggest risks
 
-Ordered by expected cost, which is not the same as by likelihood. The first three
-share a shape worth naming: **each is a check that passes while proving nothing**,
-and that is a far more dangerous failure than a check that fails.
+Ordered by expected cost, which is not the same as by likelihood — with one
+exception stated rather than smoothed away: **risk 4 arrived with § APL
+derivation and is the most expensive of all.** It sits last because it depends on
+everything above it, not because it costs least. All four share a shape worth
+naming: **each is a check that passes while proving nothing**, and that is a far
+more dangerous failure than a check that fails.
 
-1. **The performance spike passes on a stub.** M0 is the designated cheap moment
-   to revise dispatch, and a stub benchmark spends it on nothing — the real
-   number then arrives in W4 with 400 features already written against a design
-   nobody can afford to change. *Mitigated by:* the hostile-configuration spike
-   in § Performance, a benchmark gate built to survive CI noise, and the walking
-   skeleton that makes W0's measurement an integrated one.
+1. ~~**The performance spike passes on a stub.**~~ **Closed at M0, and replaced
+   by its successor: the headroom erodes between M0 and the gate that guards
+   it.** The original risk was real and the mitigation worked — the hostile
+   configuration measured 17k where a stub would have cleared any budget, the
+   architecture was revised, and the budget was revised with it. What that
+   leaves is a live risk of a different shape. The measured ~31.5k sits 5% over
+   a 30k budget rather than 60% over a 50k one, `w0i` says plainly that what it
+   understates is the per-round cost — effects and resources did not exist to be
+   swept — and W1 is the wave that adds exactly that. Nothing in the plan
+   re-measured until `w2e`, twenty tasks later. *Mitigated by:* `w1k`, the M0
+   re-measure at the end of W1 against the real `EffectStore` and `ResourcePool`;
+   `w2e`'s re-run when the real APL compiler replaces the hand-compiled one; and
+   `w3i`'s CI gate, which must witness its own fixtures rather than watch the
+   rate alone. *The failure mode to watch for is not a slow feature — it is the
+   budget being lowered a second time.* A budget that follows the measurement
+   down is not a budget.
 2. **Goldens grade their own homework.** The agent that writes the feature writes
    its test; a green suite is evidence of self-consistency, not of correctness.
    *Mitigated by:* hand-computed arithmetic in the golden, quoted `source_ref`, a
@@ -1031,26 +2642,69 @@ and that is a far more dangerous failure than a check that fails.
    batch costs six times the rework of one discovered in the first. *Mitigated
    by:* the canary batch in W3 — one small, semi-disposable slice authored
    against the frozen API before anything fans out.
-4. **The paper pass degrades quietly.** Classifying ~400 prose features to hooks
+4. **The derivation fits noise and reports a policy that is not better.** A
+   search scoring thousands of candidates against one seed set will find a winner
+   whether or not one exists; the search-set number is biased upward by
+   construction, and a policy selected on noise looks exactly like a discovery.
+   This is the most expensive version of the shape above — the most expensive
+   risk in this list, as the ordering note says — because the whole project's
+   headline claim rests on it and there will never be a ground truth to check it
+   against. Two sub-risks ride along: **scenario overfitting** (a policy
+   derived against one AC and enemy count, reported as general) and
+   **exploitation** — an optimiser with 10^5 evaluations finds every place the
+   rules are implemented too generously, and reports the exploit as a strategy.
+   The scorer adds two more of its own. **Estimator/resolver divergence** is the
+   nastier: if `engine/estimate.py` and `engine/damage.py` ever disagree — about
+   whether `flat` doubles on a crit, say — the fit absorbs the discrepancy into a
+   coefficient and hides it, and every decision in the project is then made on a
+   wrong number with nothing red anywhere. **Perturbation-profile drift** is the
+   likelier: a buff declares `+2` where its code grants `+1d4`, or a debuff
+   declares the wrong save ability, and every decision involving it is scored
+   wrong with nothing red anywhere either. Debuffs carry a third of their own —
+   their value is the product of three estimates (`p_land`, a geometric expected
+   duration, and a per-target horizon), so an error in any one compounds, and
+   control is where the scorer's confidence most exceeds its evidence. At the party
+   level there is one more: coordinate ascent cannot find a convention that needs
+   two members to change at once, so a composition can be reported as worse than
+   it is because the search never reached the pair — and unlike the others this
+   one has no test that fails, only a number that is quietly low.
+   *Mitigated by:* the disjoint holdout seed set with a reported optimism gap, a
+   scenario *distribution* with a per-scenario breakdown, common random numbers
+   and paired tests so a real difference is resolvable at an affordable sample
+   count, the one-standard-error parsimony rule with per-entry ablation
+   intervals, the plausibility band that exits non-zero, and the Δ-vs-baseline
+   comparison that catches both a search that is not searching and a win too
+   large to be real. All six are in § APL derivation, and the exploitation
+   sub-risk is also the project's best content-bug detector once triaged rather
+   than trusted. Divergence is caught by the property test binding the estimator
+   to 10^5 real resolutions; profile drift by `w3l` measuring each effect's real
+   DPR difference **on both sides** against what its perturbation predicts, on
+   the same terms as every `expectation`; the compounding on control by the wider
+   priors on `w_off`/`w_def` being paid for with their own ablation rows; the planning gap by the per-build overlay that exists to
+   carry what the scorer gets wrong, and by the ablation row that reports the
+   scorer's marginal value per build; the coordination gap by `w8a3` making most
+   party play emergent rather than searched, by sweeping in initiative order, and
+   by restarts whose disagreement is reported as a result about the party.
+5. **The paper pass degrades quietly.** Classifying ~400 prose features to hooks
    is the highest-leverage task in the project and the most tedious, and nothing
    downstream detects a sloppy classification until features are written against
    it. *Mitigated by:* batching the classification against a strict row schema
    with a confidence column, human triage of the low-confidence and gap rows
    only, and the additive-vs-structural split that makes the hook-gap budget
    honest.
-5. **Review capacity, not agent throughput, is the constraint.** Roughly 150
+6. **Review capacity, not agent throughput, is the constraint.** Roughly 175
    nominal agent-days funnel through one person; every parallelism gain lands on
    the same desk. *Mitigated by:* designing artefacts to be reviewable in minutes
    — disposition tables, quoted citations, arithmetic in goldens, the file-size
    cap — and by sizing batches for a review sitting rather than for agent
    capacity.
-6. **Hook drift** — feature #340 needs a hook that doesn't exist, and an agent
+7. **Hook drift** — feature #340 needs a hook that doesn't exist, and an agent
    improvises by mutating private state or picking a wrong hook that happens to
    fire. Ranked below the others because it is the risk this design already
    defends best. *Mitigated by:* the paper pass in W3, the frozen registry with a
    CI diff check, both escape valves, and a linter banning private access and
    stray `random` imports.
-7. **Interaction correctness** — features individually right, combinations wrong;
+8. **Interaction correctness** — features individually right, combinations wrong;
    grows quadratically while features grow linearly. *Mitigated by:* structural
    prevention first, one resolution order in one file, the human-maintained
    interaction matrix, and property tests (damage never negative, HP
