@@ -68,15 +68,11 @@ Rank findings: **correctness bugs → boundary violations → everything else.**
 
 - An **XPHB `source_ref` with the quoted rules sentence** — not just a page
   reference. The quote is what the code is checked against.
-- **Every stated consequence in a citation is checked, not read.** Where a
-  comment, docstring or decision record says *"the other order would cause Y"*,
-  work Y out; where Y is arithmetic, try it either side of the case it was
-  written from. A correct decision defended by a consequence it does not have is
-  a finding — it is what a later agent disproves before reopening the decision
-  for the wrong reason. Watch for the three shapes `w1e` produced: a consequence
-  that does not occur, a case that holds either way in place of the one that
-  turns on the decision, and a derivation by a method the code has since
-  replaced.
+- **A citation points; it does not restate.** A paraphrase or a re-derivation
+  beside the code is a second copy of the rule that can drift from it — flag it.
+  Where a citation does assert a consequence, work the consequence out rather
+  than reading it: `w1e` shipped three that were false (`docs/decisions.md`
+  § w1e).
 - **One golden test with exact-integer assertions**, its arithmetic written out
   in a comment. Distributions prove nothing; a hand-computed number does.
 - **The author did not write the tests.** One agent producing both the feature

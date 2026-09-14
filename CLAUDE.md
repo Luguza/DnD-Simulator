@@ -335,25 +335,16 @@ end of `ROADMAP.md` is what a delegated agent receives.
   packets in `ROADMAP.md`, the contracts in `DESIGN.md`, and any task given in
   chat. Check them against the rest of the design for gaps, contradictions and
   unstated assumptions.
-- **A citation carries the quotation and the consequence that actually follows,
-  and stops there.** An argument in a comment, a docstring or
-  `docs/decisions.md` is load-bearing exactly like code, and it fails the same
-  way: a later agent checks the stated consequence, finds it false, and reopens
-  a settled decision for the wrong reason. So before writing *"the other way
-  would cause Y"*, check Y — and where Y is arithmetic, check it over a range
-  rather than on the one case that suggested it. Prefer the case that actually
-  turns on the decision to the vivid case that does not.
-- **Everything past that consequence is where citations go wrong**, and it reads
-  as authority while having nothing holding it up. `w1e` produced the three
-  shapes to recognise: a consequence that does not occur (flat-before-halving
-  defended by a stacking the rejected order does not cause), a case that holds
-  either way in place of the one that turns on the decision (`_halvings`
-  defended by Rage plus Uncanny Dodge), and a derivation by a method the code
-  has since replaced (a worked example computed by the abandoned apportionment).
-  Five review rounds, every finding in the prose, none in the arithmetic, and
-  the fix was -239 lines with no assertion changed (`docs/decisions.md` § w1e).
-- **Do not comment code that does not need explaining.** A comment restating the
-  line below it is surface to maintain and to get wrong. Comment the trap, the
-  citation, and the ordering that is not obvious from the code.
+- **Cite where a rule is written; do not restate it.** A pointer — XPHB
+  "Damage and Healing", `DESIGN.md` § Structural prevention, `docs/decisions.md`
+  § w1e — is checkable and cannot drift from its source. A paraphrase, a
+  re-derivation, or an argument rebuilt beside the code is a second copy that
+  can, and it is what a later agent disproves before reopening a settled
+  decision for the wrong reason. Where the thing cited is the project's own
+  ruling, it lives in `docs/decisions.md` and the code points at it.
+- **Do not comment code that does not need explaining**, and never derive a
+  statement from the lines beneath it. Comment the trap and the ordering that is
+  not obvious; nothing else. `w1e` took five review rounds and every finding was
+  in prose of that kind, none in the arithmetic (`docs/decisions.md` § w1e).
 - Ask the user for clarification when something is ambiguous or looks wrong
   instead of guessing.
