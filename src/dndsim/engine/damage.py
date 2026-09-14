@@ -10,8 +10,9 @@ Where each step comes from:
   XPHB Rules Glossary, under each of those names
 - adjustments, then Resistance, then Vulnerability — XPHB, "Damage and Healing",
   quoted in `DESIGN.md` § Structural prevention with the book's worked example
-- immunity first, and two halvings stacking where two resistances do not — read
-  off that same text in `docs/decisions.md` § w1e
+- two halvings stacking where two resistances do not — the "counts once" clause,
+  XPHB Rules Glossary, "Resistance", read in `docs/decisions.md` § w1e
+- immunity first — argued there from "the damage you take"
 - flat reductions before halvings, and the proportional spend of an untyped
   adjustment across a mixed-type hit — the project's own rulings, the only two
   here, argued in `docs/decisions.md` § w1e

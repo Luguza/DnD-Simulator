@@ -344,7 +344,7 @@ end of `ROADMAP.md` is what a delegated agent receives.
   ruling, it lives in `docs/decisions.md` and the code points at it.
 - **Do not comment code that does not need explaining**, and never derive a
   statement from the lines beneath it. Comment the trap and the ordering that is
-  not obvious; nothing else. `w1e` took five review rounds and every finding was
-  in prose of that kind, none in the arithmetic (`docs/decisions.md` § w1e).
+  not obvious; nothing else. Four of `w1e`'s five review rounds found prose of
+  that kind; the fifth found a real bug (`docs/decisions.md` § w1e).
 - Ask the user for clarification when something is ambiguous or looks wrong
   instead of guessing.

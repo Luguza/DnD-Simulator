@@ -1269,8 +1269,8 @@ class IncomingDamageContext(Context):
     Everything a handler does here is recorded, never applied: `engine/damage.py`
     runs the single resolution order over the ledger afterwards. Uncanny Dodge
     halves, Heavy Armor Master reduces, Rage resists — and the order those three
-    interact in is a decision made once, in one file, quoted from the 2024 text
-    with its one remaining ruling argued inline.
+    interact in is decided once, in one file, which cites where each step comes
+    from (`docs/decisions.md` § w1e).
 
     The damage arrives here **rolled**, as an amount per type, rather than as
     the `DamageBag` the attacker built. The dice were thrown at `on_damage_roll`

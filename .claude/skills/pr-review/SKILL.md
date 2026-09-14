@@ -73,8 +73,10 @@ Rank findings: **correctness bugs → boundary violations → everything else.**
   § w1e).
 - **Deleting prose is a citation change.** A diff that removes an argument,
   a quotation or a worked example has to move every pointer aimed at it;
-  `grep` the deleted phrase across `DESIGN.md`, `ROADMAP.md`, `CLAUDE.md` and
-  `docs/`. Three rounds of #25's own review were dangling inbound pointers.
+  `grep` the deleted phrase across `DESIGN.md`, `ROADMAP.md`, `CLAUDE.md`,
+  `docs/` **and `src/`** — a docstring in another module cites its neighbours as
+  readily as a plan does. Four rounds of #25's own review were dangling inbound
+  pointers, one of them in `src/` because this list first omitted it.
 
 ## Evidence a feature PR must carry
 

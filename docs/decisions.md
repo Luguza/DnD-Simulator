@@ -1457,14 +1457,16 @@ being the one step that is not the identity on an empty ledger.
 
 ### What the review cost, and what that is worth recording
 
-Five rounds, and **every finding was in the prose rather than in the code**. The
-order, the arithmetic and the tests were right from the first push; what was
-wrong was three separate arguments that defended a correct decision with a
-consequence it did not have — flat-before-halving justified by a stacking that
-does not occur (the rejected order is exactly additive, never more), `_halvings`
-justified by a case that works either way, and a worked comment that derived the
-apportionment by the method the code had just abandoned. Each was found by
-checking the stated consequence and finding it false.
+Five rounds. **The first found a real bug** — `_apportion()` written as largest
+remainder, so a larger reduction could leave the creature taking more damage —
+**and a test gap**, the tie-break no case pinned. **The other four were prose**:
+three arguments that defended a correct decision with a consequence it did not
+have — flat-before-halving justified by a stacking that does not occur (the
+rejected order is exactly additive, never more), `_halvings` justified by a case
+that works either way, a worked comment that derived the apportionment by the
+method the code had just abandoned — and one queue row left in a state that
+would have started `w1f` on an unmerged dependency. Each of the four was found
+by checking a stated consequence and finding it false.
 
 The lesson is not "write less down" — the citations are contract. It is that an
 argument in a decision record is load-bearing exactly like code, and the ones
