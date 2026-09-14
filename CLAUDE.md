@@ -64,9 +64,8 @@ by looking ahead to which types are resisted, never in the order the damage
 parts arrived, and by a method that cannot let a larger reduction land more
 damage. `Mitigated.total` is therefore the sum of `Mitigated.amounts` again,
 where `w0g2` had the two deliberately disagree. `docs/decisions.md` § w1e has
-the arguments; it retires debt-register row #7 and opens #23. Its review is also
-the project's clearest case that **a citation's reasoning is load-bearing like
-code**: five rounds, every finding in the prose, none in the arithmetic.
+the arguments; it retires debt-register row #7 and opens #23, and its review is
+the case behind the citation rule in § Working rules.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
@@ -318,7 +317,8 @@ end of `ROADMAP.md` is what a delegated agent receives.
   (linter-enforced); `rg "PHASE:"` should stay under ~30 hits.
 - Every feature needs an XPHB `source_ref` carrying the quoted rules sentence,
   one golden test with exact-integer assertions, and a declared analytic
-  `expectation` that never imports `dndsim`.
+  `expectation` that never imports `dndsim`. The citation rule in § Working
+  rules governs what may be written around that sentence.
 - `data/` is gitignored — fetched 5etools JSON, reproducible via
   `dndsim content fetch`. Hand-authored `builds/*.yaml` are in git.
 
@@ -335,5 +335,16 @@ end of `ROADMAP.md` is what a delegated agent receives.
   packets in `ROADMAP.md`, the contracts in `DESIGN.md`, and any task given in
   chat. Check them against the rest of the design for gaps, contradictions and
   unstated assumptions.
+- **Cite where a rule is written; do not restate it.** A pointer — XPHB
+  "Damage and Healing", `DESIGN.md` § Structural prevention, `docs/decisions.md`
+  § w1e — is checkable and cannot drift from its source. A paraphrase, a
+  re-derivation, or an argument rebuilt beside the code is a second copy that
+  can, and it is what a later agent disproves before reopening a settled
+  decision for the wrong reason. Where the thing cited is the project's own
+  ruling, it lives in `docs/decisions.md` and the code points at it.
+- **Do not comment code that does not need explaining**, and never derive a
+  statement from the lines beneath it. Comment the trap and the ordering that is
+  not obvious; nothing else. Four of `w1e`'s five review rounds found prose of
+  that kind; the fifth found a real bug (`docs/decisions.md` § w1e).
 - Ask the user for clarification when something is ambiguous or looks wrong
   instead of guessing.

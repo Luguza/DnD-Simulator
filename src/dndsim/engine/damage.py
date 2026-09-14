@@ -1,71 +1,26 @@
 """The damage resolution order, in the one file it is ever written in.
 
 **immunity -> flat reductions -> halvings -> resistance -> vulnerability ->
-temporary hit points -> hit points.** Every feature that touches damage — Rage,
-Uncanny Dodge, Heavy Armor Master, a resistance from a spell — contributes to a
-`MitigationLedger` and none of them applies anything. This module is the only
-code that acts on the record.
+temporary hit points -> hit points.** Features contribute to a
+`MitigationLedger`; this module is the only code that acts on it.
 
-## The citation for each step
+Where each step comes from:
 
-- **Immunity**: damage of a type you are Immune to is not taken at all (XPHB
-  Rules Glossary). It runs first because the adjustments below subtract from
-  *the damage you take*, and damage you are immune to is not that.
-- **Adjustments, then Resistance, then Vulnerability**: *"Modifiers to damage
-  are applied in the following order: adjustments such as bonuses, penalties, or
-  multipliers are applied first; Resistance is applied second; and Vulnerability
-  is applied third"* (XPHB, "Damage and Healing"). A flat reduction is a penalty
-  and a halving is a multiplier, so both are adjustments.
-- **Flat reductions before halvings** is the one **ruling**, and it sits inside
-  that quoted first step, which bundles penalties and multipliers together
-  without sequencing them against each other. Subtract first: the one thing the
-  text does settle about a reduction is that Resistance halves it along with
-  everything else, and a halving is the same ×½ operation left unsequenced, so a
-  reduction meets Uncanny Dodge exactly as the book has it meet Rage. Halving
-  first would make those two exactly additive while a reduction stays
-  sub-additive with Resistance — one feature combining differently depending on
-  where the ×½ came from, which the text gives no reason for.
-- **Halving rounds down** (XPHB, "Round Down").
-- **Two resistances count once; two halvings do not.** The "counts once" clause
-  names Resistance and a halving is not Resistance, so the three type
-  collections are sets and `_halvings` is a list.
+- immunity, resistance, vulnerability, temporary hit points, rounding down —
+  XPHB Rules Glossary, under each of those names
+- adjustments, then Resistance, then Vulnerability — XPHB, "Damage and Healing",
+  quoted in `DESIGN.md` § Structural prevention with the book's worked example
+- two halvings stacking where two resistances do not — the "counts once" clause,
+  XPHB Rules Glossary, "Resistance", read in `docs/decisions.md` § w1e
+- immunity first — argued there from "the damage you take"
+- flat reductions before halvings, and the proportional spend of an untyped
+  adjustment across a mixed-type hit — the project's own rulings, the only two
+  here, argued in `docs/decisions.md` § w1e
 
-Two consequences read as bugs and are not: resistance and vulnerability to the
-same type no longer cancel exactly (7 halves to 3 and doubles to 6), and a flat
-reduction is worth half to a creature that also resists, because it is
-subtracted before the halving that follows it.
-
-## Spending an untyped adjustment across a mixed-type hit
-
-Adjustments act on one number and the typed steps act per type, so with the
-adjustments first the order needs a per-type picture on the far side of a step
-that has none. No sentence in the book covers it. Two properties fix the ruling:
-the spend may not consult the resistances that follow it, because an adjustment
-applied *first* cannot know what Resistance will do with what it leaves; and it
-may not depend on the order the damage parts arrived, which is an authoring
-artefact. What survives both is proportion — an adjustment changes the size of
-the hit, not its composition. `_apportion()` does it.
-
-`Mitigated.total` is therefore `sum(amounts.values())` floored at zero, where
-`w0g2` had the two deliberately disagree, and an untyped step can now take a
-type out of `Mitigated.types`: half of one point of fire is no fire.
-
-## What this module does not do
-
-- **Roll the attack.** `engine/attack.py` (w1f) does, and calls `roll_damage()`.
-- **Decide who is dying.** `w1j` owns death saves and `on_reduced_to_zero`. The
-  clamp at zero discards the overflow the instant-death rule reads, which `w1j`
-  computes where it dispatches that hook (debt #8).
-- **Apply queued effects.** `EffectStore` (w1c) drains `ctx.pending_effects`;
-  until it exists `_refuse_pending()` raises (debt #5).
-- **Type a reduction.** `ctx.reduce()` takes no damage type, so a reduction is
-  spent across every type that survived immunity — and 2024 Heavy Armor Master
-  reduces Bludgeoning, Piercing and Slashing only (debt #23, `w3f` via `w3e`).
-- **Log.** `w1i` owns the event log and reads these numbers.
-
-Sources: XPHB (2024) "Damage and Healing", Rules Glossary "Immunity",
-"Vulnerability", "Resistance", "Round Down", "Temporary Hit Points"; DESIGN.md
-§ Structural prevention over testing; ROADMAP w0g2, w1e.
+Not here: rolling the attack (`engine/attack.py`, w1f), dying (`w1j`, debt #8),
+applying queued effects (`w1c`, debt #5), the event log (`w1i`). `ctx.reduce()`
+takes no damage type, so a reduction is spent across every surviving type —
+debt #23, `w3f` via `w3e`.
 """
 
 from collections.abc import Iterable, Mapping
@@ -98,9 +53,8 @@ __all__ = [
 class DamageContexts(Protocol):
     """Where the two contexts of a damage event come from.
 
-    The same **Strategy** the attack sequence uses for its six (`w0i`): pooling
-    them instead of allocating two per hit is worth about a tenth of an attack
-    resolution.
+    The same **Strategy** the attack sequence uses for its six (`docs/decisions.md`
+    § w0i).
     """
 
     def incoming(
@@ -166,18 +120,12 @@ def roll_damage(
 ) -> dict[DamageType, int]:
     """Roll the contributions a `DamageBag` collected into an amount per type.
 
-    Two rules live here and neither is the caller's to remember:
-
-    - **A critical hit doubles the dice and never the flat part**, by rolling a
-      doubled pool rather than multiplying a total, so 2d6 that rolled 7 is not
-      14 (DESIGN.md § Structural prevention). It is inlined rather than routed
-      through `DamagePart.on_crit()`, which would allocate a part per
-      contribution per crit; that method stays as the readable statement of the
-      rule and the one a test pins it by.
-    - **`damage_type=None` means "the type of the attack this rides on"**, so
-      Sneak Attack's d6s are the dagger's piercing. Resolved here, at the last
-      moment before the amounts stop being the attacker's, because every step
-      downstream is keyed by type.
+    Applies the crit dice/flat split (DESIGN.md § Structural prevention) and
+    resolves `damage_type=None` to the attack's type (`docs/decisions.md`
+    § w0f). The doubling is inlined
+    rather than routed through `DamagePart.on_crit()`, which would allocate a
+    part per contribution per crit; that method stays as the statement of the
+    rule and the one a test pins it by.
     """
     amounts: dict[DamageType, int] = {}
     get = amounts.get
@@ -198,9 +146,8 @@ def roll_damage(
 class Mitigated:
     """What the resolution order made of an instance of damage.
 
-    `amounts` is the per-type picture once every step has run and `total` is its
-    sum, floored at zero — the floor is the only thing that can separate them,
-    and only for a malformed negative contribution.
+    `amounts` is the per-type picture once every step has run; `total` is its
+    sum, floored at zero.
     """
 
     amounts: Mapping[DamageType, int]
@@ -210,9 +157,8 @@ class Mitigated:
     def types(self) -> frozenset[DamageType]:
         """The types that got through, for the log and the hooks.
 
-        Immunity takes a type out of this set, and since `w1e` so can a reduction
-        or a halving: both are spent over the types, and half of one point of
-        fire is no fire.
+        An untyped step can empty a type out of this set, not just immunity
+        (`docs/decisions.md` § w1e).
         """
         return frozenset(t for t, amount in self.amounts.items() if amount > 0)
 
@@ -220,16 +166,10 @@ class Mitigated:
 def _apportion(amounts: Mapping[DamageType, int], target: int) -> dict[DamageType, int]:
     """Spread `target` over the types in proportion, by Jefferson's method.
 
-    Each point goes to the type furthest from its share — the one maximising
-    `amount / (points it already holds + 1)` — with ties broken by the larger
-    component and then the type's name, so nothing depends on the order the
-    damage parts arrived. The comparison cross-multiplies, so it is exact.
-
-    The method is chosen for one property: the allocation of `target` points is
-    the allocation of `target - 1` plus one more, so a larger reduction can never
-    leave the creature taking *more* damage. Largest remainder fails that — the
-    Alabama paradox — and `test_more_mitigation_never_means_more_damage` is the
-    three-type case that caught it.
+    Each point goes to the type maximising `amount / (points held + 1)`, ties by
+    the larger component then the type's name. House-monotone, which is why it
+    is not largest remainder: `docs/decisions.md` § w1e, and
+    `test_more_mitigation_never_means_more_damage`.
     """
     if target <= 0:
         return dict.fromkeys(amounts, 0)
@@ -258,10 +198,9 @@ def mitigate(
 
     Pure: it reads a ledger and returns numbers, touching no creature.
 
-    **A reduction's dice are drawn from the `rng` passed here**, after the
-    attacker's damage dice, so the attack pipeline (w1f) must hand this function
-    the generator the attack is using — a second generator would reproduce a
-    different fight from the same archived seed.
+    **A reduction's dice come from the `rng` passed here**, after the attacker's
+    damage dice, so `w1f` must hand this the generator the attack is using — a
+    second stream reproduces a different fight from the same archived seed.
     """
     if ledger.untouched:
         # The clamp is the one step of the order that is not the identity on an
@@ -309,14 +248,9 @@ def resolve_damage(
     """Deal damage to `defender` and return what it took.
 
     A veto from an `EARLY` or `FINAL` handler stops the whole event: nothing is
-    spent and the return is zero.
-
-    **`on_damage_taken` does not fire when nothing landed.** The rules read "when
-    you take damage", and a creature immune to the only type in the hit, or whose
-    reductions ate all of it, took none — so it makes no concentration check, and
-    no handler ever written for the hook has to test for a zero. A hit absorbed
-    entirely by temporary hit points *did* land and does fire: those hit points
-    are gone.
+    spent and the return is zero. `on_damage_taken` does not fire when nothing
+    landed, but does fire for a hit temporary hit points absorbed whole
+    (`docs/decisions.md` § w0g2).
     """
     incoming = contexts.incoming(defender=defender, attacker=attacker, amounts=amounts)
     defender.dispatch(ON_INCOMING_DAMAGE, incoming)

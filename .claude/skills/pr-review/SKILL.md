@@ -64,6 +64,20 @@ Rank findings: **correctness bugs → boundary violations → everything else.**
   time: a run must reproduce byte-for-byte **at any `--jobs` value**, or
   `trace`, the goldens and every regression diff break at once.
 
+## Citations and comments, on every diff
+
+- **A citation points; it does not restate.** A paraphrase or a re-derivation
+  beside the code is a second copy of the rule that can drift from it — flag it.
+  Where a citation does assert a consequence, work the consequence out rather
+  than reading it: `w1e` shipped three that were false (`docs/decisions.md`
+  § w1e).
+- **Deleting prose is a citation change.** A diff that removes an argument,
+  a quotation or a worked example has to move every pointer aimed at it;
+  `grep` the deleted phrase across `DESIGN.md`, `ROADMAP.md`, `CLAUDE.md`,
+  `docs/` **and `src/`** — a docstring in another module cites its neighbours as
+  readily as a plan does. Four rounds of #25's own review were dangling inbound
+  pointers, one of them in `src/` because this list first omitted it.
+
 ## Evidence a feature PR must carry
 
 - An **XPHB `source_ref` with the quoted rules sentence** — not just a page
