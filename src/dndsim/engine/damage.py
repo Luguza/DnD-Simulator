@@ -6,13 +6,15 @@ temporary hit points -> hit points.** Features contribute to a
 
 Where each step comes from:
 
-- immunity, resistance, vulnerability, rounding down — XPHB Rules Glossary,
-  "Immunity", "Resistance", "Vulnerability", "Round Down"
+- immunity, resistance, vulnerability, temporary hit points, rounding down —
+  XPHB Rules Glossary, under each of those names
 - adjustments, then Resistance, then Vulnerability — XPHB, "Damage and Healing",
   quoted in `DESIGN.md` § Structural prevention with the book's worked example
-- immunity first, flat reductions before halvings, two halvings stacking, and
-  the proportional spend of an untyped adjustment across a mixed-type hit — the
-  project's own rulings, argued in `docs/decisions.md` § w1e
+- immunity first, and two halvings stacking where two resistances do not — read
+  off that same text in `docs/decisions.md` § w1e
+- flat reductions before halvings, and the proportional spend of an untyped
+  adjustment across a mixed-type hit — the project's own rulings, the only two
+  here, argued in `docs/decisions.md` § w1e
 
 Not here: rolling the attack (`engine/attack.py`, w1f), dying (`w1j`, debt #8),
 applying queued effects (`w1c`, debt #5), the event log (`w1i`). `ctx.reduce()`
@@ -117,8 +119,9 @@ def roll_damage(
 ) -> dict[DamageType, int]:
     """Roll the contributions a `DamageBag` collected into an amount per type.
 
-    Applies the crit dice/flat split and resolves `damage_type=None` to the
-    attack's type (DESIGN.md § Structural prevention). The doubling is inlined
+    Applies the crit dice/flat split (DESIGN.md § Structural prevention) and
+    resolves `damage_type=None` to the attack's type (`docs/decisions.md`
+    § w0f). The doubling is inlined
     rather than routed through `DamagePart.on_crit()`, which would allocate a
     part per contribution per crit; that method stays as the statement of the
     rule and the one a test pins it by.
