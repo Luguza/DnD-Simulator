@@ -476,8 +476,9 @@ asserting the first.
   special case written. The reverse order loses a point on every odd number. The
   2024 text orders resistance first regardless, and losing that point is the
   book's answer.
-- **Two steps are rulings, not quotations, and `damage.py` says so inline**
-  (DESIGN.md asks for exactly this): flat reductions apply *after* resistance,
+- **Two steps are rulings, not quotations** — argued inline in `damage.py` at
+  the time, and since PR #25 argued in § w1e with `damage.py` pointing at it:
+  flat reductions apply *after* resistance,
   and halvings apply *after* the flat reductions. Each changes every number a
   build with Heavy Armor Master or Uncanny Dodge reports. `w1e` owned confirming
   them against the 2024 text and **found the first one wrong** — adjustments

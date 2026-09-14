@@ -64,15 +64,22 @@ Rank findings: **correctness bugs → boundary violations → everything else.**
   time: a run must reproduce byte-for-byte **at any `--jobs` value**, or
   `trace`, the goldens and every regression diff break at once.
 
-## Evidence a feature PR must carry
+## Citations and comments, on every diff
 
-- An **XPHB `source_ref` with the quoted rules sentence** — not just a page
-  reference. The quote is what the code is checked against.
 - **A citation points; it does not restate.** A paraphrase or a re-derivation
   beside the code is a second copy of the rule that can drift from it — flag it.
   Where a citation does assert a consequence, work the consequence out rather
   than reading it: `w1e` shipped three that were false (`docs/decisions.md`
   § w1e).
+- **Deleting prose is a citation change.** A diff that removes an argument,
+  a quotation or a worked example has to move every pointer aimed at it;
+  `grep` the deleted phrase across `DESIGN.md`, `ROADMAP.md`, `CLAUDE.md` and
+  `docs/`. Three rounds of #25's own review were dangling inbound pointers.
+
+## Evidence a feature PR must carry
+
+- An **XPHB `source_ref` with the quoted rules sentence** — not just a page
+  reference. The quote is what the code is checked against.
 - **One golden test with exact-integer assertions**, its arithmetic written out
   in a comment. Distributions prove nothing; a hand-computed number does.
 - **The author did not write the tests.** One agent producing both the feature
