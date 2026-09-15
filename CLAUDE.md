@@ -28,7 +28,8 @@ The plans were then re-read against what the wave measured
 (`docs/decisions.md` § The W0 plan review). Two things came out of it that
 matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
 first cuts and deferred obligations W0 left behind — eighteen rows open, of
-which seventeen are W0's and one is `w1e`'s — and the task that retires each;
+which fifteen are W0's, one is `w1e`'s and two are `w1f`'s — and the task that
+retires each;
 check it for the file you are about to touch. And **`w1k` is a
 new task**, an M0 re-measure at the end of W1, because the measured ~31.5k has
 5% of headroom and W1 adds the per-round cost the spike does not model.
@@ -66,6 +67,21 @@ damage. `Mitigated.total` is therefore the sum of `Mitigated.amounts` again,
 where `w0g2` had the two deliberately disagree. `docs/decisions.md` § w1e has
 the arguments; it retires debt-register row #7 and opens #23, and its review is
 the case behind the citation rule in § Working rules.
+
+Then `w1f` **cut `engine/attack.py`**, the second resolution order and the one
+~400 features plug into: declare -> roll -> hit/crit/miss -> damage -> resolved,
+in the file that owns it. `tools/skeleton.py`'s hand-sequenced `attack_once()`
+is gone with it, so the benchmark now measures the sequence the project ships.
+Four things every later task inherits: a **Critical Hit below 20 still has to
+hit**, so the threshold decides only whether a hit is critical; a **veto is
+honoured at the declaration and raises after it**, and a prevented attack has
+`outcome is None` because `Outcome` describes rolls; **damage on a miss is
+rolled and resolved, without firing `on_damage_roll`** (the Graze mastery's own
+sentence); and the **`Weapon` protocol is widened to six members**, which is the
+shape a feature reads a weapon through. It costs ~5% of the spike's rate,
+measured and attributed — most of M0's headroom, in the wave the plan review
+said would spend it. `docs/decisions.md` § w1f has the arguments; it retires
+debt-register rows #3 and #6 and opens #24 and #25.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
@@ -262,6 +278,7 @@ there is local to a module.
 | `hooks/decorator.py`, `hooks/source.py`, `hooks/dispatch.py` | § w0g |
 | `creatures/`, `core/geometry.py` | § w0g2 |
 | `engine/damage.py`, the resolution order | § w0g2, § w1e |
+| `engine/attack.py`, the attack sequence | § w1f |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |

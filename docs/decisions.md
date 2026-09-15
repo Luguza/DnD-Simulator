@@ -1492,3 +1492,147 @@ the wrong reason.
   `w0i` measured ~31.5k on, which is what `w3i`'s same-run baseline is for. The
   apportionment runs only when a ledger has an untyped step *and* more than one
   type survived immunity.
+
+## w1f — the attack pipeline, and the rulings it needed
+
+`engine/attack.py` is the second of the two resolution orders everything
+downstream trusts, and the first that had a hand-written copy to displace:
+`w0h` sequenced the attack by hand in `tools/skeleton.py` so that `w0i` had
+something integrated to measure. That copy is gone (debt #6). What follows is
+what the real one had to decide that the copy never did.
+
+### A Critical Hit below 20 still has to hit
+
+The skeleton took any natural roll at or above the threshold as a Critical Hit
+without ever consulting AC, which is exact while the threshold is 20 — a natural
+20 hits whatever the AC (XPHB, "D20 Tests" -> Attack Rolls, "Rolling 20 or 1") —
+and wrong the first time a Champion lowers it. Nothing makes a 19 hit; Improved
+Critical says only that an attack roll *can score a Critical Hit* on one. So the
+pipeline asks the two questions separately: `natural == NATURAL_TWENTY or total
+>= AC` decides whether it hit, and the threshold decides only whether a hit is a
+critical one.
+
+`AttackRollContext.is_critical` was already built for this — it is the natural
+roll against the threshold, at a hook that fires before AC is consulted — so the
+engine combines it with the hit test and no context changed.
+
+### A veto is honoured at the declaration and refused after it
+
+`ctx.veto()` is on every context by inheritance, and the attack has seven hooks.
+Only one moment can honour it: before the roll, where "this attack does not
+happen" is a thing that can be true. `resolve_attack()` returns `PREVENTED`
+there — `outcome is None`, no d20 drawn — because `Outcome` is scoped to attack
+rolls on purpose (`rules/enums.py`) and an attack nobody rolled has no member
+that describes it. That is the whole reason `AttackResult.outcome` is optional.
+
+At every later stage the attack has been made, and the honest answer is neither
+to invent an outcome nor to continue: `_seal()` raises. A veto silently ignored
+would make the design's one Chain of Responsibility element a no-op at five of
+seven attack hooks, which is the class of silence DESIGN.md § Failing loudly
+exists to refuse. `_seal()` carries the queued-effect refusal (debt #5) in the
+same breath and closes the context, so both checks ride the `close()` the
+sequence was making anyway.
+
+### Damage on a miss, and why `on_damage_roll` does not fire for it
+
+`MissContext` has carried a damage bag since `w0f` because the Graze mastery
+deals the ability modifier on a miss, and nothing ever rolled it. It is rolled
+here and resolved through `engine/damage.py` like any other damage — a target's
+resistance does not care which branch the damage came down.
+
+`on_damage_roll` does **not** fire on that path, and this is the branch's one
+real decision. Graze's own sentence is that its damage "can be increased only by
+increasing the ability modifier" (XPHB, "Equipment" -> Mastery Properties), and
+`on_damage_roll` is where Rage damage and brutal dice attach. Firing it would
+put every such feature on a miss, and the alternative — firing it and asking
+each feature to know about Graze — is the engine branching on content. Damage
+that belongs to a miss is added at `on_miss`, by the feature that owns the rule.
+
+### Finesse picks the better modifier
+
+`attack_ability()` returns Strength, or Dexterity for a Finesse weapon when
+Dexterity is the higher modifier (XPHB, "Equipment" -> Weapon Properties). The
+rules leave the choice to the wielder, and taking the better of the two is a
+policy rather than arithmetic — so it is a default the caller can override with
+`resolve_attack(..., ability=...)` rather than a rule written into the roll.
+Nothing in the design wants the worse modifier today; `w8`'s scorer is the first
+thing that could, and it has the argument to say so.
+
+### The `Weapon` protocol, widened to six members
+
+Debt #3: through W0 a context knew a weapon by its name alone, so Great Weapon
+Master could not ask whether it was holding a Heavy weapon and no mastery could
+recognise its own. It now declares what a handler has to ask — the dice and type
+it contributes to, the mastery, the reach, and `has()` for one property at a
+time. `has()` rather than the property set: a `frozenset` on the protocol would
+be a second way to ask the same question that `w2a`'s importer would then have
+to keep equal to the first.
+
+Range stayed out, because nothing can supply it: a ranged attack needs the
+normal/long pair the Weapon table prints, `w2a` imports it, and until then every
+attack resolves at the weapon's reach. That is debt #24, and it is why reach is
+taken from **the weapon this attack is made with** rather than from
+`Creature.reach_ft`, which is about what the creature has equipped. The query
+itself is still `in_reach()`, for the reason § w0g3 gives.
+
+### What the `trigger.*` offer says at each moment
+
+`Trigger.bind()` replaces the whole offer rather than adding to it, which `w0i`
+wrote and this task kept: the APL is being told what is on the table *now*.
+What changed is the hit branch's last bind, which carries `crit` alongside
+`damage_estimate`. Both facts are true of the same attack, and the alternative
+was a victim's reaction being offered a critical hit's damage while
+`trigger.crit` said the hit was ordinary — a wrong value rather than an absent
+one. DESIGN.md § APL's example reads `trigger.crit` for Divine Smite at
+`on_hit` and `trigger.damage_estimate` for Uncanny Dodge at the damage moment;
+the first is untouched and the second can now ask both. A miss binds the
+estimate alone, because a miss is never critical.
+
+The contract test pins all three offers of one critical hit in order, so `w2e`
+inherits a decision instead of an observation.
+
+### One pool, one attack
+
+`PooledContexts` rebinds one context of each kind per attack, so an attack begun
+from inside a handler of another attack on the same pool would overwrite the
+event in flight — the hazard `w0i` noted and left to this task. `declared()`
+now refuses re-entry and `resolve_attack()` calls `release()` on every path it
+returns by. `w2c` is the wave that can produce a nested attack, and its answer is
+a second pool rather than a deeper one. An exception escaping the sequence
+deliberately does not release the pool: a pool that reopened over a half-finished
+attack would turn one loud failure into a quiet wrong fight.
+
+### What it cost the benchmark
+
+The spike was run on the same container before and after, because this container
+reads ~27.5k/sec on `main` against the ~31.5k `w0i` recorded on its own — the
+absolute number cannot be compared across machines, which is what `w3i`'s
+same-run baseline is for. **The completed pipeline costs about 5% of the rate**
+(27,575 -> 26,063/sec, medians of four paired runs), attributed as:
+
+- **~1.9%** the two refusals in `_seal()`, measured by stubbing it to a bare
+  `close()` (26,675/sec). Half of that is transitional — the queued-effect
+  refusal goes with `w1c` — and `_seal()` is the one place to inline if `w1k`
+  needs the rest back.
+- **the remaining ~3%** is work the hand-sequenced copy did not do: deriving the
+  attack ability, rolling modifier dice rather than reading flat totals, the
+  reach query, `release()`, and the result tuple.
+
+None of it is waste to cut; it is the pipeline being complete. It is also most
+of M0's 5% of headroom, spent in the wave `ROADMAP.md` § What else the review
+changed predicted would spend it — which is what `w1k` was added to measure.
+
+### What this task deliberately did not do
+
+- **No proficiency question.** The proficiency bonus is added to every attack.
+  Exact for a character swinging their own weapon and for a monster, whose
+  attack bonus is printed; wrong for a build holding something it is not
+  proficient with, which `w2f`'s schema is the first thing that can express.
+  Debt #25.
+- **No ranged branch**, per above — debt #24.
+- **No legality and no cost.** Whether a creature may attack, and what the swing
+  spends, is `w2b`'s Command over `w1a`'s economy. What `resolve_attack()`
+  refuses is only an attack that cannot be described: no weapon, or a target
+  outside the weapon's reach.
+- **No opportunity attack.** `engine/triggers.py` makes the offer and `w2c`
+  turns it into an attack; this task gives it the sequence to call.

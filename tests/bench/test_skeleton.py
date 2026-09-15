@@ -5,7 +5,7 @@ Three properties carry this file, all stated in ROADMAP w0h:
 - **The real dispatch path runs.** Probes attached to both creatures record
   which hooks fired, in which order, and prove the pairs (`on_hit` /
   `on_hit_taken`) run over the *same* context rather than two copies.
-- **The real damage pipeline runs.** `roll_damage()` and `resolve_damage()`
+- **The real attack and damage pipelines run.** `roll_damage()` and `resolve_damage()`
   from `engine/damage.py` are exercised, not stubbed, so a hit's arithmetic is
   checked against a hand-computed number the way every damage-order test in
   this repo is.
@@ -23,6 +23,7 @@ from dndsim.core.geometry import Cell
 from dndsim.core.rng import MersenneRng, ScriptedRng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.stats import Armour, StatBlock
+from dndsim.engine.attack import resolve_attack
 from dndsim.hooks.contexts import (
     AttackDeclaredContext,
     AttackResolvedContext,
@@ -36,7 +37,7 @@ from dndsim.hooks.contexts import (
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.source import HookSource
 from dndsim.rules.enums import Ability, Outcome
-from dndsim.tools.skeleton import attack_once, build_dummy, build_fighter, run_fight
+from dndsim.tools.skeleton import build_dummy, build_fighter, run_fight
 
 # The fighter built by `build_fighter()` swings at +6 (str +3, prof +3) and the
 # dummy from `build_dummy()` is AC 15, so a natural 15 hits (21 >= 15) without
@@ -126,7 +127,7 @@ def test_a_hit_dispatches_every_hook_the_hit_side_touches() -> None:
     # d20, then the greatsword's 2d6 (rolled 4 and 5).
     rng = ScriptedRng([_HIT_ROLL, 4, 5])
 
-    outcome, damage = attack_once(attacker, defender, rng)
+    outcome, damage = resolve_attack(attacker, defender, rng=rng)
 
     assert outcome is Outcome.HIT
     # 2d6 (4 + 5 = 9) + STR modifier (+3) = 12, no mitigation on a dummy.
@@ -151,7 +152,7 @@ def test_a_miss_never_reaches_the_damage_hooks() -> None:
     attacker, defender, attacker_probe, defender_probe = _rig()
     rng = ScriptedRng([_MISS_ROLL])
 
-    outcome, damage = attack_once(attacker, defender, rng)
+    outcome, damage = resolve_attack(attacker, defender, rng=rng)
 
     assert outcome is Outcome.MISS
     assert damage == 0
@@ -181,7 +182,7 @@ def test_a_natural_1_always_misses_even_against_a_total_that_would_hit() -> None
     )
     rng = ScriptedRng([1])
 
-    outcome, damage = attack_once(attacker, frail, rng)
+    outcome, damage = resolve_attack(attacker, frail, rng=rng)
 
     assert outcome is Outcome.CRITICAL_MISS
     assert damage == 0
@@ -192,7 +193,7 @@ def test_a_natural_20_always_hits_and_crits() -> None:
     # d20, then the doubled 4d6 a crit rolls.
     rng = ScriptedRng([20, 1, 2, 3, 4])
 
-    outcome, damage = attack_once(attacker, defender, rng)
+    outcome, damage = resolve_attack(attacker, defender, rng=rng)
 
     assert outcome is Outcome.CRITICAL_HIT
     # 4d6 (1+2+3+4=10) + STR modifier (+3) = 13; the modifier does not double.

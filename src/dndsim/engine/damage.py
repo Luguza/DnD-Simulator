@@ -45,6 +45,7 @@ __all__ = [
     "FreshDamageContexts",
     "Mitigated",
     "mitigate",
+    "refuse_pending",
     "resolve_damage",
     "roll_damage",
 ]
@@ -254,7 +255,7 @@ def resolve_damage(
     """
     incoming = contexts.incoming(defender=defender, attacker=attacker, amounts=amounts)
     defender.dispatch(ON_INCOMING_DAMAGE, incoming)
-    _refuse_pending(incoming)
+    refuse_pending(incoming)
     if incoming.vetoed:
         incoming.close()
         return 0
@@ -274,19 +275,25 @@ def resolve_damage(
         damage_types=mitigated.types,
     )
     defender.dispatch(ON_DAMAGE_TAKEN, taken)
-    _refuse_pending(taken)
+    refuse_pending(taken)
     taken.close()
     return mitigated.total
 
 
-def _refuse_pending(ctx: Context) -> None:
+def refuse_pending(ctx: Context) -> None:
     """Refuse an effect queued where there is nothing yet to apply it.
 
     `EffectStore` (w1c) drains `ctx.pending_effects`; until it exists a queued
     effect would be silently discarded. Deleted by `w1c`, not by whoever trips
-    over it.
+    over it — and `engine/attack.py` calls it after each of its own dispatches,
+    so w1c has two files to sweep rather than one (debt #5).
+
+    The list is read rather than the `pending_effects` property, which builds a
+    tuple: this runs eight times per attack resolution, and the engine already
+    reaches into a context's private state where it owns it (`hooks/dispatch.py`
+    does the same with the frame).
     """
-    pending = ctx.pending_effects
+    pending = ctx._pending
     if pending:
         raise EngineAssemblyError(
             f"{type(ctx).__name__} has {len(pending)} queued effect(s) and there "

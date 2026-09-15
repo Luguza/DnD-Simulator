@@ -58,7 +58,8 @@ classes satisfy these.
 What is deliberately absent:
 
 - **No pool.** `reopen()` is the reuse primitive; who owns the pool is the
-  dispatcher's question (w0g) and the turn loop's (w1f). A pool here would be a
+  dispatcher's question (w0g) and the attack sequence's (`engine/attack.py`,
+  w1f). A pool here would be a
   second place that knows when an event ends.
 - **No rolling.** A context collects contributions; `engine/damage.py` (w1e) and
   `engine/attack.py` (w1f) own the arithmetic and the resolution order. A
@@ -89,7 +90,14 @@ from dndsim.core.dice import Dice
 from dndsim.core.errors import EngineAssemblyError, PhaseError
 from dndsim.core.timeline import InitiativeKey, TimeKey
 from dndsim.hooks.registry import Phase
-from dndsim.rules.enums import Ability, Condition, DamageType, Outcome
+from dndsim.rules.enums import (
+    Ability,
+    Condition,
+    DamageType,
+    Mastery,
+    Outcome,
+    WeaponProperty,
+)
 
 __all__ = [
     "AbilityCheckContext",
@@ -198,10 +206,42 @@ class Combatant(Protocol):
 
 class Weapon(Protocol):
     """The weapon an attack is made with, or `None` for one that is not made
-    with a weapon."""
+    with a weapon.
+
+    **`w1f`'s widening, and the same rule `Combatant` lives by**: it declares
+    what a handler already has to ask and nothing else. Through W0 this was a
+    name, which left Great Weapon Master unable to ask whether it was holding a
+    Heavy weapon and every one of the eight masteries unable to recognise its
+    own — debt #3 of `ROADMAP.md` § The W0 debt register, and the reason the
+    paper pass (`w3e`) confirms this shape before ~400 features are written
+    against it.
+
+    `has()` rather than the property set itself: a feature asks about one
+    property, and a `frozenset` on the protocol would be a second way to ask
+    that `w2a`'s importer would then have to keep equal to the first.
+
+    Absent on purpose, because nothing can supply it yet: **range**. A ranged
+    attack needs the normal/long pair the Weapon table prints, `w2a` is what
+    imports it, and `engine/attack.py` resolves every attack at the reach below
+    until it does (debt #24).
+    """
 
     @property
     def name(self) -> str: ...
+
+    @property
+    def damage(self) -> Dice: ...
+
+    @property
+    def damage_type(self) -> DamageType: ...
+
+    @property
+    def mastery(self) -> Mastery | None: ...
+
+    @property
+    def reach_ft(self) -> int: ...
+
+    def has(self, prop: WeaponProperty) -> bool: ...
 
 
 class Spell(Protocol):

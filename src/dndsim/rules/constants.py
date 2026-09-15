@@ -43,6 +43,8 @@ __all__ = [
     "MAX_CHARACTER_LEVEL",
     "MAX_SPELL_LEVEL",
     "MEDIUM_ARMOUR_DEX_CAP",
+    "NATURAL_ONE",
+    "NATURAL_TWENTY",
     "PACT_MAGIC_SLOTS",
     "PHYSICAL_DAMAGE_TYPES",
     "PROFICIENCY_BONUS",
@@ -89,6 +91,16 @@ hits and is a Critical Hit). It is where a *character's* threshold starts rather
 than a fact about one attack — Improved Critical lowers the character's to 19 —
 which is why it is a derived stat on the creature and never something a handler
 edits per attack (`hooks/contexts.py`)."""
+
+NATURAL_TWENTY: Final = 20
+NATURAL_ONE: Final = 1
+"""The two rolls an attack resolves on their own, whatever the modifiers or the
+target's AC (XPHB, "D20 Tests" -> Attack Rolls, "Rolling 20 or 1").
+
+Distinct from `CRITICAL_HIT_THRESHOLD` above, which a Champion lowers: a 19 is a
+Critical Hit for that character and is still not an automatic one, so the two
+numbers stop being equal the moment Improved Critical exists and
+`engine/attack.py` reads each for its own question."""
 
 DEATH_SAVE_DC: Final = 10
 DEATH_SAVE_SUCCESSES_TO_STABILIZE: Final = 3

@@ -286,7 +286,7 @@ def test_the_victims_gate_is_asked_about_the_swing_that_is_landing() -> None:
     gate on the victim's side of an attack is the hero's Uncanny Dodge.
 
     Its `if:` reads `trigger.damage_estimate`, which is bound inside
-    `attack_once()` — so an enemy turn that dispatched without a trigger would
+    `resolve_attack()` — so an enemy turn that dispatched without a trigger would
     hand the gate the estimate left over from the hero's own last swing, which
     is a different number by an order of magnitude and never changes during the
     enemy's round. What separates the two is the size: an enemy can put at most
