@@ -34,8 +34,16 @@ A contract PR against `ROADMAP.md`, `DESIGN.md`, `CLAUDE.md` and
 for the review itself. Add the next wave's queue rows if this gate is what
 unblocks them. Flip the `⏸` row to `done` and the row below to `next`.
 
-It is a contract PR, so `human-merge-required` is red by design: answer the
-review, then hand it to the human and stop. Do not start the next task.
+Branch `claude/task-review-<next id>` so the watchdog sees it in flight, and
+answer the review per `/next-task` step 5.
+
+- **An ordinary gate:** `human-merge-required` is green. Merge on a clean
+  verdict and continue per `/next-task` step 6.
+- **A milestone review** (the row says `milestone review`): it is red by design,
+  because this is where the human reads the code. Write the PR body for that
+  reader — what the milestone delivered, what the loop merged into the plans
+  since the last milestone, and the debt rows the round cap left for them —
+  then notify the human and stop. Do not start the next task.
 
 Finding nothing is a valid outcome. Say so in one paragraph in
 `docs/decisions.md` and flip the rows; do not manufacture changes to justify

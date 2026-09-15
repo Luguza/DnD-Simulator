@@ -38,6 +38,13 @@ jobs:
           # against its base, which a shallow clone does not have.
           fetch-depth: 0
 
+      # graft/ is gitignored; see claude-code-review.yml for why it is pinned.
+      - name: Build the graft graph
+        run: |
+          npm install --global --no-fund --no-audit @nanonets/graft@0.18.0
+          graft telemetry disable
+          graft build
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -51,4 +58,9 @@ jobs:
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-          claude_args: "--model claude-opus-5"
+          # The read-only graft commands, so .claude/skills/graft works here as
+          # it does locally.
+          claude_args: >-
+            --model claude-opus-5
+            --effort medium
+            --allowedTools "Bash(graft ask:*),Bash(graft grep:*),Bash(graft skeleton:*),Bash(graft callers:*),Bash(graft map:*)"

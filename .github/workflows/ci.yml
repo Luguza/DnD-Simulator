@@ -84,25 +84,38 @@ jobs:
             exit 1
           fi
           printf 'Changed files:\n%s\n' "$files"
-          # The contract: the plans, the agent configuration, the CI that gates
-          # all of it, and the dependency set. A task PR that edits its own
-          # reviewer is caught by the .github/ and .claude/ entries — which
-          # matters because claude-code-action skips itself when the workflow
-          # differs from the default branch, and exits successfully when it does.
-          contract=$(printf '%s\n' "$files" | grep -E \
-            '^(DESIGN\.md|ROADMAP\.md|CLAUDE\.md|pyproject\.toml|uv\.lock|\.github/|\.claude/)' || true)
-          if [ -n "$contract" ]; then
+          # The human reads the code at ROADMAP milestones and nowhere else, so
+          # two things stop the loop (docs/workflow.md § Merge authority):
+          #
+          # 1. A milestone review — the PR that flips a progress.md row naming a
+          #    milestone review to `done`.
+          # 2. A change to .github/workflows/. Not for the contract's sake:
+          #    claude-code-action skips itself when the workflow differs from
+          #    the default branch and exits successfully, so such a PR can never
+          #    receive a review and the loop must not be the one to merge it.
+          milestone=$(git diff "origin/${BASE_REF}...HEAD" -- docs/progress.md \
+            | grep -iE '^\+.*milestone review.*\|[[:space:]]*done[[:space:]]*\|' || true)
+          workflows=$(printf '%s\n' "$files" | grep -E '^\.github/workflows/' || true)
+          if [ -n "$milestone" ] || [ -n "$workflows" ]; then
             {
               echo '## A human merges this one'
               echo
-              echo 'This pull request changes the contract, so the task loop may not'
-              echo 'merge it. That is what this job failing means; nothing is broken.'
+              echo 'The task loop may not merge this pull request. That is what this'
+              echo 'job failing means; nothing is broken.'
               echo
-              echo 'Contract paths touched:'
-              echo
-              printf '%s\n' "$contract" | sed 's/^/- `/;s/$/`/'
+              if [ -n "$milestone" ]; then
+                echo 'It closes a ROADMAP milestone review:'
+                echo
+                printf '%s\n' "$milestone" | sed 's/^+/- /'
+                echo
+              fi
+              if [ -n "$workflows" ]; then
+                echo 'It edits the workflows, which the reviewer cannot review:'
+                echo
+                printf '%s\n' "$workflows" | sed 's/^/- `/;s/$/`/'
+              fi
             } >> "$GITHUB_STEP_SUMMARY"
-            printf 'Contract change; a human merges this PR:\n%s\n' "$contract"
+            printf 'Human merge required.\n%s\n%s\n' "$milestone" "$workflows"
             exit 1
           fi
-          echo 'Code change; the task loop may merge this PR on a clean review.'
+          echo 'No milestone and no workflow change; the loop may merge on a clean review.'

@@ -13,8 +13,8 @@ touch, and the files themselves.
 
 ## 1. Take the task
 
-- `docs/progress.md` → the `next` row. A `⏸` row means stop and run
-  `/plan-review` instead. A `held` row means stop and report.
+- `docs/progress.md` → the `next` row. A `⏸` row means run `/plan-review`
+  instead, in this session. A `held` row means stop and report.
 - `grep -n "^| <id> " ROADMAP.md` → the task row: scope, depends, produces,
   done-when. Read `ROADMAP.md` § Task packet template and § Standing rules once.
 - Confirm every dependency is `done` in the queue.
@@ -24,7 +24,8 @@ touch, and the files themselves.
 CLAUDE.md requires this and it is the highest-value step in the loop. Check the
 row against the rest of the design for gaps, contradictions and unstated
 assumptions. If you find a real one, do **not** guess: open a spec PR per
-`docs/workflow.md` § When the spec is wrong, leave the row at `next`, stop.
+`docs/workflow.md` § When the spec is wrong, leave the row at `next`, and take
+it through steps 5 and 6 like a task PR.
 
 ## 3. Implement
 
@@ -52,15 +53,20 @@ Each wake: read the sticky verdict comment and CI.
 - **PLAUSIBLE** → fix, or reply on the thread saying why it is not a defect.
 - A verdict saying the review did not run or did not finish is not a pass.
 - CI red or a merge conflict is work now, whatever the review says.
-- **Fourth non-clean verdict:** stop. Comment naming what is contested, set the
-  row to `held`, tell the human. Do not keep pushing.
+- **Fourth non-clean verdict:** stop pushing and comment naming what is
+  contested. If CI is green and every CONFIRMED finding is fixed, record the
+  contested findings in `ROADMAP.md` § The W0 debt register, owned by the next
+  milestone review, and go to step 6. Otherwise set the row to `held` and tell
+  the human.
 
 ## 6. Merge and hand off
 
 When the verdict is `✅ Looks good`, CI is green and there is no conflict:
 
-- If `human-merge-required` is red, this is a contract PR. Say so and stop.
-- Otherwise merge, then start the next session — `create_session` with this
-  same `/next-task` prompt, tagged `dnd-task`, titled with the next id — and
-  archive yourself. If the next row is `⏸` or `held`, notify the human instead
-  of starting anything.
+- If `human-merge-required` is red, a human merges this one — a milestone
+  review or a workflow edit (`docs/workflow.md` § Merge authority). Notify the
+  human, say which, and stop.
+- Otherwise merge — contract files included — then start the next session —
+  `create_session` with this same `/next-task` prompt, tagged `dnd-task`,
+  titled with the next id (or `review` for a `⏸` row) — and archive yourself.
+  If the next row is `held`, notify the human instead of starting anything.
