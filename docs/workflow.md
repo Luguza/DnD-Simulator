@@ -16,8 +16,9 @@ One task, one session, one branch, one pull request, reviewed until clean.
 4. It subscribes to PR activity and ends its turn. Review and CI wake it.
 5. Each verdict comment is answered (§ The review loop) until the reviewer says
    `✅ Looks good` with CI green.
-6. It merges if the PR is a **code** PR, then starts the next session and
-   archives itself. Otherwise it stops and hands back (§ Merge authority).
+6. It merges unless `human-merge-required` is red, then starts the next session
+   and archives itself. Red means a milestone review or a workflow edit: it
+   stops and hands back (§ Merge authority).
 
 ## The review loop
 
@@ -29,36 +30,43 @@ every finding **CONFIRMED** or **PLAUSIBLE**.
   Never silently skipped. The split exists so that a weak finding costs a reply
   rather than a speculative commit.
 - **Done** = `✅ Looks good` **and** CI green **and** no merge conflict.
-- **Round cap: three.** On a fourth non-clean verdict the session stops, posts
-  one comment naming what is still contested, sets the row to `held`, and
-  notifies the human. PR #19 took 27 pushes; the cap is what catches that.
+- **Round cap: three.** On a fourth non-clean verdict the session stops pushing
+  and posts one comment naming what is still contested. If CI is green and every
+  **CONFIRMED** finding is fixed, it merges and records the contested findings
+  in `ROADMAP.md` § The W0 debt register, owned by the next milestone review, so
+  the human reads them there. Otherwise it sets the row to `held` and notifies
+  the human. PR #19 took 27 pushes; the cap is what catches that.
 
 A verdict that says *the review did not run* or *did not finish* is not a pass
 and never merges.
 
 ## Merge authority
 
-The `human-merge-required` CI job classifies every PR by the paths it touches.
+The human reads the code at ROADMAP milestones (M0–M5) and nowhere else, so the
+loop merges everything in between — task PRs, spec PRs and plan-review PRs,
+including edits to `DESIGN.md`, `ROADMAP.md`, `CLAUDE.md`, the dependency set
+and `.claude/`. The `human-merge-required` CI job fails, and the loop stops, in
+exactly two cases:
 
-- **Contract PR** — touches `DESIGN.md`, `ROADMAP.md`, `CLAUDE.md`,
-  `pyproject.toml`, `uv.lock`, `.github/` or `.claude/`: the plans, the agent
-  configuration, the CI that gates both, and the dependency set. The job fails
-  by design; the human merges. The name is the message — it is the only red
-  check, and it means *your turn*.
-- **Code PR** — everything else, `src/`, `tests/` and `docs/` included. The
-  session merges it on a clean review.
+- **Milestone review** — the PR flips a `docs/progress.md` row whose name
+  contains `milestone review` to `done`. The human merges it, and that merge is
+  their review of everything since the previous milestone.
+- **Workflow edit** — anything under `.github/workflows/`. Not for the
+  contract's sake: `claude-code-action` skips itself when the workflow file
+  differs from the default branch **and exits successfully**, so such a PR can
+  never get a real verdict, and the loop merging it would be merging unreviewed.
 
-Two things follow from that line. The plan cannot be rewritten by the loop that
-executes it. And a task PR cannot edit its own reviewer — which matters more
-than it looks, because `claude-code-action` skips itself when the workflow file
-differs from the default branch **and exits successfully**, so an implementer
-editing `claude-code-review.yml` would silently disable the only gate.
+The cost is that the loop can now rewrite the plan it executes; the milestone
+review is where the human catches that. The classifier matches the row's name,
+so **every milestone row must say `milestone review`** — one that does not would
+be merged by the loop.
 
 ## When the spec is wrong
 
 A session that finds a real gap in the task spec does not guess. It opens a
-**spec PR** — contract class, so the human merges it — describing the gap and
-its proposed resolution, leaves the queue row at `next`, and stops. The W0 debt
+**spec PR** describing the gap and its resolution, leaves the queue row at
+`next`, and drives the PR through § The review loop like any other. On merge it
+starts a fresh `/next-task` session, which re-reads the corrected row. The W0 debt
 register is what this project gets when specs are read critically; an
 implementer that can only ever implement is worse than one that can stop.
 
@@ -66,9 +74,10 @@ implementer that can only ever implement is worse than one that can stop.
 
 A `⏸` row runs `/plan-review` instead: re-read `ROADMAP.md` and `DESIGN.md`
 against what the last few tasks actually measured, in the shape of
-`docs/decisions.md` § The W0 plan review. Its deliverable is a contract PR, so
-it ends with the human. Gates sit every two or three tasks and at every
-milestone.
+`docs/decisions.md` § The W0 plan review. Gates sit every two or three tasks
+and at every milestone. An ordinary gate's PR is merged by the loop, which then
+carries on; a **milestone review**'s PR is merged by the human, and the chain
+waits for that merge.
 
 ## The chain
 
@@ -91,9 +100,8 @@ milestone.
   docs/decisions.md.
 
   1. Read docs/progress.md on main. If it does not exist there, stop silently.
-  2. Find the row whose status is `next`. If there is none, or it is a ⏸ row,
-     or any row is `held`: stop, notifying the user in one sentence only for a
-     ⏸ or `held` row.
+    2. Find the row whose status is `next`. If there is none, or any row is
+     `held`: stop, notifying the user in one sentence for a `held` row.
   3. If a pull request with a `claude/task-*` head branch is open, stop
      silently — a task is in flight. Exception: if its last activity is over
      two hours old, say so in one sentence naming the PR and what it waits on.
@@ -102,7 +110,8 @@ milestone.
   ["dnd-task"], titled with the task id, and stop. Never do the task yourself.
   ```
 
-Neither path ever passes a `⏸` row or a `held` row.
+Neither path ever passes a `held` row, or a milestone review whose PR is still
+open.
 
 ## Token cost
 

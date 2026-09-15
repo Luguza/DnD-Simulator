@@ -67,6 +67,16 @@ jobs:
           fi
 
       # --- Code PRs -------------------------------------------------------
+      # graft/ is gitignored, so the graph is built here from the checked-out
+      # head. `build` without --deep is the $0 no-key layer. Pinned, so a new
+      # graft release cannot change what the reviewer sees between two pushes.
+      - name: Build the graft graph
+        if: steps.scope.outputs.docs_only == 'false'
+        run: |
+          npm install --global --no-fund --no-audit @nanonets/graft@0.18.0
+          graft telemetry disable
+          graft build
+
       - name: Review the code
         id: code-review
         if: steps.scope.outputs.docs_only == 'false'
@@ -85,7 +95,12 @@ jobs:
             Review pull request #${{ github.event.pull_request.number }}.
 
             Scope is the diff: `git diff origin/${{ github.base_ref }}...HEAD`.
-            Open a whole file only when the diff alone cannot settle a question.
+            The repo is indexed by graft; read `.claude/skills/graft/SKILL.md`
+            and use its CLI for context beyond the diff — `graft callers <sym>
+            --depth 2` for what a changed symbol breaks, `graft skeleton <file>`
+            for a file's API, `graft ask "<question>" --source` to locate code.
+            Open a whole file only when neither the diff nor graft can settle a
+            question.
             Never read DESIGN.md, ROADMAP.md or docs/decisions.md end to end —
             they are 160KB, 82KB and 72KB. Grep them for the one claim you need.
 
@@ -131,8 +146,8 @@ jobs:
           # retired model id.
           # The action's base GitHub/file tools are always included; --allowedTools
           # only adds. Arbitrary Bash is NOT on by default, so the read-only git
-          # commands the review depends on have to be listed explicitly or they
-          # come back as permission denials.
+          # and graft commands the review depends on have to be listed
+          # explicitly or they come back as permission denials.
           # --disallowedTools Agent,Task: the review otherwise fans out into
           # parallel finder subagents, then ends its turn saying it will wait for
           # their completion notifications. In headless CI there is no next turn
@@ -141,7 +156,7 @@ jobs:
           # the only way this finishes and much the cheaper one.
           claude_args: >-
             --model opus
-            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git merge-base:*),Bash(git rev-parse:*),Bash(git status:*),Bash(git ls-files:*)"
+            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(git merge-base:*),Bash(git rev-parse:*),Bash(git status:*),Bash(git ls-files:*),Bash(graft ask:*),Bash(graft grep:*),Bash(graft skeleton:*),Bash(graft callers:*),Bash(graft map:*)"
             --disallowedTools "Agent,Task"
 
       # --- Documentation-only PRs -----------------------------------------
