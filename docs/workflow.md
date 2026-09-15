@@ -100,11 +100,12 @@ waits for that merge.
   docs/decisions.md.
 
   1. Read docs/progress.md on main. If it does not exist there, stop silently.
-    2. Find the row whose status is `next`. If there is none, or any row is
+  2. Find the row whose status is `next`. If there is none, or any row is
      `held`: stop, notifying the user in one sentence for a `held` row.
   3. If a pull request with a `claude/task-*` head branch is open, stop
      silently — a task is in flight. Exception: if its last activity is over
-     two hours old, say so in one sentence naming the PR and what it waits on.
+     two hours old, say so in one sentence naming the PR and what it waits on,
+     unless it is a milestone review waiting for the human to merge it.
 
   Only if all three pass: create a session with the prompt `/next-task`, tagged
   ["dnd-task"], titled with the task id, and stop. Never do the task yourself.
