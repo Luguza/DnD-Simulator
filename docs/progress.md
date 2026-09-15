@@ -5,8 +5,9 @@ flips its row to `done` and the row below to `next`, so merging is what advances
 the queue — the ledger cannot desync from git because advancing it *is* a
 merged diff.
 
-A `⏸` row halts the chain: it is a plan review, and the session that reaches it
-stops and hands back to the human (`docs/workflow.md` § Plan reviews). A `held`
+A `⏸` row is a plan review, run by the loop (`docs/workflow.md` § Plan
+reviews). Only a **milestone review** halts the chain: its PR is merged by the
+human, and its row must say `milestone review` or CI will not know to stop. A `held`
 row halts it too, and while one stands **no row is `next`** — the row below a
 held task advances only when that task's diff merges, and a `next` row sitting
 under a hold is an invitation to start work on a dependency that never landed.
