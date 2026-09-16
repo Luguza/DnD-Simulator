@@ -53,12 +53,11 @@ from dndsim.hooks.contexts import (
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.registry import Phase
 from dndsim.hooks.source import HookSource
-from dndsim.rules.enums import ActionCost, DamageType, Outcome
+from dndsim.rules.enums import ActionCost, DamageType, Outcome, WeaponProperty
 from dndsim.tools.spike_apl import SpikeState
 
 __all__ = ["ON_HIT_SOURCES", "SOURCES", "Fixture"]
 
-_HEAVY_WEAPON = "Greatsword"
 """The one weapon `w0g2` defines, and the stand-in for a Heavy property."""
 
 
@@ -83,20 +82,19 @@ class Fixture(HookSource):
 
 
 class HeavyWeaponRider(Fixture):
-    """Applies on every hit with the right weapon: the always-on rider.
+    """Applies on every hit with a Heavy weapon: the always-on rider.
 
-    A real Great Weapon Master asks the weapon whether it is Heavy. The
-    `Weapon` protocol contexts hand out carries `name` and nothing else
-    (`hooks/contexts.py`, w0f), so no `on_hit` feature can read a weapon
-    property yet — a gap for `w1f` to close and for the W3 paper pass to
-    confirm, and one this spike found rather than invented. The identity check
-    below costs what the property lookup will.
+    A real Great Weapon Master asks the weapon whether it is Heavy, and until
+    `w1f` widened the `Weapon` protocol it could not: the spike matched the
+    weapon's name instead and said so here, which is the gap that became debt #3
+    and one this fixture found rather than invented. It asks properly now, at
+    the cost the note promised the identity check was standing in for.
     """
 
     @hook("on_hit")
     def rider(self, ctx: HitContext) -> R:
         weapon = ctx.weapon
-        if weapon is None or weapon.name != _HEAVY_WEAPON:
+        if weapon is None or not weapon.has(WeaponProperty.HEAVY):
             return R.SKIPPED
         ctx.damage.add(flat=3)
         return R.APPLIED

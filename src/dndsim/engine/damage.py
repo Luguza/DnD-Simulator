@@ -45,6 +45,7 @@ __all__ = [
     "FreshDamageContexts",
     "Mitigated",
     "mitigate",
+    "refuse_pending",
     "resolve_damage",
     "roll_damage",
 ]
@@ -254,7 +255,7 @@ def resolve_damage(
     """
     incoming = contexts.incoming(defender=defender, attacker=attacker, amounts=amounts)
     defender.dispatch(ON_INCOMING_DAMAGE, incoming)
-    _refuse_pending(incoming)
+    refuse_pending(incoming)
     if incoming.vetoed:
         incoming.close()
         return 0
@@ -274,19 +275,27 @@ def resolve_damage(
         damage_types=mitigated.types,
     )
     defender.dispatch(ON_DAMAGE_TAKEN, taken)
-    _refuse_pending(taken)
+    refuse_pending(taken)
     taken.close()
     return mitigated.total
 
 
-def _refuse_pending(ctx: Context) -> None:
+def refuse_pending(ctx: Context) -> None:
     """Refuse an effect queued where there is nothing yet to apply it.
 
     `EffectStore` (w1c) drains `ctx.pending_effects`; until it exists a queued
     effect would be silently discarded. Deleted by `w1c`, not by whoever trips
-    over it.
+    over it — and `engine/attack.py`'s `_seal()` makes the same refusal after
+    its own dispatches, so w1c has two files to sweep rather than one (debt #5).
+
+    The list is read rather than the `pending_effects` property, which builds a
+    tuple: `resolve_damage()` calls this twice on every instance of damage, and
+    the engine already reaches into a context's private state where it owns it
+    (`hooks/dispatch.py` does the same with the frame). `_seal()` tests the same
+    list itself and calls only when there is something to refuse, which is why
+    the two callers do not read alike.
     """
-    pending = ctx.pending_effects
+    pending = ctx._pending
     if pending:
         raise EngineAssemblyError(
             f"{type(ctx).__name__} has {len(pending)} queued effect(s) and there "

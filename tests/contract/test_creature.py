@@ -137,11 +137,29 @@ def test_the_defenders_hit_points_are_readable_from_inside_an_event() -> None:
 
 
 def test_a_real_weapon_is_the_weapon_a_context_carries() -> None:
-    """The same debt for `Weapon`: a context knows a weapon only by its name,
-    and `creatures/stats.py` is free to grow as long as it still has one."""
+    """`w1f`'s widening, and the reason for it: through W0 a context knew a
+    weapon only by its name, so Great Weapon Master could not ask whether it was
+    holding a Heavy weapon and no mastery could recognise its own (ROADMAP § The
+    W0 debt register, #3). What the protocol promises now is what a handler has
+    to ask — the dice and type it will add to, the mastery it carries, how far it
+    reaches, and one property at a time — and `creatures/stats.Weapon` is what
+    answers it."""
     weapon: WeaponProtocol = GREATSWORD
-    assert protocol_members(WeaponProtocol) == {"name"}
+    assert protocol_members(WeaponProtocol) == {
+        "name",
+        "damage",
+        "damage_type",
+        "mastery",
+        "reach_ft",
+        "has",
+    }
     assert weapon.name == "Greatsword"
+    assert weapon.damage == Dice(2, 6)
+    assert weapon.damage_type is DamageType.SLASHING
+    assert weapon.mastery is Mastery.GRAZE
+    assert weapon.reach_ft == 5
+    assert weapon.has(WeaponProperty.HEAVY)
+    assert not weapon.has(WeaponProperty.FINESSE)
 
 
 # --- A stat block ------------------------------------------------------------

@@ -44,7 +44,13 @@ from dndsim.hooks.contexts import (
     TurnContext,
 )
 from dndsim.hooks.registry import Phase, all_hooks
-from dndsim.rules.enums import Ability, DamageType, Outcome
+from dndsim.rules.enums import (
+    Ability,
+    DamageType,
+    Mastery,
+    Outcome,
+    WeaponProperty,
+)
 
 # The two bases are context classes that no hook hands out: `Context` is the
 # shared lifecycle and `D20TestContext` the advantage machinery every roll of
@@ -82,7 +88,21 @@ class FakeCreature:
 
 @dataclass(frozen=True, slots=True)
 class FakeWeapon:
+    """The narrowest thing that satisfies `Weapon`, which `w1f` widened from a
+    name to the six members a handler has to ask about — the mastery and the
+    properties above all, since a weapon nobody can interrogate leaves every
+    mastery and Great Weapon Master unwritable (ROADMAP § The W0 debt register,
+    #3)."""
+
     name: str
+    damage: Dice = Dice(1, 4)
+    damage_type: DamageType = DamageType.PIERCING
+    mastery: Mastery | None = Mastery.NICK
+    reach_ft: int = 5
+    properties: frozenset[WeaponProperty] = frozenset({WeaponProperty.FINESSE})
+
+    def has(self, prop: WeaponProperty) -> bool:
+        return prop in self.properties
 
 
 @dataclass(frozen=True, slots=True)

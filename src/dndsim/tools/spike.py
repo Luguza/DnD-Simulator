@@ -64,11 +64,11 @@ from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.economy import ActionEconomy
 from dndsim.creatures.stats import GREATSWORD, Armour, StatBlock, Weapon
+from dndsim.engine.attack import FRESH, AttackContexts, PooledContexts, resolve_attack
 from dndsim.engine.triggers import walk_provoking
 from dndsim.hooks.contexts import MoveContext, TurnContext
 from dndsim.hooks.definitions import ON_MOVE, ON_TURN_START
 from dndsim.rules.enums import Ability, ActionCost, DamageType
-from dndsim.tools.skeleton import FRESH, AttackContexts, PooledContexts, attack_once
 from dndsim.tools.spike_apl import (
     AlliesProxy,
     Apl,
@@ -484,7 +484,7 @@ def _execute(spike: Spike, entry: Entry, rng: Rng) -> int:
     contexts = spike.contexts
     trigger = namespace.trigger
     for _ in range(ATTACKS_PER_TURN):
-        attack_once(spike.hero, target, rng, contexts=contexts, trigger=trigger)
+        resolve_attack(spike.hero, target, rng=rng, contexts=contexts, trigger=trigger)
     return ATTACKS_PER_TURN
 
 
@@ -493,7 +493,7 @@ def _enemy_turns(spike: Spike, rng: Rng, number: int) -> int:
 
     They carry no sources of their own — what they are for is the hero's four
     defensive ones, which is also why their attacks go through the same
-    `attack_once()` and the same damage pipeline.
+    `resolve_attack()` and the same damage pipeline.
 
     **The hero's `trigger` goes with them.** `trigger.*` is what the engine is
     offering the creature being asked, and the only gate on this side of the
@@ -511,7 +511,7 @@ def _enemy_turns(spike: Spike, rng: Rng, number: int) -> int:
         if destination is not None:
             _step(spike, enemy, destination)
         if distance_ft(enemy.position, hero.position) <= enemy.reach_ft:
-            attack_once(enemy, hero, rng, contexts=contexts, trigger=trigger)
+            resolve_attack(enemy, hero, rng=rng, contexts=contexts, trigger=trigger)
             resolutions += 1
     return resolutions
 
