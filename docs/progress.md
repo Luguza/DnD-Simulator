@@ -19,8 +19,8 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 1 | w1a — `Creature`, `StatBlock`, `ActionEconomy` | done | #21 |
 | 2 | w1e — damage resolution order completed 🔒 | done | #24 |
 | 3 | w1f — attack pipeline 🔒 | done | #27 |
-| — | ⏸ plan review — the critical-path pair | next | |
-| 4 | w1c — `Effect`, `EffectStore`, stacking | queued | |
+| — | ⏸ plan review — the critical-path pair | done | #30 |
+| 4 | w1c — `Effect`, `EffectStore`, stacking | next | |
 | 5 | w1b — resources, `SpellSlots`, `transaction()` | queued | |
 | 6 | w1d — grid geometry completed | queued | |
 | — | ⏸ plan review | queued | |
