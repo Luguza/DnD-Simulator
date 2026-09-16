@@ -1607,16 +1607,21 @@ attack would turn one loud failure into a quiet wrong fight.
 The spike was run on the same container before and after, because this container
 reads ~27.5k/sec on `main` against the ~31.5k `w0i` recorded on its own — the
 absolute number cannot be compared across machines, which is what `w3i`'s
-same-run baseline is for. **The completed pipeline costs about 5% of the rate**
-(27,575 -> 26,063/sec, medians of four paired runs), attributed as:
+same-run baseline is for.
 
-- **~1.9%** the two refusals in `_seal()`, measured by stubbing it to a bare
-  `close()` (26,675/sec). Half of that is transitional — the queued-effect
-  refusal goes with `w1c` — and `_seal()` is the one place to inline if `w1k`
-  needs the rest back.
-- **the remaining ~3%** is work the hand-sequenced copy did not do: deriving the
-  attack ability, rolling modifier dice rather than reading flat totals, the
-  reach query, `release()`, and the result tuple.
+**The completed pipeline costs 5.5% of the rate**: 27,574 -> 26,063/sec,
+medians of four paired runs (base 27,542/27,571/27,577/27,608; w1f
+25,882/25,921/26,205/26,245).
+
+**`_seal()`'s two refusals are 1.8% of it**, measured in a second paired run
+against a build with `_seal()` stubbed to a bare `close()`: 26,194 -> 26,675/sec,
+two pairs each. That is a separate experiment on a container whose own spread is
+around 1%, so it is an attribution and not a subtraction — the two runs do not
+decompose each other exactly, and the points it leaves over are the rest of the
+pipeline's new work: deriving the attack ability, rolling modifier dice rather
+than reading flat totals, the reach query, `release()`, and the result tuple.
+The queued-effect refusal is the transitional half and goes with `w1c`;
+`_seal()` is the one place to inline if `w1k` needs the rest back.
 
 None of it is waste to cut; it is the pipeline being complete. It is also most
 of M0's 5% of headroom, spent in the wave `ROADMAP.md` § What else the review

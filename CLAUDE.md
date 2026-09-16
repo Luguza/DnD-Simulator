@@ -78,7 +78,7 @@ honoured at the declaration and raises after it**, and a prevented attack has
 `outcome is None` because `Outcome` describes rolls; **damage on a miss is
 rolled and resolved, without firing `on_damage_roll`** (the Graze mastery's own
 sentence); and the **`Weapon` protocol is widened to six members**, which is the
-shape a feature reads a weapon through. It costs ~5% of the spike's rate,
+shape a feature reads a weapon through. It costs 5.5% of the spike's rate,
 measured and attributed — most of M0's headroom, in the wave the plan review
 said would spend it. `docs/decisions.md` § w1f has the arguments; it retires
 debt-register rows #3 and #6 and opens #24 and #25.

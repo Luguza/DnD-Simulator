@@ -536,8 +536,9 @@ class PooledContexts:
         return ctx
 
     def bag(self) -> DamageBag:
-        """The one bag, emptied. It is handed to four contexts in turn, which
-        is why `reopen()` rebinds a handed bag rather than clearing it."""
+        """The one bag, emptied. It is handed to the three contexts that carry
+        one — the hit, the miss and the damage roll — which is why `reopen()`
+        rebinds a handed bag rather than clearing it."""
         bag = self._bag
         bag.clear()
         return bag
@@ -647,10 +648,12 @@ def _seal(ctx: Context, stage: str) -> None:
     one Chain of Responsibility element a silent no-op at five of the seven
     attack hooks.
 
-    Both are read off the context's private state rather than through its
-    properties, which build a tuple and a string. That, and closing here rather
-    than at the call site, is what keeps the two refusals free: this is the
-    `ctx.close()` the sequence made anyway, with two slot reads in front of it.
+    Both are read off the context's private state rather than through
+    `pending_effects`, which builds a tuple, and `vetoed`, which is a property
+    call over the same slot — the two reasons `hooks/dispatch.py` gives for
+    reaching into the frame itself. That, and closing here rather than at the
+    call site, is what keeps the two refusals free: this is the `ctx.close()`
+    the sequence made anyway, with two slot reads in front of it.
     """
     if ctx._pending:
         refuse_pending(ctx)
