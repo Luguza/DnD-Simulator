@@ -277,7 +277,9 @@ cannot attribute the shortfall (DESIGN.md § Biggest risks). Contexts are pooled
 (engine-owned, hot path); everything a feature stores is frozen (author-owned,
 cold path). **The hot path is measured, not guessed** — `tools/spike.py` is the
 harness, and a change to `hooks/dispatch.py`, `hooks/contexts.py`,
-`engine/damage.py`, `core/rng.py` or `core/dice.py` should be run past it. Three
+`engine/damage.py`, `engine/attack.py`, `core/geometry.py`, `core/rng.py` or
+`core/dice.py` should be run past it — `ROADMAP.md` § Sequencing principles, 10
+is the authority on what that costs and who records it. Three
 of those files carry optimisations whose reasons are only in the decision
 record: `reopen()` is generated per context class, `Dice.parse` is memoised, and
 the dispatch loop reaches into the context's frame on purpose.

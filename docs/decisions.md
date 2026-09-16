@@ -1751,7 +1751,8 @@ done-when is the instruction, *because the done-when is what the agent reads*.
 An agent following it would have swept one file, left the attack pipeline's two
 raise sites standing — six moments, since `_seal()` runs at five stages — and
 shipped a `w1c` in which no `on_hit` handler can apply an effect, which is most
-of what an effect is for. The row now names both
+of what an effect is for.
+
 **The enumeration took three review rounds to finish, and that is the finding
 underneath the finding.** Round 1 corrected the call sites and left the contract
 tests stale in the same cell. Round 2 corrected the tests as "all four" and
@@ -1787,6 +1788,10 @@ task that would answer it. None was in the register, so none is in a
   plate moves 30 feet forever. `w2a` carries the field; `w2f` assembles a
   creature from its equipment and is the first thing that can apply it, exactly
   as it is the first thing that derives AC from it.
+  **The row tracks the speed penalty only**, though § w1a names the stealth
+  penalty in the same breath: this simulator rolls no stealth check, so that
+  half is out of scope rather than owed, and a register row with no task that
+  can retire it is worse than no row — it reads as work outstanding forever.
 - **#28 — movement is never charged.** § w1a: `turn_started()` hands the hero
   30 feet the spike's `_step` walks without ever drawing on, and says plainly
   that the per-step economy call `w2c` will add is a cost the number does not
