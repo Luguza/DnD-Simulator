@@ -15,9 +15,12 @@ the decorator, source base class and dispatcher that run them), `creatures/`
 (`Creature`, `StatBlock`, `Armour` and the action economy) and `engine/` (the
 damage resolution order and the movement observer).
 
-Work is at wave **W1**; **W0 is complete and M0 is met**: `w0a`–`w0i` are done
-and the pessimistic performance spike runs at **~31.5k attack resolutions/sec/core**
-against a budget of 30k. The gate fired on the way — the spike came in at 17k
+Work is at wave **W1**; **W0 is complete and M0 was met**: `w0a`–`w0i` are done
+and the pessimistic performance spike measured **~31.5k attack
+resolutions/sec/core** against a budget of 30k — a margin `w1f` has since spent,
+so the configuration now projects to ~29.8k and the budget is the number to hold
+rather than one being cleared (§ Performance below).
+The gate fired on the way — the spike came in at 17k
 against the 50k the design had assumed, a revision pass across the hot path
 took it to ~31.5k, and the budget was revised to 30k because 50k turned out to
 sit at the theoretical floor of this object model in CPython.
@@ -87,12 +90,12 @@ retires debt-register rows #3 and #6 and opens #24 and #25.
 The W1 critical-path gate then re-read the plans against those three tasks
 (`docs/decisions.md` § The W1 critical-path review). One thing from it changes
 how a W1 task is done: **the margin over the 30k budget is gone**, so `w1b`,
-`w1c`, `w1i` and `w1j` each run the spike paired and record what they cost
+`w1c`, `w1d`, `w1i` and `w1j` each run the spike paired and record what they cost
 (`ROADMAP.md` § Sequencing principles, 10) and `w1k` totals attributions instead
 of discovering a number. Two are worth knowing before you open a file: **`w1c`
 sweeps the pending-effect refusal in `engine/attack.py` as well as
-`engine/damage.py`**, four callers in two files rather than the one its row used
-to name; and three unowned obligations the completed tasks had recorded only in
+`engine/damage.py`**, four call sites and four contract tests across two files
+rather than the one file its row used to name; and three unowned obligations the completed tasks had recorded only in
 their own decision records are now debt rows **#26** (a nested attack raises on a
 shared context pool), **#27** (heavy armour never costs its 10 feet of speed) and
 **#28** (movement is never charged against the economy).

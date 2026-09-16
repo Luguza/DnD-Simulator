@@ -1706,29 +1706,41 @@ The case for it is `w1f` itself. It did not report 5.5%; it reported 5.5% of
 which 1.8% is `_seal()`, measured against a build with `_seal()` stubbed. That
 second number is what makes the first one usable — it names the one thing worth
 inlining if `w1k` needs points back, and it establishes that the remainder is
-the pipeline doing work it has to do. Had `w1b`, `w1c`, `w1i` and `w1j` each
-quietly taken 2% and only `w1k` measured, the gate would have reported a 13%
-shortfall with four candidate causes, no paired run left to separate them, and
-one cheap way out.
+the pipeline doing work it has to do. Had `w1b`, `w1c`, `w1d`, `w1i` and `w1j`
+each quietly taken 2% and only `w1k` measured, the gate would have reported a
+13% shortfall with five candidate causes, no paired run left to separate them,
+and one cheap way out.
 
-So each of those four rows now carries a **priced** clause: run the spike paired
+So each of those five rows now carries a **priced** clause: run the spike paired
 on your own container, record what it cost. `w1k` totals attributions. The cost
 is an afternoon per task, which is what `w1f` shows.
+
+**`w1d` is on that list and the first draft of this review left it off**, which
+is worth recording because of how it was missed: the four obvious rows are the
+ones whose work happens *per attack*, and `core/geometry.py` is the one whose
+work happens per *move*. `tools/spike.py`'s `_step` calls `route()` once per
+move, so line of sight, a size-aware occupancy and the shortest-legal-route
+resolution all land on a path the benchmark already walks. "Hot path" is what
+the benchmark executes, not what the attack sequence calls.
 
 ### `w1c`'s instruction was stale within one task of being written
 
 The most concrete finding, and the one worth the gate on its own. `w1c`'s
 **Done when** told its agent to delete `engine/damage.py`'s `refuse_pending()`
 and its two contract tests. `w1f` then called the same function from two more
-places in `engine/attack.py`, one of them `_seal()`, which runs at five of the
-attack's stages. Debt row #5 was updated to say so; the **Done when** was not.
+places in `engine/attack.py` — at the declaration, and from `_seal()`, which
+runs at five of the attack's stages — and pinned them with two contract tests of
+its own. Debt row #5 was updated to say so; the **Done when** was not, and
+neither the second pair of call sites nor the second pair of tests had anybody.
 
 § The W0 plan review's own sentence is that the register is the map and the
 done-when is the instruction, *because the done-when is what the agent reads*.
-An agent following it would have swept one file, left five raises standing in
-the attack pipeline, and shipped a `w1c` in which no `on_hit` handler can apply
-an effect — which is most of what an effect is for. The row now names both
-files, the caller count, and the rule for telling the two refusals apart:
+An agent following it would have swept one file, left the attack pipeline's two
+raise sites standing — six moments, since `_seal()` runs at five stages — and
+shipped a `w1c` in which no `on_hit` handler can apply an effect, which is most
+of what an effect is for. The row now names both
+files, both pairs of contract tests, and the rule for telling the two refusals
+apart:
 **sweep by exception type, never by message**, which is the distinction `w1f`
 built `core/errors.py`'s two classes to carry and which would otherwise have
 been discovered by deleting a `FeatureContractError` that is permanent.
