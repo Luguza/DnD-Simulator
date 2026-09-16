@@ -38,10 +38,28 @@ jobs:
           # against its base, which a shallow clone does not have.
           fetch-depth: 0
 
-      # graft/ is gitignored; see claude-code-review.yml for why it is pinned.
-      - name: Build the graft graph
+      # graft/ is gitignored; see claude-code-review.yml for why it is pinned
+      # and why the install is cached.
+      - name: Locate the graft install
+        id: graft
         run: |
-          npm install --global --no-fund --no-audit @nanonets/graft@0.18.0
+          echo "node=$(node --version)" >> "$GITHUB_OUTPUT"
+          echo "$HOME/.graft-cli/bin" >> "$GITHUB_PATH"
+
+      - name: Restore the graft install
+        id: graft-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.graft-cli
+          key: graft-0.18.0-${{ runner.os }}-${{ runner.arch }}-node-${{ steps.graft.outputs.node }}
+
+      - name: Build the graft graph
+        env:
+          CACHE_HIT: ${{ steps.graft-cache.outputs.cache-hit }}
+        run: |
+          if [ "$CACHE_HIT" != "true" ]; then
+            npm install --global --prefix "$HOME/.graft-cli" --no-fund --no-audit @nanonets/graft@0.18.0
+          fi
           graft telemetry disable
           graft build
 
