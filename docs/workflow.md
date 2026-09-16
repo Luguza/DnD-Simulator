@@ -66,7 +66,7 @@ be merged by the loop.
 A session that finds a real gap in the task spec does not guess. It opens a
 **spec PR** describing the gap and its resolution, leaves the queue row at
 `next`, and drives the PR through § The review loop like any other. On merge it
-starts a fresh `/next-task` session, which re-reads the corrected row. The W0 debt
+fires the Routine (§ The chain), which re-reads the corrected row. The W0 debt
 register is what this project gets when specs are read critically; an
 implementer that can only ever implement is worse than one that can stop.
 
@@ -97,11 +97,19 @@ worker, and both paths below drive the Routine rather than spawn around it.
   session with a clean context. The checks run again on that firing, which is
   what keeps the fast path from passing a `held` row.
 
+  The session finds the Routine by **name**, not by id — `list_triggers` for
+  **DnD-Simulator: next task** — so that recreating the Routine, which mints a
+  new id, does not silently break the fast path. The name is therefore
+  load-bearing: rename the Routine and the hand-off stops working.
+
   **Set the Routine up from the claude.ai Routines UI**, not from a session — a
   Routine created through the MCP tool stores no connector grants, and its fired
   sessions would come up without the GitHub tools the checks need. New session
-  per firing, push notifications on, this repository as the source, with this
-  prompt:
+  per firing, push notifications on, this repository as the source, and a
+  schedule that never fires twice inside one task's run-up to its PR — the live
+  Routine uses `0 20,22,0,3 * * *`, four firings a day and never closer than two
+  hours apart. The UI's presets do not include that; set the cron with
+  `/schedule update` from a local CLI session. With this prompt:
 
   ```text
   Watchdog for the DnD-Simulator task loop. Be brief and cheap in the three
@@ -129,4 +137,5 @@ The loop is designed to be cheap, and the design is load-bearing, not incidental
 the reviewer cancels superseded runs and routes prose-only diffs to the cheaper
 pass; sessions grep `DESIGN.md`, `ROADMAP.md` and `docs/decisions.md` for the one
 claim they need and never read them end to end; the round cap bounds the worst
-case at four reviews per task; and the watchdog's prompt is three checks long.
+case at four reviews per task; and a firing that fails its checks costs only the
+three checks, so the Routine is cheap on every firing that has no work to do.
