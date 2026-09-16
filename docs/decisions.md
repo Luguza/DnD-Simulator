@@ -1639,6 +1639,14 @@ than reading flat totals, the reach query, `release()`, and the result tuple.
 The queued-effect refusal is the transitional half and goes with `w1c`;
 `_seal()` is the one place to inline if `w1k` needs the rest back.
 
+Both runs predate one change to the spike itself: its Great Weapon Master
+fixture matched the weapon's *name* because the `Weapon` protocol had nothing
+else to ask, and now asks `has(HEAVY)`. The re-measure is 26,104/sec — inside
+the spread, as that fixture's own note predicted when it called the identity
+check a stand-in for the property lookup — and `test_spike.py`'s work witness
+still shows the rider applying, which is what separates a cheap change from a
+handler that quietly stopped firing.
+
 None of it is waste to cut; it is the pipeline being complete. It is also most
 of M0's 5% of headroom, spent in the wave `ROADMAP.md` § What else the review
 changed predicted would spend it — which is what `w1k` was added to measure.

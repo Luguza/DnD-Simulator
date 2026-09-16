@@ -32,7 +32,7 @@ your turn" means only yours.
 
 What is deliberately absent:
 
-- **No `Clock` object.** The engine's turn loop (`engine/turn.py`, w1f) owns the
+- **No `Clock` object.** The engine's turn loop (`engine/turn.py`, w2c) owns the
   current `TimeKey` and passes it in. A second mutable clock here would be a
   second source of truth for the one fact the whole simulation is ordered by.
 - **No roster.** Which creature holds which `InitiativeKey`, which of them are

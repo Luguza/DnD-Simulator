@@ -197,7 +197,7 @@ class Dispatcher:
     def resets(self) -> ResetManager:
         """The ledger this dispatcher spends `once_per` budgets against.
 
-        The turn loop (w1f) sweeps it at boundaries; it is exposed here because
+        The turn loop (w2c) sweeps it at boundaries; it is exposed here because
         the dispatcher is the only thing that writes to it.
         """
         return self._resets
