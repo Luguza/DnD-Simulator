@@ -1697,7 +1697,9 @@ absolute rate does not survive a change of machine, which is exactly what
 `w3i`'s same-run baseline is for. So **M0 was met on measurement and is
 projected to be missed on arithmetic.** `w1k` is the measurement that settles
 which, and this gate does not halt W1 on a projection. What it refuses is to
-let four documents go on describing a margin the arithmetic has already eaten.
+let the plan go on describing a margin the arithmetic has already eaten, in
+every place it said so (ROADMAP § What the W1 critical-path gate changed lists
+them).
 
 **Nothing here is wrong and nothing needs undoing.** `w1f` spent the margin on
 the pipeline being complete, in the wave the last review predicted would spend
@@ -1750,7 +1752,17 @@ An agent following it would have swept one file, left the attack pipeline's two
 raise sites standing — six moments, since `_seal()` runs at five stages — and
 shipped a `w1c` in which no `on_hit` handler can apply an effect, which is most
 of what an effect is for. The row now names both
-files, both pairs of contract tests, and the rule for telling the two refusals
+**The enumeration took three review rounds to finish, and that is the finding
+underneath the finding.** Round 1 corrected the call sites and left the contract
+tests stale in the same cell. Round 2 corrected the tests as "all four" and
+missed a fifth — `test_the_two_refusals_a_sealed_context_makes_are_different_kinds`,
+which raises on both refusals and is an **amend, not a delete**: its
+queued-effect half goes, its veto half and its two `issubclass` assertions stay,
+because those pin `EngineAssemblyError` and `FeatureContractError` as siblings,
+which is the property that makes sweeping by type possible at all. A sweep that
+deleted it would remove the guard on the distinction it was following. So the
+row names the files, both pairs of deletable tests, the fifth test and what
+happens to it, and the rule for telling the two refusals
 apart:
 **sweep by exception type, never by message**, which is the distinction `w1f`
 built `core/errors.py`'s two classes to carry and which would otherwise have

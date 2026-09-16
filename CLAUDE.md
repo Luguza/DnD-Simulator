@@ -22,7 +22,7 @@ and the budget is now projected to be missed** — `w1f`'s completed attack
 pipeline cost 5.5% of the rate, which puts the hostile configuration at ~29.8k,
 under the ≥30k floor. It is a projection across machines rather than a
 measurement; `w1k` is the re-measure that settles it, and nothing revises the
-budget on a projection (§ Performance below, `docs/decisions.md`
+budget on a projection (DESIGN.md § Performance, `docs/decisions.md`
 § The W1 critical-path review).
 The gate fired on the way — the spike came in at 17k
 against the 50k the design had assumed, a revision pass across the hot path
