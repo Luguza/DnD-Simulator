@@ -15,11 +15,15 @@ the decorator, source base class and dispatcher that run them), `creatures/`
 (`Creature`, `StatBlock`, `Armour` and the action economy) and `engine/` (the
 damage resolution order and the movement observer).
 
-Work is at wave **W1**; **W0 is complete and M0 was met**: `w0a`–`w0i` are done
-and the pessimistic performance spike measured **~31.5k attack
-resolutions/sec/core** against a budget of 30k — a margin `w1f` has since spent,
-so the configuration now projects to ~29.8k and the budget is the number to hold
-rather than one being cleared (§ Performance below).
+Work is at wave **W1**; **W0 is complete and M0 was met on measurement**:
+`w0a`–`w0i` are done and the pessimistic performance spike measured **~31.5k
+attack resolutions/sec/core** against a budget of 30k. **That margin is spent
+and the budget is now projected to be missed** — `w1f`'s completed attack
+pipeline cost 5.5% of the rate, which puts the hostile configuration at ~29.8k,
+under the ≥30k floor. It is a projection across machines rather than a
+measurement; `w1k` is the re-measure that settles it, and nothing revises the
+budget on a projection (§ Performance below, `docs/decisions.md`
+§ The W1 critical-path review).
 The gate fired on the way — the spike came in at 17k
 against the 50k the design had assumed, a revision pass across the hot path
 took it to ~31.5k, and the budget was revised to 30k because 50k turned out to

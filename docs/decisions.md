@@ -1684,10 +1684,20 @@ It did not survive three. `w1f` priced the completed attack pipeline at **5.5%
 of the rate** — 27,574 → 26,063/sec, medians of four paired runs on one
 container — and `w1a` and `w1e` each measured no change outside the spread.
 Projected onto the machine `w0i` measured on, the hostile configuration now sits
-at roughly **29.8k**, which is the budget rather than a margin over it. None of
-`w1c`'s expiry sweep, `w1b`'s pool arithmetic, `w1i`'s per-roll records or
-`w1j`'s zero-hit-point hook has landed yet, and those are exactly the per-round
-costs `w0i` said its number understates.
+at roughly **29.8k — under the ≥30k floor, not at it**. None of
+`w1c`'s expiry sweep, `w1b`'s pool arithmetic, `w1d`'s route resolution, `w1i`'s
+per-roll records or `w1j`'s zero-hit-point hook has landed yet, and those are
+exactly the per-round costs `w0i` said its number understates.
+
+**Say plainly what kind of claim that is**, because the two get conflated and
+the conflation is what a stop-and-revise gate cannot afford. *Measured*: 5.5%,
+four paired runs, one container. *Projected*: ~29.8k on a machine nobody has
+re-run the hostile configuration on since `w0i` — and § w1f is explicit that an
+absolute rate does not survive a change of machine, which is exactly what
+`w3i`'s same-run baseline is for. So **M0 was met on measurement and is
+projected to be missed on arithmetic.** `w1k` is the measurement that settles
+which, and this gate does not halt W1 on a projection. What it refuses is to
+let four documents go on describing a margin the arithmetic has already eaten.
 
 **Nothing here is wrong and nothing needs undoing.** `w1f` spent the margin on
 the pipeline being complete, in the wave the last review predicted would spend
@@ -1707,9 +1717,10 @@ which 1.8% is `_seal()`, measured against a build with `_seal()` stubbed. That
 second number is what makes the first one usable — it names the one thing worth
 inlining if `w1k` needs points back, and it establishes that the remainder is
 the pipeline doing work it has to do. Had `w1b`, `w1c`, `w1d`, `w1i` and `w1j`
-each quietly taken 2% and only `w1k` measured, the gate would have reported a
-13% shortfall with five candidate causes, no paired run left to separate them,
-and one cheap way out.
+each quietly taken 2% and only `w1k` measured, the gate would have reported
+~26.9k against a 30k budget — `w1f`'s 5.5% and then five 2% cuts off ~31.5k —
+with five candidate causes, no paired run left to separate them, and one cheap
+way out.
 
 So each of those five rows now carries a **priced** clause: run the spike paired
 on your own container, record what it cost. `w1k` totals attributions. The cost

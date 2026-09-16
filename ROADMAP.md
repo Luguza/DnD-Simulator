@@ -75,7 +75,7 @@ summary; this is the operational detail.
    the one piece worth inlining if the budget gets tight is identified and the
    rest is known to be the pipeline being complete (`docs/decisions.md` § w1f).
    M0's whole headroom was 5%. Had five W1 tasks each spent 2% and only `w1k`
-   measured, the gate would report a shortfall with four candidate causes and no
+   measured, the gate would report a shortfall with five candidate causes and no
    way to choose between them — and the cheapest thing to do with an
    unattributed shortfall is lower the budget, which DESIGN.md § Biggest risks
    names as the failure mode to watch for. So a task that touches the hot path
@@ -275,28 +275,37 @@ Retired so far: **#1, #2, #4 and #10 by `w1a`**, **#7 by `w1e`** and **#3 and
 
 ### What the W1 critical-path gate changed
 
-`w1a`, `w1e` and `w1f` landed between this gate and the last, and three things
+`w1a`, `w1e` and `w1f` landed between this gate and the last, and five things
 came out of re-reading the plan against them.
 
-- **M0's headroom is spent, and it was spent as predicted.** `w1f` measured the
-  completed attack pipeline at **5.5% of the rate**, paired on one container
-  (`docs/decisions.md` § w1f); `w1a` and `w1e` each measured no change outside
-  the spread. M0's margin over the budget was 5%. Projected onto the container
-  `w0i` measured ~31.5k on, the completed pipeline lands at roughly **29.8k** —
-  at the 30k line, before `w1c`'s expiry sweep, `w1b`'s pool arithmetic, `w1i`'s
-  per-roll records and `w1j`'s zero-hit-point hook add the per-round cost `w0i`
-  said the spike understates. The plan's own statements that there is 5% of
-  headroom (this section's `w1k` bullet, § W1, CLAUDE.md, DESIGN.md § Biggest
-  risks) described a margin that no longer exists, and are corrected.
-  `w1k`'s **Done when** already anticipated this exactly — "≥30k, or the
-  shortfall is measured, attributed and either accepted or revised away" — so
-  the row needs no change, but which of its two branches it is likely to take
-  now does.
+- **M0's headroom is spent, and the budget is now projected to be missed.**
+  `w1f` measured the completed attack pipeline at **5.5% of the rate**, paired
+  on one container (`docs/decisions.md` § w1f); `w1a` and `w1e` each measured no
+  change outside the spread. M0's margin over the budget was 5%. Projected onto
+  the container `w0i` measured ~31.5k on, the completed pipeline lands at
+  roughly **29.8k — under the ≥30k floor, not at it** — and that is before
+  `w1c`'s expiry sweep, `w1b`'s pool arithmetic, `w1d`'s route resolution,
+  `w1i`'s per-roll records and `w1j`'s zero-hit-point hook add the per-round
+  cost `w0i` said the spike understates.
+  **What is measured and what is projected are different claims, and only the
+  first is a fact.** Measured: 5.5%, paired, on one container. Projected: ~29.8k
+  on a machine nobody has re-run the hostile configuration on since `w0i`, and
+  § w1f is explicit that an absolute rate does not carry across machines — which
+  is what `w3i`'s same-run baseline exists to fix. So **M0 was met on
+  measurement and is projected to be missed on arithmetic**, and `w1k` is the
+  measurement that settles which. This gate does not halt W1 on a projection;
+  it refuses to let the plan keep describing a margin.
+  The plan's own statements that there is 5% of headroom (§ What else the
+  review changed's `w1k` bullet, § W1, CLAUDE.md, DESIGN.md § Biggest risks)
+  are corrected. `w1k`'s **Done when** already anticipated this exactly —
+  "≥30k, or the shortfall is measured, attributed and either accepted or revised
+  away" — so the row needs no change, but which of its two branches it is likely
+  to take now does.
 - **So the five W1 tasks that touch the hot path price themselves**, which is
   sequencing principle 10 and is added to each of their **Done when** cells.
   This is the only structural change the gate makes. It is cheap — one paired
   spike run per task, which `w1f` shows is an afternoon — and it is what lets
-  `w1k` arrive at a decision rather than at a number with four candidate causes.
+  `w1k` arrive at a decision rather than at a number with five candidate causes.
 - **`w1c`'s instruction was stale within one task of being written.** Its
   **Done when** named `refuse_pending()`'s two call sites in `engine/damage.py`
   and the two contract tests that pin them. `w1f` then called the same function
@@ -307,6 +316,21 @@ came out of re-reading the plan against them.
   the done-when is the instruction, and an agent reading only the instruction
   would sweep one file and leave `on_hit` unable to apply an effect. Corrected
   below.
+- **Three deferred obligations had a decision record and no row**, so no
+  **Done when** cell carried them and the task that owes each had not been
+  told: **#26** (a nested attack raises — `PooledContexts` serves one attack at
+  a time, and `w2c` owes the second pool its message names), **#27** (heavy
+  armour never costs its 10 feet of speed — `w2a` lands the field, `w2f`
+  applies it) and **#28** (movement is never charged against the economy).
+  Each is in the register above and in its retiring task's row.
+- **One W8 seam was still uncut**, and cutting it costs two sentences now
+  against a fitted coefficient set later: `w8a`'s property test binds
+  `engine/estimate.py` to `engine/damage.py`, and its matrix was written from
+  the closed form. `w1f` settled two things that matrix covers by accident or
+  not at all — a **Critical Hit below 20 still has to hit**, so the simple
+  `(21 − threshold)/20` passes every case until a Champion is scored in W4; and
+  **damage on a miss**, so `Ê_raw` carries a miss term or every mastery weapon
+  under-reads. Both are added to `w8a`'s **Done when**.
 
 ### What else the review changed
 

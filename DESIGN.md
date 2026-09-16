@@ -2633,9 +2633,12 @@ more dangerous failure than a check that fails.
    re-measured until `w2e`, twenty tasks later. **That 5% is now spent, three
    tasks into W1 and before any of the per-round cost has landed**: `w1f`'s
    completed attack pipeline measured 5.5% of the rate, which projects the
-   hostile configuration to roughly 29.8k (ROADMAP § What the W1 critical-path
-   gate changed). The risk is no longer that the headroom erodes unwatched; it
-   is that `w1k` is reached with a shortfall and four candidate causes.
+   hostile configuration to roughly 29.8k — **under the floor, not at it**
+   (ROADMAP § What the W1 critical-path gate changed). The projection is
+   arithmetic across machines and not a measurement, which is `w1k`'s to take,
+   but the plan no longer describes a margin it does not have. The risk is no
+   longer that the headroom erodes unwatched; it is that `w1k` is reached with a
+   shortfall and five candidate causes.
    *Mitigated by:* `w1k`, the M0 re-measure at the end of W1 against the real
    `EffectStore` and `ResourcePool`; each W1 task that touches the hot path
    pricing itself so that `w1k` totals attributions rather than discovering a
