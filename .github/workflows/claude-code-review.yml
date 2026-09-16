@@ -70,10 +70,32 @@ jobs:
       # graft/ is gitignored, so the graph is built here from the checked-out
       # head. `build` without --deep is the $0 no-key layer. Pinned, so a new
       # graft release cannot change what the reviewer sees between two pushes.
-      - name: Build the graft graph
+      # The build takes ~2s; the npm install took ~46s of every run, so the
+      # install is cached and the graph is not. The key carries the Node
+      # version because tree-sitter's bindings are built against its ABI.
+      - name: Locate the graft install
+        id: graft
         if: steps.scope.outputs.docs_only == 'false'
         run: |
-          npm install --global --no-fund --no-audit @nanonets/graft@0.18.0
+          echo "node=$(node --version)" >> "$GITHUB_OUTPUT"
+          echo "$HOME/.graft-cli/bin" >> "$GITHUB_PATH"
+
+      - name: Restore the graft install
+        id: graft-cache
+        if: steps.scope.outputs.docs_only == 'false'
+        uses: actions/cache@v4
+        with:
+          path: ~/.graft-cli
+          key: graft-0.18.0-${{ runner.os }}-${{ runner.arch }}-node-${{ steps.graft.outputs.node }}
+
+      - name: Build the graft graph
+        if: steps.scope.outputs.docs_only == 'false'
+        env:
+          CACHE_HIT: ${{ steps.graft-cache.outputs.cache-hit }}
+        run: |
+          if [ "$CACHE_HIT" != "true" ]; then
+            npm install --global --prefix "$HOME/.graft-cli" --no-fund --no-audit @nanonets/graft@0.18.0
+          fi
           graft telemetry disable
           graft build
 
