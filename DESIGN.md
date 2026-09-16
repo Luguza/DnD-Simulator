@@ -2096,6 +2096,12 @@ seconds across eight.
 > the things that make ~630 agent-written features safe. The full argument, the
 > per-step measurements and the two levers taken (a compiled `reopen()`, and
 > MT19937 words in place of PCG32) are in `docs/decisions.md` § w0i.
+>
+> **The margin that revision bought is spent.** `w1f`'s completed attack
+> pipeline cost 5.5% of the rate against a 5% margin, so the budget is now the
+> number to hold rather than the number being cleared. It is not revised again
+> here and, per § Biggest risks, is not to be revised by anyone who cannot
+> attribute the shortfall.
 
 ### The spike must be pessimistic, or M0 proves nothing
 
@@ -2620,17 +2626,25 @@ more dangerous failure than a check that fails.
    it.** The original risk was real and the mitigation worked — the hostile
    configuration measured 17k where a stub would have cleared any budget, the
    architecture was revised, and the budget was revised with it. What that
-   leaves is a live risk of a different shape. The measured ~31.5k sits 5% over
+   leaves is a live risk of a different shape. The measured ~31.5k sat 5% over
    a 30k budget rather than 60% over a 50k one, `w0i` says plainly that what it
    understates is the per-round cost — effects and resources did not exist to be
    swept — and W1 is the wave that adds exactly that. Nothing in the plan
-   re-measured until `w2e`, twenty tasks later. *Mitigated by:* `w1k`, the M0
-   re-measure at the end of W1 against the real `EffectStore` and `ResourcePool`;
-   `w2e`'s re-run when the real APL compiler replaces the hand-compiled one; and
-   `w3i`'s CI gate, which must witness its own fixtures rather than watch the
-   rate alone. *The failure mode to watch for is not a slow feature — it is the
-   budget being lowered a second time.* A budget that follows the measurement
-   down is not a budget.
+   re-measured until `w2e`, twenty tasks later. **That 5% is now spent, three
+   tasks into W1 and before any of the per-round cost has landed**: `w1f`'s
+   completed attack pipeline measured 5.5% of the rate, which projects the
+   hostile configuration to roughly 29.8k (ROADMAP § What the W1 critical-path
+   gate changed). The risk is no longer that the headroom erodes unwatched; it
+   is that `w1k` is reached with a shortfall and four candidate causes.
+   *Mitigated by:* `w1k`, the M0 re-measure at the end of W1 against the real
+   `EffectStore` and `ResourcePool`; each W1 task that touches the hot path
+   pricing itself so that `w1k` totals attributions rather than discovering a
+   number (ROADMAP § Sequencing principles, 10); `w2e`'s re-run when the real
+   APL compiler replaces the hand-compiled one; and `w3i`'s CI gate, which must
+   witness its own fixtures rather than watch the rate alone. *The failure mode
+   to watch for is not a slow feature — it is the budget being lowered a second
+   time.* A budget that follows the measurement down is not a budget, and an
+   unattributed shortfall is the argument that lowers it.
 2. **Goldens grade their own homework.** The agent that writes the feature writes
    its test; a green suite is evidence of self-consistency, not of correctness.
    *Mitigated by:* hand-computed arithmetic in the golden, quoted `source_ref`, a

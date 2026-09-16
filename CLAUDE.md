@@ -27,11 +27,12 @@ the two levers deliberately not taken. **W1 is under way.**
 The plans were then re-read against what the wave measured
 (`docs/decisions.md` § The W0 plan review). Two things came out of it that
 matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
-first cuts and deferred obligations W0 left behind — eighteen rows open, of
-which fifteen are W0's, one is `w1e`'s and two are `w1f`'s — and the task that
+first cuts and deferred obligations W0 left behind — twenty-one rows open, of
+which fifteen are W0's, one is `w1e`'s, two are `w1f`'s and three were found by
+the W1 critical-path gate — and the task that
 retires each;
 check it for the file you are about to touch. And **`w1k` is a
-new task**, an M0 re-measure at the end of W1, because the measured ~31.5k has
+new task**, an M0 re-measure at the end of W1, because the measured ~31.5k had
 5% of headroom and W1 adds the per-round cost the spike does not model.
 
 Two tasks have landed since. `w0g3` cut `engine/triggers.py`, holding
@@ -79,9 +80,22 @@ honoured at the declaration and raises after it**, and a prevented attack has
 rolled and resolved, without firing `on_damage_roll`** (the Graze mastery's own
 sentence); and the **`Weapon` protocol is widened to six members**, which is the
 shape a feature reads a weapon through. It costs 5.5% of the spike's rate,
-measured and attributed — most of M0's headroom, in the wave the plan review
-said would spend it. `docs/decisions.md` § w1f has the arguments; it retires
-debt-register rows #3 and #6 and opens #24 and #25.
+measured and attributed — more than all of M0's 5% headroom, in the wave the
+plan review said would spend it. `docs/decisions.md` § w1f has the arguments; it
+retires debt-register rows #3 and #6 and opens #24 and #25.
+
+The W1 critical-path gate then re-read the plans against those three tasks
+(`docs/decisions.md` § The W1 critical-path review). One thing from it changes
+how a W1 task is done: **the margin over the 30k budget is gone**, so `w1b`,
+`w1c`, `w1i` and `w1j` each run the spike paired and record what they cost
+(`ROADMAP.md` § Sequencing principles, 10) and `w1k` totals attributions instead
+of discovering a number. Two are worth knowing before you open a file: **`w1c`
+sweeps the pending-effect refusal in `engine/attack.py` as well as
+`engine/damage.py`**, four callers in two files rather than the one its row used
+to name; and three unowned obligations the completed tasks had recorded only in
+their own decision records are now debt rows **#26** (a nested attack raises on a
+shared context pool), **#27** (heavy armour never costs its 10 feet of speed) and
+**#28** (movement is never charged against the economy).
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
@@ -249,8 +263,10 @@ catch. It is not optional.
 
 **Performance is a design constraint, not a later concern.** Budget is ≥30k
 attack resolutions/sec/core, revised down from 50k by the W0 spike itself,
-which now measures ~31.5k on the hostile configuration (`docs/decisions.md`
-§ w0i). Contexts are pooled and mutable
+which measured ~31.5k on the hostile configuration (`docs/decisions.md` § w0i)
+and has since spent that margin on `w1f`'s completed attack pipeline — so the
+budget is the number to hold, and it is not revised a second time by anyone who
+cannot attribute the shortfall (DESIGN.md § Biggest risks). Contexts are pooled and mutable
 (engine-owned, hot path); everything a feature stores is frozen (author-owned,
 cold path). **The hot path is measured, not guessed** — `tools/spike.py` is the
 harness, and a change to `hooks/dispatch.py`, `hooks/contexts.py`,
@@ -282,7 +298,8 @@ there is local to a module.
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |
-| `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review |
+| `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review |
+| the performance budget, pricing a change | § w0i, § The W1 critical-path review |
 | `engine/triggers.py`, `Dispatcher.responsive()` | § w0g3 |
 
 Add a section there when a task lands, rather than growing this file.

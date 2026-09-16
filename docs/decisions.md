@@ -1665,3 +1665,139 @@ changed predicted would spend it — which is what `w1k` was added to measure.
   outside the weapon's reach.
 - **No opportunity attack.** `engine/triggers.py` makes the offer and `w2c`
   turns it into an attack; this task gives it the sequence to call.
+
+## The W1 critical-path review — the headroom, and three debts with no row
+
+Not a task. `w1a`, `w1e` and `w1f` have landed since the last gate, and the
+plans were re-read against what those three measured rather than against what
+they assumed. The model is § The W0 plan review, and so is the result: most of
+what follows was already written down in this file by the task that found it,
+and what none of it had was a home in the plan.
+
+### The finding: M0's margin is spent, and the plan still said it wasn't
+
+`w0i` cleared the budget at ~31.5k against 30k. Five percent. § The W0 plan
+review added `w1k` on the argument that five percent would not survive twenty
+tasks unwatched with the per-round cost still unmodelled.
+
+It did not survive three. `w1f` priced the completed attack pipeline at **5.5%
+of the rate** — 27,574 → 26,063/sec, medians of four paired runs on one
+container — and `w1a` and `w1e` each measured no change outside the spread.
+Projected onto the machine `w0i` measured on, the hostile configuration now sits
+at roughly **29.8k**, which is the budget rather than a margin over it. None of
+`w1c`'s expiry sweep, `w1b`'s pool arithmetic, `w1i`'s per-roll records or
+`w1j`'s zero-hit-point hook has landed yet, and those are exactly the per-round
+costs `w0i` said its number understates.
+
+**Nothing here is wrong and nothing needs undoing.** `w1f` spent the margin on
+the pipeline being complete, in the wave the last review predicted would spend
+it, and said so. The budget is not revised — DESIGN.md § Biggest risks already
+names a second revision as the failure mode to watch for, and the argument that
+would produce one is a shortfall nobody can attribute.
+
+### So the change is attribution, not a number
+
+That is the whole structural content of this gate, and it is sequencing
+principle 10: **a cost is actionable only if the task that added it attributes
+it.** Principle 7 makes a stand-in a budget by naming who re-measures it; this
+is the same move pointed the other way.
+
+The case for it is `w1f` itself. It did not report 5.5%; it reported 5.5% of
+which 1.8% is `_seal()`, measured against a build with `_seal()` stubbed. That
+second number is what makes the first one usable — it names the one thing worth
+inlining if `w1k` needs points back, and it establishes that the remainder is
+the pipeline doing work it has to do. Had `w1b`, `w1c`, `w1i` and `w1j` each
+quietly taken 2% and only `w1k` measured, the gate would have reported a 13%
+shortfall with four candidate causes, no paired run left to separate them, and
+one cheap way out.
+
+So each of those four rows now carries a **priced** clause: run the spike paired
+on your own container, record what it cost. `w1k` totals attributions. The cost
+is an afternoon per task, which is what `w1f` shows.
+
+### `w1c`'s instruction was stale within one task of being written
+
+The most concrete finding, and the one worth the gate on its own. `w1c`'s
+**Done when** told its agent to delete `engine/damage.py`'s `refuse_pending()`
+and its two contract tests. `w1f` then called the same function from two more
+places in `engine/attack.py`, one of them `_seal()`, which runs at five of the
+attack's stages. Debt row #5 was updated to say so; the **Done when** was not.
+
+§ The W0 plan review's own sentence is that the register is the map and the
+done-when is the instruction, *because the done-when is what the agent reads*.
+An agent following it would have swept one file, left five raises standing in
+the attack pipeline, and shipped a `w1c` in which no `on_hit` handler can apply
+an effect — which is most of what an effect is for. The row now names both
+files, the caller count, and the rule for telling the two refusals apart:
+**sweep by exception type, never by message**, which is the distinction `w1f`
+built `core/errors.py`'s two classes to carry and which would otherwise have
+been discovered by deleting a `FeatureContractError` that is permanent.
+
+### Three deferred obligations that had a record and no row
+
+Each was written down by the task that made it, in this file, and named the
+task that would answer it. None was in the register, so none is in a
+**Done when** cell, so the agent who owes it has not been told.
+
+- **#26 — a nested attack raises.** `PooledContexts` serves one attack at a
+  time and `declared()` refuses re-entry, because rebinding a live context would
+  resolve the outer attack against the inner one's numbers (§ w1f). The refusal
+  is right and its message names the fix — a second pool, never a deeper one.
+  What was missing is that `w2c`, the wave whose reaction attacks first produce
+  one, had no row saying it owes that pool.
+- **#27 — heavy armour never costs its 10 feet.** § w1a left the Strength
+  requirement and the stealth penalty to "`w2a` imports both fields and the
+  first feature that needs them is where they land". Wearing armour is not a
+  feature, so no later task's row ever named it, and a Strength-13 character in
+  plate moves 30 feet forever. `w2a` carries the field; `w2f` assembles a
+  creature from its equipment and is the first thing that can apply it, exactly
+  as it is the first thing that derives AC from it.
+- **#28 — movement is never charged.** § w1a: `turn_started()` hands the hero
+  30 feet the spike's `_step` walks without ever drawing on, and says plainly
+  that the per-step economy call `w2c` will add is a cost the number does not
+  include. That is a debt against the *budget* as much as against the turn loop,
+  which is why it belongs in the register beside #15 rather than only in a
+  paragraph — it is one of the reasons `w1k`'s number will still be optimistic.
+
+### The seam: two cases `w8a`'s property test would not have thought to include
+
+`engine/estimate.py` must never disagree with `engine/damage.py`, and the
+binding that enforces it is `w8a`'s property test over 10⁵ real resolutions. Its
+matrix was written from the closed form — crit, advantage, resistance,
+save-for-half, a small pool, temp HP. `w1f` settled two things the resolver now
+does that a matrix written that way covers by accident or not at all:
+
+- **A Critical Hit below 20 still has to hit.** The pipeline asks the two
+  questions separately, so `P(crit)` is `P(natural ≥ threshold and hit)`. At a
+  threshold of 20 that equals `(21 − threshold)/20`, and a threshold of 20 is
+  every case in the project until a Champion is written in W4. An estimator
+  using the simple form passes the whole matrix and diverges the first time it
+  scores the one subclass the rule exists for — at which point the fit absorbs
+  it into a coefficient and nothing goes red, which is the failure this test is
+  the only defence against. The matrix needs a lowered threshold against an AC a
+  19 does not meet.
+- **Damage on a miss.** Graze is rolled and resolved down the miss branch, so
+  `Ê_raw = E[X]` carries a miss term. An estimator summing the hit branch alone
+  under-reads every mastery weapon in W4.
+
+Cutting this in `w8a`'s row costs two sentences. Discovered in W8 it is a fitted
+coefficient set to throw away.
+
+### What this review deliberately did not change
+
+- **The budget.** Per above.
+- **`w1k`'s Done when**, which anticipated this exactly — "≥30k, or the
+  shortfall is measured, attributed and either accepted or revised away". The
+  row was right; what changed is which of its two branches it will take.
+- **`trigger.damage_estimate`.** It is the rolled, pre-mitigation total rather
+  than a closed-form estimate (§ w1f), so it is not a second estimator beside
+  `engine/estimate.py` and there is no divergence to police. Whether a reaction
+  should see an exact number at all is a question DESIGN.md § APL settled when
+  it wrote the Uncanny Dodge example, and re-opening it is not this gate's.
+- **The register's name.** It is § The W0 debt register and it now carries six
+  rows that are not W0's. Every row is cited by number from code and from this
+  file; a rename is churn against every one of those citations for a word.
+
+Sources: `docs/decisions.md` § w0i, § The W0 plan review, § w1a, § w1e, § w1f;
+`ROADMAP.md` § Sequencing principles, § The W0 debt register, w1b, w1c, w1i,
+w1j, w1k, w2a, w2c, w2f, w8a; DESIGN.md § Performance, § Biggest risks.
