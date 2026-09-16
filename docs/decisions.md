@@ -1709,8 +1709,8 @@ would produce one is a shortfall nobody can attribute.
 
 ### So the change is attribution, not a number
 
-That is the whole structural content of this gate, and it is sequencing
-principle 10: **a cost is actionable only if the task that added it attributes
+That is everything this gate changes about *how a W1 task is executed*, and it
+is sequencing principle 10: **a cost is actionable only if the task that added it attributes
 it.** Principle 7 makes a stand-in a budget by naming who re-measures it; this
 is the same move pointed the other way.
 
@@ -1822,6 +1822,33 @@ does that a matrix written that way covers by accident or not at all:
 
 Cutting this in `w8a`'s row costs two sentences. Discovered in W8 it is a fitted
 coefficient set to throw away.
+
+### What six review rounds cost, and what that measures
+
+This gate changed no code and took six rounds. Every finding across all six was
+confirmed against the source and none was contested — and after round 1, most of
+them were drift the *previous round's fix* introduced. Round 1 corrected `w1c`'s
+call sites and left its contract tests stale. Round 3 corrected the tests and
+left a sentence unterminated. Round 4 added `w1d` to the priced set and left
+`w1c`'s new dependency edge (round 5) and `w1k`'s missing `w1i` edge (round 6)
+behind it, along with a "the only structural change" claim that three later
+bullets falsified.
+
+**The thing being measured is the plan's cross-reference density, not the
+reviewer's patience.** One fact — "`w1d` is on the hot path" — has to be true in
+a **Done when** cell, a wave preamble, a sequencing principle, a dependency
+edge, `w1k`'s totalling clause, CLAUDE.md's file list and this file. Seven
+places, each individually cheap, and no tooling checks any of them against the
+others. That is the cost of the register-plus-done-when duplication § The W0
+plan review chose deliberately, and it was still the right choice: the
+duplication is what got `w1c`'s instruction corrected at all, since the register
+row was right and the instruction was the thing being read.
+
+It is recorded rather than fixed because the fix is a generated document or a
+consistency linter, and neither is worth building for a plan this size. What is
+worth knowing is the shape: **after changing a fact in the plan, grep the plan
+for the fact — not for the sentence.** The four rounds that found bookkeeping
+would each have been caught by one grep.
 
 ### What this review deliberately did not change
 
