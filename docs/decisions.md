@@ -524,6 +524,15 @@ asserting the first.
 
 ## w0h — walking skeleton
 
+> **Superseded in part by `w1f`.** The attack sequence described below moved to
+> `engine/attack.py` and `attack_once()` is gone (debt #6); what is left in
+> `tools/skeleton.py` is the two builds and the fight loop. The bullets are
+> w0h's reasoning as it stood, and three of them `w1f` re-decided: the crit
+> rule now asks the AC before calling a 19 a critical hit, unconditional
+> proficiency is debt #25 rather than a settled choice, and the reach check
+> reads the weapon the attack is made with. Read § w1f for what the pipeline
+> does now.
+
 - **The attack sequence in `tools/skeleton.py` is not `engine/attack.py`.**
   `w1f` has not landed, so the seven attack hooks and the three damage ones are
   sequenced by hand here, over the real `Dispatcher` and the real
@@ -1532,6 +1541,13 @@ seven attack hooks, which is the class of silence DESIGN.md § Failing loudly
 exists to refuse. `_seal()` carries the queued-effect refusal (debt #5) in the
 same breath and closes the context, so both checks ride the `close()` the
 sequence was making anyway.
+
+**The two refusals raise different types on purpose.** A queued effect is an
+`EngineAssemblyError` — the engine really is incomplete, and `w1c` completes it.
+A late veto is a `FeatureContractError`: the feature used a mutator where it has
+no meaning, and no later task gives it one. `core/errors.py` draws exactly that
+line, and without it `w1c`'s sweep would have to tell the raise it must delete
+from the one it must keep by matching on the message.
 
 ### Damage on a miss, and why `on_damage_roll` does not fire for it
 

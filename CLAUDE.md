@@ -280,7 +280,7 @@ there is local to a module.
 | `engine/damage.py`, the resolution order | § w0g2, § w1e |
 | `engine/attack.py`, the attack sequence | § w1f |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
-| `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h |
+| `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |
 | `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review |
 | `engine/triggers.py`, `Dispatcher.responsive()` | § w0g3 |

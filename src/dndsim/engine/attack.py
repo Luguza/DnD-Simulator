@@ -31,7 +31,7 @@ holds (debt #25).
 from collections.abc import Mapping
 from typing import Final, NamedTuple, Protocol
 
-from dndsim.core.errors import EngineAssemblyError
+from dndsim.core.errors import EngineAssemblyError, FeatureContractError
 from dndsim.core.geometry import in_reach
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
@@ -648,6 +648,14 @@ def _seal(ctx: Context, stage: str) -> None:
     one Chain of Responsibility element a silent no-op at five of the seven
     attack hooks.
 
+    **The two raise different types, and the difference is the point.** A queued
+    effect is an `EngineAssemblyError` because the engine is genuinely
+    incomplete and `w1c` completes it; the veto is a `FeatureContractError`
+    because the feature used a mutator where it has no meaning, and no later
+    task makes it mean one. Without that split `w1c`'s sweep would have to tell
+    the raise it must delete from the one it must keep by reading the message
+    (`core/errors.py`).
+
     Both are read off the context's private state rather than through
     `pending_effects`, which builds a tuple, and `vetoed`, which is a property
     call over the same slot — the two reasons `hooks/dispatch.py` gives for
@@ -658,7 +666,7 @@ def _seal(ctx: Context, stage: str) -> None:
     if ctx._pending:
         refuse_pending(ctx)
     if ctx._frame.veto_reason is not None:
-        raise EngineAssemblyError(
+        raise FeatureContractError(
             f"{ctx.veto_reason} vetoed at {stage}, which the attack pipeline "
             "cannot honour: the attack has been made and only its declaration "
             "can be called off. A feature that means to stop an attack gates it "

@@ -21,7 +21,7 @@ from typing import Final
 import pytest
 
 from dndsim.core.dice import Dice
-from dndsim.core.errors import EngineAssemblyError
+from dndsim.core.errors import EngineAssemblyError, FeatureContractError
 from dndsim.core.geometry import Cell
 from dndsim.core.rng import MersenneRng, Rng, ScriptedRng
 from dndsim.creatures.creature import Creature
@@ -958,12 +958,19 @@ def test_the_defenders_early_veto_prevents_it_too() -> None:
 
 def test_a_veto_once_the_d20_is_on_the_table_is_refused() -> None:
     """By `on_attack_rolled` the attack has been made and `Outcome` has no
-    member for one that was withdrawn, so a veto there is an assembly error
-    rather than a quietly cancelled attack."""
+    member for one that was withdrawn, so a veto there is refused rather than
+    quietly cancelling the attack.
+
+    It is the **feature's** contract that was broken, not the engine's assembly
+    (`core/errors.py`): `ctx.veto()` has no meaning at this hook and no later
+    task gives it one (`docs/decisions.md` § w1f), so there is nothing here that
+    is waiting to be wired in. The author's fix is to gate at
+    `on_declare_attack`.
+    """
     swinger, target = attacker(), defender()
     swinger.attach(VetoRoll(swinger))
 
-    with pytest.raises(EngineAssemblyError, match="on_attack_rolled"):
+    with pytest.raises(FeatureContractError, match="on_attack_rolled"):
         resolve_attack(swinger, target, rng=ScriptedRng([_HIT]))
 
 
@@ -973,7 +980,7 @@ def test_a_veto_after_the_attack_landed_is_refused() -> None:
     swinger, target = attacker(), defender()
     swinger.attach(VetoHit(swinger))
 
-    with pytest.raises(EngineAssemblyError, match="on_hit or on_hit_taken"):
+    with pytest.raises(FeatureContractError, match="on_hit or on_hit_taken"):
         resolve_attack(swinger, target, rng=ScriptedRng([_HIT]))
     assert target.hp == _DEFENDER_HP
 
@@ -987,11 +994,40 @@ def test_the_victims_veto_on_the_shared_context_names_its_own_hook_too() -> None
     target.attach(VetoHitTaken(target))
 
     with pytest.raises(
-        EngineAssemblyError,
+        FeatureContractError,
         match="test.veto_hit_taken: too late vetoed at on_hit or on_hit_taken",
     ):
         resolve_attack(swinger, target, rng=ScriptedRng([_HIT]))
     assert target.hp == _DEFENDER_HP
+
+
+def test_the_two_refusals_a_sealed_context_makes_are_different_kinds() -> None:
+    """**What `w1c` reads.** One dispatch can leave two things behind, and only
+    one of them is the engine's fault:
+
+    - a queued effect is legitimate and nothing drains it *yet*, which is an
+      `EngineAssemblyError` and the raise `w1c` deletes;
+    - a late veto is a mutator used where it has no meaning and never will be
+      given one, which is a `FeatureContractError` and the raise `w1c` keeps.
+
+    The same handler, one hook apart, so nothing but the kind of mistake
+    differs. The two `issubclass` assertions are what make the pair meaningful:
+    the types are siblings under `DndSimError`, and a later change making either
+    one inherit the other would let a sweep collapse them back into a single
+    refusal with both cases above still passing.
+    """
+    queuer, target = attacker(), defender()
+    queuer.attach(QueuesOnHit(queuer))
+    with pytest.raises(EngineAssemblyError, match="w1c"):
+        resolve_attack(queuer, target, rng=ScriptedRng([_HIT]))
+
+    vetoer, other = attacker(), defender()
+    vetoer.attach(VetoHit(vetoer))
+    with pytest.raises(FeatureContractError, match="vetoed at"):
+        resolve_attack(vetoer, other, rng=ScriptedRng([_HIT]))
+
+    assert not issubclass(EngineAssemblyError, FeatureContractError)
+    assert not issubclass(FeatureContractError, EngineAssemblyError)
 
 
 # --- What is not built yet --------------------------------------------------

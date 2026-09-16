@@ -285,13 +285,15 @@ def refuse_pending(ctx: Context) -> None:
 
     `EffectStore` (w1c) drains `ctx.pending_effects`; until it exists a queued
     effect would be silently discarded. Deleted by `w1c`, not by whoever trips
-    over it — and `engine/attack.py` calls it after each of its own dispatches,
-    so w1c has two files to sweep rather than one (debt #5).
+    over it — and `engine/attack.py`'s `_seal()` makes the same refusal after
+    its own dispatches, so w1c has two files to sweep rather than one (debt #5).
 
     The list is read rather than the `pending_effects` property, which builds a
-    tuple: this runs eight times per attack resolution, and the engine already
-    reaches into a context's private state where it owns it (`hooks/dispatch.py`
-    does the same with the frame).
+    tuple: `resolve_damage()` calls this twice on every instance of damage, and
+    the engine already reaches into a context's private state where it owns it
+    (`hooks/dispatch.py` does the same with the frame). `_seal()` tests the same
+    list itself and calls only when there is something to refuse, which is why
+    the two callers do not read alike.
     """
     pending = ctx._pending
     if pending:
