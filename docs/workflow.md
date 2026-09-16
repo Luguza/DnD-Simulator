@@ -16,9 +16,9 @@ One task, one session, one branch, one pull request, reviewed until clean.
 4. It subscribes to PR activity and ends its turn. Review and CI wake it.
 5. Each verdict comment is answered (§ The review loop) until the reviewer says
    `✅ Looks good` with CI green.
-6. It merges unless `human-merge-required` is red, then starts the next session
-   and archives itself. Red means a milestone review or a workflow edit: it
-   stops and hands back (§ Merge authority).
+6. It merges unless `human-merge-required` is red, then fires the Routine for
+   the next task (§ The chain) and archives itself. Red means a milestone
+   review or a workflow edit: it stops and hands back (§ Merge authority).
 
 ## The review loop
 
@@ -81,23 +81,31 @@ waits for that merge.
 
 ## The chain
 
-- **Fast path.** On merging, the session creates the next session with the same
-  `/next-task` prompt, tagged `dnd-task`, then archives itself.
-- **Watchdog.** An hourly Routine that starts a task session only when three
-  things hold at once: the queue has a `next` row, no `claude/task-*` PR is
-  open, and nothing is `held`. It is what makes the chain survive a session
-  dying mid-task; the three conditions are what stop it double-starting one.
+**A Routine session cannot start another session.** Routines run with no
+permission mode ([Routines](https://code.claude.com/docs/en/routines): "there is
+no permission-mode picker"), and `create_session` refuses a parent whose mode it
+cannot read. There is no setting that changes this. So the Routine *is* the
+worker, and both paths below drive the Routine rather than spawn around it.
 
-  **Set it up from the claude.ai Routines UI**, not from a session — a Routine
-  created through the MCP tool stores no connector grants, and its fired
-  sessions would come up without the GitHub and session tools all three checks
-  need. Hourly, new session per firing, push notifications on, this repository
-  as the source, with this prompt:
+- **Watchdog.** The Routine runs three checks and, only if all three hold, works
+  the task itself in that same session: the queue has a `next` row, no
+  `claude/task-*` PR is open, and nothing is `held`. The three conditions are
+  what stop it double-starting a task; firing no more often than the slowest
+  task reaches its PR is the other half of that guard.
+- **Fast path.** On merging, the session fires the Routine (`fire_trigger`)
+  instead of waiting for the schedule, so the next task starts in a fresh
+  session with a clean context. The checks run again on that firing, which is
+  what keeps the fast path from passing a `held` row.
+
+  **Set the Routine up from the claude.ai Routines UI**, not from a session — a
+  Routine created through the MCP tool stores no connector grants, and its fired
+  sessions would come up without the GitHub tools the checks need. New session
+  per firing, push notifications on, this repository as the source, with this
+  prompt:
 
   ```text
-  Watchdog for the DnD-Simulator task loop. Be brief and cheap: make the three
-  checks below and nothing else. Do not read DESIGN.md, ROADMAP.md or
-  docs/decisions.md.
+  Watchdog for the DnD-Simulator task loop. Be brief and cheap in the three
+  checks below: do not read DESIGN.md, ROADMAP.md or docs/decisions.md for them.
 
   1. Read docs/progress.md on main. If it does not exist there, stop silently.
   2. Find the row whose status is `next`. If there is none, or any row is
@@ -107,8 +115,9 @@ waits for that merge.
      two hours old, say so in one sentence naming the PR and what it waits on,
      unless it is a milestone review waiting for the human to merge it.
 
-  Only if all three pass: create a session with the prompt `/next-task`, tagged
-  ["dnd-task"], titled with the task id, and stop. Never do the task yourself.
+  Only if all three pass: run `/next-task` yourself, in this session, and drive
+  it to a merged PR. Never call `create_session` — a Routine session has no
+  permission mode, so that call is always refused.
   ```
 
 Neither path ever passes a `held` row, or a milestone review whose PR is still

@@ -66,7 +66,11 @@ When the verdict is `✅ Looks good`, CI is green and there is no conflict:
 - If `human-merge-required` is red, a human merges this one — a milestone
   review or a workflow edit (`docs/workflow.md` § Merge authority). Notify the
   human, say which, and stop.
-- Otherwise merge — contract files included — then start the next session —
-  `create_session` with this same `/next-task` prompt, tagged `dnd-task`,
-  titled with the next id (or `review` for a `⏸` row) — and archive yourself.
+- Otherwise merge — contract files included — then hand off by firing the
+  watchdog Routine (`fire_trigger`, `trig_01P3i9g4LRN6i4nakMEH32hq`), which
+  re-runs the three checks and takes the next row in a fresh session, and
+  archive yourself. Never `create_session`: a Routine session has no
+  permission mode, so the call is always refused
+  (`docs/workflow.md` § The chain). If the fire is refused too, stop and say
+  so — the schedule picks the queue up on its next firing.
   If the next row is `held`, notify the human instead of starting anything.
