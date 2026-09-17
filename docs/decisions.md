@@ -2176,6 +2176,15 @@ half-paid ability, arrived at through the door rather than the window.
 which is the second reason `select()` is split out: it is how a slot reaches
 `txn.spend()`.
 
+The veto's refusal says where a free use *does* go, and the third review round is
+why it has to. It had ended "a feature that means to make a spend free hands it
+straight back", which is advice this task ships no way to take: there is no
+public mutator that gives a resource back, by the choice recorded below, so the
+only route the sentence left open was `pool.current += 1` — an unguarded slot
+that would also push a pool above its maximum. A use that costs nothing is a
+bigger `maximum` or another `Recovery`, declared with the rest of the resource,
+and the message now says so.
+
 ### `EconomyError`, not a type of its own
 
 `core/errors.py` calls the action economy "the first thing in the project that

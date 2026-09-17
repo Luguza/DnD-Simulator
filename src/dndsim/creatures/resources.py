@@ -261,7 +261,10 @@ class Resources:
             raise FeatureContractError(
                 f"{reason} vetoed {key} being spent, which cannot be honoured: "
                 "the resource is already gone by the time this hook fires. A "
-                "feature that means to make a spend free hands it straight back."
+                "use that costs nothing is a `ResourceSpec` with one more in it "
+                "or one more `Recovery` on it, declared where the rest of the "
+                "resource is; there is no refund, and `pool.current` is not "
+                "one (docs/decisions.md § w1b)."
             )
 
     def __repr__(self) -> str:
