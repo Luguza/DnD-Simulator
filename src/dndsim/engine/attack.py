@@ -35,10 +35,10 @@ from dndsim.core.errors import EngineAssemblyError, FeatureContractError
 from dndsim.core.geometry import in_reach
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
+from dndsim.creatures.effects import apply_pending
 from dndsim.creatures.stats import Weapon
 from dndsim.engine.damage import (
     FreshDamageContexts,
-    refuse_pending,
     resolve_damage,
     roll_damage,
 )
@@ -637,34 +637,30 @@ def _modifier_total(bag: ModifierBag, rng: Rng) -> int:
     return total
 
 
-def _seal(ctx: Context, stage: str) -> None:
-    """End the moment, refusing the two things a dispatch can leave behind that
-    nobody would otherwise notice.
+def _seal(ctx: Context, stage: str, attacker: Creature, defender: Creature) -> None:
+    """End the moment, after applying what the dispatch queued and refusing what
+    it cannot honour.
 
-    A queued effect is refused for as long as nothing drains one (`w1c`, debt
-    #5). A veto is refused everywhere but the declaration: by every later stage
-    the attack has been made, `Outcome` has no member for one that was withdrawn
+    A veto is refused everywhere but the declaration: by every later stage the
+    attack has been made, `Outcome` has no member for one that was withdrawn
     (`rules/enums.py`), and continuing past `ctx.veto()` would make the design's
     one Chain of Responsibility element a silent no-op at five of the seven
     attack hooks.
 
-    **The two raise different types, and the difference is the point.** A queued
-    effect is an `EngineAssemblyError` because the engine is genuinely
-    incomplete and `w1c` completes it; the veto is a `FeatureContractError`
-    because the feature used a mutator where it has no meaning, and no later
-    task makes it mean one. Without that split `w1c`'s sweep would have to tell
-    the raise it must delete from the one it must keep by reading the message
-    (`core/errors.py`).
+    `attacker` and `defender` are passed down because a queued effect names a
+    `Combatant`, and only the creatures the sequence is resolving between can
+    answer to one (`creatures/effects.py`).
 
-    Both are read off the context's private state rather than through
-    `pending_effects`, which builds a tuple, and `vetoed`, which is a property
-    call over the same slot — the two reasons `hooks/dispatch.py` gives for
-    reaching into the frame itself. That, and closing here rather than at the
-    call site, is what keeps the two refusals free: this is the `ctx.close()`
-    the sequence made anyway, with two slot reads in front of it.
+    Both the queue and the veto are read off the context's private state rather
+    than through `pending_effects`, which builds a tuple, and `vetoed`, which is
+    a property call over the same slot — the two reasons `hooks/dispatch.py`
+    gives for reaching into the frame itself. That, and closing here rather than
+    at the call site, is what keeps a dispatch that queued nothing free: this is
+    the `ctx.close()` the sequence made anyway, with two slot reads in front of
+    it.
     """
     if ctx._pending:
-        refuse_pending(ctx)
+        apply_pending(ctx, attacker, defender)
     if ctx._frame.veto_reason is not None:
         raise FeatureContractError(
             f"{ctx.veto_reason} vetoed at {stage}, which the attack pipeline "
@@ -723,7 +719,7 @@ def resolve_attack(
     strike(ON_DECLARE_ATTACK, declared)
     parry(ON_INCOMING_ATTACK_DECLARED, declared)
     if declared._pending:
-        refuse_pending(declared)
+        apply_pending(declared, attacker, defender)
     if declared.vetoed:
         declared.close()
         contexts.release()
@@ -758,7 +754,7 @@ def resolve_attack(
     )
     strike(ON_ATTACK_ROLLED, rolled)
     met_crit_threshold = rolled.is_critical
-    _seal(rolled, "on_attack_rolled")
+    _seal(rolled, "on_attack_rolled", attacker, defender)
 
     if natural == NATURAL_ONE:
         outcome = Outcome.CRITICAL_MISS
@@ -793,7 +789,7 @@ def resolve_attack(
         )
         strike(ON_HIT, hit)
         parry(ON_HIT_TAKEN, hit)
-        _seal(hit, "on_hit or on_hit_taken")
+        _seal(hit, "on_hit or on_hit_taken", attacker, defender)
 
         damage_roll = contexts.damage_roll(
             attacker=attacker,
@@ -803,7 +799,7 @@ def resolve_attack(
             damage=bag,
         )
         strike(ON_DAMAGE_ROLL, damage_roll)
-        _seal(damage_roll, "on_damage_roll")
+        _seal(damage_roll, "on_damage_roll", attacker, defender)
 
         amounts = roll_damage(
             bag.parts, rng=rng, base_type=weapon.damage_type, critical=critical
@@ -828,7 +824,7 @@ def resolve_attack(
             damage=contexts.bag(),
         )
         strike(ON_MISS, miss)
-        _seal(miss, "on_miss")
+        _seal(miss, "on_miss", attacker, defender)
         # A miss is not always nothing: the Graze mastery deals the ability
         # modifier on one, and it is resolved through the same defences a hit
         # meets. `on_damage_roll` does not fire for it (`docs/decisions.md`
@@ -852,7 +848,7 @@ def resolve_attack(
         damage_dealt=damage_dealt,
     )
     strike(ON_ATTACK_RESOLVED, resolved)
-    _seal(resolved, "on_attack_resolved")
+    _seal(resolved, "on_attack_resolved", attacker, defender)
     contexts.release()
 
     return AttackResult(outcome, damage_dealt)

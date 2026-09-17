@@ -18,10 +18,11 @@ from typing import Final
 import pytest
 
 from dndsim.core.dice import Dice
-from dndsim.core.errors import EngineAssemblyError
+from dndsim.core.errors import EngineAssemblyError, FeatureContractError
 from dndsim.core.geometry import Cell
 from dndsim.core.rng import ScriptedRng
 from dndsim.creatures.creature import Creature
+from dndsim.creatures.effects import Effect
 from dndsim.creatures.stats import StatBlock
 from dndsim.engine.damage import mitigate, resolve_damage, roll_damage
 from dndsim.hooks.contexts import (
@@ -111,7 +112,8 @@ def no_dice() -> ScriptedRng:
 
 @dataclass(frozen=True, slots=True)
 class Bandage:
-    """The narrowest thing that satisfies the `Effect` protocol."""
+    """The narrowest thing that satisfies the `Effect` protocol, and not an
+    `Effect`."""
 
     name: str
 
@@ -779,55 +781,105 @@ def test_a_hit_the_temporary_hit_points_ate_whole_does_reach_it() -> None:
     assert watcher.seen == [(5, frozenset({SLASHING}))]
 
 
-# --- What is not built yet -------------------------------------------------
+# --- What a handler queues, applied ------------------------------------------
 
 
 class Queuer(HookSource):
-    """A handler that applies an effect — Hellish Rebuke's shape, and nothing
-    yet exists to carry it out."""
+    """A handler that applies an effect — Hellish Rebuke's shape."""
 
     ID = "test.queuer"
 
     @hook("on_incoming_damage")
     def queue(self, ctx: IncomingDamageContext) -> R:
-        ctx.apply_effect(ctx.defender, Bandage(name="on fire"))
+        ctx.apply_effect(ctx.defender, Effect(ctx.defender))
         return R.APPLIED
 
 
 class LateQueuer(HookSource):
-    """The same mistake one hook later, after hit points have already moved."""
+    """The same, one hook later, after hit points have already moved."""
 
     ID = "test.late_queuer"
 
     @hook("on_damage_taken")
     def queue(self, ctx: DamageTakenContext) -> R:
-        ctx.apply_effect(ctx.defender, Bandage(name="bleeding"))
+        ctx.apply_effect(ctx.defender, Effect(ctx.defender))
         return R.APPLIED
 
 
-def test_an_effect_queued_during_damage_is_refused_until_w1c() -> None:
-    """**Delete this test in w1c**, along with `_refuse_pending()` itself.
-    `EffectStore` is what drains `ctx.pending_effects`; until it exists a
-    handler that queues an effect would have it silently discarded, which is a
-    feature whose whole point did nothing and said nothing. Loud beats silent,
-    so it raises."""
+class QueuesOntoAStranger(HookSource):
+    """A handler naming a creature this event knows nothing about."""
+
+    __slots__ = ("_stranger",)
+
+    ID = "test.queues_onto_a_stranger"
+
+    def __init__(self, owner: Creature, stranger: Creature) -> None:
+        super().__init__(owner)
+        self._stranger = stranger
+
+    @hook("on_incoming_damage")
+    def queue(self, ctx: IncomingDamageContext) -> R:
+        ctx.apply_effect(self._stranger, Effect(self._stranger))
+        return R.APPLIED
+
+
+class QueuesABandage(HookSource):
+    """A handler queuing something the protocol accepts and a store cannot."""
+
+    ID = "test.queues_a_bandage"
+
+    @hook("on_incoming_damage")
+    def queue(self, ctx: IncomingDamageContext) -> R:
+        ctx.apply_effect(ctx.defender, Bandage(name="gauze"))
+        return R.APPLIED
+
+
+def test_an_effect_queued_during_damage_lands_on_the_defender() -> None:
+    """The drain that replaced `w0g2`'s refusal (debt #5): `on_incoming_damage`
+    is dispatched, and what its handlers queued is on the creature before
+    mitigation runs."""
     dummy = creature(hp=20)
     dummy.attach(Queuer(dummy))
-    with pytest.raises(EngineAssemblyError, match="w1c"):
-        resolve_damage(dummy, {SLASHING: 6}, rng=no_dice())
+
+    resolve_damage(dummy, {SLASHING: 6}, rng=no_dice())
+
+    assert [held.name for held in dummy.effects] == ["effect"]
+    assert dummy.hp == 14
 
 
-def test_the_same_refusal_covers_the_second_dispatch() -> None:
-    """`on_damage_taken` is drained by nobody either. Note that hit points have
-    already moved by the time it raises: this is an assembly error about a
-    half-built engine, not a rules error to be caught and continued from —
-    which is the other half of the reason w1c deletes it rather than handles
-    it."""
+def test_the_second_dispatch_is_drained_too() -> None:
+    """`on_damage_taken` fires after hit points have moved, and is drained on
+    the same terms — the pair of call sites is why the register named two."""
     dummy = creature(hp=20)
     dummy.attach(LateQueuer(dummy))
-    with pytest.raises(EngineAssemblyError, match="w1c"):
-        resolve_damage(dummy, {SLASHING: 6}, rng=no_dice())
+
+    resolve_damage(dummy, {SLASHING: 6}, rng=no_dice())
+
+    assert len(dummy.effects) == 1
     assert dummy.hp == 14
+
+
+def test_an_effect_queued_onto_a_non_participant_is_refused() -> None:
+    """A queued effect names a `Combatant`, which carries no store, so the
+    engine matches it against the creatures the event is between. Anything else
+    needs w2c's roster and says so rather than being dropped (debt #30)."""
+    dummy, stranger = creature(hp=20), creature(hp=20)
+    dummy.attach(QueuesOntoAStranger(dummy, stranger))
+
+    with pytest.raises(EngineAssemblyError, match="participants"):
+        resolve_damage(dummy, {SLASHING: 6}, rng=no_dice())
+    assert len(stranger.effects) == 0
+
+
+def test_something_that_is_only_shaped_like_an_effect_is_refused() -> None:
+    """`hooks/contexts.py`'s `Effect` protocol asks for a name and nothing else,
+    because a name is all a context reads. What a store holds is the class, and
+    the gap between the two is a refusal rather than a silent drop."""
+    dummy = creature(hp=20)
+    dummy.attach(QueuesABandage(dummy))
+
+    with pytest.raises(FeatureContractError, match="not an"):
+        resolve_damage(dummy, {SLASHING: 6}, rng=no_dice())
 
 
 # --- The seam between the two halves ----------------------------------------

@@ -85,14 +85,16 @@ Null Object policy of DESIGN.md § APL.
 ## What `w2c` still owes this file
 
 - **Draining `ctx.pending_effects`.** The dispatcher deliberately does not
-  (`hooks/dispatch.py`), and the engine that owns the event must. There are no
-  effects to queue until `w1c`, so rather than write a drain against a class
-  that does not exist, `_offer()` raises if a handler queues one.
+  (`hooks/dispatch.py`), and the engine that owns the event must. `w1c` drained
+  the attack's and the damage event's by matching a queued effect's target
+  against their participants; an offer's audience is the room rather than two
+  creatures, so this one waits on the roster, and until then `_offer()` raises
+  if a handler queues one.
 - **Speed set to zero**, which is what 2024 Sentinel does to a creature it hits
   on the way past. The walk below stops on the mover going down because hit
-  points exist; `w1a`'s `ActionEconomy` now holds the feet a mover has left, so
-  what remains is `w1c`'s effect to set them to nought and this file's walk to
-  ask — neither of which is this task's.
+  points exist; `w1a`'s `ActionEconomy` now holds the feet a mover has left and
+  `w1c` the effect that would set them to nought, so what remains is this
+  file's walk to ask — which is not this task's.
 - **Disengage, forced movement and teleportation**, which do not provoke. The
   valve is here — `provokes=False` — but what sets it is the Command and the
   condition, and both are `w2b`/`w2c`'s.

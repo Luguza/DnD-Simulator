@@ -1868,3 +1868,253 @@ would each have been caught by one grep.
 Sources: `docs/decisions.md` § w0i, § The W0 plan review, § w1a, § w1e, § w1f;
 `ROADMAP.md` § Sequencing principles, § The W0 debt register, w1b, w1c, w1i,
 w1j, w1k, w2a, w2c, w2f, w8a; DESIGN.md § Performance, § Biggest risks.
+
+## w1c — effects, and the two places a queued one had nowhere to go
+
+`Effect`, `EffectStore` and `Stacking` are the objects DESIGN.md § Durations
+describes; what needed deciding was everything around them, because the row's
+own deliverable — "`ctx.pending_effects` is drained at every one of its
+callers" — turned out to name two questions the plans do not answer. Both are
+about what the engine can reach from where.
+
+### A queued effect names a `Combatant`, which has no store behind it
+
+`ctx.apply_effect(target, effect)` takes the narrow read-only protocol
+`hooks/contexts.py` declares, because that is all a feature has: `HookSource.owner`
+is a `Combatant` and every participant field on every context is one. An
+`EffectStore` hangs off a `Creature`. So the drain has to cross from the view to
+the object, and there are only four ways across.
+
+- **Widen `Combatant` with the store.** Refused, and not only because
+  `ROADMAP.md` § W1 reserves the protocol widenings for `w1a` and `w1f`: it does
+  not typecheck. `EffectStore.apply()` takes this module's `Effect`, the
+  protocol version carries a name and nothing else, and a parameter type is
+  contravariant — so a store accepting the narrower class does not satisfy a
+  protocol member declaring the wider one. Making it satisfy the protocol means
+  moving `duration`, `charges` and `STACKING` into `hooks/contexts.py`, which is
+  the whole effect model in the package content batches may never touch.
+- **A registry keyed by combatant.** A global bus, which DESIGN.md § Levers
+  refuses for dispatch and `core/timeline.py` refuses again for the reset
+  ledger, and for the reason that applies here too: every application would pay
+  a lookup the size of the encounter.
+- **A `cast`.** An unchecked assertion in the one place the checker could have
+  proved something, which is what this project's contract tests exist to avoid.
+- **Identity against the event's participants.** Taken. `apply_pending()` is
+  handed the creatures the caller is resolving between and matches each queued
+  target against them.
+
+It is complete for the two files that call it, and the reason is structural
+rather than lucky: `engine/damage.py` dispatches to the defender only, and
+`engine/attack.py` to the attacker and the defender, so every handler that can
+queue during either event is owned by one of the two and can name no third
+creature except through state of its own. An offer is the case where that stops
+being true — its audience is the room — which is why `engine/triggers.py` keeps
+its refusal and debt #18 stays `w2c`'s. The general answer is `w2c`'s roster and
+is debt #30; until then a target that is neither participant is refused loudly
+rather than dropped, which is the same bargain the refusal this task deleted was
+making.
+
+The `isinstance` in the drain is the second half of the same gap. The protocol
+admits anything with a name — `tests/contract/test_triggers.py` queues a bare
+`object()` through it — so what a store is handed is checked once, at the
+boundary, and a `FeatureContractError` says which of the two `Effect`s the
+caller meant. That is the narrowing position `ROADMAP.md` § Standing rules
+allows, not a branch on what kind of effect something is.
+
+### The store keeps the clock, because nothing hands it one
+
+A `Duration` is relative and resolves at application time (`core/timeline.py`),
+and the moment an effect is applied is almost always inside an attack: Reckless
+Attack applies from `on_declare_attack`, Vex from `on_hit`. No attack context
+carries a `TimeKey`, `resolve_attack()` is handed none, and DESIGN.md § Durations
+nonetheless has Rage calling `refresh()` from three of those hooks and
+"recomput[ing] against the current clock". So the clock has to be reachable from
+the creature.
+
+Passing `now` down through `resolve_attack()` and `resolve_damage()` was the
+alternative, and it is a signature change to the pipeline `w1f` has just frozen,
+on a path with no honest default — a `TimeKey` invented at the call site is a
+wrong fight rather than a missing one. What the store holds instead is the last
+clock it was *told*: `expire_before()` and `expire_after()` take `now` and record
+it, and nothing else writes it. That is a copy of the one fact, written only by
+the turn loop that owns it, and not the second authority `core/timeline.py`
+refuses; `Duration.resolve()` reads only `now.round` and `now.initiative`, so a
+stale phase between two boundaries cannot change an answer.
+
+Until `w2c` calls the sweeps, nothing moves it: every store reads the top of
+round 1 and every duration resolves against it. That is debt #29, and it is
+stated in a test rather than left as a default nobody chose.
+
+### Ending is the store's, never the effect's
+
+`hooks/dispatch.py` rebuilds a creature's dispatch table on every attach and
+detach, and attachment order is the last tiebreak in dispatch order (DESIGN.md
+§ Ordering). An effect that attached or removed itself would be a second hand on
+that table. So `EffectStore` owns both halves and goes through `Creature.attach()`
+rather than the dispatcher, which is what makes the ownership check — the one
+that stops a handler running for the wrong creature — cover an effect too.
+
+`Effect.consume()` and `Effect.refresh()` therefore raise when the effect is
+attached to nothing: both need the store, one for the creature and one for the
+clock, and an effect holding a deadline it computed against nothing is the
+silent half of the bug.
+
+### The two hooks only an `EffectStore` can fire
+
+`on_effect_applied` and `on_effect_expired` were in the closed registry from
+`w0e` with no possible caller, and this is the task that builds the only object
+that can call them — `EffectContext` was written for them and
+`on_effect_applied`'s summary names Rage extending rather than stacking. A
+registry that is closed and CI-diffed makes a hook nothing fires worse than a
+missing one: the feature that declares a handler for it runs nothing and says
+nothing, which is the failure the closure exists to prevent. The first cut of
+this task shipped without them and the review caught it.
+
+Both fire between the store's bookkeeping and the dispatcher's: **applied before
+the attach, expired after the store has let go and before the detach**. Stated
+the other way round, that is one rule — *an effect's own handlers run for
+exactly the span it is attached* — and each half is independently right. It
+cannot answer its own arrival, which is the snapshot rule `hooks/contexts.py`
+states for queued effects and the reason Reckless Attack grants advantage
+separately from applying its effect. It can answer its own ending, which is the
+only moment it has left.
+
+**What is already held is asked on both sides of the dispatch**, for the same
+reason: a handler may dispel the incumbent, leaving a remembered one attached to
+nothing that `refresh()` would raise on, or apply one of its own, leaving a
+remembered `None` that would attach a second `REFRESH` effect of a class that
+may hold only one. Asking again costs a scan of a handful of effects on a path
+that is not the attack's.
+
+**Letting go first is what makes a removal happen once**, and the review found
+it the hard way. An `on_effect_expired` handler may remove something — a chain
+ending with whatever anchored it, a dispel — and what it removes can be an
+effect the same expiry sweep already has in its snapshot. Reaching that handler
+with the effect still held fires its hook a second time and then dies inside
+`list.remove`. So `remove()` settles the store's side before dispatching and
+refuses an effect it does not hold with a sentence, and the sweep skips what a
+handler took while it was running. The state a handler sees is therefore: the
+creature no longer holds the effect, and the effect still answers.
+
+**A veto is honoured on the application and refused on the expiry**, which is
+the split `engine/attack.py` makes at `_seal()` and for the same reason. An
+effect is "on its way onto a creature" until this hook has run — the phrase is
+`hooks/contexts.py`'s own — so refusing one is what a feature immune to it does,
+and `apply()` already had a return that says "nothing landed". An ending is a
+position on the clock that has been passed; a feature meaning to keep an effect
+alive refreshes it, and a veto there would be a mutator quietly doing nothing.
+A `REJECT`ed application fires neither hook, because nothing happened.
+
+Each dispatch is drained like any other (`apply_pending(ctx, holder)`), so a
+handler that applies an effect on hearing about one is not the silent drop that
+debt #5 was about.
+
+**`ctx.effect` is the application, not what ends up in force**, and on a
+`REFRESH` re-application those differ: the handler is handed the incoming object,
+which is attached to nothing and discarded once the incumbent has absorbed it.
+The fourth review round raised this and it is recorded rather than patched
+(debt #31, `docs/workflow.md` § The review loop), because the two decisions above
+make it structural — the hook fires before the state change so a veto can refuse
+an effect, and the incumbent cannot be known before the dispatch because the
+dispatch can dispel or create one. Firing after the change instead, and losing
+the veto, is the alternative; it is a design choice for the milestone review, and
+nothing declares a handler on this hook until W3 authoring does.
+
+### `apply()` returns what is in force, rather than a boolean
+
+`REJECT`'s entire content is the answer to "did anything happen", and `REFRESH`'s
+is "the one already there". Returning the incumbent, or `None` when the
+application was refused, says both without a second call — which is what lets
+DESIGN.md § The scorer price a re-application of an active effect at zero with no
+condition written anywhere. `STACK` is the one policy under which a creature
+holds two of something, which is why it is the member an author picks
+deliberately and `REFRESH` is the default.
+
+`UNIQUE_PER_SOURCE` keys on the caster object rather than on a name, because
+"one per ranger" is about a creature and two creatures can share a name. An
+effect declaring that policy with no caster is refused at construction: the
+alternative is a policy that silently behaves as `REFRESH` and merges two
+rangers' marks in some later fight.
+
+### The drain is per dispatch, not per attack
+
+`hooks/contexts.py` says the engine "drains the queue after the dispatch", and
+that is what this is: an effect applied at one stage of an attack is attached
+for the stages after it, so a rider applied from `on_hit` contributes at
+`on_damage_roll` of the hit that applied it. The review read the same paragraph
+as scoping the drain to the whole attack, which is worth answering rather than
+leaving to be rediscovered.
+
+What the paragraph protects is the snapshot rule, and it is a rule about one
+dispatch: the handler list is fixed per dispatch, so an effect applied during a
+hook never runs in that hook. Reckless Attack still has to call
+`grant_advantage()` beside applying its effect, because the dispatch its effect
+would have answered is the one already running — the example holds under this
+reading and does not distinguish it from the other.
+
+Deferring to the end of the attack is refused on two counts beyond the sentence
+itself. It would give `on_incoming_damage` two different meanings depending on
+whether `resolve_damage()` was reached through an attack or called directly,
+since the queue would be the attack's rather than the event's. And the pending
+list lives on a context `_seal()` closes and `reopen()` clears, so accumulating
+across an attack means a second queue outside the contexts — machinery for a
+question the plans have already answered in one sentence.
+`test_the_queue_is_drained_per_dispatch_and_not_per_attack` pins it.
+
+One detail the review's own example got the wrong way round, and it is worth
+recording because the authoring skill will want it: `on_damage_roll` is `SELF`
+on the attacker, so a rider applied to the *defender* from `on_hit` has nothing
+to contribute with there. The attacker is the only end this can be asked from.
+
+### What it cost the benchmark
+
+Eight paired runs on one container, alternating so drift cancels: **22.5k–22.9k
+attack resolutions/sec/core before, 22.3k–22.8k after**, ratios 1.012, 0.986,
+0.990, 0.995, 1.003, 0.999, 1.004, 0.975 — a median of **0.997, which is −0.3%,
+against pair-to-pair ratios spanning −2.5% to +1.2%**. The cost is not distinguishable from zero, and
+that is what the diff predicts: on the hot path the only change is
+`refuse_pending(ctx)` becoming `apply_pending(ctx, attacker, defender)`, the same
+empty-list early return with two more arguments pushed, plus one `EffectStore`
+per creature at construction. The two effect hooks cost nothing here for the
+same reason the sweep does — the spike applies no effect, so neither dispatches.
+Startup is 0.132–0.139 s per worker on both sides, one module import apart.
+
+The absolute number is well under the 30k budget on this container and says
+nothing about it: `w0i` measured ~31.5k on a different machine, which is why
+principle 10 asks for a paired attribution rather than a number.
+
+**What is not in that measurement is the half the row expected to be larger.**
+The per-boundary expiry sweep does not run, because there is no turn loop to
+call it — `tools/spike.py` resolves attacks and walks, and nothing in it crosses
+a turn boundary. So `w1c`'s attribution covers the drain and not the sweep, the
+spike still answers `self.raging` from a stand-in flag (debt #15), and `w1k`
+inherits an expiry sweep with no measured cost. Saying so is the point of
+principle 10: an unattributed shortfall is the one nobody can act on.
+
+### What this task deliberately did not do
+
+- **Touch `engine/triggers.py`.** Its raise is debt #18 and `w2c`'s, and it is
+  not the same debt one hook along after all — an offer has an audience rather
+  than two participants, so it needs the roster this task did without.
+- **Sweep anything.** `expire_before()` and `expire_after()` exist and are
+  tested; the turn loop that calls them at every boundary is `w2c`'s, and a
+  sweep called from somewhere else would be a second place the clock advances.
+- **Model Vex's target key.** DESIGN.md § Durations describes Vex's charge as
+  "keyed to a target id"; which target a charge is spendable against is the
+  feature's state, and `w4` is where the feature exists to hold it.
+- **Give an `Effect` a display name beside its id.** `HookSource.ID` is already
+  what the trace, the damage breakdown and the no-op report call it, and the
+  `Effect` protocol asks for one string. Two would be one more pair that can
+  disagree.
+- **Fire `on_effect_applied` for an effect the store already holds under
+  `REJECT`.** Nothing happened, and a handler told about an event that did not
+  take place is the same wrong number as one not told about an event that did.
+- **Decide whether a veto unwinds what earlier handlers queued.** It does not,
+  and it needed no ruling: `ctx.veto()` halts the chain, so anything queued was
+  queued by a handler that had already run, and the dispatcher does not unwind
+  that handler's other mutations or its spent `once_per` budget either.
+
+Sources: DESIGN.md § Durations, § Structural prevention over testing, § Levers,
+§ The scorer; `core/timeline.py`; `docs/decisions.md` § w0d, § w0g2, § w0g3,
+§ w1a, § w1f, § The W1 critical-path review; `ROADMAP.md` § Sequencing
+principles 10, § The W0 debt register rows #5, #15, #18, w1c, w1k, w2c.

@@ -5,7 +5,8 @@ the engine asks.
 benchmark ran against a real object rather than a stub — real hit points, a real
 position on the grid, a real `Dispatcher` carrying real handlers — and `w1a`
 completed it with equipment, a derived Armor Class and the action economy,
-rewriting none of it. `w1b` and `w1c` hang resources and effects off it next.
+rewriting none of it. `w1c` hung the `EffectStore` off it; `w1b`'s resources are
+next.
 
 **A creature's AC is a fact about what it is wearing.** `armour` and `shield`
 are equipment, beside the weapon, and `armour_class` is derived from them and
@@ -46,8 +47,9 @@ from collections.abc import Mapping
 from typing import Final
 
 from dndsim.core.geometry import Cell
-from dndsim.core.timeline import InitiativeKey
+from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.economy import ActionEconomy
+from dndsim.creatures.effects import EffectStore
 from dndsim.creatures.stats import UNARMOURED, Armour, StatBlock, Weapon
 from dndsim.hooks.contexts import Context
 from dndsim.hooks.dispatch import Dispatcher
@@ -98,6 +100,7 @@ class Creature:
         "crit_threshold",
         "dispatcher",
         "economy",
+        "effects",
         "hp",
         "initiative",
         "name",
@@ -149,6 +152,13 @@ class Creature:
         self._armour_class = self._derive_armour_class()
         self.economy = ActionEconomy()
         self.dispatcher = Dispatcher(economy=self.economy)
+        # The clock the store resolves a `Duration` against, before anything
+        # has begun. `UNSEATED` is a seat in the order rather than a position
+        # ahead of it, so a duration anchored to a creature that sorts before
+        # it already reads as begun; `engine/turn.py` (w2c) moves this on at
+        # every boundary it sweeps, and until then debt #29 is what a deadline
+        # resolved here is worth.
+        self.effects = EffectStore(self, now=TimeKey(1, UNSEATED, TurnPhase.START))
 
     # -- what the stat block already knows ------------------------------------
 

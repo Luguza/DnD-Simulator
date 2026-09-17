@@ -14,7 +14,6 @@ Hits), "Equipment" -> Weapon Properties (Finesse, Reach), Rules Glossary
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final
 
@@ -25,6 +24,7 @@ from dndsim.core.errors import EngineAssemblyError, FeatureContractError
 from dndsim.core.geometry import Cell
 from dndsim.core.rng import MersenneRng, Rng, ScriptedRng
 from dndsim.creatures.creature import Creature
+from dndsim.creatures.effects import Effect
 from dndsim.creatures.stats import GREATSWORD, Armour, StatBlock, Weapon
 from dndsim.engine.attack import (
     FRESH,
@@ -145,13 +145,6 @@ def no_dice() -> ScriptedRng:
     """A generator scripted with nothing, which raises the moment anything is
     rolled — how a case says "no d20 was drawn"."""
     return ScriptedRng([])
-
-
-@dataclass(frozen=True, slots=True)
-class Bandage:
-    """The narrowest thing that satisfies the `Effect` protocol."""
-
-    name: str
 
 
 # --- The probes and features the cases attach -------------------------------
@@ -458,7 +451,7 @@ class QueuesAtDeclaration(HookSource):
 
     @hook("on_declare_attack")
     def queue(self, ctx: AttackDeclaredContext) -> R:
-        ctx.apply_effect(ctx.defender, Bandage(name="marked"))
+        ctx.apply_effect(ctx.defender, Effect(ctx.defender))
         return R.APPLIED
 
 
@@ -471,7 +464,7 @@ class QueuesOnHit(HookSource):
 
     @hook("on_hit")
     def queue(self, ctx: HitContext) -> R:
-        ctx.apply_effect(ctx.defender, Bandage(name="burning"))
+        ctx.apply_effect(ctx.defender, Effect(ctx.defender))
         return R.APPLIED
 
 
@@ -1002,25 +995,17 @@ def test_the_victims_veto_on_the_shared_context_names_its_own_hook_too() -> None
 
 
 def test_the_two_refusals_a_sealed_context_makes_are_different_kinds() -> None:
-    """**What `w1c` reads.** One dispatch can leave two things behind, and only
-    one of them is the engine's fault:
+    """**What `w1c` read.** One dispatch can leave two things behind, and only
+    one of them was the engine's fault: a queued effect, legitimate and drained
+    since `w1c`, and a late veto, a mutator used where it has no meaning and
+    never will be given one.
 
-    - a queued effect is legitimate and nothing drains it *yet*, which is an
-      `EngineAssemblyError` and the raise `w1c` deletes;
-    - a late veto is a mutator used where it has no meaning and never will be
-      given one, which is a `FeatureContractError` and the raise `w1c` keeps.
-
-    The same handler, one hook apart, so nothing but the kind of mistake
-    differs. The two `issubclass` assertions are what make the pair meaningful:
-    the types are siblings under `DndSimError`, and a later change making either
-    one inherit the other would let a sweep collapse them back into a single
-    refusal with both cases above still passing.
+    The queued-effect half is gone with the refusal it pinned. The `issubclass`
+    assertions stay, and are the half that had to survive the sweep: the types
+    are siblings under `DndSimError`, and a later change making either one
+    inherit the other would let a sweep by type collapse a transitional refusal
+    and a permanent one together.
     """
-    queuer, target = attacker(), defender()
-    queuer.attach(QueuesOnHit(queuer))
-    with pytest.raises(EngineAssemblyError, match="w1c"):
-        resolve_attack(queuer, target, rng=ScriptedRng([_HIT]))
-
     vetoer, other = attacker(), defender()
     vetoer.attach(VetoHit(vetoer))
     with pytest.raises(FeatureContractError, match="vetoed at"):
@@ -1030,31 +1015,98 @@ def test_the_two_refusals_a_sealed_context_makes_are_different_kinds() -> None:
     assert not issubclass(FeatureContractError, EngineAssemblyError)
 
 
-# --- What is not built yet --------------------------------------------------
+# --- What a handler queues, applied -----------------------------------------
 
 
-def test_an_effect_queued_at_the_declaration_is_refused_until_w1c() -> None:
-    """**Delete these two with `engine/damage.py`'s pair in w1c.** `EffectStore`
-    is what drains `ctx.pending_effects`; until it exists a queued effect would
-    be silently discarded, which is a feature whose whole point did nothing and
-    said nothing. It is refused before the d20, which the empty script pins."""
+def test_an_effect_queued_at_the_declaration_lands_before_the_roll() -> None:
+    """The first of the two call sites `w1c` swept (debt #5). The declaration is
+    drained where the refusal used to be raised — before the d20 — so the effect
+    is on the defender whatever the attack goes on to do, and this one misses."""
     swinger, target = attacker(), defender()
     swinger.attach(QueuesAtDeclaration(swinger))
 
-    with pytest.raises(EngineAssemblyError, match="w1c"):
-        resolve_attack(swinger, target, rng=no_dice())
+    outcome, _ = resolve_attack(swinger, target, rng=ScriptedRng([_MISS]))
+
+    assert outcome is Outcome.MISS
+    assert len(target.effects) == 1
 
 
-def test_an_effect_queued_on_a_hit_is_refused_too() -> None:
-    """The same refusal on the hook that will want it most — a rider that
-    applies a condition on a hit. It is raised before the damage is rolled, so
-    the defender is untouched."""
+class Brand(Effect):
+    """An effect that adds a die at `on_damage_roll` — the shape a rider has
+    when it applies during an attack and contributes afterwards."""
+
+    __slots__ = ()
+
+    ID = "test.brand"
+
+    @hook("on_damage_roll")
+    def burn(self, ctx: DamageRollContext) -> R:
+        ctx.damage.add(dice=Dice(1, 6), damage_type=DamageType.FIRE)
+        return R.APPLIED
+
+
+class BrandsOnHit(HookSource):
+    """Applies the brand to the swinger from `on_hit`, one stage before the
+    damage is rolled.
+
+    On the swinger rather than the target because `on_damage_roll` is `SELF` on
+    the attacker (`hooks/definitions.py`): a rider applied to the defender has
+    nothing to contribute with there, which is what makes the attacker the only
+    end this can be asked from.
+    """
+
+    __slots__ = ()
+
+    ID = "test.brands_on_hit"
+
+    @hook("on_hit")
+    def brand(self, ctx: HitContext) -> R:
+        ctx.apply_effect(ctx.attacker, Brand(ctx.attacker))
+        return R.APPLIED
+
+
+def test_the_queue_is_drained_per_dispatch_and_not_per_attack() -> None:
+    """**The scope of the drain, stated rather than left to be discovered.**
+    `hooks/contexts.py` says the engine "drains the queue after the dispatch",
+    and that is per dispatch: an effect applied at one stage of an attack is
+    attached for the stages after it. So a brand applied from `on_hit` is on the
+    swinger when `on_damage_roll` runs, and its die lands on the hit that
+    applied it.
+
+    The snapshot rule the same paragraph states is what this preserves — a
+    handler list fixed per *dispatch*, so an effect applied during a hook never
+    runs in that hook. Reckless Attack still has to call `grant_advantage()`
+    beside applying its effect, because the dispatch its effect would have
+    answered is the one already running.
+
+    Deferring to the end of the attack was the alternative and is refused: it
+    contradicts the sentence above, and it would give `on_incoming_damage` two
+    different meanings depending on whether `resolve_damage()` was reached
+    through an attack or called directly (`docs/decisions.md` § w1c).
+
+    2d6 rolled 4 + 3 = 7, plus the +4 Strength modifier, plus the brand's 1d6
+    rolled 5 = 16.
+    """
+    swinger, target = attacker(), defender()
+    swinger.attach(BrandsOnHit(swinger))
+
+    outcome, damage = resolve_attack(swinger, target, rng=ScriptedRng([_HIT, 4, 3, 5]))
+
+    assert outcome is Outcome.HIT
+    assert damage == 16
+    assert [held.name for held in swinger.effects] == ["test.brand"]
+
+
+def test_an_effect_queued_on_a_hit_lands_through_seal() -> None:
+    """The hook that wants it most — a rider applying a condition on a hit —
+    and the second call site, `_seal()`, which runs at five further stages of
+    the attack."""
     swinger, target = attacker(), defender()
     swinger.attach(QueuesOnHit(swinger))
 
-    with pytest.raises(EngineAssemblyError, match="w1c"):
-        resolve_attack(swinger, target, rng=ScriptedRng([_HIT]))
-    assert target.hp == _DEFENDER_HP
+    resolve_attack(swinger, target, rng=ScriptedRng([_HIT, 3, 3]))
+
+    assert [held.name for held in target.effects] == ["effect"]
 
 
 # --- Which ability the attack is made with ----------------------------------

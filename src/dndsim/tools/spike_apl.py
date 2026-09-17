@@ -91,10 +91,11 @@ class SelfProxy:
     """The `self.*` root: the acting creature, and the state features hold.
 
     `raging` and `slots.highest` are the two paths DESIGN.md's example APL reads
-    that have nowhere to come from yet — effects are `w1c`'s and resources are
-    `w1b`'s. The proxy is built over the object that holds them rather than over
-    a flag on the creature, which is where `w2e`'s schema will resolve them to
-    as well: a proxy answers a dotted path out of somebody else's state.
+    that this benchmark still answers from a stand-in (debt #15) — `w1c` landed
+    the `EffectStore` and `w1b` has the resources. The proxy is built over the
+    object that holds them rather than over a flag on the creature, which is
+    where `w2e`'s schema will resolve them to as well: a proxy answers a dotted
+    path out of somebody else's state.
     """
 
     __slots__ = ("_ref", "_state")
@@ -262,8 +263,9 @@ class Namespace:
 class SpikeState:
     """The sliver of `w1b` and `w1c` the namespace and the fixtures share.
 
-    `self.raging` is a question about an `Effect` (w1c) and `self.slots.highest`
-    a question about a `ResourcePool` (w1b), and neither exists yet. Rather than
+    `self.raging` is a question about an `Effect` and `self.slots.highest` a
+    question about a `ResourcePool` (w1b), and the benchmark asks neither of the
+    real thing — `w1k` is where it does (debt #15). Rather than
     scatter stand-in flags across twenty-five fixture classes, both live in one
     object that the features write and the namespace reads — which is also the
     shape the real thing has, since a proxy resolves a dotted path to somebody
