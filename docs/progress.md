@@ -21,7 +21,7 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 3 | w1f — attack pipeline 🔒 | done | #27 |
 | — | ⏸ plan review — the critical-path pair | done | #30 |
 | 4 | w1c — `Effect`, `EffectStore`, stacking | done | #31 |
-| 5 | w1b — resources, `SpellSlots`, `transaction()` | done | #TBD |
+| 5 | w1b — resources, `SpellSlots`, `transaction()` | done | #32 |
 | 6 | w1d — grid geometry completed | next | |
 | — | ⏸ plan review | queued | |
 | 7 | w1g — saving throws, DCs, save-for-half | queued | |
