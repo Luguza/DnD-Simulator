@@ -73,10 +73,20 @@ def creature(name: str = "hero", *, level: int = 5) -> Creature:
 # DESIGN.md § Resources tabulates these; what the table below adds is that each
 # one is a `ResourceSpec` and nothing else.
 
+_RAGES: Final = (2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6)
+"""The XPHB (2024) Barbarian "Rages" column, levels 1-20.
+
+A fixture, not the feature. The real Rage reads this off the imported
+`classTableGroups` through `table_value()` (ROADMAP § Standing rules, 3), and
+neither exists in W1 — so it is written out rather than fitted to a formula,
+because a formula that happens to agree up to level 11 is what a later agent
+would copy.
+"""
+
 RAGE: Final = ResourceSpec(
     key="rage",
     label="Rage",
-    maximum=lambda stats: 2 + stats.level // 3,
+    maximum=lambda stats: _RAGES[stats.level - 1],
     recovery=(Recovery(SHORT_REST, 1), Recovery(LONG_REST, ALL)),
 )
 KI: Final = ResourceSpec(
@@ -120,7 +130,7 @@ def test_the_seven_shapes_are_one_model() -> None:
     )
     # 5 named pools + nine slot levels twice.
     assert len(hero.resources) == 23
-    assert hero.resources["rage"].maximum == 4  # 2 + 6 // 3
+    assert hero.resources["rage"].maximum == 4  # 4 rages at level 6
     assert hero.resources["ki"].maximum == 6
     assert hero.resources["channel_divinity"].maximum == 2
     assert hero.resources["sorcery_point"].maximum == 6
@@ -137,7 +147,7 @@ def test_a_spec_is_a_flyweight_shared_by_every_creature_that_has_it() -> None:
     veteran.resources.add(RAGE)
     assert novice.resources["rage"].spec is veteran.resources["rage"].spec is RAGE
     assert novice.resources["rage"].maximum == 3
-    assert veteran.resources["rage"].maximum == 6
+    assert veteran.resources["rage"].maximum == 5
     assert spell_slot_specs(FULL) is spell_slot_specs(FULL)
 
 
@@ -163,7 +173,7 @@ def test_spending_draws_down_the_pool() -> None:
 
 def test_overdrawing_raises_and_asking_is_free() -> None:
     hero = creature(level=3)
-    hero.resources.add(RAGE)  # 2 + 3 // 3 == 3
+    hero.resources.add(RAGE)  # 3 rages at level 3
     assert hero.resources.can_spend("rage", 3)
     assert not hero.resources.can_spend("rage", 4)
     with pytest.raises(EconomyError, match="may not go negative"):
