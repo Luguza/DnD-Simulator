@@ -5,8 +5,8 @@ the engine asks.
 benchmark ran against a real object rather than a stub — real hit points, a real
 position on the grid, a real `Dispatcher` carrying real handlers — and `w1a`
 completed it with equipment, a derived Armor Class and the action economy,
-rewriting none of it. `w1c` hung the `EffectStore` off it; `w1b`'s resources are
-next.
+rewriting none of it. `w1c` hung the `EffectStore` off it and `w1b` the
+`Resources` ledger.
 
 **A creature's AC is a fact about what it is wearing.** `armour` and `shield`
 are equipment, beside the weapon, and `armour_class` is derived from them and
@@ -50,6 +50,7 @@ from dndsim.core.geometry import Cell
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.economy import ActionEconomy
 from dndsim.creatures.effects import EffectStore
+from dndsim.creatures.resources import Resources
 from dndsim.creatures.stats import UNARMOURED, Armour, StatBlock, Weapon
 from dndsim.hooks.contexts import Context
 from dndsim.hooks.dispatch import Dispatcher
@@ -105,6 +106,7 @@ class Creature:
         "initiative",
         "name",
         "position",
+        "resources",
         "temp_hp",
         "weapon",
     )
@@ -159,6 +161,11 @@ class Creature:
         # every boundary it sweeps, and until then debt #29 is what a deadline
         # resolved here is worth.
         self.effects = EffectStore(self, now=TimeKey(1, UNSEATED, TurnPhase.START))
+        # Empty: what a creature *has* is what its build granted it, and a
+        # ledger that invented a pool would be a second place a resource could
+        # come from. `w2f` is what fills it from the build; a feature adds its
+        # own with `resources.add()`.
+        self.resources = Resources(self, stats)
 
     # -- what the stat block already knows ------------------------------------
 
