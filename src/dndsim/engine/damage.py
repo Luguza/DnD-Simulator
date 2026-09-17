@@ -18,7 +18,8 @@ Where each step comes from:
   here, argued in `docs/decisions.md` § w1e
 
 Not here: rolling the attack (`engine/attack.py`, w1f), dying (`w1j`, debt #8),
-applying queued effects (`w1c`, debt #5), the event log (`w1i`). `ctx.reduce()`
+the event log (`w1i`). What a handler queued is applied by
+`creatures/effects.py`'s drain after each of the two dispatches. `ctx.reduce()`
 takes no damage type, so a reduction is spent across every surviving type —
 debt #23, `w3f` via `w3e`.
 """
@@ -27,11 +28,10 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Final, Protocol
 
-from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
+from dndsim.creatures.effects import apply_pending
 from dndsim.hooks.contexts import (
-    Context,
     DamagePart,
     DamageTakenContext,
     IncomingDamageContext,
@@ -45,7 +45,6 @@ __all__ = [
     "FreshDamageContexts",
     "Mitigated",
     "mitigate",
-    "refuse_pending",
     "resolve_damage",
     "roll_damage",
 ]
@@ -255,7 +254,7 @@ def resolve_damage(
     """
     incoming = contexts.incoming(defender=defender, attacker=attacker, amounts=amounts)
     defender.dispatch(ON_INCOMING_DAMAGE, incoming)
-    refuse_pending(incoming)
+    apply_pending(incoming, defender, attacker)
     if incoming.vetoed:
         incoming.close()
         return 0
@@ -275,30 +274,6 @@ def resolve_damage(
         damage_types=mitigated.types,
     )
     defender.dispatch(ON_DAMAGE_TAKEN, taken)
-    refuse_pending(taken)
+    apply_pending(taken, defender, attacker)
     taken.close()
     return mitigated.total
-
-
-def refuse_pending(ctx: Context) -> None:
-    """Refuse an effect queued where there is nothing yet to apply it.
-
-    `EffectStore` (w1c) drains `ctx.pending_effects`; until it exists a queued
-    effect would be silently discarded. Deleted by `w1c`, not by whoever trips
-    over it — and `engine/attack.py`'s `_seal()` makes the same refusal after
-    its own dispatches, so w1c has two files to sweep rather than one (debt #5).
-
-    The list is read rather than the `pending_effects` property, which builds a
-    tuple: `resolve_damage()` calls this twice on every instance of damage, and
-    the engine already reaches into a context's private state where it owns it
-    (`hooks/dispatch.py` does the same with the frame). `_seal()` tests the same
-    list itself and calls only when there is something to refuse, which is why
-    the two callers do not read alike.
-    """
-    pending = ctx._pending
-    if pending:
-        raise EngineAssemblyError(
-            f"{type(ctx).__name__} has {len(pending)} queued effect(s) and there "
-            "is nothing to apply them yet (w1c). A queued effect nobody drains "
-            "is a feature whose whole point was silently dropped."
-        )

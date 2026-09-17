@@ -34,9 +34,9 @@ the two levers deliberately not taken. **W1 is under way.**
 The plans were then re-read against what the wave measured
 (`docs/decisions.md` § The W0 plan review). Two things came out of it that
 matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
-first cuts and deferred obligations W0 left behind — twenty-one rows open, of
-which fifteen are W0's, one is `w1e`'s, two are `w1f`'s and three were found by
-the W1 critical-path gate — and the task that
+first cuts and deferred obligations W0 left behind — twenty-two rows open, of
+which fourteen are W0's, one is `w1e`'s, two are `w1f`'s, two are `w1c`'s and
+three were found by the W1 critical-path gate — and the task that
 retires each;
 check it for the file you are about to touch. And **`w1k` is a
 new task**, an M0 re-measure at the end of W1, because the measured ~31.5k had
@@ -96,13 +96,28 @@ The W1 critical-path gate then re-read the plans against those three tasks
 how a W1 task is done: **the margin over the 30k budget is gone**, so `w1b`,
 `w1c`, `w1d`, `w1i` and `w1j` each run the spike paired and record what they cost
 (`ROADMAP.md` § Sequencing principles, 10) and `w1k` totals attributions instead
-of discovering a number. Two are worth knowing before you open a file: **`w1c`
-sweeps the pending-effect refusal in `engine/attack.py` as well as
-`engine/damage.py`**, four call sites and four contract tests across two files
-rather than the one file its row used to name; and three unowned obligations the completed tasks had recorded only in
-their own decision records are now debt rows **#26** (a nested attack raises on a
-shared context pool), **#27** (heavy armour never costs its 10 feet of speed) and
-**#28** (movement is never charged against the economy).
+of discovering a number. It also corrected `w1c`'s row — the refusal to sweep
+was in `engine/attack.py` as well as `engine/damage.py` — and turned three
+unowned obligations the completed tasks had recorded only in their own decision
+records into debt rows **#26** (a nested attack raises on a shared context pool),
+**#27** (heavy armour never costs its 10 feet of speed) and **#28** (movement is
+never charged against the economy).
+
+Then `w1c` **completed the effect model** — `Effect`, `EffectStore`, `Stacking`,
+charges and the two expiry sweeps — and with it deleted `engine/damage.py`'s
+`refuse_pending()`, so a handler's `ctx.apply_effect(...)` finally lands
+(debt #5). Two things it decided bind every later task: **a queued effect is
+applied to the event's own participants, matched by identity**, because a
+handler names a `Combatant` and only the engine holds the creature behind one —
+a third creature raises rather than being dropped, and the roster that answers it
+is `w2c`'s (debt #30); and **the store keeps the clock it was last told**, since
+no attack context carries a `TimeKey` and Rage's `refresh()` is called from three
+attack hooks — so `expire_before()`/`expire_after()` are the only writers of it
+and nothing advances them until `w2c` (debt #29). It measured at **−0.3% of the
+rate against ±1% of run-to-run spread**, which does not include the per-boundary
+expiry sweep: the spike crosses no turn boundary, so nothing calls it.
+`docs/decisions.md` § w1c has the arguments; it retires debt-register row #5 and
+opens #29 and #30.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
@@ -305,6 +320,7 @@ there is local to a module.
 | `engine/damage.py`, the resolution order | § w0g2, § w1e |
 | `engine/attack.py`, the attack sequence | § w1f |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
+| `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |
 | `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review |

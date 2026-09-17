@@ -34,11 +34,11 @@ be the cheap moment to revise; a stub spends that moment on nothing." So:
   character. `compare --sweep dummy.ac=10:22` pays that thirteen times, and it
   is the cost an inner-loop benchmark never sees.
 
-**What is deliberately not in the measurement, and why that is honest.** Effects
-(`w1c`) and resources (`w1b`) do not exist, so there is no per-boundary expiry
-sweep and no pool arithmetic; the spike therefore *understates* the eventual
-per-round cost, and `w2e`'s re-run of this benchmark is where the real APL
-compiler has to come in at or under the number below. What the spike does not
+**What is deliberately not in the measurement, and why that is honest.** There
+is no turn loop here, so `w1c`'s per-boundary expiry sweep never runs and `w1b`'s
+resources do not exist; the spike therefore *understates* the eventual per-round
+cost, and `w2e`'s re-run of this benchmark is where the real APL compiler has to
+come in at or under the number below. What the spike does not
 understate is the per-attack cost, which is where the budget is spent.
 
 Run it: `python -m dndsim.tools.spike` (add `--startup` for the worker cost).

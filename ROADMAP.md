@@ -234,8 +234,8 @@ The wave produced twenty-two deliberate stand-ins and deferred obligations —
 seventeen from `w0a`-`w0i` and five more from `w0g3`; fifteen of those are
 still open, `w1e` and `w1f` added three rows of their own, and the W1
 critical-path gate found three more that the completed tasks had named in
-`docs/decisions.md` and nowhere the plan would show them, so the table stands at
-twenty-one.
+`docs/decisions.md` and nowhere the plan would show them. `w1c` has since
+retired one and opened two of its own, so the table stands at twenty-two.
 Every one of them was the right thing to write — a hostile spike needs real
 machinery now, not finished machinery later — and every one of them is invisible
 six months from now, when the file around it has grown and the paragraph
@@ -248,12 +248,12 @@ an agent will actually look. This table is the index, not the specification.
 **A row leaves the table when its task lands**, and the numbers of the rows left
 do not move — they are cited from code and from `docs/decisions.md`, and a
 register that renumbered itself would make every citation say something else.
-Retired so far: **#1, #2, #4 and #10 by `w1a`**, **#7 by `w1e`** and **#3 and
-#6 by `w1f`** (`docs/decisions.md` § w1a, § w1e, § w1f).
+Retired so far: **#1, #2, #4 and #10 by `w1a`**, **#7 by `w1e`**, **#3 and
+#6 by `w1f`** and **#5 by `w1c`** (`docs/decisions.md` § w1a, § w1e, § w1f,
+§ w1c).
 
 | # | The stand-in or debt | Where | Retired by | What it costs if nobody does |
 |---|---|---|---|---|
-| 5 | `refuse_pending()` raises on a queued effect | defined in `engine/damage.py` and called from two places there, and from two more in `engine/attack.py` — one of them `_seal()`, which runs at five of the attack's stages | `w1c` | every effect a handler applies is refused; the raise is the reminder |
 | 8 | `on_reduced_to_zero` never fires; hit points clamp at 0 | `engine/damage.py` | `w1j` | nothing is ever dying, and Relentless Endurance has no moment to attach to |
 | 9 | `Size` reaches geometry nowhere | `core/geometry.py` | `w1d` | every Large creature is Medium — exact for W1–W3's combatants, silently wrong for the first ogre |
 | 11 | The `Gate` protocol has no contract test | `hooks/dispatch.py` | `w2e` | as above, for every gated handler |
@@ -274,6 +274,8 @@ Retired so far: **#1, #2, #4 and #10 by `w1a`**, **#7 by `w1e`** and **#3 and
 | 26 | One `PooledContexts` serves one attack at a time; `declared()` refuses re-entry | `engine/attack.py` | `w2c` | a reaction attack made from inside another attack — Sentinel, the 2024 Riposte, any `on_hit` counterattack — raises `EngineAssemblyError` instead of resolving. The refusal is the right first cut and its message names the fix (a second pool, never a deeper one); what it costs is that the wave which first produces a nested attack has not been told it owes one |
 | 27 | `Armour` carries no Strength requirement, so heavy armour never costs its 10 feet of speed | `creatures/stats.py`, imported by `content/` in `w2a` | `w2f` | `StatBlock.speed_ft` is what the build says and nothing reads the armour; a Strength-13 character in plate moves 30 feet forever, which is a positioning advantage in every melee build that did not pay for it. `w2a` lands the field, `w2f` is where equipment is assembled into a creature and is the first place that can apply it (§ w1a left this to "the first feature that needs them", and wearing armour is not a feature). **The stealth penalty is deliberately not in this row**: § w1a names it beside the Strength requirement, but a combat simulator rolls no stealth check, so it is out of scope rather than owed — and a debt row nobody can retire is worse than no row |
 | 28 | Movement is never charged against the economy | `tools/spike.py`, `engine/turn.py` when it exists | `w2c` | `turn_started()` hands out a speed the benchmark's `_step` walks without ever drawing on, so a creature can move any distance and the budget has never seen the per-step economy call. Exact for the spike, which does not test legality; the cost is that `w1k`'s number still excludes it and `w2c`'s re-run is the first that will not (§ w1a) |
+| 29 | Nothing advances an `EffectStore`'s clock, so every duration resolves against the top of round 1 | `creatures/effects.py`, `creatures/creature.py` | `w2c` | a `Duration` is relative and the store resolves it against the clock it was last told; `expire_before()` and `expire_after()` are what tell it and only the turn loop calls them. Exact while nothing crosses a turn boundary — the spike does not — and wrong for every effect applied in round 2 onwards the moment something does |
+| 30 | A queued effect can only land on the event's own participants | `creatures/effects.py`'s `apply_pending()`, called from `engine/damage.py` and `engine/attack.py` | `w2c` | complete for an attack and an instance of damage, whose handlers are all owned by the attacker or the defender (`docs/decisions.md` § w1c). A handler naming a third creature — an aura, an ally buffed from an observer hook — raises rather than being dropped, and the roster is what answers it. Same shape as #18, which is why both wait on the same task |
 
 ### What the W1 critical-path gate changed
 
