@@ -26,15 +26,17 @@ from typing import Final
 
 import pytest
 
-from dndsim.core.errors import EngineAssemblyError
+from dndsim.core.errors import EngineAssemblyError, FeatureContractError
 from dndsim.core.geometry import Cell
 from dndsim.core.timeline import Duration, Expiry, InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import UNSEATED, Creature
 from dndsim.creatures.effects import Effect, EffectStore, Stacking
 from dndsim.creatures.stats import StatBlock
-from dndsim.hooks.contexts import Combatant, TurnContext
+from dndsim.hooks.contexts import Combatant, EffectContext, TurnContext
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.definitions import ON_TURN_START
+from dndsim.hooks.registry import Phase
+from dndsim.hooks.source import HookSource
 from dndsim.rules.enums import Ability
 
 SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 10))
@@ -410,3 +412,182 @@ def test_a_store_holds_nothing_until_something_is_applied() -> None:
     assert len(barbarian.effects) == 0
     assert list(barbarian.effects) == []
     assert isinstance(barbarian.effects, EffectStore)
+
+
+# --- The two hooks only an `EffectStore` can fire ---------------------------
+
+
+class ReportingEffect(Effect):
+    """An effect carrying both hooks itself, to pin which of the two it is
+    attached for."""
+
+    __slots__ = ("seen",)
+
+    ID = "test.reporting_effect"
+
+    def __init__(self, owner: Combatant) -> None:
+        super().__init__(owner)
+        self.seen: list[str] = []
+
+    @hook("on_effect_applied")
+    def applied(self, ctx: EffectContext) -> R:
+        self.seen.append(f"applied:{ctx.effect.name}")
+        return R.APPLIED
+
+    @hook("on_effect_expired")
+    def expired(self, ctx: EffectContext) -> R:
+        self.seen.append(f"expired:{ctx.effect.name}")
+        return R.APPLIED
+
+
+class Watcher(HookSource):
+    """Records both effect hooks in the order they fire, by effect name."""
+
+    __slots__ = ("seen",)
+
+    ID = "test.watcher"
+
+    def __init__(self, owner: Combatant) -> None:
+        super().__init__(owner)
+        self.seen: list[str] = []
+
+    @hook("on_effect_applied")
+    def applied(self, ctx: EffectContext) -> R:
+        self.seen.append(f"applied:{ctx.effect.name}")
+        return R.APPLIED
+
+    @hook("on_effect_expired")
+    def expired(self, ctx: EffectContext) -> R:
+        self.seen.append(f"expired:{ctx.effect.name}")
+        return R.APPLIED
+
+
+class Immune(HookSource):
+    """A feature that refuses one effect outright — what a veto on the
+    application is for."""
+
+    __slots__ = ()
+
+    ID = "test.immune"
+
+    @hook("on_effect_applied", phase=Phase.EARLY)
+    def refuse(self, ctx: EffectContext) -> R:
+        ctx.veto("immune")
+        return R.APPLIED
+
+
+class Clings(HookSource):
+    """A feature vetoing an ending, which is the mutator used where it has no
+    meaning."""
+
+    __slots__ = ()
+
+    ID = "test.clings"
+
+    @hook("on_effect_expired", phase=Phase.EARLY)
+    def refuse(self, ctx: EffectContext) -> R:
+        ctx.veto("not yet")
+        return R.APPLIED
+
+
+def test_applying_an_effect_fires_the_hook_only_it_can_fire() -> None:
+    """`hooks/definitions.py` closes the registry at 39 and two of them —
+    `on_effect_applied` and `on_effect_expired` — have no possible caller but
+    this store. A hook nothing fires is a feature that runs nothing and says
+    nothing, which is what the closed registry exists to prevent."""
+    barbarian = creature()
+    watcher = Watcher(barbarian)
+    barbarian.attach(watcher)
+
+    barbarian.effects.apply(Rage(barbarian))
+
+    assert watcher.seen == ["applied:barbarian.rage"]
+
+
+def test_an_extension_is_an_application_too() -> None:
+    """`on_effect_applied`'s own summary names it — "Rage extending rather than
+    stacking" — so a second application that the incumbent absorbs fires the
+    hook as the first did."""
+    barbarian = creature()
+    watcher = Watcher(barbarian)
+    barbarian.attach(watcher)
+
+    barbarian.effects.apply(Rage(barbarian))
+    barbarian.effects.apply(Rage(barbarian))
+
+    assert watcher.seen == ["applied:barbarian.rage"] * 2
+    assert len(barbarian.effects) == 1
+
+
+def test_a_rejected_application_fires_nothing() -> None:
+    """`REJECT` means nothing happened, and a hook that fired anyway would be a
+    handler told about an event that did not take place."""
+    cleric = creature(name="cleric")
+    watcher = Watcher(cleric)
+    cleric.attach(watcher)
+
+    cleric.effects.apply(Blessing(cleric))
+    cleric.effects.apply(Blessing(cleric))
+
+    assert watcher.seen == ["applied:test.blessing"]
+
+
+def test_a_veto_on_the_application_keeps_the_effect_off() -> None:
+    """An effect is "on its way onto a creature" (`hooks/contexts.py`) until
+    this hook has run, so refusing one here is what a feature immune to it
+    does — and nothing is attached afterwards."""
+    barbarian = creature()
+    barbarian.attach(Immune(barbarian))
+
+    assert barbarian.effects.apply(Rage(barbarian)) is None
+    assert len(barbarian.effects) == 0
+
+
+def test_both_ways_an_effect_ends_fire_the_expiry_hook() -> None:
+    """The summary names the two: "reaches its expiry or runs out of charges"."""
+    fighter = creature(name="fighter")
+    watcher = Watcher(fighter)
+    fighter.attach(watcher)
+    fighter.effects.expire_after(at(1, BARBARIAN, TurnPhase.END))
+
+    vex = fighter.effects.apply(Vex(fighter, charges=1))
+    assert vex is not None
+    vex.consume()
+
+    fighter.effects.apply(
+        Rage(fighter, duration=Duration.until_end_of_next_turn_of(BARBARIAN))
+    )
+    fighter.effects.expire_after(at(2, BARBARIAN, TurnPhase.END))
+
+    assert watcher.seen == [
+        "applied:fighter.vex",
+        "expired:fighter.vex",
+        "applied:barbarian.rage",
+        "expired:barbarian.rage",
+    ]
+
+
+def test_an_effect_answers_its_own_ending_and_not_its_own_arrival() -> None:
+    """The span an effect's handlers run for is exactly the span it is
+    attached. `on_effect_applied` fires before the attach, which is the
+    snapshot rule; `on_effect_expired` fires before the detach, which is the
+    only moment an ending effect has left to act in."""
+    barbarian = creature()
+    watcher = ReportingEffect(barbarian)
+
+    barbarian.effects.apply(watcher)
+    barbarian.effects.remove(watcher)
+
+    assert watcher.seen == ["expired:test.reporting_effect"]
+
+
+def test_a_veto_on_an_ending_is_refused() -> None:
+    """The other half of the split `engine/attack.py` makes: a veto where it has
+    no meaning and never will be given one raises rather than being ignored."""
+    barbarian = creature()
+    barbarian.attach(Clings(barbarian))
+    rage = barbarian.effects.apply(Rage(barbarian))
+    assert rage is not None
+
+    with pytest.raises(FeatureContractError, match="vetoed barbarian.rage"):
+        barbarian.effects.remove(rage)

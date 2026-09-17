@@ -1959,6 +1959,38 @@ attached to nothing: both need the store, one for the creature and one for the
 clock, and an effect holding a deadline it computed against nothing is the
 silent half of the bug.
 
+### The two hooks only an `EffectStore` can fire
+
+`on_effect_applied` and `on_effect_expired` were in the closed registry from
+`w0e` with no possible caller, and this is the task that builds the only object
+that can call them — `EffectContext` was written for them and
+`on_effect_applied`'s summary names Rage extending rather than stacking. A
+registry that is closed and CI-diffed makes a hook nothing fires worse than a
+missing one: the feature that declares a handler for it runs nothing and says
+nothing, which is the failure the closure exists to prevent. The first cut of
+this task shipped without them and the review caught it.
+
+Both fire while the creature holds exactly what it held before the call:
+**applied before the attach, expired before the detach**. Stated the other way
+round, that is one rule — *an effect's own handlers run for exactly the span it
+is attached* — and each half is independently right. It cannot answer its own
+arrival, which is the snapshot rule `hooks/contexts.py` states for queued
+effects and the reason Reckless Attack grants advantage separately from applying
+its effect. It can answer its own ending, which is the only moment it has left.
+
+**A veto is honoured on the application and refused on the expiry**, which is
+the split `engine/attack.py` makes at `_seal()` and for the same reason. An
+effect is "on its way onto a creature" until this hook has run — the phrase is
+`hooks/contexts.py`'s own — so refusing one is what a feature immune to it does,
+and `apply()` already had a return that says "nothing landed". An ending is a
+position on the clock that has been passed; a feature meaning to keep an effect
+alive refreshes it, and a veto there would be a mutator quietly doing nothing.
+A `REJECT`ed application fires neither hook, because nothing happened.
+
+Each dispatch is drained like any other (`apply_pending(ctx, holder)`), so a
+handler that applies an effect on hearing about one is not the silent drop that
+debt #5 was about.
+
 ### `apply()` returns what is in force, rather than a boolean
 
 `REJECT`'s entire content is the answer to "did anything happen", and `REFRESH`'s
@@ -1977,13 +2009,15 @@ rangers' marks in some later fight.
 
 ### What it cost the benchmark
 
-Six paired runs on one container, alternating so drift cancels: **22.5k–22.8k
-attack resolutions/sec/core before, 22.4k–22.8k after**, ratios 1.012, 0.986,
-0.990, 0.995, 1.003, 0.999 — a median of **−0.3% against a run-to-run spread of
-about ±1%**. The cost is not distinguishable from zero, and that is what the diff
-predicts: on the hot path the only change is `refuse_pending(ctx)` becoming
-`apply_pending(ctx, attacker, defender)`, the same empty-list early return with
-two more arguments pushed, plus one `EffectStore` per creature at construction.
+Eight paired runs on one container, alternating so drift cancels: **22.5k–22.9k
+attack resolutions/sec/core before, 22.3k–22.8k after**, ratios 1.012, 0.986,
+0.990, 0.995, 1.003, 0.999, 1.004, 0.975 — a median of **−0.5% against a
+run-to-run spread of about ±2%**. The cost is not distinguishable from zero, and
+that is what the diff predicts: on the hot path the only change is
+`refuse_pending(ctx)` becoming `apply_pending(ctx, attacker, defender)`, the same
+empty-list early return with two more arguments pushed, plus one `EffectStore`
+per creature at construction. The two effect hooks cost nothing here for the
+same reason the sweep does — the spike applies no effect, so neither dispatches.
 Startup is 0.132–0.139 s per worker on both sides, one module import apart.
 
 The absolute number is well under the 30k budget on this container and says
@@ -2013,6 +2047,9 @@ principle 10: an unattributed shortfall is the one nobody can act on.
   what the trace, the damage breakdown and the no-op report call it, and the
   `Effect` protocol asks for one string. Two would be one more pair that can
   disagree.
+- **Fire `on_effect_applied` for an effect the store already holds under
+  `REJECT`.** Nothing happened, and a handler told about an event that did not
+  take place is the same wrong number as one not told about an event that did.
 - **Decide whether a veto unwinds what earlier handlers queued.** It does not,
   and it needed no ruling: `ctx.veto()` halts the chain, so anything queued was
   queued by a handler that had already run, and the dispatcher does not unwind

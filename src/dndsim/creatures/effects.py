@@ -45,7 +45,9 @@ from typing import ClassVar, Protocol
 
 from dndsim.core.errors import EngineAssemblyError, FeatureContractError
 from dndsim.core.timeline import Duration, Expiry, TimeKey
-from dndsim.hooks.contexts import Combatant, Context
+from dndsim.hooks.contexts import Combatant, Context, EffectContext
+from dndsim.hooks.definitions import ON_EFFECT_APPLIED, ON_EFFECT_EXPIRED
+from dndsim.hooks.registry import HookSpec
 from dndsim.hooks.source import HookSource
 
 __all__ = ["Effect", "EffectStore", "Holder", "Stacking", "apply_pending"]
@@ -92,6 +94,8 @@ class Holder(Combatant, Protocol):
     def attach(self, source: HookSource) -> None: ...
 
     def detach(self, source: HookSource) -> None: ...
+
+    def dispatch(self, spec: HookSpec, ctx: Context) -> None: ...
 
 
 class Effect(HookSource):
@@ -248,13 +252,15 @@ class EffectStore:
         """Put `effect` on this creature, and return what is in force.
 
         The return is the incumbent when one absorbed the application and
-        `None` when `REJECT` refused it — which is what lets a caller tell "it
-        landed" from "it was already there" without asking twice.
+        `None` when it did not land — `REJECT` refusing it, or an
+        `on_effect_applied` handler vetoing it.
         """
         incumbent = self._incumbent(effect)
+        if incumbent is not None and effect.STACKING is Stacking.REJECT:
+            return None
+        if not self._announce(ON_EFFECT_APPLIED, effect, vetoable=True):
+            return None
         if incumbent is not None:
-            if effect.STACKING is Stacking.REJECT:
-                return None
             incumbent.duration = effect.duration
             incumbent.charges = effect.charges
             incumbent.refresh()
@@ -267,6 +273,7 @@ class EffectStore:
 
     def remove(self, effect: Effect) -> None:
         """Take `effect` off this creature — expired, consumed, or dispelled."""
+        self._announce(ON_EFFECT_EXPIRED, effect, vetoable=False)
         self._held.remove(effect)
         effect._store = None
         self._holder.detach(effect)
@@ -300,6 +307,37 @@ class EffectStore:
         for effect in expired:
             self.remove(effect)
 
+    def _announce(self, spec: HookSpec, effect: Effect, *, vetoable: bool) -> bool:
+        """Dispatch one of the two effect hooks, and say whether to go ahead.
+
+        Both fire while the creature holds exactly what it held before the
+        call: `on_effect_applied` before the attach, `on_effect_expired` before
+        the detach. So an effect's own handlers run for exactly the span it is
+        attached — it cannot answer its own arrival, which is the snapshot rule
+        (`hooks/contexts.py`), and it can answer its own ending, which is the
+        only moment left to.
+
+        A veto is honoured on the application, because an effect is "on its way
+        onto a creature" until this hook has run and refusing one is what a
+        feature immune to it does. It is refused on the expiry, where it has no
+        meaning and never will have one — the same split `engine/attack.py`
+        makes at `_seal()`, and the reason the two raises there are different
+        types.
+        """
+        ctx = EffectContext(creature=self._holder, effect=effect)
+        self._holder.dispatch(spec, ctx)
+        apply_pending(ctx, self._holder)
+        reason = ctx.veto_reason
+        ctx.close()
+        if reason is not None and not vetoable:
+            raise FeatureContractError(
+                f"{reason} vetoed {effect.name} expiring, which cannot be "
+                "honoured: a deadline is a position on the clock and the clock "
+                "has passed it. A feature that means to keep an effect alive "
+                "refreshes it."
+            )
+        return reason is None
+
     def _incumbent(self, effect: Effect) -> Effect | None:
         if effect.STACKING is Stacking.STACK:
             return None
@@ -317,8 +355,11 @@ def apply_pending(ctx: Context, *among: Holder | None) -> None:
     The drain `hooks/contexts.py` promises — "the engine drains the queue after
     the dispatch" — and the replacement for the refusal `w0g2` and `w1f` left in
     its place (debt #5). It reads the private list rather than
-    `ctx.pending_effects`, which builds a tuple: this runs twice per instance of
-    damage and seven times per attack, and the list is empty almost every time.
+    `ctx.pending_effects`, which builds a tuple, for the sake of the two callers
+    that cannot test it themselves: `resolve_damage()` calls this on every
+    instance of damage, where the list is empty almost every time. The attack's
+    six call sites test the same list and call only when there is something to
+    apply, which is why the callers do not read alike.
 
     `among` is the participants of the event the caller owns. A queued effect
     names a `Combatant`, which carries no store, so the target is matched by
