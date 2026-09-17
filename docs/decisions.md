@@ -1979,6 +1979,13 @@ states for queued effects and the reason Reckless Attack grants advantage
 separately from applying its effect. It can answer its own ending, which is the
 only moment it has left.
 
+**What is already held is asked on both sides of the dispatch**, for the same
+reason: a handler may dispel the incumbent, leaving a remembered one attached to
+nothing that `refresh()` would raise on, or apply one of its own, leaving a
+remembered `None` that would attach a second `REFRESH` effect of a class that
+may hold only one. Asking again costs a scan of a handful of effects on a path
+that is not the attack's.
+
 **Letting go first is what makes a removal happen once**, and the review found
 it the hard way. An `on_effect_expired` handler may remove something — a chain
 ending with whatever anchored it, a dispel — and what it removes can be an
@@ -2017,6 +2024,36 @@ deliberately and `REFRESH` is the default.
 effect declaring that policy with no caster is refused at construction: the
 alternative is a policy that silently behaves as `REFRESH` and merges two
 rangers' marks in some later fight.
+
+### The drain is per dispatch, not per attack
+
+`hooks/contexts.py` says the engine "drains the queue after the dispatch", and
+that is what this is: an effect applied at one stage of an attack is attached
+for the stages after it, so a rider applied from `on_hit` contributes at
+`on_damage_roll` of the hit that applied it. The review read the same paragraph
+as scoping the drain to the whole attack, which is worth answering rather than
+leaving to be rediscovered.
+
+What the paragraph protects is the snapshot rule, and it is a rule about one
+dispatch: the handler list is fixed per dispatch, so an effect applied during a
+hook never runs in that hook. Reckless Attack still has to call
+`grant_advantage()` beside applying its effect, because the dispatch its effect
+would have answered is the one already running — the example holds under this
+reading and does not distinguish it from the other.
+
+Deferring to the end of the attack is refused on two counts beyond the sentence
+itself. It would give `on_incoming_damage` two different meanings depending on
+whether `resolve_damage()` was reached through an attack or called directly,
+since the queue would be the attack's rather than the event's. And the pending
+list lives on a context `_seal()` closes and `reopen()` clears, so accumulating
+across an attack means a second queue outside the contexts — machinery for a
+question the plans have already answered in one sentence.
+`test_the_queue_is_drained_per_dispatch_and_not_per_attack` pins it.
+
+One detail the review's own example got the wrong way round, and it is worth
+recording because the authoring skill will want it: `on_damage_roll` is `SELF`
+on the attacker, so a rider applied to the *defender* from `on_hit` has nothing
+to contribute with there. The attacker is the only end this can be asked from.
 
 ### What it cost the benchmark
 

@@ -651,3 +651,77 @@ def test_removing_an_effect_twice_says_so_rather_than_firing_twice() -> None:
         barbarian.effects.remove(rage)
 
     assert watcher.seen.count("expired:barbarian.rage") == 1
+
+
+class DispelsOnArrival(HookSource):
+    """A handler that removes what is already held when something arrives."""
+
+    __slots__ = ("_quarry", "_store")
+
+    ID = "test.dispels_on_arrival"
+
+    def __init__(self, owner: Creature, quarry: Effect) -> None:
+        super().__init__(owner)
+        self._store = owner.effects
+        self._quarry = quarry
+
+    @hook("on_effect_applied")
+    def dispel(self, ctx: EffectContext) -> R:
+        if self._quarry not in list(self._store):
+            return R.SKIPPED
+        self._store.remove(self._quarry)
+        return R.APPLIED
+
+
+class AppliesOnArrival(HookSource):
+    """A handler that applies a Rage of its own the first time anything
+    arrives."""
+
+    __slots__ = ("_owner", "_store", "fired")
+
+    ID = "test.applies_on_arrival"
+
+    def __init__(self, owner: Creature) -> None:
+        super().__init__(owner)
+        self._owner = owner
+        self._store = owner.effects
+        self.fired = False
+
+    @hook("on_effect_applied")
+    def pile_on(self, ctx: EffectContext) -> R:
+        if self.fired:
+            return R.SKIPPED
+        self.fired = True
+        self._store.apply(Rage(self._owner))
+        return R.APPLIED
+
+
+def test_an_incumbent_dispelled_during_the_announce_is_not_refreshed() -> None:
+    """`apply()` asks what is held on both sides of the dispatch. A handler that
+    dispels the incumbent leaves the remembered one attached to nothing, and
+    refreshing it would raise out of a re-application that is perfectly
+    legitimate — the second Rage simply attaches instead."""
+    barbarian = creature()
+    first = barbarian.effects.apply(Rage(barbarian))
+    assert first is not None
+    barbarian.attach(DispelsOnArrival(barbarian, first))
+
+    second = barbarian.effects.apply(Rage(barbarian))
+
+    assert second is not None and second is not first
+    assert list(barbarian.effects) == [second]
+
+
+def test_an_incumbent_applied_during_the_announce_absorbs_the_application() -> None:
+    """The mirror: a handler that applies a same-key effect during the announce
+    leaves a remembered `None`, and attaching on it would put two
+    `Stacking.REFRESH` effects of one class on the creature — the state that
+    policy exists to make impossible."""
+    barbarian = creature()
+    barbarian.attach(AppliesOnArrival(barbarian))
+
+    landed = barbarian.effects.apply(Rage(barbarian))
+
+    assert landed is not None
+    assert len(barbarian.effects) == 1
+    assert list(barbarian.effects) == [landed]

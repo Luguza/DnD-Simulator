@@ -254,22 +254,30 @@ class EffectStore:
         The return is the incumbent when one absorbed the application and
         `None` when it did not land — `REJECT` refusing it, or an
         `on_effect_applied` handler vetoing it.
+
+        **What is already held is asked twice**, before the dispatch and after
+        it, because the dispatch is where the answer can change: a handler may
+        dispel the incumbent, leaving a remembered one that no longer belongs to
+        anybody, or apply one of its own, leaving a remembered `None` that would
+        attach a second `REFRESH` effect of a class that may hold only one.
         """
-        incumbent = self._incumbent(effect)
-        if incumbent is not None and effect.STACKING is Stacking.REJECT:
+        if self._incumbent(effect) is not None and effect.STACKING is Stacking.REJECT:
             return None
         if not self._announce(ON_EFFECT_APPLIED, effect, vetoable=True):
             return None
-        if incumbent is not None:
-            incumbent.duration = effect.duration
-            incumbent.charges = effect.charges
-            incumbent.refresh()
-            return incumbent
-        self._holder.attach(effect)
-        effect._store = self
-        effect.refresh()
-        self._held.append(effect)
-        return effect
+        incumbent = self._incumbent(effect)
+        if incumbent is None:
+            self._holder.attach(effect)
+            effect._store = self
+            effect.refresh()
+            self._held.append(effect)
+            return effect
+        if effect.STACKING is Stacking.REJECT:
+            return None
+        incumbent.duration = effect.duration
+        incumbent.charges = effect.charges
+        incumbent.refresh()
+        return incumbent
 
     def remove(self, effect: Effect) -> None:
         """Take `effect` off this creature — expired, consumed, or dispelled.

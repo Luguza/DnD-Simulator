@@ -1031,6 +1031,72 @@ def test_an_effect_queued_at_the_declaration_lands_before_the_roll() -> None:
     assert len(target.effects) == 1
 
 
+class Brand(Effect):
+    """An effect that adds a die at `on_damage_roll` — the shape a rider has
+    when it applies during an attack and contributes afterwards."""
+
+    __slots__ = ()
+
+    ID = "test.brand"
+
+    @hook("on_damage_roll")
+    def burn(self, ctx: DamageRollContext) -> R:
+        ctx.damage.add(dice=Dice(1, 6), damage_type=DamageType.FIRE)
+        return R.APPLIED
+
+
+class BrandsOnHit(HookSource):
+    """Applies the brand to the swinger from `on_hit`, one stage before the
+    damage is rolled.
+
+    On the swinger rather than the target because `on_damage_roll` is `SELF` on
+    the attacker (`hooks/definitions.py`): a rider applied to the defender has
+    nothing to contribute with there, which is what makes the attacker the only
+    end this can be asked from.
+    """
+
+    __slots__ = ()
+
+    ID = "test.brands_on_hit"
+
+    @hook("on_hit")
+    def brand(self, ctx: HitContext) -> R:
+        ctx.apply_effect(ctx.attacker, Brand(ctx.attacker))
+        return R.APPLIED
+
+
+def test_the_queue_is_drained_per_dispatch_and_not_per_attack() -> None:
+    """**The scope of the drain, stated rather than left to be discovered.**
+    `hooks/contexts.py` says the engine "drains the queue after the dispatch",
+    and that is per dispatch: an effect applied at one stage of an attack is
+    attached for the stages after it. So a brand applied from `on_hit` is on the
+    swinger when `on_damage_roll` runs, and its die lands on the hit that
+    applied it.
+
+    The snapshot rule the same paragraph states is what this preserves — a
+    handler list fixed per *dispatch*, so an effect applied during a hook never
+    runs in that hook. Reckless Attack still has to call `grant_advantage()`
+    beside applying its effect, because the dispatch its effect would have
+    answered is the one already running.
+
+    Deferring to the end of the attack was the alternative and is refused: it
+    contradicts the sentence above, and it would give `on_incoming_damage` two
+    different meanings depending on whether `resolve_damage()` was reached
+    through an attack or called directly (`docs/decisions.md` § w1c).
+
+    2d6 rolled 4 + 3 = 7, plus the +4 Strength modifier, plus the brand's 1d6
+    rolled 5 = 16.
+    """
+    swinger, target = attacker(), defender()
+    swinger.attach(BrandsOnHit(swinger))
+
+    outcome, damage = resolve_attack(swinger, target, rng=ScriptedRng([_HIT, 4, 3, 5]))
+
+    assert outcome is Outcome.HIT
+    assert damage == 16
+    assert [held.name for held in swinger.effects] == ["test.brand"]
+
+
 def test_an_effect_queued_on_a_hit_lands_through_seal() -> None:
     """The hook that wants it most — a rider applying a condition on a hit —
     and the second call site, `_seal()`, which runs at five further stages of
