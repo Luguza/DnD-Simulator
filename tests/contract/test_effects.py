@@ -400,11 +400,30 @@ def test_a_duration_resolves_against_the_clock_the_store_was_last_told() -> None
     assert theirs.expiry is not None and theirs.expiry.end.round == 3
 
 
-def test_a_store_starts_at_the_top_of_the_encounter() -> None:
+def test_a_store_starts_at_one_arbitrary_point_in_an_undecided_order() -> None:
     """Nothing advances the clock until w2c's turn loop (debt #29), so a
-    creature that has never been swept reads round 1. It is stated here so the
-    debt has a number attached to it rather than a default nobody chose."""
+    creature that has never been swept reads round 1 at `UNSEATED`.
+
+    `UNSEATED` is a seat rather than a position ahead of the order — it is
+    `initiative=0` — so what a duration resolves to against it depends on which
+    side of that seat its anchor sorts: at or above, `Duration.resolve()` reads
+    the anchor's turn as already begun and the effect ends in round 2; below,
+    it ends in round 1. That is what the debt costs, and it is pinned here
+    rather than described, because "round 1 for everyone" is the plausible
+    wrong model of it.
+    """
     assert creature().effects.now == TimeKey(1, UNSEATED, TurnPhase.START)
+
+    duration = Duration.until_end_of_next_turn_of(BARBARIAN)
+    assert duration.resolve(creature().effects.now).end.round == 2
+
+    below = key(-1)
+    assert (
+        Duration.until_end_of_next_turn_of(below)
+        .resolve(creature().effects.now)
+        .end.round
+        == 1
+    )
 
 
 def test_a_store_holds_nothing_until_something_is_applied() -> None:

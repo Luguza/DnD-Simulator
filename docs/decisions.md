@@ -2009,6 +2009,17 @@ Each dispatch is drained like any other (`apply_pending(ctx, holder)`), so a
 handler that applies an effect on hearing about one is not the silent drop that
 debt #5 was about.
 
+**`ctx.effect` is the application, not what ends up in force**, and on a
+`REFRESH` re-application those differ: the handler is handed the incoming object,
+which is attached to nothing and discarded once the incumbent has absorbed it.
+The fourth review round raised this and it is recorded rather than patched
+(debt #31, `docs/workflow.md` § The review loop), because the two decisions above
+make it structural — the hook fires before the state change so a veto can refuse
+an effect, and the incumbent cannot be known before the dispatch because the
+dispatch can dispel or create one. Firing after the change instead, and losing
+the veto, is the alternative; it is a design choice for the milestone review, and
+nothing declares a handler on this hook until W3 authoring does.
+
 ### `apply()` returns what is in force, rather than a boolean
 
 `REJECT`'s entire content is the answer to "did anything happen", and `REFRESH`'s

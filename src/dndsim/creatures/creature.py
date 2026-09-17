@@ -153,9 +153,11 @@ class Creature:
         self.economy = ActionEconomy()
         self.dispatcher = Dispatcher(economy=self.economy)
         # The clock the store resolves a `Duration` against, before anything
-        # has begun. `engine/turn.py` (w2c) moves it on at every boundary it
-        # sweeps; until then every duration resolves against the top of round
-        # one, which is debt #29 rather than a default anybody should read.
+        # has begun. `UNSEATED` is a seat in the order rather than a position
+        # ahead of it, so a duration anchored to a creature that sorts before
+        # it already reads as begun; `engine/turn.py` (w2c) moves this on at
+        # every boundary it sweeps, and until then debt #29 is what a deadline
+        # resolved here is worth.
         self.effects = EffectStore(self, now=TimeKey(1, UNSEATED, TurnPhase.START))
 
     # -- what the stat block already knows ------------------------------------

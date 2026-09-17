@@ -34,8 +34,8 @@ the two levers deliberately not taken. **W1 is under way.**
 The plans were then re-read against what the wave measured
 (`docs/decisions.md` § The W0 plan review). Two things came out of it that
 matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
-first cuts and deferred obligations W0 left behind — twenty-two rows open, of
-which fourteen are W0's, one is `w1e`'s, two are `w1f`'s, two are `w1c`'s and
+first cuts and deferred obligations W0 left behind — twenty-three rows open, of
+which fourteen are W0's, one is `w1e`'s, two are `w1f`'s, three are `w1c`'s and
 three were found by the W1 critical-path gate — and the task that
 retires each;
 check it for the file you are about to touch. And **`w1k` is a
@@ -120,8 +120,8 @@ boundary, so nothing calls it.
 It also wired `on_effect_applied` and
 `on_effect_expired`, which had been in the closed registry since `w0e` with no
 possible caller. `docs/decisions.md` § w1c has the arguments and the eight
-ratios behind that median; it retires debt-register row #5 and opens #29
-and #30.
+ratios behind that median; it retires debt-register row #5 and opens #29,
+#30 and #31.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
