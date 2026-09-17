@@ -414,6 +414,42 @@ def test_a_transaction_sees_what_it_has_already_taken() -> None:
     assert wizard.resources.spells.count(3) == 2
 
 
+def test_a_direct_spend_while_a_transaction_is_open_is_refused() -> None:
+    """Otherwise it announces at once and the rollback cannot reach it, so an
+    exception leaves it spent beside costs that came back."""
+    sorcerer = creature("sorcerer", level=5)
+    counter = Counter(sorcerer)
+    sorcerer.attach(counter)
+    sorcerer.resources.add(SORCERY_POINTS, *spell_slot_specs(FULL))
+    with (
+        pytest.raises(EconomyError, match="while a transaction is open"),
+        sorcerer.resources.transaction() as txn,
+    ):
+        txn.spend("sorcery_point", 2)
+        sorcerer.resources.spend(slot_key(FULL, 3))
+    assert sorcerer.resources["sorcery_point"].current == 5
+    assert sorcerer.resources.spells.count(3) == 2
+    assert counter.seen == []
+
+
+def test_the_facade_routes_through_the_same_refusal() -> None:
+    """`SpellSlots.spend()` is `Resources.spend()`, so it is refused with it —
+    and `select()` is the seam that gets the slot into the transaction."""
+    sorcerer = creature("sorcerer", level=5)
+    sorcerer.resources.add(SORCERY_POINTS, *spell_slot_specs(FULL))
+    with (
+        pytest.raises(EconomyError, match="while a transaction is open"),
+        sorcerer.resources.transaction() as txn,
+    ):
+        txn.spend("sorcery_point", 2)
+        sorcerer.resources.spells.spend(3)
+    assert sorcerer.resources.spells.count(3) == 2
+    with sorcerer.resources.transaction() as txn:
+        txn.spend("sorcery_point", 2)
+        txn.spend(sorcerer.resources.spells.select(3).key)
+    assert sorcerer.resources.spells.count(3) == 1
+
+
 def test_a_transaction_outside_a_with_statement_is_refused() -> None:
     """Nothing would commit it, so `on_resource_spent` would never fire."""
     hero = creature()

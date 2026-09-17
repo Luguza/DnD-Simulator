@@ -2166,6 +2166,16 @@ an inner commit had already announced, and the handler that read the count in
 between has no way to find out. The refusal is the same first cut
 `engine/attack.py` makes for a nested attack (debt #26) and names the same fix.
 
+**While a transaction is open, `Resources.spend()` is refused too**, and the
+first review round is what found it: guarding the nested transaction and the
+un-entered one had left the third way round open. That method announces at once
+and the rollback can only give back what the transaction took, so a direct spend
+beside an open one survives the exception that un-spends everything else — the
+half-paid ability, arrived at through the door rather than the window.
+`SpellSlots.spend()` routes through the same refusal because it *is* that method,
+which is the second reason `select()` is split out: it is how a slot reaches
+`txn.spend()`.
+
 ### `EconomyError`, not a type of its own
 
 `core/errors.py` calls the action economy "the first thing in the project that

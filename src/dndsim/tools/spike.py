@@ -35,11 +35,14 @@ be the cheap moment to revise; a stub spends that moment on nothing." So:
   is the cost an inner-loop benchmark never sees.
 
 **What is deliberately not in the measurement, and why that is honest.** There
-is no turn loop here, so `w1c`'s per-boundary expiry sweep never runs and `w1b`'s
-resources do not exist; the spike therefore *understates* the eventual per-round
-cost, and `w2e`'s re-run of this benchmark is where the real APL compiler has to
-come in at or under the number below. What the spike does not
-understate is the per-attack cost, which is where the budget is spent.
+is no turn loop here, so `w1c`'s per-boundary expiry sweep never runs, and
+`self.slots.highest` is answered by a stand-in flag rather than by `w1b`'s
+pools (debt #15), so none of the pool arithmetic runs either — it is priced per
+operation in `docs/decisions.md` § w1b instead. The spike therefore
+*understates* the eventual per-round cost, and `w2e`'s re-run of this benchmark
+is where the real APL compiler has to come in at or under the number below.
+What the spike does not understate is the per-attack cost, which is where the
+budget is spent.
 
 Run it: `python -m dndsim.tools.spike` (add `--startup` for the worker cost).
 

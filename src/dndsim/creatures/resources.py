@@ -211,7 +211,24 @@ class Resources:
         return pool is not None and pool.can_spend(amount)
 
     def spend(self, key: str, amount: int = 1) -> None:
-        """Spend from one pool and announce it, or raise having spent nothing."""
+        """Spend from one pool and announce it, or raise having spent nothing.
+
+        Refused while a transaction is open: this method announces immediately,
+        and the rollback can only give back what the transaction took, so the
+        spend would survive an exception that un-spent everything beside it —
+        the half-paid ability `transaction()` exists to rule out. Inside a
+        transaction, `txn.spend()` is the way, and `SpellSlots.select()` is how
+        a slot reaches it.
+        """
+        if self._in_transaction:
+            raise EconomyError(
+                f"{key} was spent directly while a transaction is open. This "
+                "announces at once and the rollback cannot reach it, so an "
+                "exception would leave it spent beside costs that came back. "
+                "Spend through the transaction — `SpellSlots.select()` names "
+                "the pool a slot would come out of "
+                "(docs/decisions.md § w1b)."
+            )
         self[key]._take(amount)
         self._announce(key, amount)
 
