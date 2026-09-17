@@ -1970,13 +1970,24 @@ missing one: the feature that declares a handler for it runs nothing and says
 nothing, which is the failure the closure exists to prevent. The first cut of
 this task shipped without them and the review caught it.
 
-Both fire while the creature holds exactly what it held before the call:
-**applied before the attach, expired before the detach**. Stated the other way
-round, that is one rule — *an effect's own handlers run for exactly the span it
-is attached* — and each half is independently right. It cannot answer its own
-arrival, which is the snapshot rule `hooks/contexts.py` states for queued
-effects and the reason Reckless Attack grants advantage separately from applying
-its effect. It can answer its own ending, which is the only moment it has left.
+Both fire between the store's bookkeeping and the dispatcher's: **applied before
+the attach, expired after the store has let go and before the detach**. Stated
+the other way round, that is one rule — *an effect's own handlers run for
+exactly the span it is attached* — and each half is independently right. It
+cannot answer its own arrival, which is the snapshot rule `hooks/contexts.py`
+states for queued effects and the reason Reckless Attack grants advantage
+separately from applying its effect. It can answer its own ending, which is the
+only moment it has left.
+
+**Letting go first is what makes a removal happen once**, and the review found
+it the hard way. An `on_effect_expired` handler may remove something — a chain
+ending with whatever anchored it, a dispel — and what it removes can be an
+effect the same expiry sweep already has in its snapshot. Reaching that handler
+with the effect still held fires its hook a second time and then dies inside
+`list.remove`. So `remove()` settles the store's side before dispatching and
+refuses an effect it does not hold with a sentence, and the sweep skips what a
+handler took while it was running. The state a handler sees is therefore: the
+creature no longer holds the effect, and the effect still answers.
 
 **A veto is honoured on the application and refused on the expiry**, which is
 the split `engine/attack.py` makes at `_seal()` and for the same reason. An
@@ -2011,8 +2022,8 @@ rangers' marks in some later fight.
 
 Eight paired runs on one container, alternating so drift cancels: **22.5k–22.9k
 attack resolutions/sec/core before, 22.3k–22.8k after**, ratios 1.012, 0.986,
-0.990, 0.995, 1.003, 0.999, 1.004, 0.975 — a median of **−0.5% against a
-run-to-run spread of about ±2%**. The cost is not distinguishable from zero, and
+0.990, 0.995, 1.003, 0.999, 1.004, 0.975 — a median of **0.997, which is −0.3%,
+against pair-to-pair ratios spanning −2.5% to +1.2%**. The cost is not distinguishable from zero, and
 that is what the diff predicts: on the hot path the only change is
 `refuse_pending(ctx)` becoming `apply_pending(ctx, attacker, defender)`, the same
 empty-list early return with two more arguments pushed, plus one `EffectStore`

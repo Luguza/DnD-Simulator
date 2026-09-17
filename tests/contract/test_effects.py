@@ -591,3 +591,63 @@ def test_a_veto_on_an_ending_is_refused() -> None:
 
     with pytest.raises(FeatureContractError, match="vetoed barbarian.rage"):
         barbarian.effects.remove(rage)
+
+
+class Dispels(HookSource):
+    """A handler that removes another effect when any effect on its owner ends
+    — a chain ending with whatever anchored it."""
+
+    __slots__ = ("_quarry", "_store")
+
+    ID = "test.dispels"
+
+    def __init__(self, owner: Creature, quarry: Effect) -> None:
+        super().__init__(owner)
+        self._store = owner.effects
+        self._quarry = quarry
+
+    @hook("on_effect_expired")
+    def dispel(self, ctx: EffectContext) -> R:
+        if self._quarry not in list(self._store):
+            return R.SKIPPED
+        self._store.remove(self._quarry)
+        return R.APPLIED
+
+
+def test_a_sweep_survives_a_handler_that_removes_what_it_was_about_to() -> None:
+    """Two effects expire on the same boundary and the first one's handler
+    dispels the second. The sweep took its snapshot before either ran, so
+    without a check it would remove the second a second time — firing its
+    expiry hook twice and then dying inside `list.remove`."""
+    barbarian = creature()
+    watcher = Watcher(barbarian)
+    barbarian.attach(watcher)
+    duration = Duration.until_end_of_next_turn_of(BARBARIAN)
+    barbarian.effects.expire_after(at(1, BARBARIAN, TurnPhase.END))
+
+    first = barbarian.effects.apply(Rage(barbarian, duration=duration))
+    second = barbarian.effects.apply(Vex(barbarian, duration=duration))
+    assert first is not None and second is not None
+    barbarian.attach(Dispels(barbarian, second))
+
+    barbarian.effects.expire_after(at(2, BARBARIAN, TurnPhase.END))
+
+    assert watcher.seen.count("expired:fighter.vex") == 1
+    assert len(barbarian.effects) == 0
+
+
+def test_removing_an_effect_twice_says_so_rather_than_firing_twice() -> None:
+    """The store lets go before the dispatch, so a second removal — a handler's
+    or a caller's — finds nothing to remove and is refused with a sentence
+    rather than dying inside `list.remove`."""
+    barbarian = creature()
+    watcher = Watcher(barbarian)
+    barbarian.attach(watcher)
+    rage = barbarian.effects.apply(Rage(barbarian))
+    assert rage is not None
+
+    barbarian.effects.remove(rage)
+    with pytest.raises(ValueError, match="not attached to barbarian"):
+        barbarian.effects.remove(rage)
+
+    assert watcher.seen.count("expired:barbarian.rage") == 1

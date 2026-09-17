@@ -272,10 +272,26 @@ class EffectStore:
         return effect
 
     def remove(self, effect: Effect) -> None:
-        """Take `effect` off this creature — expired, consumed, or dispelled."""
-        self._announce(ON_EFFECT_EXPIRED, effect, vetoable=False)
+        """Take `effect` off this creature — expired, consumed, or dispelled.
+
+        **The store lets go before the dispatch and the dispatcher after it**,
+        which is what makes a removal happen once. An `on_effect_expired`
+        handler may remove something, itself included, and reaching that handler
+        with the effect still held would either fire the hook a second time or
+        leave the second call to die inside `list.remove`. So the store's
+        bookkeeping is settled first, and this is the state a handler sees: the
+        creature no longer holds the effect, and the effect still answers, which
+        is the last word it gets about its own ending.
+        """
+        if effect._store is not self:
+            raise ValueError(
+                f"{effect.name} is not attached to {self._holder.name} and "
+                "cannot be removed from it — it has expired already, or it "
+                "belongs to somebody else"
+            )
         self._held.remove(effect)
         effect._store = None
+        self._announce(ON_EFFECT_EXPIRED, effect, vetoable=False)
         self._holder.detach(effect)
 
     def expire_before(self, now: TimeKey) -> None:
@@ -305,17 +321,21 @@ class EffectStore:
             if held.expiry is not None and _is_over(held.expiry, now, through)
         ]
         for effect in expired:
-            self.remove(effect)
+            # An earlier effect's `on_effect_expired` handler may have removed a
+            # later one — dispelling it, or ending a chain — and the snapshot
+            # above cannot know. Removing it twice is what fires its hook twice.
+            if effect._store is self:
+                self.remove(effect)
 
     def _announce(self, spec: HookSpec, effect: Effect, *, vetoable: bool) -> bool:
         """Dispatch one of the two effect hooks, and say whether to go ahead.
 
-        Both fire while the creature holds exactly what it held before the
-        call: `on_effect_applied` before the attach, `on_effect_expired` before
-        the detach. So an effect's own handlers run for exactly the span it is
-        attached — it cannot answer its own arrival, which is the snapshot rule
-        (`hooks/contexts.py`), and it can answer its own ending, which is the
-        only moment left to.
+        Both fire between the store's bookkeeping and the dispatcher's:
+        `on_effect_applied` before the attach, `on_effect_expired` after the
+        `remove()` and before the detach. So an effect's own handlers run for
+        exactly the span it is attached — it cannot answer its own arrival,
+        which is the snapshot rule (`hooks/contexts.py`), and it can answer its
+        own ending, which is the only moment left to.
 
         A veto is honoured on the application, because an effect is "on its way
         onto a creature" until this hook has run and refusing one is what a

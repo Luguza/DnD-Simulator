@@ -113,11 +113,15 @@ a third creature raises rather than being dropped, and the roster that answers i
 is `w2c`'s (debt #30); and **the store keeps the clock it was last told**, since
 no attack context carries a `TimeKey` and Rage's `refresh()` is called from three
 attack hooks — so `expire_before()`/`expire_after()` are the only writers of it
-and nothing advances them until `w2c` (debt #29). It measured at **−0.3% of the
-rate against ±1% of run-to-run spread**, which does not include the per-boundary
-expiry sweep: the spike crosses no turn boundary, so nothing calls it.
-`docs/decisions.md` § w1c has the arguments; it retires debt-register row #5 and
-opens #29 and #30.
+and nothing advances them until `w2c` (debt #29). It measured at **−0.3%
+of the rate, against pair-to-pair ratios spanning −2.5% to +1.2%**, and that
+number does not include the per-boundary expiry sweep: the spike crosses no turn
+boundary, so nothing calls it.
+It also wired `on_effect_applied` and
+`on_effect_expired`, which had been in the closed registry since `w0e` with no
+possible caller. `docs/decisions.md` § w1c has the arguments and the eight
+ratios behind that median; it retires debt-register row #5 and opens #29
+and #30.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
