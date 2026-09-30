@@ -340,11 +340,14 @@ Tasks are taken one at a time off [`docs/progress.md`](docs/progress.md), the
 serial queue, and driven to a merged pull request by the loop in
 [`docs/workflow.md`](docs/workflow.md): `/next-task` implements, the
 `claude-code-review.yml` reviewer answers, and the queue advances only by a
-merged diff. A `⏸` row is a plan review (`/plan-review`) that the loop runs and
-merges itself. The human reads the code only at ROADMAP milestones: CI's
-`human-merge-required` job fails on purpose for a **milestone review** PR and
-for an edit to `.github/workflows/`, and nothing else stops the chain but a
-`held` row (`docs/workflow.md` § Merge authority).
+merged diff. **Every loop PR targets the milestone branch, never `main`**
+(`milestone/<name>`, named at the top of `docs/progress.md` on `main`). A `⏸`
+row is a plan review (`/plan-review`) that the loop runs and merges itself. The
+human reads the code only at ROADMAP milestones, as one PR: the milestone branch
+into `main`. CI's `human-merge-required` job fails on purpose for any PR into
+`main` and for an edit to `.github/workflows/`, and nothing else stops the chain
+but a `held` row or a milestone PR marked ready (`docs/workflow.md` § The
+milestone branch, § Merge authority).
 
 Three skills shape that loop: `pr` writes the PR body, `pr-review` reviews on two
 axes — [`CODING_STANDARDS.md`](CODING_STANDARDS.md), which holds the review

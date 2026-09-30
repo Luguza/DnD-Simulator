@@ -17,8 +17,9 @@ or rerank findings across the axes; that is how one masks the other.
 
 ## 1. Pin the diff
 
-`git diff origin/main...HEAD` (three dots: against the merge base), plus
-`git log origin/main..HEAD --oneline`. An empty diff stops here.
+`git diff origin/<base>...HEAD` (three dots: against the merge base), plus
+`git log origin/<base>..HEAD --oneline`, where `<base>` is the PR's base — the
+milestone branch for anything the loop opened. An empty diff stops here.
 
 ## 2. Find the spec
 
