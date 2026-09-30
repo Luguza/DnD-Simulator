@@ -330,6 +330,7 @@ there is local to a module.
 | `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review |
 | the performance budget, pricing a change | § w0i, § The W1 critical-path review |
 | `engine/triggers.py`, `Dispatcher.responsive()` | § w0g3 |
+| `.claude/skills/`, `CODING_STANDARDS.md`, the review loop | § The PR, review and retro skills |
 
 Add a section there when a task lands, rather than growing this file.
 
@@ -344,6 +345,11 @@ merges itself. The human reads the code only at ROADMAP milestones: CI's
 `human-merge-required` job fails on purpose for a **milestone review** PR and
 for an edit to `.github/workflows/`, and nothing else stops the chain but a
 `held` row (`docs/workflow.md` § Merge authority).
+
+Three skills shape that loop: `pr` writes the PR body, `pr-review` reviews on two
+axes — [`CODING_STANDARDS.md`](CODING_STANDARDS.md), which holds the review
+checklist, and the task's ROADMAP row — and `retro` runs at every `⏸` gate and
+turns what the reviews found into checks, standards and plan edits.
 
 ## Sequencing rules
 

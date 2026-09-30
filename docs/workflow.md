@@ -9,7 +9,7 @@ One task, one session, one branch, one pull request, reviewed until clean.
    and criticises the ROADMAP spec **before** implementing it.
 2. It branches `claude/task-<id>`, implements, and proves it locally:
    `uv run pre-commit run --all-files` and `uv run pytest`.
-3. It opens the PR **as a draft**, pushes everything, then marks it ready. That
+3. It opens the PR **as a draft**, body per `.claude/skills/pr/SKILL.md`, pushes everything, then marks it ready. That
    is what makes `claude-code-review.yml` fire once against a complete diff
    instead of once per push — drafts are skipped and reviewed on
    `ready_for_review`.
@@ -23,7 +23,9 @@ One task, one session, one branch, one pull request, reviewed until clean.
 ## The review loop
 
 The reviewer posts one sticky comment per PR, rewritten on each push, tagging
-every finding **CONFIRMED** or **PLAUSIBLE**.
+every finding **CONFIRMED** or **PLAUSIBLE**. It reviews on two axes
+(`.claude/skills/pr-review/SKILL.md`): **Standards** against
+`CODING_STANDARDS.md`, and **Spec** against the task's ROADMAP row.
 
 - **CONFIRMED** — fix it and push.
 - **PLAUSIBLE** — fix it, *or* reply on the PR saying why it is not a defect.
@@ -74,7 +76,10 @@ implementer that can only ever implement is worse than one that can stop.
 
 A `⏸` row runs `/plan-review` instead: re-read `ROADMAP.md` and `DESIGN.md`
 against what the last few tasks actually measured, in the shape of
-`docs/decisions.md` § The W0 plan review. Gates sit every two or three tasks
+`docs/decisions.md` § The W0 plan review, then the `retro` skill over the same
+tasks — what in the environment (checks, `CODING_STANDARDS.md`, `CLAUDE.md`,
+the skills) made them cost what they did. The retro's edits ride the gate's PR;
+a `.github/workflows/` edit waits for the next milestone review. Gates sit every two or three tasks
 and at every milestone. An ordinary gate's PR is merged by the loop, which then
 carries on; a **milestone review**'s PR is merged by the human, and the chain
 waits for that merge.

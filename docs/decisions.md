@@ -22,6 +22,7 @@ re-litigated by the next agent through the area.
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | [w0h](#w0h--walking-skeleton) |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | [w0i](#w0i--the-pessimistic-performance-spike-m0) |
 | `ROADMAP.md`, `DESIGN.md`, planning a wave | [the W0 plan review](#the-w0-plan-review--what-m0-changed-in-the-plan) |
+| `.claude/skills/`, `CODING_STANDARDS.md`, the review loop | [the PR, review and retro skills](#the-pr-review-and-retro-skills) |
 
 ## w0a — scaffold
 
@@ -2118,3 +2119,35 @@ Sources: DESIGN.md § Durations, § Structural prevention over testing, § Lever
 § The scorer; `core/timeline.py`; `docs/decisions.md` § w0d, § w0g2, § w0g3,
 § w1a, § w1f, § The W1 critical-path review; `ROADMAP.md` § Sequencing
 principles 10, § The W0 debt register rows #5, #15, #18, w1c, w1k, w2c.
+
+## The PR, review and retro skills
+
+Three skills from Matt Pocock's *Fixing the PR Bottleneck* (AI Engineer, 2026;
+[mattpocock/skills](https://github.com/mattpocock/skills), MIT), adapted rather
+than vendored. The talk's argument: implementation is overloaded and review is
+underloaded, so standards belong to the reviewer, and a retro turns each round
+of review into a check or a rule so the next task does not repeat it.
+
+- **The checklist moved to `CODING_STANDARDS.md`.** It was
+  `.claude/skills/pr-review/SKILL.md` (§ w0a, The review workflow's two
+  reviews); that file is now the procedure and the root file is the standard, so
+  the retro edits a document and not a skill. `CLAUDE.md` was left whole: moving
+  review-only rules out of it is the retro's "CLAUDE.md" candidate, and the
+  first gate that runs it decides what goes.
+- **Two axes, one pass in CI.** Upstream `code-review` runs Standards and Spec as
+  parallel subagents. CI keeps `--disallowedTools Agent,Task` for the reason in
+  § w0a, so there the axes run in sequence and are reported under separate
+  headings; the skill fans out only where subagents can return. Spec is the
+  ROADMAP row named by the branch, which is what `/next-task` step 2 already
+  criticises — the reviewer now checks the implementation against it too.
+- **The retro runs at every `⏸` gate**, inside `/plan-review`, not after every
+  task — `docs/workflow.md` § Token cost. Its edits ride the gate's PR, except a
+  `.github/workflows/` edit, which waits for the next milestone review because
+  an ordinary gate that carried one would stop the loop and go unreviewed
+  (`docs/workflow.md` § Merge authority).
+- **The PR body is `pr`'s**, with a Bookkeeping section appended for what
+  `/next-task` already required. Merge Danger's one-way doors are named for this
+  repo: the frozen registry, seeded output, closed vocabularies, the contract.
+
+Upstream's `GLOSSARY.md` and `writing-for-agents` were not brought in: `DESIGN.md`
+is the vocabulary and `CLAUDE.md` § Working rules is the writing guide.
