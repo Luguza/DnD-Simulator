@@ -149,7 +149,7 @@ worker, and both paths below drive the Routine rather than spawn around it.
   prompt:
 
   ```text
-  Watchdog for the DnD-Simulator task loop. Be brief and cheap in the three
+  Watchdog for the DnD-Simulator task loop. Be brief and cheap in the
   checks below: do not read DESIGN.md, ROADMAP.md or docs/decisions.md for them.
 
   1. Read docs/progress.md on main. If it does not exist there, stop silently.
