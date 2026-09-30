@@ -42,8 +42,9 @@ it through steps 5 and 6 like a task PR.
 Open it as a **draft**, push everything, then mark it ready for review. One
 review against the finished diff, not one per push.
 
-Body: what changed, the done-when evidence, the debt rows retired, and anything
-you deliberately did not do. Then `subscribe_pr_activity` and end your turn.
+Write the body with the `pr` skill: Summary, Evidence, Merge Danger, then the
+done-when, the debt rows retired and anything you deliberately did not do. Then
+`subscribe_pr_activity` and end your turn.
 
 ## 5. Answer the review
 

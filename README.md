@@ -32,9 +32,10 @@ after an earlier one fails, so a PR shows the whole list in one pass.
 
 Two workflows put Claude on pull requests:
 
-- `claude-review.yml` reviews every PR automatically against
-  [`.claude/skills/pr-review/SKILL.md`](.claude/skills/pr-review/SKILL.md), the
-  project's invariant checklist.
+- `claude-code-review.yml` reviews every PR automatically with
+  [`.claude/skills/pr-review/SKILL.md`](.claude/skills/pr-review/SKILL.md): the
+  project's invariant checklist in [`CODING_STANDARDS.md`](CODING_STANDARDS.md),
+  and the task's ROADMAP row.
 - `claude.yml` responds to `@claude` mentions in PR and issue comments.
 
 Both need the Claude GitHub App installed on the repo and a
