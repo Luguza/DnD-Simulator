@@ -20,7 +20,9 @@ human's review.
   next branch's name onto the milestone branch, and merging the milestone PR is
   what publishes it.
 - **Draft means the loop's, ready means the human's.** The milestone PR is
-  opened as a draft when the branch is created. The milestone review marks it
+  opened as a draft once the branch has its first merge — GitHub refuses a pull
+  request with no commits between the two branches, so it cannot be opened when
+  the branch is created. The milestone review marks it
   ready; from then until the human merges it, nothing is started.
 - **The queue lives on the milestone branch.** Task PRs flip rows there, so the
   loop reads `docs/progress.md` from the milestone branch; the copy on `main` is
@@ -129,9 +131,9 @@ no permission-mode picker"), and `create_session` refuses a parent whose mode it
 cannot read. There is no setting that changes this. So the Routine *is* the
 worker, and both paths below drive the Routine rather than spawn around it.
 
-- **Watchdog.** The Routine finds the milestone branch (creating it and its
-  draft milestone PR when `main` names one that does not exist yet, and merging
-  `main` into it when `main` is ahead), then runs its checks and, only if all of
+- **Watchdog.** The Routine finds the milestone branch (creating it when `main`
+  names one that does not exist yet, merging `main` into it when `main` is
+  ahead, and opening the draft milestone PR once it has commits of its own), then runs its checks and, only if all of
   them hold, works the task itself in that same session: the milestone PR is
   still a draft, the queue has a `next` row, no `claude/task-*` PR is open, and
   nothing is `held`. The checks are what stop it double-starting a task or
@@ -154,9 +156,10 @@ worker, and both paths below drive the Routine rather than spawn around it.
 
   1. Read docs/progress.md on main. If it does not exist there, stop silently.
      Its `Milestone branch:` line names the milestone branch M.
-  2. If M does not exist: create it from main, push it, and open a draft pull
-     request from M into main titled after the milestone. If M exists and main
-     has commits M lacks, merge main into M and push.
+  2. If M does not exist, create it from main and push it. If main has
+     commits M lacks, merge main into M and push. If M has commits main lacks
+     and no pull request from M into main exists, open one as a draft, titled
+     after the milestone.
   3. If the pull request from M into main is open and not a draft, stop
      silently — the human is reviewing the milestone.
   4. Read docs/progress.md on M. Find the row whose status is `next`. If there
