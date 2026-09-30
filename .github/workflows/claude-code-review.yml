@@ -16,8 +16,13 @@ jobs:
   claude-review:
     # Drafts are work in progress by definition. `ready_for_review` is in the
     # trigger list above, so a draft is reviewed once, when it stops being one,
-    # instead of on every push while it is still being written.
-    if: github.event.pull_request.draft == false
+    # instead of on every push while it is still being written. The milestone
+    # PR is skipped outright: every task in it was reviewed on its way into the
+    # milestone branch, and its reader is the human (docs/workflow.md
+    # § The milestone branch).
+    if: >-
+      github.event.pull_request.draft == false &&
+      !startsWith(github.head_ref, 'milestone/')
 
     runs-on: ubuntu-latest
     permissions:
