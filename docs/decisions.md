@@ -2120,6 +2120,199 @@ Sources: DESIGN.md § Durations, § Structural prevention over testing, § Lever
 § w1a, § w1f, § The W1 critical-path review; `ROADMAP.md` § Sequencing
 principles 10, § The W0 debt register rows #5, #15, #18, w1c, w1k, w2c.
 
+## w1b — resources, and the three words DESIGN.md left to be read carefully
+
+`ResourceSpec`, `Recovery`, `ResourcePool`, `SpellSlots` and `transaction()` are
+the objects DESIGN.md § Resources names, and the seven shapes it tabulates all
+fell out of one spec with no branch anywhere. What needed deciding was smaller
+than that and in three places: what a *pool* is, which exception an overdrawn
+one raises, and where the trigger half of a `Recovery` lives.
+
+### A pool is one resource, so the ledger needed a name
+
+DESIGN.md § Resources reads two ways in isolation — "the mutable `ResourcePool`
+holds only the current count" could be the container — and the section settles
+it two sentences later: spell slots are "nine pools `slot:1`…`slot:9`" and
+`SpellSlots` is "a **Facade** over the nine level-tagged pools". Nine pools for
+nine slot levels is a pool per resource, which leaves the per-creature container
+unnamed in both documents. It is `Resources`, and `resources.transaction()` in
+the same paragraph is the attribute rather than a class: `creature.resources` is
+what § The authoring skill's fifth mutator family, `resources.spend`, is written
+against.
+
+That split decides where `on_resource_spent` is fired. A pool cannot know it is
+inside a transaction, so it is a counter and `Resources` is the only thing that
+announces — which is also the only arrangement in which the rule below is
+expressible at all.
+
+### The announcement belongs to the commit, not to the take
+
+A transaction takes what it is asked for as it is asked for, because the second
+`spend()` must see what the first one left — three 3rd-level slots asked of a
+pool holding two is a refusal, and a ledger that only added up at the commit
+would let it through. But it *announces* nothing until the `with` block exits
+cleanly, and then once per pool carrying the committed total rather than once
+per call. A spend that rolled back did not happen, and § w1c already records
+what a handler told about an event that did not take place is worth.
+
+The same sentence answers the veto. `on_resource_spent` is past tense — the
+registry summary is "The owner spends a resource" — so by the time a handler
+sees it the resource is gone, and a veto has no meaning and never will have one.
+It is refused with `FeatureContractError`, which is `EffectStore._announce()`'s
+split for `on_effect_expired` and `_seal()`'s for a late veto, reached the same
+way (§ w1c, § w1f).
+
+Nesting is refused rather than supported: an outer rollback would un-spend what
+an inner commit had already announced, and the handler that read the count in
+between has no way to find out. The refusal is the same first cut
+`engine/attack.py` makes for a nested attack (debt #26) and names the same fix.
+
+**While a transaction is open, `Resources.spend()` is refused too**, and the
+first review round is what found it: guarding the nested transaction and the
+un-entered one had left the third way round open. That method announces at once
+and the rollback can only give back what the transaction took, so a direct spend
+beside an open one survives the exception that un-spends everything else — the
+half-paid ability, arrived at through the door rather than the window.
+`SpellSlots.spend()` routes through the same refusal because it *is* that method,
+which is the second reason `select()` is split out: it is how a slot reaches
+`txn.spend()`.
+
+The veto's refusal says where a free use *does* go, and the third review round is
+why it has to. It had ended "a feature that means to make a spend free hands it
+straight back", which is advice this task ships no way to take: there is no
+public mutator that gives a resource back, by the choice recorded below, so the
+only route the sentence left open was `pool.current += 1` — an unguarded slot
+that would also push a pool above its maximum. A use that costs nothing is a
+bigger `maximum` or another `Recovery`, declared with the rest of the resource,
+and the message now says so.
+
+### `EconomyError`, not a type of its own
+
+`core/errors.py` calls the action economy "the first thing in the project that
+can be *overdrawn*", and DESIGN.md § Failing loudly lists "resource going
+negative" beside the reaction invariant in the same sentence of runtime
+invariants. An overdrawn pool and an overdrawn economy are one mistake, so they
+are one exception; the module docstring is widened by a line rather than a
+sibling class added.
+
+What is *not* an error is the distinction that made this cheap: `core/errors.py`
+says in as many words that "a spell slot that is not available" is a fight
+outcome. So `can_spend()` and `SpellSlots.count()` answer for nothing and
+reaching the refusal means a caller decided not to ask — `creatures/economy.py`'s
+argument exactly, and the reason the two refusals read alike.
+
+The two refusals that do *not* read alike are deliberate. A pool that is empty
+and a pool the build never granted are different mistakes: the first comes back
+on a rest and the second is a feature whose resource nobody gave the creature,
+which is a build error. `Resources.__getitem__` says which.
+
+### `RecoveryTrigger` is rules vocabulary, so it lives in `rules/enums.py`
+
+`ActionCost`'s docstring gives the rule: a word that `hooks/` and `creatures/`
+both need, with no import between them, lives at the bottom of the stack. A rest
+is an XPHB word, and `engine/adventuring_day.py` (w6a) and the stat-block parser
+(w7a) will both speak it. Membership is DESIGN.md § Resources' seven shapes and
+nothing more — the printed recharge ranges other than 5–6 arrive with `w7a`,
+which is the first task that has the data to read them.
+
+Nothing in `creatures/resources.py` rolls anything, and `RECHARGE_5_6` is why
+that is worth saying: the d6 is rolled by whoever fires the trigger, so a pool
+never reaches for a generator and `core/rng.py`'s single stream stays single.
+
+### A slot level is a spec field, which is what lets Pact Magic be ordinary
+
+`spell_slot_specs()` returns nine shared specs per progression whose `maximum` is
+a function of the stat block, so a level-3 warlock and a level-20 one read their
+different numbers off the same `pact:2` spec — the Flyweight claim made real
+rather than asserted. Levels a progression never reaches are pools of 0 rather
+than absent pools, so levelling up needs no pool added.
+
+Pact slots are keyed apart (`pact:N`, not `slot:N`) because the key is all
+`on_resource_spent` hands a handler, and a Pact slot is a different resource
+from a spell slot — it comes back on a Short Rest — while `SpellSlots` sums
+them, because "how many 3rd-level slots have I" is one
+question. That is the whole of what the facade buys, and it is why
+`rules/constants.py`'s promise that callers "never branch on the progression"
+survives contact with Pact Magic.
+
+`select()` is split from `spend()` for the transaction's sake: a slot is half of
+Quickened Fireball's cost, and only the transaction may take it if the two are
+to commit together.
+
+### What it cost the benchmark
+
+Eight paired runs on one container, alternating so drift cancels: **27.0k–29.7k
+attack resolutions/sec/core before, 27.6k–30.6k after**, ratios 1.058, 1.030,
+1.024, 0.965, 0.977, 0.982, 1.015, 0.938 — a median of **0.998, which is −0.2%,
+against pair-to-pair ratios spanning −6.2% to +5.8%**. The cost is not
+distinguishable from zero on a container this noisy, and it is what the diff
+predicts: on the spike's path the only change is one empty `Resources` per
+creature at construction, measured at **0.092 µs**, and nothing per attack.
+
+**The pool arithmetic is not in that measurement, and this row is the one that
+asked for it.** `tools/spike.py` answers `self.slots.highest` from a stand-in
+flag — debt #15, `w1k`'s — so a paired run cannot reach the arithmetic however
+it is run. Pricing it per operation instead is what lets `w1k` multiply by a
+spend count rather than inherit an unmeasured cost. On the same container, median
+of seven runs of 100k iterations each:
+
+| Operation | Cost | As a share of one attack resolution (~35 µs here) |
+|---|---|---|
+| `can_spend()` | 0.095 µs | 0.3% |
+| `pool._take()` alone | 0.146 µs | 0.4% |
+| `spend()` — take and announce, no handler attached | 1.528 µs | 4.3% |
+| `spells.count(3)` | 1.184 µs | 3.4% |
+| `spells.highest()` | 1.378 µs | 3.9% |
+| `spells.spend(3, allow_upcast=True)` | 3.077 µs | 8.8% |
+| `transaction()` of two pools, committed | 3.836 µs | 10.9% |
+| `recover()` across 11 pools | 2.202 µs | 6.3% |
+
+The attribution inside `spend()` is the part worth keeping: **0.15 µs of it is
+the ledger and 0.83 µs is constructing `ResourceSpentContext`**, with the rest
+in the dispatch, the drain and `close()`. So the announcement costs ten times the
+arithmetic, and the lever if this ever matters is the one `w0i` already pulled
+for the attack — pool the context — rather than anything in the pools. Nobody
+should pull it now: a creature spends a resource about once a round against
+several attack resolutions, so at one slot per round this is ~4% of one
+resolution added to a round that contains several, and `w1k` is where that
+multiplication is done against a real scenario.
+
+`recover()` is per rest rather than per round and is on nobody's hot path; it is
+priced here only so that `w6a` does not have to.
+
+### What this task deliberately did not do
+
+- **Wire the spike's stand-ins to real pools.** Debt #15 names `w1k` for it, and
+  a task that retired half of it would leave `w1k` totalling attributions against
+  a spike that had already changed underneath them.
+- **Fire both rest triggers on a long rest.** A feature recharging on a Short
+  Rest recharges on a Long Rest too, and DESIGN.md § Resources' table writes
+  Rage's two entries out rather than relying on an implication — so `recover()`
+  matches the trigger it is given and nothing more. Who fires both is the day
+  loop's, and saying so is debt **#32** rather than a rule invented here from a
+  sentence nobody has quoted.
+- **Charge the action economy inside a transaction.** Quickened Fireball costs a
+  Bonus Action as well as its two resources, and the dispatcher is what spends
+  that (`hooks/dispatch.py`). A unit of work spanning both would put the economy
+  behind a second gate; DESIGN.md § Resources scopes `transaction()` to resources
+  and the two ledgers stay separate.
+- **Catch "spent during a legality query".** It is a named runtime invariant
+  (DESIGN.md § Failing loudly) and there is no legality query yet — the APL that
+  asks one is `w2e`'s, and the flag belongs to whatever asks rather than to the
+  pool that answers.
+- **Give `ResourcePool` a `give()` beside `_take()`.** Nothing hands a resource
+  back outside a rollback and a recovery, both of which are in this file. A
+  public mutator with no caller is a second way to write a count.
+- **Read `maximum` from a class table.** DESIGN.md § Resources allows "a
+  class-table column"; `table_value()` is `w3b`'s and the callable is the seam it
+  will arrive through, already exercised by every level-scaled spec here.
+
+Sources: DESIGN.md § Resources: one model, no special cases, § Failing loudly —
+layered, § The authoring skill; XPHB (2024) "Spells" (Spell Slots, Pact Magic);
+`docs/decisions.md` § w0i, § w1a, § w1c, § w1f, § The W1 critical-path review;
+`ROADMAP.md` § Sequencing principles 10, § The W0 debt register rows #15, #26,
+#32, w1b, w1k, w2e, w6a, w7a.
+
 ## The PR, review and retro skills
 
 Three skills from Matt Pocock's *Fixing the PR Bottleneck* (AI Engineer, 2026;

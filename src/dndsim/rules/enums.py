@@ -35,6 +35,7 @@ __all__ = [
     "DamageType",
     "Mastery",
     "Outcome",
+    "RecoveryTrigger",
     "School",
     "Size",
     "WeaponProperty",
@@ -231,3 +232,26 @@ class ActionCost(Enum):
     ACTION = "action"
     BONUS_ACTION = "bonus_action"
     REACTION = "reaction"
+
+
+@unique
+class RecoveryTrigger(Enum):
+    """What hands a spent resource back.
+
+    The trigger half of `Recovery` (`creatures/resources.py`), and it lives here
+    for the reason `ActionCost` above records: a rest is a rules word, and
+    `creatures/`, `engine/adventuring_day.py` (w6a) and `content/`'s stat-block
+    parser (w7a) all need the same ones with no import between them.
+
+    Nothing here rolls anything. `RECHARGE_5_6` is fired by whoever rolled the
+    d6 — the turn loop (w2c) — so a pool never reaches for a generator, which is
+    what keeps `core/rng.py`'s single stream single (DESIGN.md § Determinism).
+
+    Membership is DESIGN.md § Resources' seven shapes and nothing beyond them:
+    the other printed recharge ranges arrive with the parser that has the data
+    to read them (w7a).
+    """
+
+    SHORT_REST = "short_rest"
+    LONG_REST = "long_rest"
+    RECHARGE_5_6 = "recharge_5_6"

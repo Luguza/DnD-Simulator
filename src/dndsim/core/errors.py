@@ -19,7 +19,8 @@ handler's class is created, one at the moment it returns, and one for the
 machinery it declared that nobody wired in.
 
 `EconomyError` arrives with the action economy (w1a), which is the first thing
-in the project that can be *overdrawn*.
+in the project that can be *overdrawn*, and covers the second — a resource pool
+(w1b) — on the same argument rather than through a type of its own.
 """
 
 __all__ = [
@@ -64,12 +65,18 @@ class PhaseError(DndSimError):
 
 
 class EconomyError(DndSimError):
-    """Something was spent that the action economy did not have to give.
+    """Something was spent that the creature did not have to give.
 
     One of DESIGN.md § Failing loudly's named runtime invariants — "a second
     reaction spent before the creature's own turn has begun" — and the general
     case of it: an Action, a Bonus Action or a foot of movement taken by a
     creature with none left.
+
+    The other named one is "resource going negative", which is why
+    `creatures/resources.py` raises this rather than a type of its own: an
+    overdrawn pool and an overdrawn economy are one mistake. Note what is *not*
+    here — a spell slot that is merely unavailable is a fight outcome, as the
+    module docstring says.
 
     It is a contract violation rather than a fight outcome because **asking is
     free**. `can_spend()` answers before anything is spent, the dispatcher calls

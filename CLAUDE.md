@@ -34,9 +34,9 @@ the two levers deliberately not taken. **W1 is under way.**
 The plans were then re-read against what the wave measured
 (`docs/decisions.md` § The W0 plan review). Two things came out of it that
 matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
-first cuts and deferred obligations W0 left behind — twenty-three rows open, of
-which fourteen are W0's, one is `w1e`'s, two are `w1f`'s, three are `w1c`'s and
-three were found by the W1 critical-path gate — and the task that
+first cuts and deferred obligations W0 left behind — twenty-four rows open, of
+which fourteen are W0's, one is `w1e`'s, two are `w1f`'s, three are `w1c`'s, one
+is `w1b`'s and three were found by the W1 critical-path gate — and the task that
 retires each;
 check it for the file you are about to touch. And **`w1k` is a
 new task**, an M0 re-measure at the end of W1, because the measured ~31.5k had
@@ -122,6 +122,24 @@ It also wired `on_effect_applied` and
 possible caller. `docs/decisions.md` § w1c has the arguments and the eight
 ratios behind that median; it retires debt-register row #5 and opens #29,
 #30 and #31.
+
+Then `w1b` **completed the resource model** — `ResourceSpec`, `Recovery`,
+`ResourcePool`, the `SpellSlots` facade and `transaction()` — and all seven
+shapes DESIGN.md tabulates fell out of one spec with no branch anywhere. Three
+readings bind every later task: **a pool is one resource and `Resources` is the
+creature's ledger of them**, which is what `creature.resources` is and what fires
+`on_resource_spent`; **a transaction takes as it goes and announces only on the
+commit**, once per pool with the committed total, so a rolled-back spend is told
+to nobody and a veto of a spend that has happened is refused; and **an overdrawn
+pool raises `EconomyError`**, the same exception as an overdrawn action economy,
+while a slot that is merely unavailable stays a fight outcome `can_spend()`
+answers for free. `RecoveryTrigger` is rules vocabulary and lives in
+`rules/enums.py` for the reason `ActionCost` records. It measured at **−0.2% of
+the rate against pair-to-pair ratios spanning −6.2% to +5.8%** — the arithmetic
+itself is priced per operation instead, because the spike cannot reach it while
+debt #15 stands, and **the announcement costs ten times the ledger**.
+`docs/decisions.md` § w1b has the arguments and the table `w1k` multiplies; it
+retires no debt row and opens **#32**.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
@@ -325,6 +343,7 @@ there is local to a module.
 | `engine/attack.py`, the attack sequence | § w1f |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
 | `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c |
+| `creatures/resources.py`, pools, slots, `transaction()` | § w1b |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |
 | `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review |
