@@ -2226,9 +2226,10 @@ different numbers off the same `pact:2` spec — the Flyweight claim made real
 rather than asserted. Levels a progression never reaches are pools of 0 rather
 than absent pools, so levelling up needs no pool added.
 
-Pact slots are keyed apart (`pact:N`, not `slot:N`) because a warlock/wizard is
-one creature with both, and one key would make its two pools one — while
-`SpellSlots` sums them, because "how many 3rd-level slots have I" is one
+Pact slots are keyed apart (`pact:N`, not `slot:N`) because the key is all
+`on_resource_spent` hands a handler, and a Pact slot is a different resource
+from a spell slot — it comes back on a Short Rest — while `SpellSlots` sums
+them, because "how many 3rd-level slots have I" is one
 question. That is the whole of what the facade buys, and it is why
 `rules/constants.py`'s promise that callers "never branch on the progression"
 survives contact with Pact Magic.

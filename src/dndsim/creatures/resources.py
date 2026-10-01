@@ -122,16 +122,22 @@ class ResourcePool:
     commits and a pool cannot know it is in one.
     """
 
-    __slots__ = ("current", "maximum", "spec")
+    __slots__ = ("_current", "maximum", "spec")
 
     def __init__(self, spec: ResourceSpec, stats: StatBlock) -> None:
         self.spec = spec
         self.maximum = spec.maximum_for(stats)
-        self.current = self.maximum
+        self._current = self.maximum
 
     @property
     def key(self) -> str:
         return self.spec.key
+
+    @property
+    def current(self) -> int:
+        """What is left. Read-only: `_take()`, `recover()` and a transaction's
+        rollback are the only writers, and each clamps to `0..maximum`."""
+        return self._current
 
     def can_spend(self, amount: int = 1) -> bool:
         """Whether that many are still there. Asking changes nothing."""
@@ -139,21 +145,30 @@ class ResourcePool:
 
     def recover(self, trigger: RecoveryTrigger) -> int:
         """Apply every `Recovery` this trigger fires; return what came back."""
-        before = self.current
+        before = self._current
         for recovery in self.spec.recovery:
             if recovery.trigger is trigger:
-                self.current = min(self.current + recovery.amount, self.maximum)
-        return self.current - before
+                self._current = min(self._current + recovery.amount, self.maximum)
+        return self._current - before
 
     def _take(self, amount: int) -> None:
-        if not self.can_spend(amount):
+        if amount <= 0:
+            raise EconomyError(
+                f"spending {amount} {self.spec.label} is not a spend: an amount "
+                "is at least 1, and a negative one would be a refund, which "
+                "there is none of (docs/decisions.md § w1b)."
+            )
+        if amount > self._current:
             raise EconomyError(
                 f"spending {amount} {self.spec.label} leaves this creature with "
-                f"{self.current - amount}, and a resource may not go negative "
+                f"{self._current - amount}, and a resource may not go negative "
                 "(DESIGN.md § Failing loudly — layered). Asking is free: "
                 "`can_spend()` answers before anything is spent."
             )
-        self.current -= amount
+        self._current -= amount
+
+    def _refund(self, amount: int) -> None:
+        self._current = min(self._current + amount, self.maximum)
 
     def __repr__(self) -> str:
         return f"<{self.key} {self.current}/{self.maximum}>"
@@ -323,8 +338,7 @@ class Transaction:
         taken, self._taken = self._taken, {}
         if exc_type is not None:
             for key, amount in taken.items():
-                pool = resources[key]
-                pool.current = min(pool.current + amount, pool.maximum)
+                resources[key]._refund(amount)
             return
         for key, amount in taken.items():
             resources._announce(key, amount)
@@ -404,8 +418,9 @@ class SpellSlots:
 def slot_key(progression: CasterProgression, level: int) -> str:
     """The pool key for one slot level of one progression.
 
-    Pact Magic is keyed apart from the other three because a warlock/wizard is a
-    creature with both, and one key would make its two pools one.
+    Pact Magic is keyed apart from the other three because the key is all
+    `on_resource_spent` hands a handler, and a Pact slot is a different resource
+    from a spell slot: it comes back on a Short Rest.
     """
     prefix = "pact" if progression is CasterProgression.PACT else "slot"
     return f"{prefix}:{level}"

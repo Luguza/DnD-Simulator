@@ -200,8 +200,18 @@ def test_spending_nothing_is_not_a_spend() -> None:
     hero = creature()
     hero.resources.add(RAGE)
     assert not hero.resources.can_spend("rage", 0)
-    with pytest.raises(EconomyError):
+    with pytest.raises(EconomyError, match="not a spend"):
         hero.resources.spend("rage", 0)
+    with pytest.raises(EconomyError, match="not a spend"):
+        hero.resources.spend("rage", -1)
+    assert hero.resources["rage"].current == RAGE.maximum_for(hero.stats)
+
+
+def test_what_is_left_cannot_be_assigned() -> None:
+    hero = creature()
+    hero.resources.add(RAGE)
+    with pytest.raises(AttributeError):
+        hero.resources["rage"].current = 99  # type: ignore[misc]
 
 
 # --- Recovery ---------------------------------------------------------------
@@ -257,7 +267,7 @@ def test_a_pool_reports_what_a_trigger_gave_back() -> None:
     hero = creature(level=6)
     pool = ResourcePool(RAGE, hero.stats)
     assert pool.recover(LONG_REST) == 0
-    pool.current = 1
+    pool._take(pool.maximum - 1)
     assert pool.recover(SHORT_REST) == 1
     assert pool.recover(LONG_REST) == 2
 
