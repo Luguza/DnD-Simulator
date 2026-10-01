@@ -13,7 +13,11 @@ touch, and the files themselves.
 
 ## 1. Take the task
 
-- `docs/progress.md` → the `next` row. A `⏸` row means run `/plan-review`
+- The milestone branch M is named by `docs/progress.md`'s `Milestone branch:`
+  line on `main`; everything below happens on M (`docs/workflow.md` § The
+  milestone branch). If the milestone PR (M into `main`) is ready rather than a
+  draft, the human is reviewing it: stop.
+- `docs/progress.md` on M → the `next` row. A `⏸` row means run `/plan-review`
   instead, in this session. A `held` row means stop and report.
 - `grep -n "^| <id> " ROADMAP.md` → the task row: scope, depends, produces,
   done-when. Read `ROADMAP.md` § Task packet template and § Standing rules once.
@@ -29,7 +33,7 @@ it through steps 5 and 6 like a task PR.
 
 ## 3. Implement
 
-- `git checkout -b claude/task-<id>`
+- `git checkout -b claude/task-<id> origin/<M>`
 - Write the code and the tests. The done-when column is the acceptance test.
 - `uv run pre-commit run --all-files` and `uv run pytest` — both green before
   you push, every time. A push that turns CI red costs a review round.
@@ -39,11 +43,12 @@ it through steps 5 and 6 like a task PR.
 
 ## 4. Open the PR
 
-Open it as a **draft**, push everything, then mark it ready for review. One
+Open it as a **draft** with base M — never `main` — push everything, then mark it ready for review. One
 review against the finished diff, not one per push.
 
-Body: what changed, the done-when evidence, the debt rows retired, and anything
-you deliberately did not do. Then `subscribe_pr_activity` and end your turn.
+Write the body with the `pr` skill: Summary, Evidence, Merge Danger, then the
+done-when, the debt rows retired and anything you deliberately did not do. Then
+`subscribe_pr_activity` and end your turn.
 
 ## 5. Answer the review
 
@@ -63,10 +68,11 @@ Each wake: read the sticky verdict comment and CI.
 
 When the verdict is `✅ Looks good`, CI is green and there is no conflict:
 
-- If `human-merge-required` is red, a human merges this one — a milestone
-  review or a workflow edit (`docs/workflow.md` § Merge authority). Notify the
-  human, say which, and stop.
-- Otherwise merge — contract files included — then hand off by firing the
+- If `human-merge-required` is red, a human merges this one — a workflow edit,
+  or a base that is `main` by mistake, in which case retarget it to M and wait
+  for CI again (`docs/workflow.md` § Merge authority). Notify the human, say
+  which, and stop.
+- Otherwise merge into M — contract files included — then hand off by firing the
   watchdog Routine (`fire_trigger`, `trig_01P3i9g4LRN6i4nakMEH32hq`), which
   re-runs the three checks and takes the next row in a fresh session, and
   archive yourself. Never `create_session`: a Routine session has no

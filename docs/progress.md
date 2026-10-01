@@ -1,13 +1,19 @@
 # Task queue
 
+Milestone branch: `milestone/m0-w1`
+
 The serial work queue. **Exactly one row is `next`.** A task's own pull request
 flips its row to `done` and the row below to `next`, so merging is what advances
 the queue — the ledger cannot desync from git because advancing it *is* a
-merged diff.
+merged diff. Task PRs merge into the milestone branch named above, so the live
+queue is the copy on that branch; the one on `main` is the queue as of the last
+milestone (`docs/workflow.md` § The milestone branch).
 
 A `⏸` row is a plan review, run by the loop (`docs/workflow.md` § Plan
-reviews). Only a **milestone review** halts the chain: its PR is merged by the
-human, and its row must say `milestone review` or CI will not know to stop. A `held`
+reviews). Only a **milestone review** halts the chain: it marks the milestone PR
+ready, and nothing starts until the human merges it. Its row must say
+`milestone review`, and its PR sets the line above to the next milestone's
+branch. A `held`
 row halts it too, and while one stands **no row is `next`** — the row below a
 held task advances only when that task's diff merges, and a `next` row sitting
 under a hold is an invitation to start work on a dependency that never landed.

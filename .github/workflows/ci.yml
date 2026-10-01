@@ -72,6 +72,7 @@ jobs:
       - name: Classify the diff
         env:
           BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           # -e because an errored `git diff` returns no filenames, and an empty
           # list is indistinguishable from "touched nothing contractual" — which
@@ -87,26 +88,30 @@ jobs:
           # The human reads the code at ROADMAP milestones and nowhere else, so
           # two things stop the loop (docs/workflow.md § Merge authority):
           #
-          # 1. A milestone review — the PR that flips a progress.md row naming a
-          #    milestone review to `done`.
+          # 1. Anything into main. The loop only ever targets the milestone
+          #    branch, so a PR into main is the milestone PR — the human's
+          #    review of the whole milestone — or a change the human opened.
           # 2. A change to .github/workflows/. Not for the contract's sake:
           #    claude-code-action skips itself when the workflow differs from
           #    the default branch and exits successfully, so such a PR can never
           #    receive a review and the loop must not be the one to merge it.
-          milestone=$(git diff "origin/${BASE_REF}...HEAD" -- docs/progress.md \
-            | grep -iE '^\+.*milestone review.*\|[[:space:]]*done[[:space:]]*\|' || true)
+          main=""
+          if [ "$BASE_REF" = "main" ]; then
+            main="$HEAD_REF"
+          fi
           workflows=$(printf '%s\n' "$files" | grep -E '^\.github/workflows/' || true)
-          if [ -n "$milestone" ] || [ -n "$workflows" ]; then
+          if [ -n "$main" ] || [ -n "$workflows" ]; then
             {
               echo '## A human merges this one'
               echo
               echo 'The task loop may not merge this pull request. That is what this'
               echo 'job failing means; nothing is broken.'
               echo
-              if [ -n "$milestone" ]; then
-                echo 'It closes a ROADMAP milestone review:'
-                echo
-                printf '%s\n' "$milestone" | sed 's/^+/- /'
+              if [ -n "$main" ]; then
+                case "$main" in
+                  milestone/*) echo "It merges the milestone branch \`$main\` into main." ;;
+                  *) echo "It targets main; the loop only ever targets a milestone branch." ;;
+                esac
                 echo
               fi
               if [ -n "$workflows" ]; then
@@ -115,7 +120,7 @@ jobs:
                 printf '%s\n' "$workflows" | sed 's/^/- `/;s/$/`/'
               fi
             } >> "$GITHUB_STEP_SUMMARY"
-            printf 'Human merge required.\n%s\n%s\n' "$milestone" "$workflows"
+            printf 'Human merge required.\n%s\n%s\n' "$main" "$workflows"
             exit 1
           fi
-          echo 'No milestone and no workflow change; the loop may merge on a clean review.'
+          echo 'Into a milestone branch, no workflow change; the loop may merge on a clean review.'

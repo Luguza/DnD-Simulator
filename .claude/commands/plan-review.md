@@ -27,24 +27,42 @@ claims those tasks touched — never read it end to end.
 5. **Is a seam still uncut?** W8's seams are cut in W2 and W3 or they are
    retrofits across every build file.
 
+## Retro
+
+Then run the `retro` skill (`.claude/skills/retro/SKILL.md`) over the same
+tasks: the plan questions above ask whether the plan still holds, the retro asks
+whether the environment — checks, `CODING_STANDARDS.md`, `CLAUDE.md`, the
+skills — made those tasks cost what they did. Its edits ride this PR.
+
 ## Deliver
 
 A contract PR against `ROADMAP.md`, `DESIGN.md`, `CLAUDE.md` and
-`docs/decisions.md` — new or changed rows, new debt entries, a decision record
+`docs/decisions.md`, plus whatever the retro changed — new or changed rows, new debt entries, a decision record
 for the review itself. Add the next wave's queue rows if this gate is what
 unblocks them. Flip the `⏸` row to `done` and the row below to `next`.
 
 Branch `claude/task-review-<next id>` so the watchdog sees it in flight, and
 answer the review per `/next-task` step 5.
 
-- **An ordinary gate:** `human-merge-required` is green. Merge on a clean
-  verdict and continue per `/next-task` step 6.
-- **A milestone review** (the row says `milestone review`): it is red by design,
-  because this is where the human reads the code. Write the PR body for that
-  reader — what the milestone delivered, what the loop merged into the plans
-  since the last milestone, and the debt rows the round cap left for them —
-  then notify the human and stop. Do not start the next task.
+The PR's base is the milestone branch M, like any task's. Merge on a clean
+verdict.
 
-Finding nothing is a valid outcome. Say so in one paragraph in
+- **An ordinary gate:** continue per `/next-task` step 6.
+- **A milestone review** (the row says `milestone review`): the gate's PR also
+  sets the `Milestone branch:` line in `docs/progress.md` to the next
+  milestone's branch. After merging it, close the milestone on M itself
+  (`docs/workflow.md` § Plan reviews):
+  1. Commit the workflow edits earlier retros only proposed directly to M —
+     never in a PR into M, whose review would be skipped and whose merge the
+     loop may not make.
+  2. Rewrite the milestone PR's body (M into `main`) for the human, with the
+     `pr` skill: what the milestone delivered, what the loop merged into the
+     plans and the environment since the last milestone (every gate's
+     `### Retro`), the workflow edits from step 1, and the debt rows the round
+     cap left for them.
+  3. Mark the milestone PR ready for review, notify the human and stop. Do not
+     start the next task and do not fire the Routine.
+
+Finding nothing, in either half, is a valid outcome. Say so in one paragraph in
 `docs/decisions.md` and flip the rows; do not manufacture changes to justify
 the gate.

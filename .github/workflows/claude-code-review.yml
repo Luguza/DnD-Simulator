@@ -16,8 +16,13 @@ jobs:
   claude-review:
     # Drafts are work in progress by definition. `ready_for_review` is in the
     # trigger list above, so a draft is reviewed once, when it stops being one,
-    # instead of on every push while it is still being written.
-    if: github.event.pull_request.draft == false
+    # instead of on every push while it is still being written. The milestone
+    # PR is skipped outright: every task in it was reviewed on its way into the
+    # milestone branch, and its reader is the human (docs/workflow.md
+    # § The milestone branch).
+    if: >-
+      github.event.pull_request.draft == false &&
+      !startsWith(github.head_ref, 'milestone/')
 
     runs-on: ubuntu-latest
     permissions:
@@ -105,11 +110,10 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # No plugin marketplace: the checklist this repo needs is already in
-          # the repo, at .claude/skills/pr-review/SKILL.md, and it is 93 lines
-          # against a general-purpose plugin's much larger prompt plus its
-          # bundled references. The local skill also knows what the plugin
-          # cannot — the crit dice/flat split, the reset scopes, the frozen
+          # No plugin marketplace: the review this repo needs is already in the
+          # repo — .claude/skills/pr-review/SKILL.md for the two axes and
+          # CODING_STANDARDS.md for the checklist, which knows what a plugin
+          # cannot: the crit dice/flat split, the reset scopes, the frozen
           # registry, the content anti-corruption layer. The two things worth
           # keeping from the plugin, a verification pass and a fixed finding
           # shape, are asked for below instead of installed.
@@ -126,13 +130,15 @@ jobs:
             Never read DESIGN.md, ROADMAP.md or docs/decisions.md end to end —
             they are 160KB, 82KB and 72KB. Grep them for the one claim you need.
 
-            The checklist is this repo's own skill. Read
-            `.claude/skills/pr-review/SKILL.md` and apply it. CLAUDE.md is
-            already in your context; it and DESIGN.md are the contract.
+            The review is this repo's own skill. Read
+            `.claude/skills/pr-review/SKILL.md` and apply both of its axes:
+            Standards against `CODING_STANDARDS.md`, Spec against the task row
+            the skill tells you how to find. CLAUDE.md is already in your
+            context; it and DESIGN.md are the contract.
 
             Work in two passes.
 
-            Pass 1 — find. Collect candidate findings against the checklist.
+            Pass 1 — find. Collect candidate findings on both axes.
 
             Pass 2 — verify. For each candidate, re-read the cited lines in the
             file itself, not in the diff, and construct the concrete failure:
@@ -145,22 +151,32 @@ jobs:
             what the change does, no praise, no closing assessment. Exactly this
             shape:
 
-            ## Findings
+            ## Standards
 
             1. **CONFIRMED** · `path/to/file.py:123` · crit-split
                One sentence naming the defect.
                One sentence: concrete input or state -> wrong output.
 
+            ## Spec
+
+            1. **PLAUSIBLE** · `path/to/file.py:45` · spec
+               One sentence naming what the row asked and the diff does not do.
+               One sentence quoting the row.
+
             CONFIRMED means you traced the failure. PLAUSIBLE means the rule is
             violated but you could not construct the failure. The third field is
             the rule: crit-split, reset-scope, frozen-registry,
-            content-boundary, determinism, citation, golden, or other.
+            content-boundary, determinism, citation, golden, smell, spec, or
+            other. Write "No findings." under an axis with none, and "No spec."
+            under Spec when the skill finds none.
 
-            Rank correctness bugs, then boundary violations, then everything
-            else. At most 8 findings; if more survive pass 2, report the worst 8
-            and say how many you dropped.
+            Within each axis rank correctness bugs, then boundary violations,
+            then everything else; never rerank across the two. At most 8
+            findings in all; if more survive pass 2, report the worst and say
+            how many you dropped.
 
-            If nothing survives pass 2, reply with exactly: No findings.
+            If nothing survives pass 2 on either axis, reply with exactly:
+            No findings.
           # Opus 5 at medium effort, pinned: every Claude job in CI runs the same
           # model and effort, so a verdict does not shift when an alias moves.
           # The action's base GitHub/file tools are always included; --allowedTools
