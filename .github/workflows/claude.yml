@@ -79,6 +79,6 @@ jobs:
           # The read-only graft commands, so .claude/skills/graft works here as
           # it does locally.
           claude_args: >-
-            --model claude-opus-5
+            --model claude-opus-5-5
             --effort medium
             --allowedTools "Bash(graft ask:*),Bash(graft grep:*),Bash(graft skeleton:*),Bash(graft callers:*),Bash(graft map:*)"
