@@ -235,8 +235,8 @@ seventeen from `w0a`-`w0i` and five more from `w0g3`; fifteen of those are
 still open, `w1e` and `w1f` added three rows of their own, and the W1
 critical-path gate found three more that the completed tasks had named in
 `docs/decisions.md` and nowhere the plan would show them. `w1c` has since
-retired one and opened three of its own and `w1b` has opened a fourth, so the
-table stands at twenty-four.
+retired one and opened three of its own and `w1b` has opened two more, so the
+table stands at twenty-five.
 Every one of them was the right thing to write — a hostile spike needs real
 machinery now, not finished machinery later — and every one of them is invisible
 six months from now, when the file around it has grown and the paragraph
@@ -279,6 +279,7 @@ Retired so far: **#1, #2, #4 and #10 by `w1a`**, **#7 by `w1e`**, **#3 and
 | 30 | A queued effect can only land on the event's own participants | `creatures/effects.py`'s `apply_pending()`, called from `engine/damage.py` and `engine/attack.py` | `w2c` | complete for an attack and an instance of damage, whose handlers are all owned by the attacker or the defender (`docs/decisions.md` § w1c). A handler naming a third creature — an aura, an ally buffed from an observer hook — raises rather than being dropped, and the roster is what answers it. Same shape as #18, which is why both wait on the same task |
 | 31 | `on_effect_applied` is handed the application, not the incumbent a re-application refreshes | `creatures/effects.py` | **the M0 / W1 milestone review** | raised by `w1c`'s fourth review round and left contested rather than patched (`docs/workflow.md` § The review loop). The hook fires *before* the state change so that a veto can refuse an effect, and `w1c`'s third round established that the incumbent cannot be known before the dispatch, because the dispatch can dispel or create one. The two together mean a `REFRESH` re-application hands the handler the incoming object, which is attached to nothing and discarded — so a handler calling `ctx.effect.refresh()` or `.consume()` raises `EngineAssemblyError` inside the hook whose registry summary is "Rage extending rather than stacking". Resolving it is a design choice, not a patch: fire after the change and lose the veto, or unwind a vetoed application. Nothing in W1 declares a handler on this hook, so it costs nothing until W3 authoring does |
 | 32 | A resource recharging on a Short Rest never recharges on a Long Rest | `creatures/resources.py` | `w6a` | `recover()` applies the `Recovery` entries whose trigger it was given and nothing more, which is DESIGN.md § Resources' table read exactly: Rage writes `(SHORT_REST, 1), (LONG_REST, ALL)` out rather than relying on an implication, but Ki writes only `(SHORT_REST, ALL)` and a day loop that fires `LONG_REST` alone hands a monk nothing back overnight. Firing both on a long rest is the rest rules' job and `w6a` owns them; deciding it inside the pool would be a rule invented from a sentence nobody has quoted. Exact while nothing rests — W1 has no day loop — and wrong for every short-rest resource the first time something does |
+| 33 | Nothing rolls a monster's recharge | `rules/enums.py`'s `RecoveryTrigger`, `creatures/resources.py` | `w7a` | `RECHARGE_5_6` is a trigger a pool answers and never a roll it makes, so the d6 belongs to whoever fires it (`docs/decisions.md` § w1b) — and no task row says who that is. XMM "Recharge X–Y" rolls at the start of each of the monster's turns, which is `w2c`'s loop, but nothing has a recharge to roll until `w7a` parses `{@recharge}`, so `w7a` is the task that wires the roll in. Exact while no creature declares a recharge; a breath weapon that never comes back the first time one does |
 
 ### What the W1 critical-path gate changed
 
@@ -516,7 +517,7 @@ caster exists.
 
 | ID | Task | Mode | Depends | Scope |
 |---|---|---|---|---|
-| w6a | Short/long rests, hit dice, encounter chaining, the **stop condition** (TPK or `party.retreat_when`), attrition metrics | 👥 | w4g, w1j | `engine/adventuring_day.py` — the v1 headline output |
+| w6a | Short/long rests, hit dice, encounter chaining, the **stop condition** (TPK or `party.retreat_when`), attrition metrics | 👥 | w4g, w1j | `engine/adventuring_day.py` — the v1 headline output; owes debt **32** of § The W0 debt register (a long rest fires the short-rest trigger too) |
 | w6b | `compare` harness, `--sweep`, adaptive stopping on CI width | 👥 | w6a | `sim/compare.py`, `sweep.py` — what makes it a sim rather than a calculator |
 
 > **M4 — Attrition v1.** `dndsim day` reports how far a party gets before
@@ -540,7 +541,7 @@ caster exists.
 
 | ID | Task | Mode | Depends | Scope |
 |---|---|---|---|---|
-| w7a | Statblock parser (Visitor) over the closed tag vocabulary + `.claude/skills/statblock-import/` | 👥 | w4g | `{@atkr}`, `{@hit}`, `{@h}`, `{@damage}`, `{@actSave}`, `{@dc}`, `{@recharge}` |
+| w7a | Statblock parser (Visitor) over the closed tag vocabulary + `.claude/skills/statblock-import/` | 👥 | w4g | `{@atkr}`, `{@hit}`, `{@h}`, `{@damage}`, `{@actSave}`, `{@dc}`, `{@recharge}`; owes debt **33** of § The W0 debt register (the recharge roll at the start of the monster's turn) |
 | w7b | Bestiary import, Multiattack handling, unparsed-content report | 🚀 | w7a | 503 XMM stat blocks; unparseable content is flagged, never approximated |
 
 ## W8 — Policy derivation 🔒

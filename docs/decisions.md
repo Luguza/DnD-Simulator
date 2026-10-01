@@ -2184,7 +2184,8 @@ public mutator that gives a resource back, by the choice recorded below, so the
 only route the sentence left open was `pool.current += 1` — an unguarded slot
 that would also push a pool above its maximum. A use that costs nothing is a
 bigger `maximum` or another `Recovery`, declared with the rest of the resource,
-and the message now says so.
+and the message now says so. The slot itself stayed open until the hold below
+closed it.
 
 ### `EconomyError`, not a type of its own
 
@@ -2218,6 +2219,7 @@ which is the first task that has the data to read them.
 Nothing in `creatures/resources.py` rolls anything, and `RECHARGE_5_6` is why
 that is worth saying: the d6 is rolled by whoever fires the trigger, so a pool
 never reaches for a generator and `core/rng.py`'s single stream stays single.
+No task row says who does fire it; that is debt **#33**, which names `w7a`.
 
 ### A slot level is a spec field, which is what lets Pact Magic be ordinary
 
@@ -2225,19 +2227,68 @@ never reaches for a generator and `core/rng.py`'s single stream stays single.
 a function of the stat block, so a level-3 warlock and a level-20 one read their
 different numbers off the same `pact:2` spec — the Flyweight claim made real
 rather than asserted. Levels a progression never reaches are pools of 0 rather
-than absent pools, so levelling up needs no pool added.
+than absent pools, so a builder adds the same nine at every level without
+reading the table to decide which. (Not so that a creature can level up in
+place: a pool's maximum is settled when it is made, from a stat block that is
+read-only, § w1a.)
+
+`die` is a `Dice`, where DESIGN.md § Resources writes `die="d8"`. A string
+would be parsed wherever the die is first rolled, so a malformed one would fail
+there; a `Dice` is parsed when the spec is declared — `Dice.parse("d8")` reads
+as `1d8` — and fails at import instead.
 
 Pact slots are keyed apart (`pact:N`, not `slot:N`) because the key is all
 `on_resource_spent` hands a handler, and a Pact slot is a different resource
-from a spell slot — it comes back on a Short Rest — while `SpellSlots` sums
-them, because "how many 3rd-level slots have I" is one
-question. That is the whole of what the facade buys, and it is why
-`rules/constants.py`'s promise that callers "never branch on the progression"
-survives contact with Pact Magic.
+from a spell slot — it comes back on a Short Rest. The first cut gave a
+warlock/wizard as the reason, which DESIGN.md § Settled decisions rules out
+("Multiclassing is out"); this one holds for a single class. `SpellSlots`
+answers over either without asking which, because "how many 3rd-level slots
+have I" is one question. That is the whole of what the facade buys, and it is
+why `rules/constants.py`'s promise that callers "never branch on the
+progression" survives contact with Pact Magic.
 
 `select()` is split from `spend()` for the transaction's sake: a slot is half of
 Quickened Fireball's cost, and only the transaction may take it if the two are
 to commit together.
+
+### What the round cap left, and the hold fixed
+
+The fourth non-clean verdict stopped the loop with two CONFIRMED findings
+unfixed, so the row went to `held` rather than merging with the rest recorded as
+debt (`docs/workflow.md` § The review loop). Both were real. The fix that
+released the hold made `current` a read-only property and gave `_take()` a
+refusal of its own for an amount below 1; an independent review afterwards found
+the first fix closed one door of three:
+
+- **`maximum` and `spec` were still public slots.** `pool.maximum = 99` let a
+  long rest fill Rage to 99/99, and `pool.maximum = -2` left it at 99/−2 with
+  `can_spend()` still true — the clamp `current` promises is only as good as its
+  ends. All three fields are properties over private slots now, and a maximum
+  below 0 is refused when the pool is made, since nothing can clamp a count
+  between 0 and a negative number.
+- **One `EconomyError` test caught any refusal.** The overdraft in
+  `test_a_transaction_sees_what_it_has_already_taken` raised the right
+  exception for any reason, which is how `_take()`'s wrong message hid in the
+  first place; it names its message now.
+
+Of the rest: the Rages finding was reading the 2014 table, whose level-20 entry
+is *Unlimited* — the 2024 column ends at 6, and the fixture is right (the
+addendum on PR #32). The hybrid warlock/wizard test went with the reason it
+pinned; what replaced it pins the reason that holds, that a Pact spend is
+announced under its own key. And `can_spend()` answering one `False` for an
+empty pool and an absent one stays: it is a predicate whose two answers are both
+"no", `__getitem__` says which mistake it is, and DESIGN.md § Failing loudly
+puts a resource the build never granted at load time, which is `w2e`'s and
+`w2f`'s.
+
+**What the properties cost.** Reading `current` through the property put the
+facade's loops, and `can_spend()`, on the slower path, so `SpellSlots` reads the
+private fields. Four paired runs alternating on one container, median of seven
+runs of 100k each, against the fix that released the hold: `highest()` 0.85×
+and `can_spend()` 0.78×, both in all four pairs; every other operation inside
+the pair-to-pair spread (0.9–1.2×). `highest()` is the one that matters: it is
+what the spike's stand-in becomes when debt #15 is retired, and `w1k`
+multiplies it into a budget already projected to miss.
 
 ### What it cost the benchmark
 
@@ -2300,9 +2351,10 @@ priced here only so that `w6a` does not have to.
   (DESIGN.md § Failing loudly) and there is no legality query yet — the APL that
   asks one is `w2e`'s, and the flag belongs to whatever asks rather than to the
   pool that answers.
-- **Give `ResourcePool` a `give()` beside `_take()`.** Nothing hands a resource
-  back outside a rollback and a recovery, both of which are in this file. A
-  public mutator with no caller is a second way to write a count.
+- **Give `ResourcePool` a public `give()` beside `_take()`.** Nothing hands a
+  resource back outside a rollback and a recovery, both of which are in this
+  file — the rollback through the private `_refund()`. A public mutator with no
+  caller is a second way to write a count.
 - **Read `maximum` from a class table.** DESIGN.md § Resources allows "a
   class-table column"; `table_value()` is `w3b`'s and the callable is the seam it
   will arrive through, already exercised by every level-scaled spec here.
@@ -2311,7 +2363,7 @@ Sources: DESIGN.md § Resources: one model, no special cases, § Failing loudly 
 layered, § The authoring skill; XPHB (2024) "Spells" (Spell Slots, Pact Magic);
 `docs/decisions.md` § w0i, § w1a, § w1c, § w1f, § The W1 critical-path review;
 `ROADMAP.md` § Sequencing principles 10, § The W0 debt register rows #15, #26,
-#32, w1b, w1k, w2e, w6a, w7a.
+#32, #33, w1b, w1k, w2e, w6a, w7a.
 
 ## The PR, review and retro skills
 

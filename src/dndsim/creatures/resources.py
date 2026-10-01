@@ -122,16 +122,31 @@ class ResourcePool:
     commits and a pool cannot know it is in one.
     """
 
-    __slots__ = ("_current", "maximum", "spec")
+    __slots__ = ("_current", "_maximum", "_spec")
 
     def __init__(self, spec: ResourceSpec, stats: StatBlock) -> None:
-        self.spec = spec
-        self.maximum = spec.maximum_for(stats)
-        self._current = self.maximum
+        maximum = spec.maximum_for(stats)
+        if maximum < 0:
+            raise ValueError(
+                f"{spec.key} has a maximum of {maximum} at these numbers, and a "
+                "resource may not go negative: the fewest it can have is 0"
+            )
+        self._spec = spec
+        self._maximum = maximum
+        self._current = maximum
+
+    @property
+    def spec(self) -> ResourceSpec:
+        return self._spec
+
+    @property
+    def maximum(self) -> int:
+        """Read-only for the reason `current` is: it is the clamp's other end."""
+        return self._maximum
 
     @property
     def key(self) -> str:
-        return self.spec.key
+        return self._spec.key
 
     @property
     def current(self) -> int:
@@ -141,26 +156,26 @@ class ResourcePool:
 
     def can_spend(self, amount: int = 1) -> bool:
         """Whether that many are still there. Asking changes nothing."""
-        return 0 < amount <= self.current
+        return 0 < amount <= self._current
 
     def recover(self, trigger: RecoveryTrigger) -> int:
         """Apply every `Recovery` this trigger fires; return what came back."""
         before = self._current
-        for recovery in self.spec.recovery:
+        for recovery in self._spec.recovery:
             if recovery.trigger is trigger:
-                self._current = min(self._current + recovery.amount, self.maximum)
+                self._current = min(self._current + recovery.amount, self._maximum)
         return self._current - before
 
     def _take(self, amount: int) -> None:
         if amount <= 0:
             raise EconomyError(
-                f"spending {amount} {self.spec.label} is not a spend: an amount "
+                f"spending {amount} {self._spec.label} is not a spend: an amount "
                 "is at least 1, and a negative one would be a refund, which "
                 "there is none of (docs/decisions.md § w1b)."
             )
         if amount > self._current:
             raise EconomyError(
-                f"spending {amount} {self.spec.label} leaves this creature with "
+                f"spending {amount} {self._spec.label} leaves this creature with "
                 f"{self._current - amount}, and a resource may not go negative "
                 "(DESIGN.md § Failing loudly — layered). Asking is free: "
                 "`can_spend()` answers before anything is spent."
@@ -168,7 +183,7 @@ class ResourcePool:
         self._current -= amount
 
     def _refund(self, amount: int) -> None:
-        self._current = min(self._current + amount, self.maximum)
+        self._current = min(self._current + amount, self._maximum)
 
     def __repr__(self) -> str:
         return f"<{self.key} {self.current}/{self.maximum}>"
@@ -350,6 +365,9 @@ class SpellSlots:
     A slot is any pool whose spec declares a `slot_level`, which is what lets
     Pact Magic answer these four questions beside the other three progressions
     without a caller branching on which it is (`rules/constants.py`).
+
+    The loops read each pool's private fields rather than its properties, for
+    the cost `docs/decisions.md` § w1b records.
     """
 
     __slots__ = ("_resources",)
@@ -359,15 +377,15 @@ class SpellSlots:
 
     def highest(self) -> int:
         """The highest level with a slot left, or 0 for a caster out of them."""
-        return max((lvl for pool, lvl in self._slots() if pool.current), default=0)
+        return max((lvl for pool, lvl in self._slots() if pool._current), default=0)
 
     def count(self, level: int) -> int:
         """Slots left at exactly that level, summed over every pool at it."""
-        return sum(pool.current for pool, lvl in self._slots() if lvl == level)
+        return sum(pool._current for pool, lvl in self._slots() if lvl == level)
 
     def total_above(self, level: int) -> int:
         """Slots left at that level or higher — what "can I still upcast" asks."""
-        return sum(pool.current for pool, lvl in self._slots() if lvl >= level)
+        return sum(pool._current for pool, lvl in self._slots() if lvl >= level)
 
     def select(self, level: int, *, allow_upcast: bool = False) -> ResourcePool:
         """Which pool a spell of `level` would come out of, without spending it.
@@ -397,7 +415,7 @@ class SpellSlots:
         top = MAX_SLOT_LEVEL if allow_upcast else level
         for candidate in range(level, top + 1):
             for pool, lvl in self._slots():
-                if lvl == candidate and pool.current:
+                if lvl == candidate and pool._current:
                     return pool, lvl
         raise EconomyError(
             f"this creature has no level-{level} spell slot left"
@@ -407,7 +425,7 @@ class SpellSlots:
 
     def _slots(self) -> Iterator[tuple[ResourcePool, int]]:
         for pool in self._resources:
-            level = pool.spec.slot_level
+            level = pool._spec.slot_level
             if level is not None:
                 yield pool, level
 
@@ -433,7 +451,8 @@ def spell_slot_specs(progression: CasterProgression) -> tuple[ResourceSpec, ...]
     real: the count is a function of the stat block, so a level-3 warlock and a
     level-20 one read their different numbers off the same `pact:2` spec. Levels
     the progression never reaches resolve to a maximum of 0 rather than being
-    left out, so levelling up needs no pool added.
+    left out, so a builder adds the same nine at every level without reading the
+    table to decide which.
     """
     return _SLOT_SPECS[progression]
 

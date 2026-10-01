@@ -214,6 +214,26 @@ def test_what_is_left_cannot_be_assigned() -> None:
         hero.resources["rage"].current = 99  # type: ignore[misc]
 
 
+def test_the_maximum_and_the_spec_cannot_be_assigned_either() -> None:
+    """Either one assigned would move the clamp's top end: a maximum of 99 lets a
+    long rest fill Rage to 99, and a negative one leaves `current` above it."""
+    hero = creature()
+    hero.resources.add(RAGE)
+    pool = hero.resources["rage"]
+    with pytest.raises(AttributeError):
+        pool.maximum = 99  # type: ignore[misc]
+    with pytest.raises(AttributeError):
+        pool.spec = KI  # type: ignore[misc]
+    hero.resources.recover(LONG_REST)
+    assert pool.current == pool.maximum == 3
+
+
+def test_a_negative_maximum_is_refused_when_the_pool_is_made() -> None:
+    debt = ResourceSpec(key="debt", label="Debt", maximum=lambda stats: -1)
+    with pytest.raises(ValueError, match="may not go negative"):
+        ResourcePool(debt, creature().stats)
+
+
 # --- Recovery ---------------------------------------------------------------
 
 
@@ -302,21 +322,6 @@ def test_pact_magic_answers_the_same_four_questions() -> None:
     assert slots.count(3) == 2
 
 
-def test_a_creature_with_both_progressions_keeps_two_pools_at_one_level() -> None:
-    """The facade sums them; the keys keep them apart, so a short rest gives
-    back the Pact slot and not the wizard's."""
-    hybrid = creature("hybrid", level=5)
-    hybrid.resources.add(*spell_slot_specs(FULL), *spell_slot_specs(PACT))
-    slots = hybrid.resources.spells
-    assert slots.count(3) == 4  # two of each
-    hybrid.resources.spend(slot_key(PACT, 3))
-    hybrid.resources.spend(slot_key(FULL, 3))
-    assert slots.count(3) == 2
-    hybrid.resources.recover(SHORT_REST)
-    assert hybrid.resources[slot_key(PACT, 3)].current == 2
-    assert hybrid.resources[slot_key(FULL, 3)].current == 1
-
-
 def test_a_slot_is_spent_at_the_level_asked_for() -> None:
     wizard = creature("wizard", level=5)
     wizard.resources.add(*spell_slot_specs(FULL))
@@ -366,7 +371,8 @@ def test_a_level_outside_the_table_is_refused() -> None:
 
 
 def test_levels_a_progression_never_reaches_are_pools_of_zero() -> None:
-    """So levelling up needs no pool added, only a bigger maximum."""
+    """So a builder adds the same nine at every level without reading the table
+    to decide which."""
     wizard = creature("wizard", level=5)
     wizard.resources.add(*spell_slot_specs(FULL))
     assert wizard.resources[slot_key(FULL, 9)].maximum == 0
@@ -427,7 +433,10 @@ def test_a_transaction_sees_what_it_has_already_taken() -> None:
     and a ledger that only added up at the commit would let it through."""
     wizard = creature("wizard", level=5)
     wizard.resources.add(*spell_slot_specs(FULL))
-    with pytest.raises(EconomyError), wizard.resources.transaction() as txn:
+    with (
+        pytest.raises(EconomyError, match="may not go negative"),
+        wizard.resources.transaction() as txn,
+    ):
         txn.spend(slot_key(FULL, 3))
         txn.spend(slot_key(FULL, 3))
         txn.spend(slot_key(FULL, 3))
@@ -564,6 +573,18 @@ def test_a_spend_is_announced_to_its_owner() -> None:
     hero.resources.add(RAGE)
     hero.resources.spend("rage", 2)
     assert counter.seen == [("rage", 2)]
+
+
+def test_a_pact_slot_is_announced_as_one() -> None:
+    """The key is all `on_resource_spent` hands a handler, so it is what tells
+    one a Pact slot went rather than a wizard's slot of the same level."""
+    warlock = creature("warlock", level=5)
+    counter = Counter(warlock)
+    warlock.attach(counter)
+    warlock.resources.add(*spell_slot_specs(PACT))
+    assert warlock.resources.spells.spend(3) == 3
+    assert counter.seen == [(slot_key(PACT, 3), 1)]
+    assert slot_key(PACT, 3) != slot_key(FULL, 3)
 
 
 def test_a_committed_transaction_announces_once_per_pool() -> None:

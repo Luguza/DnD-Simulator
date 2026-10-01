@@ -244,8 +244,9 @@ class RecoveryTrigger(Enum):
     parser (w7a) all need the same ones with no import between them.
 
     Nothing here rolls anything. `RECHARGE_5_6` is fired by whoever rolled the
-    d6 — the turn loop (w2c) — so a pool never reaches for a generator, which is
-    what keeps `core/rng.py`'s single stream single (DESIGN.md § Determinism).
+    d6 — no task does yet, which is debt #33 — so a pool never reaches for a
+    generator, which is what keeps `core/rng.py`'s single stream single
+    (DESIGN.md § Determinism).
 
     Membership is DESIGN.md § Resources' seven shapes and nothing beyond them:
     the other printed recharge ranges arrive with the parser that has the data

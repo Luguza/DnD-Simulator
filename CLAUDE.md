@@ -34,9 +34,9 @@ the two levers deliberately not taken. **W1 is under way.**
 The plans were then re-read against what the wave measured
 (`docs/decisions.md` § The W0 plan review). Two things came out of it that
 matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
-first cuts and deferred obligations W0 left behind — twenty-four rows open, of
-which fourteen are W0's, one is `w1e`'s, two are `w1f`'s, three are `w1c`'s, one
-is `w1b`'s and three were found by the W1 critical-path gate — and the task that
+first cuts and deferred obligations W0 left behind — twenty-five rows open, of
+which fourteen are W0's, one is `w1e`'s, two are `w1f`'s, three are `w1c`'s, two
+are `w1b`'s and three were found by the W1 critical-path gate — and the task that
 retires each;
 check it for the file you are about to touch. And **`w1k` is a
 new task**, an M0 re-measure at the end of W1, because the measured ~31.5k had
@@ -139,7 +139,7 @@ the rate against pair-to-pair ratios spanning −6.2% to +5.8%** — the arithme
 itself is priced per operation instead, because the spike cannot reach it while
 debt #15 stands, and **the announcement costs ten times the ledger**.
 `docs/decisions.md` § w1b has the arguments and the table `w1k` multiplies; it
-retires no debt row and opens **#32**.
+retires no debt row and opens **#32** and **#33**.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
