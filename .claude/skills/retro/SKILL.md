@@ -60,6 +60,6 @@ that motivated it. Finding nothing is a valid outcome; say so in one line.
 **Never edit `.github/workflows/` at an ordinary gate.** It turns
 `human-merge-required` red, and the reviewer skips a PR that edits its own
 workflow (`docs/workflow.md` § Merge authority). List the change under
-`### Retro` as proposed; the next **milestone review** commits it to the
-milestone branch after the last task, and it reaches `main` with the milestone
-PR (`docs/workflow.md` § Plan reviews).
+`### Retro` as proposed and add it to `docs/questions.md` in the gate's PR; the
+loop never commits it, and the human applies it when they review the finished
+product.

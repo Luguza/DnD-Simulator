@@ -52,24 +52,23 @@ verdict.
   sets the `Milestone branch:` line in `docs/progress.md` to the next
   milestone's branch. After merging it, close the milestone on M itself
   (`docs/workflow.md` § Plan reviews):
-  1. Commit the workflow edits earlier retros only proposed directly to M —
-     never in a PR into M, whose review would be skipped and whose merge the
-     loop may not make.
-  2. Rewrite the milestone PR's body (M into `main`) with the `pr` skill: what
+  1. Rewrite the milestone PR's body (M into `main`) with the `pr` skill: what
      the milestone delivered, what the loop merged into the plans and the
      environment since the last milestone (every gate's `### Retro`), the
-     workflow edits from step 1, the debt rows the round cap left, and the
-     open rows of `docs/questions.md`. It is the record the human reads at the
-     end, not a request for review.
-  3. Mark the milestone PR ready, wait for its CI, and merge it into `main`
-     once CI is green and it has no conflict. Then fire the Routine as in
-     `/next-task` step 6; it cuts the next milestone's branch. If the PR edits
-     `.github/workflows/` (`human-merge-required` is red) or the merge is
-     refused for lack of permission, notify the human once naming the PR and
-     which it is, and stop; the PR stays ready, which is what keeps the
-     watchdog from starting the next milestone (`docs/workflow.md` § Plan
-     reviews).
-  4. **The last milestone (M5)** names no next branch and leaves no row
+     debt rows the round cap left, and the open rows of `docs/questions.md`,
+     workflow-edit proposals among them. It is the record the human reads at
+     the end, not a request for review.
+  2. Mark the milestone PR ready. If `git diff --name-only origin/main...M`
+     lists anything under `.github/workflows/`, do not merge, whatever CI
+     says — `human-merge-required` runs the PR's own copy of `ci.yml`
+     (`docs/workflow.md` § Merge authority). Otherwise wait for its CI, fix
+     any red check or conflict as on any PR, and merge it into `main`. Then
+     fire the Routine as in `/next-task` step 6; it cuts the next milestone's
+     branch. If the diff touched workflows or the merge is refused for lack of
+     permission, notify the human once naming the PR and which it is, and
+     stop; the PR stays ready, which is what keeps the watchdog from starting
+     the next milestone (`docs/workflow.md` § Plan reviews).
+  3. **The last milestone (M5)** names no next branch and leaves no row
      `next`. After the merge, notify the human once that the product is ready
      for their review, linking the milestone PRs and `docs/questions.md`
      (`docs/workflow.md` § The final product).

@@ -9,8 +9,8 @@ is the milestone branch itself, and the loop merges that one too.
 product once, after the last ROADMAP milestone (§ The final product). Nothing in
 the loop waits for them: a decision that would have been put to them is taken by
 the loop and recorded in `docs/questions.md` (§ Questions for the human). Only
-three things still reach them: a `held` row, a milestone PR that edits
-`.github/workflows/`, and a merge the loop was refused permission to make.
+two things still reach them: a `held` row, and a milestone PR the loop could not
+merge (§ Plan reviews).
 
 ## The milestone branch
 
@@ -55,7 +55,7 @@ at the end, not a gate they pass on the way.
    then fires the Routine for the next task (§ The chain) and archives itself.
    Red on a task PR means a wrong base or a workflow edit: a wrong base is
    retargeted to the milestone branch; a workflow edit comes out of the PR and
-   is proposed for the next milestone review instead (§ Merge authority).
+   becomes a proposal in `docs/questions.md` instead (§ Merge authority).
 
 ## The review loop
 
@@ -90,23 +90,26 @@ that either:
 - **targets `main` from anything but a `milestone/*` branch.** The loop only
   ever targets the milestone branch, so this is a wrong base or a change the
   human opened themselves; or
-- **edits `.github/workflows/`**, the milestone PR included. Not for the contract's sake:
+- **edits `.github/workflows/`.** Not for the contract's sake:
   `claude-code-action` skips itself when the workflow file differs from the
   default branch **and exits successfully**, so such a PR can never get a real
   verdict, and the loop merging it would be merging unreviewed. For the same
-  reason a workflow edit never goes into the milestone branch mid-milestone:
-  every task PR cut after it would carry a workflow that differs from `main`,
-  and the reviewer would pass them all without reading them. A workflow edit the
-  loop wants is proposed at a gate and committed by the milestone review, after
-  the last task (§ Plan reviews). A milestone PR that carries one is therefore
-  the human's to merge — the one review the loop still asks of them, and only
-  in a milestone whose gates proposed a workflow edit; nobody else reads the
-  commit, and an edit to `human-merge-required` could switch the gate off.
+  reason a workflow edit never goes into the milestone branch: every task PR
+  cut after it would carry a workflow that differs from `main`, and the
+  reviewer would pass them all without reading them.
 
-The reviewer skips the milestone PR itself: every change in it but a workflow
-edit was reviewed on its way into the milestone branch. The cost is that the
-loop can rewrite the plan it executes; the human catches that at the end, in
-the milestone PRs and `docs/questions.md`.
+**The loop never commits a workflow edit.** One it wants is a proposal: a row
+in `docs/questions.md`, which the human applies when they review the finished
+product. The check that holds this is the milestone review's, not this job's:
+`ci.yml` runs on `pull_request`, which runs the PR's own copy of the workflow,
+so a PR that edits `human-merge-required` is judged by the edited job. A
+milestone PR whose diff touches `.github/workflows/` is therefore never merged
+by the loop, whatever its CI says (§ Plan reviews).
+
+The reviewer skips the milestone PR itself: every change in it was reviewed on
+its way into the milestone branch. The cost is that the loop can rewrite the
+plan it executes; the human catches that at the end, in the milestone PRs and
+`docs/questions.md`.
 
 ## Questions for the human
 
@@ -137,18 +140,19 @@ against what the last few tasks actually measured, in the shape of
 `docs/decisions.md` § The W0 plan review, then the `retro` skill over the same
 tasks — what in the environment (checks, `CODING_STANDARDS.md`, `CLAUDE.md`,
 the skills) made them cost what they did. The retro's edits ride the gate's PR;
-a `.github/workflows/` edit waits for the next milestone review. Gates sit every two or three tasks
+a `.github/workflows/` edit becomes a proposal in `docs/questions.md` (§ Merge
+authority). Gates sit every two or three tasks
 and at every milestone. Every gate's PR is merged into the milestone branch by
 the loop. An ordinary gate then carries on; a **milestone review** goes on to
-close the milestone: it commits the workflow edits earlier gates proposed
-straight onto the milestone branch, sets the `Milestone branch:` line to the
+close the milestone: it sets the `Milestone branch:` line to the
 next milestone's branch, writes the milestone PR's body, marks it ready, merges
 it into `main` once its CI is green, and fires the Routine. That firing cuts the
 next milestone's branch from `main`, and the chain carries on.
 
-If the milestone PR edits `.github/workflows/` (which is what turns
-`human-merge-required` red on it), or the merge into `main` is refused for a
-permission the session does not have, the milestone review notifies the human
+If the milestone PR's diff touches `.github/workflows/` — read from the diff,
+never from `human-merge-required` (§ Merge authority) — or the merge into
+`main` is refused for a permission the session does not have, the milestone
+review notifies the human
 once, naming the PR and which of the two it is, and stops. Any other red CI or
 a conflict on the milestone PR is the milestone review's to fix before it
 merges, like any PR's; if the session dies first, the watchdog's two-hour

@@ -85,18 +85,10 @@ jobs:
             exit 1
           fi
           printf 'Changed files:\n%s\n' "$files"
-          # The loop merges everything, the milestone PR into main included;
-          # the human reviews the finished product (docs/workflow.md § Merge
-          # authority). Two things still stop it:
-          #
-          # 1. Anything into main but the milestone PR. The loop only ever
-          #    targets the milestone branch, so this is a wrong base or a
-          #    change the human opened.
-          # 2. A change to .github/workflows/, the milestone PR's included.
-          #    claude-code-action skips itself when the workflow differs from
-          #    the default branch and exits successfully, and the reviewer
-          #    skips the milestone PR, so nobody would read the edit — and an
-          #    edit to this job could switch the gate off.
+          # Red for a PR into main from anything but a milestone branch, or
+          # for a workflow edit (docs/workflow.md § Merge authority). This job
+          # runs the PR's own copy of ci.yml, so it does not guard an edit to
+          # itself; the milestone review reads the diff instead.
           main=""
           if [ "$BASE_REF" = "main" ]; then
             case "$HEAD_REF" in

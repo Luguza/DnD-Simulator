@@ -73,8 +73,8 @@ When the verdict is `✅ Looks good`, CI is green and there is no conflict:
 
 - If `human-merge-required` is red, the PR has a base that is `main` by
   mistake — retarget it to M and wait for CI again — or edits
-  `.github/workflows/` — take the edit out, list it as proposed for the next
-  milestone review, and wait for the new verdict (`docs/workflow.md` § Merge
+  `.github/workflows/` — take the edit out, add it to `docs/questions.md` as a
+  proposal for the human, and wait for the new verdict (`docs/workflow.md` § Merge
   authority).
 - Otherwise merge into M — contract files included — then hand off by firing the
   watchdog Routine (`fire_trigger`, `trig_01P3i9g4LRN6i4nakMEH32hq`), which
