@@ -29,7 +29,7 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | — | ⏸ plan review — the critical-path pair | done | #30 |
 | 4 | w1c — `Effect`, `EffectStore`, stacking | done | #31 |
 | 5 | w1b — resources, `SpellSlots`, `transaction()` | done | #32 |
-| 6 | w1d — grid geometry completed | done | #PRNUM |
+| 6 | w1d — grid geometry completed | done | #41 |
 | — | ⏸ plan review | next | |
 | 7 | w1g — saving throws, DCs, save-for-half | queued | |
 | 8 | w1h — the 15 combat conditions | queued | |
