@@ -2612,12 +2612,16 @@ three documents that each assume another closes it.
 Its row said it "totals attributions". Three of the five are now written and
 they are not the same kind of thing:
 
-| Task | What it recorded | Commensurable? |
+Each figure below stays in the section named beside it; what this table records
+is the *kind* of number, which is what decides whether it can be added to
+another.
+
+| Task | What kind of number it recorded | Commensurable? |
 |---|---|---|
-| `w1f` | 5.5% of the rate, paired, with 1.8% attributed to `_seal()` | yes — on the path the spike walks |
-| `w1d` | 1.678M Python calls to 1.632M over a fixed run | yes, and machine-independent |
-| `w1b` | a table of per-operation microsecond prices | no — the spike cannot reach the pools |
-| `w1c` | −0.3%, expressly excluding the expiry sweep | no — the spike crosses no turn boundary |
+| `w1f` (§ w1f) | a share of the rate, paired, with part of it attributed to `_seal()` | yes — on the path the spike walks |
+| `w1d` (§ w1d) | a Python call count over a fixed run, before and after | yes, and machine-independent |
+| `w1b` (§ w1b) | a table of per-operation microsecond prices | no — the spike cannot reach the pools |
+| `w1c` (§ w1c) | a share of the rate that expressly excludes the expiry sweep | no — nothing calls the sweep |
 
 The two "no" rows are unreachable for **different** reasons, and conflating them
 is the trap. `w1b`'s is debt #15: `tools/spike.py` answers `self.slots.highest`
@@ -2679,6 +2683,18 @@ not the code.
   across five rounds is the implementer's remaining context, not the reviewer's
   accuracy. Raising the cap would buy more rounds of a worse implementer. Left
   alone, and recorded so the next gate can see whether the rate holds.
+  **This gate then hit the cap itself**, which makes it three of the last four
+  PRs. Its four verdicts found a drifted measurement, a miscount, a misordered
+  debt row, one ruling in three places, a retelling that had drifted from the
+  record, and a row that contradicted itself — every one real, and four of the
+  six were this PR's own new rules turned on the PR that added them. That is the
+  cap behaving as described rather than an argument against it: the findings got
+  smaller each round, ending at a missing pointer, which is what a converging
+  review looks like. What the next gate should watch is not the cap but the
+  pattern underneath it — a gate PR that edits the standards will be judged by
+  them, so it pays to apply each new rule to its own diff before pushing, which
+  this one did not do and spent three rounds learning. `docs/questions.md` #4
+  records the one judgement the cap's own text does not cover.
 - **`w1j`'s and `w1i`'s rows.** Both were re-read. `w1j` says "healing
   application and temp HP", which `w1e`'s landing the temp-HP *spend* does not
   falsify — `on_temp_hp_gained` in the same cell makes clear it is the grant —
@@ -2700,7 +2716,8 @@ edits: one to the plan, four to the standards, and one pointer in `src/`.
   unpointed: the review of this gate caught exactly that in its first draft. That is the right conclusion and it is not an attribution, which is what
   the principle exists to produce. What attributed anything was deterministic:
   `w1d`'s first cut cost 3.5% of the rate, and the profile named the cause
-  without the noise (`distance_ft` 21 ms to 74 ms cumulative, 133k calls added),
+  without the noise (`distance_ft` 21 ms to 74 ms cumulative, 133k calls added —
+  all four figures are § w1d's, quoted here and owned there),
   while the fix is quoted to `w1k` as a call count rather than a percentage
   because that number means the same thing on another machine. The principle now
   asks for the call count over a fixed run and the cProfile cumulative time of
