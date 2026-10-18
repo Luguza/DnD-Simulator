@@ -614,11 +614,17 @@ def within_reach(attacker: Creature, defender: Creature, weapon: Weapon) -> bool
     attacker has equipped, and it is measured from the attacker's square through
     `in_reach()` — the one query `core/geometry.py` owns, so that the pipeline,
     the opportunity-attack trigger and the APL's `enemies.in_reach` selector
-    cannot come to different answers (`docs/decisions.md` § w0g3). `w1d` is where
-    a Large creature's square stops being one cell, and nothing here changes when
-    it does.
+    cannot come to different answers (`docs/decisions.md` § w0g3). Both sizes go
+    with the two squares, because from `w1d` the query measures between
+    footprints and an ogre reaches a square further than its anchor says.
     """
-    return in_reach(attacker.position, defender.position, weapon.reach_ft)
+    return in_reach(
+        attacker.position,
+        defender.position,
+        weapon.reach_ft,
+        origin_size=attacker.size,
+        destination_size=defender.size,
+    )
 
 
 def _modifier_total(bag: ModifierBag, rng: Rng) -> int:

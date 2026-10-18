@@ -538,7 +538,7 @@ def _step(spike: Spike, mover: Creature, destination: Cell) -> None:
     )
     if destination in blocked:
         return
-    walked = route(mover.position, destination, blocked=blocked)
+    walked = route(mover.position, destination, blocked=blocked, size=mover.size)
     if not walked:
         return
     reachable = walked[: steps_within(mover.speed_ft)]

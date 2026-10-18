@@ -256,9 +256,9 @@ class Creature:
         """How far this creature threatens, which is its weapon's reach.
 
         Unarmed is 5 feet, and so is every weapon without the Reach property.
-        Size does not enter into it yet — a creature occupies one cell in the
-        first cut of `core/geometry.py`, and `w1d` is where a Large creature's
-        square and its reach stop being the same question.
+        Size is not added to it: from `w1d` a reach is measured between
+        footprints, so an ogre's 5 feet already covers the ring around its 2x2
+        and a size added here would be counted twice (`core/geometry.py`).
         """
         return 5 if self.weapon is None else self.weapon.reach_ft
 

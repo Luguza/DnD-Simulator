@@ -2313,6 +2313,173 @@ layered, § The authoring skill; XPHB (2024) "Spells" (Spell Slots, Pact Magic);
 `ROADMAP.md` § Sequencing principles 10, § The W0 debt register rows #15, #26,
 #32, w1b, w1k, w2e, w6a, w7a.
 
+## w1d — the grid completed: a footprint, a line of sight, three templates
+
+`w0g2` left `core/geometry.py` exact for a fight of Small and Medium
+combatants on an open field and said so in as many words. What `w1d` owed it
+was the three things that sentence excluded: a creature whose square is not one
+square, an area of effect, and the rule that decides what an area reaches.
+Nothing `w0g2` wrote was rewritten; `distance_ft`, `in_reach` and `route` grew a
+size and kept their answers.
+
+### A size is a footprint, and the anchor is its low corner
+
+`Creature.position` was one cell and had to keep meaning something once a
+creature covers four. The choice is between anchoring the footprint at a corner
+and centring it, and centring is only defined for the odd widths: Large is 2x2
+and Gargantuan 4x4, so "the centre square" does not exist for two of the four
+sizes that need one. The anchor is therefore the low corner — cells run `+x` and
+`+y` from `position` — which is defined for every size, keeps `position` the one
+square a caller has to supply, and leaves "which corner" to whoever places the
+creature.
+
+`SIZE_WIDTH_CELLS` is in `rules/constants.py` rather than beside the code that
+reads it, for the reason that file's own opener gives: the XPHB "Creature Size"
+table is universal rules data, not per-class scaling, and it belongs with
+`SIZE_ORDER` which is the same table read a different way. Tiny's 2.5 feet and
+Medium's 5 both come back as one square, because two Tiny creatures sharing a
+square is a placement rule and this is a distance table.
+
+### Reach is measured between footprints, so nothing is added to a reach
+
+The tempting shape is to let a big creature carry a bigger reach —
+`Creature.reach_ft` returning the weapon's reach plus something for size. It is
+wrong twice over: the rules give an ogre a 5-foot reach and a 10-foot *space*,
+and a creature that added its size to its reach would then be compared against a
+distance that had already accounted for the same squares. So `reach_ft` is still
+the weapon's, and the arithmetic moved into `distance_ft`, where the gap on an
+axis is zero wherever two footprints touch or overlap. An ogre anchored at
+(0, 0) is 5 feet from a goblin at (2, 0), and the opportunity attack debt 9
+named — the one a Large creature silently did not get — is now offered because
+the one query everybody asks learned something an inlined Chebyshev could not
+(`docs/decisions.md` § w0g3 argued exactly this would happen).
+
+`engine/attack.py`'s `within_reach()` and `engine/triggers.py`'s audience both
+pass the two sizes, because a valve nothing sets is debt 20's shape and this
+task is not here to add another one. The broad-phase horizon in
+`watch_movement()` did **not** need widening, which is the second look § w0g3
+asked for: a footprint translates with its anchor, so a route of `n` squares
+still moves every square of it by at most `5n` feet, and a bound computed from
+footprint distances stays exact.
+
+### One metric answers a radius as well as a reach
+
+The question this task could have got wrong quietly: by what distance is a
+Fireball's 20-foot radius measured. Chebyshev — the metric `w0g2` settled and
+every other query here uses — makes a Sphere a 9x9 block of squares rather than
+a disc, because a square four diagonal steps out *is* 20 feet away under the
+rule that a diagonal step costs 5 feet. A Euclidean radius would draw a prettier
+circle and would mean that "20 feet" named one set of squares to the attack
+pipeline and a different one to the spell. That is the drift `in_reach` exists
+to prevent, one subsystem along, so the template asks `distance_ft` like
+everything else. It is recorded as `docs/questions.md` #1 because it is a
+choice a human may want to overturn, not because it is in doubt here; what would
+change if it were overturned is the number of targets an area spell catches,
+which lands on `w5a` and on the placement search in DESIGN.md § AoE.
+
+The same argument settles the origin: a Sphere is centred on a *square*, not on
+a grid intersection. Intersections are the DMG's optional template rule, the
+same book and the same status as the 5-10-5 diagonal this project already
+refuses, and a point of origin that is not a square cannot be the square a
+creature is standing in.
+
+### Line of sight: exact integers, and a graze does not block
+
+An area does not reach a location no unblocked straight line from its point of
+origin reaches (XPHB, Rules Glossary "Areas of Effect"), so a template cannot be
+written without deciding what blocks a line. Three decisions:
+
+- **Centre to centre, and the segment blocks only on a square it passes
+  through.** Grazing a corner does not block, which matters immediately: the
+  diagonal from (0, 0) to (2, 2) passes through the corner shared by (1, 0) and
+  (0, 1), and the opposite rule would have every wall cast a shadow along the
+  diagonal beside it. A corner-to-corner visibility test would be the *Dungeon
+  Master's Guide*'s cover variant, which is out for the reason the 5-10-5
+  diagonal is out.
+- **The arithmetic is integer.** Squares are measured in half-cells, which puts
+  every centre on an odd coordinate, and the two tests — the square's bands
+  against the segment's, then the four corners against the segment's line — are
+  multiplications of small integers. A float comparison would decide a diagonal
+  graze by rounding, and a seeded run that reproduces byte for byte cannot have
+  a Fireball's target list depend on that.
+- **`opaque` is not `route()`'s `blocked`.** A creature's square may not be
+  walked into and does not stop a line; a creature in the way is Cover, a
+  different rule with a different answer, and `w2a` is where it arrives. Keeping
+  them separate is what stops a wall of allies from blocking a spell the rules
+  let it be cast through.
+
+Nothing in the tree produces terrain, so `opaque` is empty at every call site
+today — debt **#33**, owned by the milestone review, which is the gate that can
+either put cover in the scenario spec or decide the parameter is not earning its
+keep.
+
+### A cone on a grid, and the width that can only be odd
+
+A Cone's width at any point equals that point's distance from the point of
+origin. On squares that is `2 * lateral <= along`: one square at 5 feet, three
+at 10 and 15, five at 20. The width is always odd because a cone laid along a
+row of squares has nothing to be two squares wide *about* — and rounding the
+other way, so that a 10-foot cone stays one square wide, would make a Burning
+Hands narrower than the rules draw it for its whole length. A diagonal cone is
+generated in its own rotated frame rather than by filtering a box, so a cone
+pointed at a corner is the same seven squares as one pointed along a row instead
+of a staircase of single steps.
+
+`toward` is a square rather than an angle. A creature chooses a direction by
+pointing at something, every selector the APL can write returns a creature or a
+square, and an arbitrary angle would be a second geometry that nothing on this
+grid can act on. A `width_ft` on `line()` was left out for the same YAGNI
+reason: every Line in the spell list this project imports is 5 feet wide, and
+`w5a` is where one that is not would arrive.
+
+### What it cost the benchmark
+
+Priced as sequencing principle 10 asks, paired on one container, and the first
+cut **failed** that pricing: eight pairs gave a median of **−3.5%** of the rate
+(ratios −9.5% to +2.3%). The profile said why, deterministically and without the
+noise: `distance_ft`'s cumulative time went from 21 ms to 74 ms over a
+200-encounter run, and the run gained 133k Python calls (1.678M to 1.811M). Two
+causes, both avoidable — the axis gap was a helper called twice per query, and
+an `Enum` is hashed by a Python-level `__hash__`, so the two `SIZE_WIDTH_CELLS`
+lookups cost more than the arithmetic they fed.
+
+The fix is the one-square fast path at the top of `distance_ft`, taken on two
+identity comparisons, plus folding the two axes into a single `max`. Fourteen
+fresh pairs then gave a median of **+0.6%** — nothing, on a container whose
+pair-to-pair ratios spanned −15.1% to +17.4% and whose baseline alone wandered
+between 21.5k and 26.7k in one session. The number worth quoting to `w1k` is
+therefore the deterministic one beside it: the same profiled run went from
+1.678M calls to **1.632M**, 2.8% *fewer* than before this task, because
+`max(across, -across, down, -down, 0)` replaced `max(abs(...), abs(...))` and
+removed two builtin calls from the hottest query in the engine.
+`distance_ft` 21 ms to 20 ms, `in_reach` 22 ms to 22 ms, `route` 17 ms to 20 ms
+— the footprint clearance check, which is one call per candidate square and the
+only part of the module that got dearer.
+
+**So `w1d` adds nothing to the shortfall `w1k` is totalling**, and the lesson
+generalises past this file: a default argument that reaches a dict keyed by an
+`Enum` is not free on a path measured in tens of microseconds, and the fast path
+that avoids it has to be pinned by a test against the general form — which is
+`test_a_size_that_fits_in_one_square_takes_the_same_distance`, written against
+Small precisely because Small takes the general path and must agree.
+
+### What this task deliberately did not do
+
+- **The APL's destination grammar is still computed from anchors.**
+  `tools/spike_apl.py`'s `toward … until in_reach` picks the square to stand in
+  by arithmetic on two positions, which is exact while both creatures are one
+  square and off by one for a Large mover or target. It is a stand-in `w2e`
+  replaces wholesale (debt 14), and the gap is debt **#34** rather than a patch
+  to a file that is going away. Its selectors stay cell-based for the same
+  reason.
+- **No cover, and no Cylinder, Cube or Emanation.** Cover is a modifier on a
+  roll rather than a question about the grid, and the three remaining 2024 area
+  shapes have no caller until `w5a` lands the spells that use them. The row
+  asked for a cone, a sphere and a line.
+- **`route()` does not know a creature's speed, still.** Truncation is
+  `steps_within()`'s and the turn loop's, unchanged by anything here.
+- **Nothing charges movement against the economy** — debt 28, still `w2c`'s.
+
 ## The PR, review and retro skills
 
 Three skills from Matt Pocock's *Fixing the PR Bottleneck* (AI Engineer, 2026;
