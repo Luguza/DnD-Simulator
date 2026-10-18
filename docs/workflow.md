@@ -146,10 +146,13 @@ next milestone's branch, writes the milestone PR's body, marks it ready, merges
 it into `main` once its CI is green, and fires the Routine. That firing cuts the
 next milestone's branch from `main`, and the chain carries on.
 
-If the milestone PR edits `.github/workflows/`, or the merge into `main` is
-refused — `human-merge-required` red, or a permission the session does not
-have — the milestone review notifies the human once, naming the PR and which of
-the two it is, and stops. While the milestone PR is ready and unmerged the
+If the milestone PR edits `.github/workflows/` (which is what turns
+`human-merge-required` red on it), or the merge into `main` is refused for a
+permission the session does not have, the milestone review notifies the human
+once, naming the PR and which of the two it is, and stops. Any other red CI or
+a conflict on the milestone PR is the milestone review's to fix before it
+merges, like any PR's; if the session dies first, the watchdog's two-hour
+notice is what reports it. While the milestone PR is ready and unmerged the
 watchdog starts nothing: the queue on M already names the next milestone's
 first task, and running it on the closed milestone's branch is the thing that
 check exists to stop. The next firing after the merge picks the chain up again.
@@ -202,6 +205,8 @@ worker, and both paths below drive the Routine rather than spawn around it.
      after the milestone.
   3. If the pull request from M into main is open and not a draft, stop
      silently — the milestone is closing, and its merge is waiting.
+     Exception: if its last activity is over two hours old, say so in one
+     sentence naming the PR and what it waits on.
   4. Read docs/progress.md on M. Find the row whose status is `next`. If there
      is none, or any row is `held`: stop, notifying the user in one sentence
      for a `held` row.
