@@ -2771,6 +2771,33 @@ locating a ruling, so `CLAUDE.md`'s decision-record table gains no row — this
 section is appended to the two that already exist, for planning a wave and for
 pricing a change — and the hooks are left alone.
 
+### Held at the round cap, with one CONFIRMED finding open
+
+The fifth verdict found a factual error in debt row #35 itself, and it is
+right: the row says that today "a save-ends effect ends on its duration … and a
+Hypnotic Pattern holds for a minute", and neither half is true. `core/timeline.py`
+offers three durations and all of them end one turn ahead — a minute is not
+expressible at all, which is debt **#16** and `w5a`'s — and nothing calls the
+expiry sweeps, which is debt **#29** and `w2c`'s, so an applied effect does not
+expire on any deadline yet. The row therefore misstates the baseline the repeat
+save is meant to fix, in the one cell a `w2c` or `w5a` agent would read to learn
+what the current state is.
+
+`docs/workflow.md` § The review loop sets the cap at three rounds and merges on
+the fourth **only if every CONFIRMED finding is fixed**. One is not, so this is
+the other branch: the `⏸` row goes to `held`, `w1g` goes back to `queued`
+because no row is `next` while a hold stands, and the human is told. The fix is
+one cell and is named here so that a fresh session closes it in a single commit
+rather than re-deriving it: #35's "what it costs" column should state the
+baseline **through #16 and #29** — a save-ends effect has no minute-long
+duration to end on and nothing to expire it even if it had — so the repeat save
+is the third missing piece rather than a replacement for a working one. Nothing
+else in this PR is contested; the four earlier rounds are closed.
+
+That the error sat in a row this gate added, and was found only at the fifth
+look, is itself the retro's point about a gate PR being judged by the standards
+it writes — recorded above rather than argued again here.
+
 Sources: `docs/decisions.md` § w1b, § w1c, § w1d, § w1e, § w1f, § The W0 plan
 review, § The W1 critical-path review; DESIGN.md § Durations, § Buffs and
 debuffs, § Biggest risks; `ROADMAP.md` § Sequencing principles 8 and 10,
