@@ -63,9 +63,12 @@ verdict.
      end, not a request for review.
   3. Mark the milestone PR ready, wait for its CI, and merge it into `main`
      once CI is green and it has no conflict. Then fire the Routine as in
-     `/next-task` step 6; it cuts the next milestone's branch. If the merge is
+     `/next-task` step 6; it cuts the next milestone's branch. If the PR edits
+     `.github/workflows/` (`human-merge-required` is red) or the merge is
      refused for lack of permission, notify the human once naming the PR and
-     stop (`docs/workflow.md` § Plan reviews).
+     which it is, and stop; the PR stays ready, which is what keeps the
+     watchdog from starting the next milestone (`docs/workflow.md` § Plan
+     reviews).
   4. **The last milestone (M5)** names no next branch and leaves no row
      `next`. After the merge, notify the human once that the product is ready
      for their review, linking the milestone PRs and `docs/questions.md`

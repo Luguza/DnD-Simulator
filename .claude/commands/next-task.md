@@ -15,7 +15,8 @@ touch, and the files themselves.
 
 - The milestone branch M is named by `docs/progress.md`'s `Milestone branch:`
   line on `main`; everything below happens on M (`docs/workflow.md` § The
-  milestone branch).
+  milestone branch). If the milestone PR (M into `main`) is ready rather than a
+  draft, the milestone is closing and its merge is waiting: stop.
 - Never stop to ask the user. Where CLAUDE.md says to ask, take the most
   conservative reading, proceed, and record it in `docs/questions.md` in this
   PR (`docs/workflow.md` § Questions for the human).
