@@ -85,27 +85,16 @@ jobs:
             exit 1
           fi
           printf 'Changed files:\n%s\n' "$files"
-          # The loop merges everything, the milestone PR into main included;
-          # the human reviews the finished product (docs/workflow.md § Merge
-          # authority). So the milestone PR passes — its workflow edits were
-          # proposed at gates and committed by the milestone review — and for
-          # any other head two things stop the loop:
-          #
-          # 1. Anything into main. The loop only ever targets the milestone
-          #    branch, so this is a wrong base or a change the human opened.
-          # 2. A change to .github/workflows/. claude-code-action skips itself
-          #    when the workflow differs from the default branch and exits
-          #    successfully, so such a PR can never receive a review and the
-          #    loop must not be the one to merge it.
-          case "$HEAD_REF" in
-            milestone/*)
-              echo 'The milestone PR; the loop merges it on green CI.'
-              exit 0
-              ;;
-          esac
+          # Red for a PR into main from anything but a milestone branch, or
+          # for a workflow edit (docs/workflow.md § Merge authority). This job
+          # runs the PR's own copy of ci.yml, so it does not guard an edit to
+          # itself; the milestone review reads the diff instead.
           main=""
           if [ "$BASE_REF" = "main" ]; then
-            main="$HEAD_REF"
+            case "$HEAD_REF" in
+              milestone/*) ;;
+              *) main="$HEAD_REF" ;;
+            esac
           fi
           workflows=$(printf '%s\n' "$files" | grep -E '^\.github/workflows/' || true)
           if [ -n "$main" ] || [ -n "$workflows" ]; then
@@ -128,4 +117,4 @@ jobs:
             printf 'Human merge required.\n%s\n%s\n' "$main" "$workflows"
             exit 1
           fi
-          echo 'Into a milestone branch, no workflow change; the loop may merge on a clean review.'
+          echo 'No workflow change, and main only from a milestone branch; the loop may merge.'
