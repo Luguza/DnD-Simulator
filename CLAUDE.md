@@ -154,7 +154,7 @@ Fireball's 20-foot radius the 9x9 block of squares within 20 feet of its centre
 rather than a disc (`docs/questions.md` #1) and keeps "20 feet" from naming two
 different things. An area reaches only what an unblocked straight line from its
 point of origin reaches, decided on exact integer arithmetic where a graze past
-a corner does not block. Its first cut **failed its own pricing at −3.5% of the
+a lone pillar does not block and two opaque squares meeting at that corner do. Its first cut **failed its own pricing at −3.5% of the
 rate** — an `Enum` hashed twice per distance query — and the one-square fast
 path that fixed it leaves the module running 2.8% *fewer* Python calls than
 before the task. `docs/decisions.md` § w1d has the arguments and both

@@ -304,16 +304,15 @@ def watch_movement(
             continue
         reach = creature.reach_ft
         standing = creature.position
-        # `distance_ft` for the horizon and `in_reach` for the flag, rather than
-        # one subtraction doing both. They are the same arithmetic today and
-        # will stop being: `core/geometry.py` says `in_reach` is the one query
-        # "the attack pipeline, the opportunity-attack trigger and the APL's
-        # `enemies.in_reach` selector all ask, in one place so that 'reach'
-        # means the same thing to all three", and `w1d` is the task that made
-        # that sentence earn its keep by giving a Large creature a reach its
-        # square does not describe (debt 9). An inlined Chebyshev here would be
-        # the copy that quietly did not get that. The horizon is a bounding-box
-        # question rather than a reach one and stays raw distance.
+        # `distance_ft` for the horizon and `in_reach` for the flag, rather
+        # than one subtraction doing both: they ask different questions of the
+        # same footprints, and `core/geometry.py` says `in_reach` is the one
+        # query "the attack pipeline, the opportunity-attack trigger and the
+        # APL's `enemies.in_reach` selector all ask, in one place so that
+        # 'reach' means the same thing to all three". `w1d` is what made that
+        # sentence earn its keep, by giving a Large creature a reach its anchor
+        # does not describe (debt 9); an inlined Chebyshev here would be the
+        # copy that quietly did not get it.
         if (
             distance_ft(
                 standing,

@@ -195,11 +195,14 @@ def has_line_of_sight(
     straight lines from its point of origin, and a location no unblocked line
     reaches is not in the area (XPHB, Rules Glossary "Areas of Effect").
 
-    The line runs centre to centre and is blocked only by a square it passes
-    *through*. Grazing a corner or sliding along a face does not block, because
-    a line that merely touches the edge of an obstruction has not entered it —
-    and the two end squares never block their own line, so a wall is in sight of
-    itself and a creature standing in a doorway is visible from it.
+    The line runs centre to centre and is blocked by a square it passes
+    *through*. Sliding along a face does not block, and nor does grazing the
+    corner of a lone obstruction, because a line that merely touches the edge of
+    one has not entered it — but **two opaque squares that meet at that corner
+    are a wall with no gap in it**, and a line through the point where they meet
+    is blocked by the pair. The two end squares never block their own line, so a
+    wall is in sight of itself and a creature standing in a doorway is visible
+    from it.
 
     **`opaque` is not `route()`'s `blocked`.** A creature's square may not be
     walked into and does not stop a line; a creature in the way is Cover, which
@@ -215,7 +218,7 @@ def has_line_of_sight(
     origin_x, origin_y = 2 * origin.x + 1, 2 * origin.y + 1
     target_x, target_y = 2 * target.x + 1, 2 * target.y + 1
     return not any(
-        _crossed(cell, origin_x, origin_y, target_x, target_y)
+        _blocks(cell, origin_x, origin_y, target_x, target_y, opaque)
         for cell in opaque
         if cell not in (origin, target)
     )
@@ -567,37 +570,72 @@ def _lit(
     )
 
 
-def _crossed(
-    cell: Cell, origin_x: int, origin_y: int, target_x: int, target_y: int
+_CORNER_NEIGHBOURS: Final = ((-1, -1), (1, -1), (-1, 1), (1, 1))
+"""The square diagonally across each corner, in the corner order `_sides()`
+reports: low-low, high-low, low-high, high-high."""
+
+
+def _blocks(
+    cell: Cell,
+    origin_x: int,
+    origin_y: int,
+    target_x: int,
+    target_y: int,
+    opaque: AbstractSet[Cell],
 ) -> bool:
-    """Whether the segment passes through the interior of `cell`'s square.
+    """Whether `cell` stops the segment.
+
+    Either the segment passes through the square, or it passes through exactly
+    one corner of it and the square diagonally across that corner is opaque
+    too. The second case is a diagonal wall — squares that touch only at their
+    corners, which is the first thing anyone builds out of walls — and letting a
+    line through the point where two of them meet would be a gap in something
+    solid. One opaque square grazed at a corner still lets the line past: that
+    is a pillar, and a line that touches its corner has not entered it.
+    """
+    sides = _sides(cell, origin_x, origin_y, target_x, target_y)
+    if sides is None:
+        return False
+    if min(sides) < 0 < max(sides):
+        return True
+    if sides.count(0) != 1:
+        # None, or the segment running along a face, which both of the squares
+        # it separates let past.
+        return False
+    across_x, across_y = _CORNER_NEIGHBOURS[sides.index(0)]
+    return Cell(cell.x + across_x, cell.y + across_y) in opaque
+
+
+def _sides(
+    cell: Cell, origin_x: int, origin_y: int, target_x: int, target_y: int
+) -> tuple[int, int, int, int] | None:
+    """Which side of the segment's line each corner of `cell` falls, or `None`
+    when the segment cannot touch the square at all.
 
     Two exact tests in half-cell units. The square's own bands have to overlap
-    the segment's, since a segment wholly to one side of a face is outside; then
-    the four corners have to straddle the segment's line. A corner *on* the line
-    counts as neither side, which is what lets a graze through.
+    the segment's, since a segment wholly to one side of a face is outside —
+    which is also what keeps a corner *beyond* an endpoint from being read as
+    one the segment passes through. Then the sign of each corner's cross product
+    says which side of the line it is on, and a zero is a corner the line runs
+    exactly through.
     """
     low_x, low_y = 2 * cell.x, 2 * cell.y
     high_x, high_y = low_x + 2, low_y + 2
     if origin_x <= low_x and target_x <= low_x:
-        return False
+        return None
     if origin_x >= high_x and target_x >= high_x:
-        return False
+        return None
     if origin_y <= low_y and target_y <= low_y:
-        return False
+        return None
     if origin_y >= high_y and target_y >= high_y:
-        return False
+        return None
     run_x, run_y = target_x - origin_x, target_y - origin_y
-    sides = tuple(
-        run_x * (corner_y - origin_y) - run_y * (corner_x - origin_x)
-        for corner_x, corner_y in (
-            (low_x, low_y),
-            (high_x, low_y),
-            (low_x, high_y),
-            (high_x, high_y),
-        )
+    return (
+        run_x * (low_y - origin_y) - run_y * (low_x - origin_x),
+        run_x * (low_y - origin_y) - run_y * (high_x - origin_x),
+        run_x * (high_y - origin_y) - run_y * (low_x - origin_x),
+        run_x * (high_y - origin_y) - run_y * (high_x - origin_x),
     )
-    return min(sides) < 0 < max(sides)
 
 
 def _sign(value: int) -> int:

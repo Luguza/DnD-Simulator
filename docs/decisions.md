@@ -2389,13 +2389,25 @@ An area does not reach a location no unblocked straight line from its point of
 origin reaches (XPHB, Rules Glossary "Areas of Effect"), so a template cannot be
 written without deciding what blocks a line. Three decisions:
 
-- **Centre to centre, and the segment blocks only on a square it passes
-  through.** Grazing a corner does not block, which matters immediately: the
-  diagonal from (0, 0) to (2, 2) passes through the corner shared by (1, 0) and
-  (0, 1), and the opposite rule would have every wall cast a shadow along the
+- **Centre to centre, and the segment blocks on a square it passes through.**
+  Grazing the corner of a *lone* obstruction does not block, which matters
+  immediately: the diagonal from (0, 0) to (2, 2) passes through the corner of
+  (1, 0), and the opposite rule would have every pillar cast a shadow along the
   diagonal beside it. A corner-to-corner visibility test would be the *Dungeon
   Master's Guide*'s cover variant, which is out for the reason the 5-10-5
   diagonal is out.
+- **Two opaque squares meeting at that corner are a wall with no gap**, and the
+  first cut of the graze rule got this wrong — it tested each opaque square on
+  its own, so a diagonal wall leaked sight at every joint and a Fireball reached
+  the far side of it. Raised by the review as a CONFIRMED finding and worth the
+  code it costs even though nothing supplies `opaque` yet (debt #33): a diagonal
+  wall is the first thing anyone builds out of walls, and "an obstruction must
+  provide Total Cover to block the line" does not read as "unless you lay it out
+  at 45 degrees". The rule is local — a square the segment touches at exactly
+  one corner blocks when the square diagonally across that corner is opaque too
+  — which is also what keeps the case apart from a segment running *along* a
+  face, where the segment meets two of each square's corners rather than one and
+  neither may claim the other.
 - **The arithmetic is integer.** Squares are measured in half-cells, which puts
   every centre on an odd coordinate, and the two tests — the square's bands
   against the segment's, then the four corners against the segment's line — are

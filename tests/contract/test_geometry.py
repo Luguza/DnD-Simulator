@@ -492,6 +492,32 @@ def test_a_line_that_only_grazes_a_corner_is_not_blocked() -> None:
     assert not has_line_of_sight(Cell(0, 0), Cell(2, 2), opaque=frozenset({Cell(1, 1)}))
 
 
+def test_two_opaque_squares_meeting_at_a_corner_are_a_wall_with_no_gap() -> None:
+    """A regression for a review finding. The graze rule is about a lone
+    obstruction: a line that touches one corner of a pillar has not entered it.
+    Two opaque squares that touch only at that corner are a diagonal wall, and
+    the point where they meet is not a gap — a line through it is blocked by the
+    pair, which is what makes `sphere()` stop at a wall laid out on a diagonal.
+    (0, 0) -> (2, 2) runs exactly through the corner (1, 1) shares with
+    (1, 0) and (0, 1)."""
+    assert not has_line_of_sight(
+        Cell(0, 0), Cell(2, 2), opaque=frozenset({Cell(1, 0), Cell(0, 1)})
+    )
+    area = sphere(Cell(0, 0), 10, opaque=frozenset({Cell(1, 0), Cell(0, 1)}))
+    assert Cell(1, 1) not in area
+    assert Cell(2, 2) not in area
+    assert Cell(0, 0) in area
+
+
+def test_a_line_along_a_face_is_let_past_by_both_squares_it_separates() -> None:
+    """Two walls either side of a corridor do not close it. Neither square is
+    entered, and neither may read the other across the line as the diagonal
+    pair above — the segment runs through two of each square's corners rather
+    than one, which is what tells the two cases apart."""
+    corridor = frozenset({Cell(1, 1), Cell(2, 1), Cell(1, -1), Cell(2, -1)})
+    assert has_line_of_sight(Cell(0, 0), Cell(4, 0), opaque=corridor)
+
+
 def test_the_two_ends_never_block_their_own_line() -> None:
     """A wall is in sight of itself and a creature in a doorway is visible from
     it: the squares at the ends of the line are what is being asked about, not
