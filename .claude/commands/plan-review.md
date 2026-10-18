@@ -50,15 +50,19 @@ verdict.
 - **An ordinary gate:** continue per `/next-task` step 6.
 - **A milestone review** (the row says `milestone review`): the gate's PR also
   sets the `Milestone branch:` line in `docs/progress.md` to the next
-  milestone's branch. After merging it, close the milestone on M itself
+  milestone's branch. **Mark the milestone PR (M into `main`) ready before
+  merging the gate's PR**: from that merge on, M's queue names the next
+  milestone's first task, and the open `claude/task-review-*` PR is what holds
+  the watchdog until the ready PR can (`docs/workflow.md` § The chain, checks 3
+  and 5). Then merge it and close the milestone on M itself
   (`docs/workflow.md` § Plan reviews):
-  1. Rewrite the milestone PR's body (M into `main`) with the `pr` skill: what
+  1. Rewrite the milestone PR's body with the `pr` skill: what
      the milestone delivered, what the loop merged into the plans and the
      environment since the last milestone (every gate's `### Retro`), the
      debt rows the round cap left, and the open rows of `docs/questions.md`,
      workflow-edit proposals among them. It is the record the human reads at
      the end, not a request for review.
-  2. Mark the milestone PR ready. If `git diff --name-only origin/main...M`
+  2. If `git diff --name-only origin/main...M`
      lists anything under `.github/workflows/`, do not merge, whatever CI
      says — `human-merge-required` runs the PR's own copy of `ci.yml`
      (`docs/workflow.md` § Merge authority). Otherwise wait for its CI, fix

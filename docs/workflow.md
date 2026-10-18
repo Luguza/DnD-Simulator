@@ -144,9 +144,12 @@ a `.github/workflows/` edit becomes a proposal in `docs/questions.md` (§ Merge
 authority). Gates sit every two or three tasks
 and at every milestone. Every gate's PR is merged into the milestone branch by
 the loop. An ordinary gate then carries on; a **milestone review** goes on to
-close the milestone: it sets the `Milestone branch:` line to the
-next milestone's branch, writes the milestone PR's body, marks it ready, merges
-it into `main` once its CI is green, and fires the Routine. That firing cuts the
+close the milestone: its PR sets the `Milestone branch:` line to the next
+milestone's branch, and it marks the milestone PR ready *before* merging that
+PR — the merge is what puts the next milestone's first task at `next` on M, and
+the gate's own open PR is what holds the watchdog until then. It then writes the
+milestone PR's body, merges it into `main` once its CI is green, and fires the
+Routine. That firing cuts the
 next milestone's branch from `main`, and the chain carries on.
 
 If the milestone PR's diff touches `.github/workflows/` — read from the diff,
