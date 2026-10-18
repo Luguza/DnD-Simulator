@@ -39,15 +39,17 @@ is no turn loop here, so `w1c`'s per-boundary expiry sweep never runs, and
 `self.slots.highest` is answered by a stand-in flag rather than by `w1b`'s
 pools (debt #15), so none of the pool arithmetic runs either — it is priced per
 operation in `docs/decisions.md` § w1b instead. The spike therefore
-*understates* the eventual per-round cost, and `w2e`'s re-run of this benchmark
-is where the real APL compiler has to come in at or under the number below.
+*understates* the eventual per-round cost. `w1k` is the re-measure that totals
+what W1 spent, and the task that retires debt #15; `w2e`'s re-run of this
+benchmark is where the real APL compiler has to come in at or under the number
+below.
 What the spike does not understate is the per-attack cost, which is where the
 budget is spent.
 
 Run it: `python -m dndsim.tools.spike` (add `--startup` for the worker cost).
 
 Sources: DESIGN.md § Performance, § The spike must be pessimistic, § Levers;
-ROADMAP w0i, w2e.
+ROADMAP w0i, w1k, w2e.
 """
 
 import argparse

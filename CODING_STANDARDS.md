@@ -57,6 +57,25 @@ lands. `/retro` applies that split.
   means the wrong scope was chosen — fix the scope, not the body.
 - **Contexts are pooled.** A feature holding a context past its handler, or
   storing mutable state, is a hot-path aliasing bug.
+- **What a handler can change is re-read after the dispatch.** Engine code that
+  reads state, dispatches a hook and then acts on what it read is making the
+  bet that no handler touched it — and a handler is exactly the thing that can.
+  `w1c` shipped this twice and the review confirmed both: `EffectStore.apply()`
+  asked what was already held before firing `on_effect_applied` and used the
+  answer after, so a handler that dispelled the incumbent left a stale object to
+  `refresh()` and one that applied its own left a remembered `None` that
+  attached a second effect of a class allowed only one; and `remove()` dispatched
+  before letting go, so a handler removing an effect the sweep still held fired
+  its hook twice and then died in `list.remove`. Flag the read-dispatch-use
+  shape; the fix is to re-ask, or to settle the state before dispatching and say
+  which.
+- **A count with an invariant has named writers.** Contexts are attribute-locked
+  because an author cannot be trusted to respect an invariant they cannot see;
+  engine-owned mutable state is no different. `ResourcePool.current` shipped as a
+  plain attribute, so `pool.current -= 5` left a pool at −2 past every guard the
+  spend path had — the finding the round cap held `w1b` on. A field with a floor,
+  a ceiling or a ledger behind it is a read-only property, and the methods
+  allowed to move it are listed where it is defined.
 - **`LATE`/`FINAL` handlers need a `# PHASE:` justification comment.**
   Unjustified late phases are how ordering becomes load-bearing by accident;
   `rg "PHASE:"` should stay under ~30 hits repo-wide.
@@ -82,6 +101,25 @@ lands. `/retro` applies that split.
   `docs/` **and `src/`** — a docstring in another module cites its neighbours as
   readily as a plan does. Four rounds of #25's own review were dangling inbound
   pointers, one of them in `src/` because this list first omitted it.
+- **Adding code is a citation change too**, and it is the half this list was
+  missing. Prose elsewhere says what does not exist yet — a package
+  `__init__.py` listing what is unwritten, a stand-in explaining what it stands
+  in for, a comment saying two queries "are the same arithmetic today". The diff
+  that makes the thing exist is what falsifies them, and the author is the only
+  person who will ever have reason to look. So a diff that adds a module, a
+  field or a branch greps `src/` and `docs/` for the name of what it added and
+  for what it replaced. Three findings across `w1b` and `w1d`: two stale
+  pointers in `creatures/__init__.py` and `tools/spike.py`, and a comment in
+  `engine/triggers.py` contradicted by the diff four lines below it.
+- **A measurement lives in one place, like a rule.** The citation rule above is
+  about rules and applies unchanged to numbers, which drift faster: `w1c`'s
+  median was quoted as −0.5% in the commit message, −0.3% in the record and a
+  third thing in `CLAUDE.md`, and the review had to reconcile all three. A
+  number belongs in the decision record that measured it, and a copy anywhere
+  else carries the pointer to that section beside it — a bare percentage with no
+  pointer is a finding even when it currently agrees, because it is the copy
+  nobody will think to edit. Where a diff changes a measured number, `grep` the
+  figure itself across the tree, not the prose around it.
 
 ## Evidence a feature PR must carry
 

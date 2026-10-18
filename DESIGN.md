@@ -390,7 +390,7 @@ That one flag covers all three hard cases:
 |---|---|
 | **Rage** | `until_end_of_next_turn_of(self)`, plus `refresh()` from `on_declare_attack` / `on_damage_taken` / `on_forced_save` — recomputes against the current clock, so "next turn" slides forward |
 | **Reckless Attack** | `until_start_of_next_turn_of(self)` |
-| **Vex** | `until_end_of_next_turn_of(self)` **plus `charges=1`** keyed to a target id — whichever runs out first removes it |
+| **Vex** | `until_end_of_next_turn_of(self)` **plus `charges=1`** keyed to a target id — whichever runs out first removes it. **The key is the feature's state, not a field on `Effect`**: `Effect.charges` is a count, and which target a charge may be spent against is something only the feature knows (`docs/decisions.md` § w1c). A W4 author needs no engine change for it, and reaching into `creatures/` for one would be a content batch editing the engine |
 
 ### Initiative is a key, not an index
 
