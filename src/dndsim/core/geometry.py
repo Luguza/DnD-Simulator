@@ -260,11 +260,15 @@ def cone(
 
     A Cone's width at any point along its length equals that point's distance
     from the point of origin, and the point of origin is not in the area (XPHB,
-    Rules Glossary "Areas of Effect"). On the grid that is
-    `2 * lateral <= along`: one square at 5 feet, three at 10 and 15, five at 20
-    and 25. The width can only be odd, because a cone laid along a line of
-    squares has no way to be two squares wide, and rounding it down instead
-    would make a 10-foot cone one square wide for its whole length.
+    Rules Glossary "Areas of Effect"). A square grid cannot draw that width
+    exactly: a cone laid along a row of squares is symmetric about that row, so
+    its width in squares is always odd and the rule's even widths have to round
+    one way or the other. **It rounds up** — `2 * lateral <= along`, so one
+    square at 5 feet, three at 10 and 15, five at 20 and 25 — because rounding
+    down would keep a 10-foot cone one square wide and a 20-foot cone three,
+    narrower than the rule draws at every second step. That is a choice rather
+    than a consequence, and `docs/questions.md` #3 is the choice and what
+    overturning it would move.
 
     `toward` names one of the eight grid directions rather than an angle. A
     creature chooses a direction by pointing at something, and an arbitrary

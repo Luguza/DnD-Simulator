@@ -2428,11 +2428,17 @@ keep.
 ### A cone on a grid, and the width that can only be odd
 
 A Cone's width at any point equals that point's distance from the point of
-origin. On squares that is `2 * lateral <= along`: one square at 5 feet, three
-at 10 and 15, five at 20. The width is always odd because a cone laid along a
-row of squares has nothing to be two squares wide *about* — and rounding the
-other way, so that a 10-foot cone stays one square wide, would make a Burning
-Hands narrower than the rules draw it for its whole length. A diagonal cone is
+origin. A grid cannot draw that: a cone laid along a row of squares is symmetric
+about that row, so its width in squares is always odd and the rule's even widths
+round. **Rounding up** — `2 * lateral <= along`, one square at 5 feet, three at
+10 and 15, five at 20 — makes the cone wider than the rule at every second step;
+rounding down makes it narrower at every second step, and keeps a 10-foot
+Burning Hands one square wide for its whole length. Up is the lesser error and
+the one a grid cone is usually drawn with, and because it *is* a choice rather
+than something the quoted sentence implies, it is `docs/questions.md` #3 beside
+the sphere's metric. Its second review round is where that distinction was
+caught: the first draft of the docstring presented the formula as following from
+the rule. A diagonal cone is
 generated in its own rotated frame rather than by filtering a box, so a cone
 pointed at a corner is the same seven squares as one pointed along a row instead
 of a staircase of single steps.
