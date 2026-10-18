@@ -12,8 +12,10 @@ milestone (`docs/workflow.md` § The milestone branch).
 A `⏸` row is a plan review, run by the loop (`docs/workflow.md` § Plan
 reviews). A **milestone review** also merges the milestone PR into `main` and
 carries on; its row must say `milestone review`, and its PR sets the line above
-to the next milestone's branch. Only a `held`
-row halts the chain, and while one stands **no row is `next`** — the row below a
+to the next milestone's branch. A milestone PR the loop could not merge stays
+ready and halts the chain until it merges (`docs/workflow.md` § Plan reviews),
+whatever row is `next`. A `held`
+row halts it too, and while one stands **no row is `next`** — the row below a
 held task advances only when that task's diff merges, and a `next` row sitting
 under a hold is an invitation to start work on a dependency that never landed.
 
