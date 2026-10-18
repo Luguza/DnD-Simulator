@@ -429,9 +429,11 @@ rows that follow them.
   batch may never do. Corrected to point at the ruling.
 - **The paired spike run is not resolving anything, and the thing that is
   resolving it is deterministic.** Three tasks spent eight to fourteen paired
-  runs each to conclude "not distinguishable from zero" against spreads of ±6%,
-  ±2.5% and ±17%. What actually found `w1d`'s 3.5% regression, and what it quotes
-  to `w1k`, was the profile and the call count. Sequencing principle 10 now asks
+  runs each to conclude "not distinguishable from zero" against pair-to-pair
+  spreads several times the effect, every one of them asymmetric
+  (`docs/decisions.md` § w1b, § w1c, § w1d carry the ratios and the ranges; the
+  figures are not restated here). What found `w1d`'s first cut — and what it
+  quotes to `w1k` — was the profile and the call count (§ w1d). Sequencing principle 10 now asks
   for both, with the deterministic witness as the finding where the two disagree.
   This is a retro edit as much as a plan one and is recorded under § The W1
   mid-wave review's `### Retro`.

@@ -173,9 +173,10 @@ repeat save has no owner** — DESIGN.md writes out both geometric series and
 `w3f` declares the timing for the scorer, but nothing rolls the save, so it is
 debt **#35**, split into `w1g`'s enum and `w2c`'s roll. And **the paired spike
 run stopped resolving anything**: three tasks bought "not distinguishable from
-zero" against spreads up to ±17%, while the profile and the call count are what
-attributed `w1d`'s regression, so sequencing principle 10 now asks for the
-deterministic witness beside the rate.
+zero" against pair-to-pair spreads wider than the effect they were measuring,
+while the profile and the call count are what attributed `w1d`'s regression
+(`docs/decisions.md` § w1b, § w1c, § w1d have the ratios), so sequencing
+principle 10 now asks for the deterministic witness beside the rate.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is

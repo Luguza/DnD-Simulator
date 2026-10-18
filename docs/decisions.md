@@ -2686,9 +2686,11 @@ edits.
 
 - **Sequencing principle 10 now asks for a deterministic witness beside the
   paired rate** (`ROADMAP.md`). The protocol as written bought "not
-  distinguishable from zero" three times out of three, against spreads of ±6.2%
-  (`w1b`), ±2.5% (`w1c`) and ±17.4% (`w1d`) — eight to fourteen paired runs
-  each. That is the right conclusion and it is not an attribution, which is what
+  distinguishable from zero" three times out of three, against pair-to-pair
+  ratios spanning −6.2% to +5.8% (§ w1b), −2.5% to +1.2% (§ w1c) and −15.1% to
+  +17.4% (§ w1d) — eight to fourteen paired runs each. Every one of those ranges
+  is asymmetric, which is why a `±` summary of them is wrong as well as
+  unpointed: the review of this gate caught exactly that in its first draft. That is the right conclusion and it is not an attribution, which is what
   the principle exists to produce. What attributed anything was deterministic:
   `w1d`'s first cut cost 3.5% of the rate, and the profile named the cause
   without the noise (`distance_ft` 21 ms to 74 ms cumulative, 133k calls added),
