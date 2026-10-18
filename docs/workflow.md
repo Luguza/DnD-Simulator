@@ -185,7 +185,7 @@ worker, and both paths below drive the Routine rather than spawn around it.
   names one that does not exist yet, merging `main` into it when `main` is
   ahead, and opening the draft milestone PR once it has commits of its own),
   then runs its checks and, only if all of them hold, works the task itself in
-  that same session: the milestone PR is still a draft, the queue has a `next`
+  that same session: no milestone PR is ready, the queue has a `next`
   row, no `claude/task-*` PR is open, and nothing is `held`. The checks are what
   stop it double-starting a task or starting the next milestone on a branch
   whose merge is waiting (§ Plan reviews); firing no more often than the slowest
