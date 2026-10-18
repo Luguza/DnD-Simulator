@@ -38,31 +38,6 @@ jobs:
           # against its base, which a shallow clone does not have.
           fetch-depth: 0
 
-      # graft/ is gitignored; see claude-code-review.yml for why it is pinned
-      # and why the install is cached.
-      - name: Locate the graft install
-        id: graft
-        run: |
-          echo "node=$(node --version)" >> "$GITHUB_OUTPUT"
-          echo "$HOME/.graft-cli/bin" >> "$GITHUB_PATH"
-
-      - name: Restore the graft install
-        id: graft-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.graft-cli
-          key: graft-0.18.0-${{ runner.os }}-${{ runner.arch }}-node-${{ steps.graft.outputs.node }}
-
-      - name: Build the graft graph
-        env:
-          CACHE_HIT: ${{ steps.graft-cache.outputs.cache-hit }}
-        run: |
-          if [ "$CACHE_HIT" != "true" ]; then
-            npm install --global --prefix "$HOME/.graft-cli" --no-fund --no-audit @nanonets/graft@0.18.0
-          fi
-          graft telemetry disable
-          graft build
-
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -76,9 +51,6 @@ jobs:
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-          # The read-only graft commands, so .claude/skills/graft works here as
-          # it does locally.
           claude_args: >-
             --model claude-opus-5-5
             --effort medium
-            --allowedTools "Bash(graft ask:*),Bash(graft grep:*),Bash(graft skeleton:*),Bash(graft callers:*),Bash(graft map:*)"

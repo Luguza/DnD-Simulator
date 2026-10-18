@@ -55,13 +55,21 @@ verdict.
   1. Commit the workflow edits earlier retros only proposed directly to M —
      never in a PR into M, whose review would be skipped and whose merge the
      loop may not make.
-  2. Rewrite the milestone PR's body (M into `main`) for the human, with the
-     `pr` skill: what the milestone delivered, what the loop merged into the
-     plans and the environment since the last milestone (every gate's
-     `### Retro`), the workflow edits from step 1, and the debt rows the round
-     cap left for them.
-  3. Mark the milestone PR ready for review, notify the human and stop. Do not
-     start the next task and do not fire the Routine.
+  2. Rewrite the milestone PR's body (M into `main`) with the `pr` skill: what
+     the milestone delivered, what the loop merged into the plans and the
+     environment since the last milestone (every gate's `### Retro`), the
+     workflow edits from step 1, the debt rows the round cap left, and the
+     open rows of `docs/questions.md`. It is the record the human reads at the
+     end, not a request for review.
+  3. Mark the milestone PR ready, wait for its CI, and merge it into `main`
+     once CI is green and it has no conflict. Then fire the Routine as in
+     `/next-task` step 6; it cuts the next milestone's branch. If the merge is
+     refused for lack of permission, notify the human once naming the PR and
+     stop (`docs/workflow.md` § Plan reviews).
+  4. **The last milestone (M5)** names no next branch and leaves no row
+     `next`. After the merge, notify the human once that the product is ready
+     for their review, linking the milestone PRs and `docs/questions.md`
+     (`docs/workflow.md` § The final product).
 
 Finding nothing, in either half, is a valid outcome. Say so in one paragraph in
 `docs/decisions.md` and flip the rows; do not manufacture changes to justify

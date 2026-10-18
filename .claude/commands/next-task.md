@@ -15,8 +15,10 @@ touch, and the files themselves.
 
 - The milestone branch M is named by `docs/progress.md`'s `Milestone branch:`
   line on `main`; everything below happens on M (`docs/workflow.md` § The
-  milestone branch). If the milestone PR (M into `main`) is ready rather than a
-  draft, the human is reviewing it: stop.
+  milestone branch).
+- Never stop to ask the user. Where CLAUDE.md says to ask, take the most
+  conservative reading, proceed, and record it in `docs/questions.md` in this
+  PR (`docs/workflow.md` § Questions for the human).
 - `docs/progress.md` on M → the `next` row. A `⏸` row means run `/plan-review`
   instead, in this session. A `held` row means stop and report.
 - `grep -n "^| <id> " ROADMAP.md` → the task row: scope, depends, produces,
@@ -68,10 +70,11 @@ Each wake: read the sticky verdict comment and CI.
 
 When the verdict is `✅ Looks good`, CI is green and there is no conflict:
 
-- If `human-merge-required` is red, a human merges this one — a workflow edit,
-  or a base that is `main` by mistake, in which case retarget it to M and wait
-  for CI again (`docs/workflow.md` § Merge authority). Notify the human, say
-  which, and stop.
+- If `human-merge-required` is red, the PR has a base that is `main` by
+  mistake — retarget it to M and wait for CI again — or edits
+  `.github/workflows/` — take the edit out, list it as proposed for the next
+  milestone review, and wait for the new verdict (`docs/workflow.md` § Merge
+  authority).
 - Otherwise merge into M — contract files included — then hand off by firing the
   watchdog Routine (`fire_trigger`, `trig_01P3i9g4LRN6i4nakMEH32hq`), which
   re-runs the three checks and takes the next row in a fresh session, and
