@@ -167,8 +167,9 @@ it change how the next tasks are done. **`w1g` could not be built from what its
 row said** — save-for-half has to land in `w1e`'s halving ledger, `ctx.halve()`
 is its only writer and raises unless a handler is mid-dispatch, and
 `resolve_damage()` accepts no mitigation from a caller, so the one open route is
-the one § Boundaries forbids; the row now names the three routes, says which is
-right, and makes settling the signature part of the task. **A save-ends effect's
+the one § Boundaries forbids; the row now carries the decision — widen
+`resolve_damage()` — and the obligation to settle that signature, with the
+argument in the decision record. **A save-ends effect's
 repeat save has no owner** — DESIGN.md writes out both geometric series and
 `w3f` declares the timing for the scorer, but nothing rolls the save, so it is
 debt **#35**, split into `w1g`'s enum and `w2c`'s roll. And **the paired spike

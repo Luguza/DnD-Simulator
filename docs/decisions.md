@@ -2681,8 +2681,8 @@ not the code.
 ### Retro
 
 The environment axis, over the same three tasks (`.claude/skills/retro`). Eleven
-findings closed across thirteen review rounds, three of them real bugs. Four
-edits.
+findings closed across thirteen review rounds, three of them real bugs. Six
+edits: one to the plan, four to the standards, and one pointer in `src/`.
 
 - **Sequencing principle 10 now asks for a deterministic witness beside the
   paired rate** (`ROADMAP.md`). The protocol as written bought "not
@@ -2728,6 +2728,13 @@ edits.
   record that measured it and a copy carries the pointer, and a diff that changes
   one greps for the figure rather than the prose around it.
 
+- **`tools/spike.py`'s docstring named `w2e`'s re-run and not `w1k`'s**
+  (navigation). It is the file a task reads to learn what the benchmark leaves
+  out, and the paragraph saying the spike "understates the eventual per-round
+  cost" pointed only at the APL compiler's re-run. `w1k` is the task that totals
+  what W1 spent and the one that retires debt #15, so it is named there now, and
+  in the module's Sources line.
+
 Nothing here is a check rather than a standard, which is worth saying since the
 retro's split prefers checks. All four of the standards edits are judgement
 calls over shapes a grep cannot distinguish from a correct use: prose about
@@ -2736,7 +2743,8 @@ one mechanical candidate — grepping for a module name near "not written" —
 would fire on every stand-in's own honest docstring, which is most of `tools/`.
 
 No CI run went red on any of the three PRs, and no task reported difficulty
-locating a ruling, so the navigation table and the hooks are left alone.
+locating a ruling, so `CLAUDE.md`'s decision-record table gains only the two
+rows for this section and the hooks are left alone.
 
 Sources: `docs/decisions.md` § w1b, § w1c, § w1d, § w1e, § w1f, § The W0 plan
 review, § The W1 critical-path review; DESIGN.md § Durations, § Buffs and
