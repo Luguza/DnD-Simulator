@@ -2625,17 +2625,24 @@ from a stand-in flag, so wiring real pools in is what puts the arithmetic on the
 path. That makes #15 a precondition of `w1k`'s measurement rather than a chore
 beside it, and the row now says to retire it first.
 
-`w1c`'s is not #15 and retiring #15 does not touch it. The expiry sweep does not
-run because **the spike has no turn loop** — it resolves attacks and walks, and
-`expire_before()`/`expire_after()` have no caller anywhere in it. Real effects on
-real creatures still never reach a boundary. So `w1k` either adds the two sweep
-calls at the spike's existing round boundary and says it has done so, or the
-sweep stays unmeasured and `w1k` says *that* — what it may not do is retire #15,
-see real effects in the fixtures and conclude the sweep has been priced.
-`tools/spike.py`'s own docstring keeps the two apart correctly; the row did not,
-and neither did this gate's first draft of this paragraph. The honest position is
-that the sweep's cost is first measurable in `w2c`'s re-run, which is the task
-that brings a turn loop.
+`w1c`'s is not #15 and retiring #15 does not touch it. **The sweep has no caller
+anywhere in `tools/`** — `expire_before()` and `expire_after()` are never
+invoked — so wiring real pools and effects into the fixtures leaves it still
+unrun. It is unmeasured for want of a call, not for want of somewhere to put
+one: the spike already runs four turns a round, each calling
+`resets.turn_started()`, and `_hero_turn` builds a real `TimeKey`. So wiring the
+two sweeps at those boundaries is `w1k`'s, and the sweep's per-call cost is
+`w1k`'s number.
+
+What `w1k` cannot supply is the per-boundary *count*, because the spike's four
+turns stand in for a roster `w2c` orders: the cost per call is priced here, the
+multiplier belongs to the loop that knows how many boundaries a round has. That
+split is the whole of it, and this gate's first two drafts of this paragraph both
+got it wrong in the same direction — first by folding the sweep into debt #15,
+then by declaring it unmeasurable before `w2c`. `tools/spike.py`'s own docstring
+says "there is no turn loop here", which is true of an initiative-ordered loop
+and was read as true of the boundaries; the boundaries exist, and only the calls
+are missing. Both corrections came from the review.
 
 That is also why the arithmetic is a multiplication rather than a sum: a
 per-operation price times how often a real scenario performs it, which is what
@@ -2743,8 +2750,9 @@ one mechanical candidate — grepping for a module name near "not written" —
 would fire on every stand-in's own honest docstring, which is most of `tools/`.
 
 No CI run went red on any of the three PRs, and no task reported difficulty
-locating a ruling, so `CLAUDE.md`'s decision-record table gains only the two
-rows for this section and the hooks are left alone.
+locating a ruling, so `CLAUDE.md`'s decision-record table gains no row — this
+section is appended to the two that already exist, for planning a wave and for
+pricing a change — and the hooks are left alone.
 
 Sources: `docs/decisions.md` § w1b, § w1c, § w1d, § w1e, § w1f, § The W0 plan
 review, § The W1 critical-path review; DESIGN.md § Durations, § Buffs and
