@@ -368,7 +368,9 @@ M5, and a question the loop would have asked them is answered by the loop and
 recorded in [`docs/questions.md`](docs/questions.md). CI's
 `human-merge-required` job fails on purpose only for a non-milestone PR into
 `main` or one that edits `.github/workflows/`, and nothing stops the chain but a
-`held` row (`docs/workflow.md` § Merge authority, § Questions for the human).
+`held` row or a milestone PR left ready because the loop could not merge it
+(`docs/workflow.md` § Merge authority, § Plan reviews, § Questions for the
+human).
 
 Three skills shape that loop: `pr` writes the PR body, `pr-review` reviews on two
 axes — [`CODING_STANDARDS.md`](CODING_STANDARDS.md), which holds the review

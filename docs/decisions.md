@@ -2335,9 +2335,10 @@ of review into a check or a rule so the next task does not repeat it.
   criticises — the reviewer now checks the implementation against it too.
 - **The retro runs at every `⏸` gate**, inside `/plan-review`, not after every
   task — `docs/workflow.md` § Token cost. Its edits ride the gate's PR, except a
-  `.github/workflows/` edit, which waits for the next milestone review because
-  an ordinary gate that carried one would stop the loop and go unreviewed
-  (`docs/workflow.md` § Merge authority).
+  `.github/workflows/` edit: a gate that carried one would stop the loop and go
+  unreviewed. (Superseded by #40: the loop never commits a workflow edit and
+  proposes it in `docs/questions.md` instead, `docs/workflow.md` § Merge
+  authority.)
 - **The PR body is `pr`'s**, with a Bookkeeping section appended for what
   `/next-task` already required. Merge Danger's one-way doors are named for this
   repo: the frozen registry, seeded output, closed vocabularies, the contract.

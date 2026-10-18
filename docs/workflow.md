@@ -9,8 +9,8 @@ is the milestone branch itself, and the loop merges that one too.
 product once, after the last ROADMAP milestone (§ The final product). Nothing in
 the loop waits for them: a decision that would have been put to them is taken by
 the loop and recorded in `docs/questions.md` (§ Questions for the human). Only
-two things still reach them: a `held` row, and a merge the loop was refused
-permission to make.
+two things still reach them: a `held` row, and a milestone PR the loop could not
+merge (§ Plan reviews).
 
 ## The milestone branch
 
@@ -55,7 +55,7 @@ at the end, not a gate they pass on the way.
    then fires the Routine for the next task (§ The chain) and archives itself.
    Red on a task PR means a wrong base or a workflow edit: a wrong base is
    retargeted to the milestone branch; a workflow edit comes out of the PR and
-   is proposed for the next milestone review instead (§ Merge authority).
+   becomes a proposal in `docs/questions.md` instead (§ Merge authority).
 
 ## The review loop
 
@@ -85,25 +85,31 @@ The loop merges everything: task PRs, spec PRs and plan-review PRs into the
 milestone branch — edits to `DESIGN.md`, `ROADMAP.md`, `CLAUDE.md`, the
 dependency set and `.claude/` included — and the milestone PR into `main`. The
 `human-merge-required` CI job fails, and the loop does not merge, only for a PR
-whose head is not a `milestone/*` branch and that either:
+that either:
 
-- **targets `main`.** The loop only ever targets the milestone branch, so this
-  is a wrong base or a change the human opened themselves; or
+- **targets `main` from anything but a `milestone/*` branch.** The loop only
+  ever targets the milestone branch, so this is a wrong base or a change the
+  human opened themselves; or
 - **edits `.github/workflows/`.** Not for the contract's sake:
   `claude-code-action` skips itself when the workflow file differs from the
   default branch **and exits successfully**, so such a PR can never get a real
   verdict, and the loop merging it would be merging unreviewed. For the same
-  reason a workflow edit never goes into the milestone branch mid-milestone:
-  every task PR cut after it would carry a workflow that differs from `main`,
-  and the reviewer would pass them all without reading them. A workflow edit the
-  loop wants is proposed at a gate and committed by the milestone review, after
-  the last task (§ Plan reviews).
+  reason a workflow edit never goes into the milestone branch: every task PR
+  cut after it would carry a workflow that differs from `main`, and the
+  reviewer would pass them all without reading them.
+
+**The loop never commits a workflow edit.** One it wants is a proposal: a row
+in `docs/questions.md`, which the human applies when they review the finished
+product. The check that holds this is the milestone review's, not this job's:
+`ci.yml` runs on `pull_request`, which runs the PR's own copy of the workflow,
+so a PR that edits `human-merge-required` is judged by the edited job. A
+milestone PR whose diff touches `.github/workflows/` is therefore never merged
+by the loop, whatever its CI says (§ Plan reviews).
 
 The reviewer skips the milestone PR itself: every change in it was reviewed on
-its way into the milestone branch, and the workflow edits the milestone review
-commits were reviewed as proposals in the gate PRs that made them. The cost is
-that the loop can rewrite the plan it executes; the human catches that at the
-end, in the milestone PRs and `docs/questions.md`.
+its way into the milestone branch. The cost is that the loop can rewrite the
+plan it executes; the human catches that at the end, in the milestone PRs and
+`docs/questions.md`.
 
 ## Questions for the human
 
@@ -134,19 +140,30 @@ against what the last few tasks actually measured, in the shape of
 `docs/decisions.md` § The W0 plan review, then the `retro` skill over the same
 tasks — what in the environment (checks, `CODING_STANDARDS.md`, `CLAUDE.md`,
 the skills) made them cost what they did. The retro's edits ride the gate's PR;
-a `.github/workflows/` edit waits for the next milestone review. Gates sit every two or three tasks
+a `.github/workflows/` edit becomes a proposal in `docs/questions.md` (§ Merge
+authority). Gates sit every two or three tasks
 and at every milestone. Every gate's PR is merged into the milestone branch by
 the loop. An ordinary gate then carries on; a **milestone review** goes on to
-close the milestone: it commits the workflow edits earlier gates proposed
-straight onto the milestone branch, sets the `Milestone branch:` line to the
-next milestone's branch, writes the milestone PR's body, marks it ready, merges
-it into `main` once its CI is green, and fires the Routine. That firing cuts the
+close the milestone: its PR sets the `Milestone branch:` line to the next
+milestone's branch, and it marks the milestone PR ready *before* merging that
+PR — the merge is what puts the next milestone's first task at `next` on M, and
+the gate's own open PR is what holds the watchdog until then. It then writes the
+milestone PR's body, merges it into `main` once its CI is green, and fires the
+Routine. That firing cuts the
 next milestone's branch from `main`, and the chain carries on.
 
-If the merge into `main` is refused — a permission the session does not have —
-the milestone review notifies the human once, naming the PR, and stops. Merging
-it is all they are asked to do; the next watchdog firing after it lands picks
-the chain up again.
+If the milestone PR's diff touches `.github/workflows/` — read from the diff,
+never from `human-merge-required` (§ Merge authority) — or the merge into
+`main` is refused for a permission the session does not have, the milestone
+review notifies the human
+once, naming the PR and which of the two it is, and stops. Any other red CI or
+a conflict on the milestone PR is the milestone review's to fix before it
+merges — red CI through a reviewed PR into M, never a commit pushed to M, since
+the reviewer skips the milestone PR; a conflict by merging `main` into M; if the session dies first, the watchdog's two-hour
+notice is what reports it. While the milestone PR is ready and unmerged the
+watchdog starts nothing: the queue on M already names the next milestone's
+first task, and running it on the closed milestone's branch is the thing that
+check exists to stop. The next firing after the merge picks the chain up again.
 
 ## The final product
 
@@ -168,10 +185,11 @@ worker, and both paths below drive the Routine rather than spawn around it.
   names one that does not exist yet, merging `main` into it when `main` is
   ahead, and opening the draft milestone PR once it has commits of its own),
   then runs its checks and, only if all of them hold, works the task itself in
-  that same session: the queue has a `next` row, no `claude/task-*` PR is open,
-  and nothing is `held`. The checks are what stop it double-starting a task;
-  firing no more often than the slowest task reaches its PR is the other half of
-  that guard.
+  that same session: no milestone PR is ready, the queue has a `next`
+  row, no `claude/task-*` PR is open, and nothing is `held`. The checks are what
+  stop it double-starting a task or starting the next milestone on a branch
+  whose merge is waiting (§ Plan reviews); firing no more often than the slowest
+  task reaches its PR is the other half of that guard.
 - **Fast path.** On merging, the session fires the Routine (`fire_trigger`)
   instead of waiting for the schedule, so the next task starts in a fresh
   session with a clean context. The checks run again on that firing, which is
@@ -193,10 +211,14 @@ worker, and both paths below drive the Routine rather than spawn around it.
      commits M lacks, merge main into M and push. If M has commits main lacks
      and no pull request from M into main exists, open one as a draft, titled
      after the milestone.
-  3. Read docs/progress.md on M. Find the row whose status is `next`. If there
+  3. If the pull request from M into main is open and not a draft, stop
+     silently — the milestone is closing, and its merge is waiting.
+     Exception: if its last activity is over two hours old, say so in one
+     sentence naming the PR and what it waits on.
+  4. Read docs/progress.md on M. Find the row whose status is `next`. If there
      is none, or any row is `held`: stop, notifying the user in one sentence
      for a `held` row.
-  4. If a pull request with a `claude/task-*` head branch is open, stop
+  5. If a pull request with a `claude/task-*` head branch is open, stop
      silently — a task is in flight. Exception: if its last activity is over
      two hours old, say so in one sentence naming the PR and what it waits on.
 
@@ -207,7 +229,8 @@ worker, and both paths below drive the Routine rather than spawn around it.
   what to do instead.
   ```
 
-Neither path ever passes a `held` row.
+Neither path ever passes a `held` row, or a milestone PR that is ready and
+unmerged.
 
 ## Token cost
 
@@ -215,4 +238,4 @@ The loop is designed to be cheap, and the design is load-bearing, not incidental
 the reviewer cancels superseded runs and routes prose-only diffs to the cheaper
 pass; sessions grep `DESIGN.md`, `ROADMAP.md` and `docs/decisions.md` for the one
 claim they need and never read them end to end; the round cap bounds the worst
-case at four reviews per task; and the watchdog's prompt is four checks long.
+case at four reviews per task; and the watchdog's prompt is five checks long.
