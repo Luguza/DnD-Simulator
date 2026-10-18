@@ -78,7 +78,7 @@ When the verdict is `✅ Looks good`, CI is green and there is no conflict:
   authority).
 - Otherwise merge into M — contract files included — then hand off by firing the
   watchdog Routine (`fire_trigger`, `trig_01P3i9g4LRN6i4nakMEH32hq`), which
-  re-runs the three checks and takes the next row in a fresh session, and
+  re-runs its checks (`docs/workflow.md` § The chain) and takes the next row in a fresh session, and
   archive yourself. Never `create_session`: a Routine session has no
   permission mode, so the call is always refused
   (`docs/workflow.md` § The chain). If the fire is refused too, stop and say
