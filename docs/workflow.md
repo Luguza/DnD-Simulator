@@ -158,7 +158,8 @@ never from `human-merge-required` (§ Merge authority) — or the merge into
 review notifies the human
 once, naming the PR and which of the two it is, and stops. Any other red CI or
 a conflict on the milestone PR is the milestone review's to fix before it
-merges, like any PR's; if the session dies first, the watchdog's two-hour
+merges — red CI through a reviewed PR into M, never a commit pushed to M, since
+the reviewer skips the milestone PR; a conflict by merging `main` into M; if the session dies first, the watchdog's two-hour
 notice is what reports it. While the milestone PR is ready and unmerged the
 watchdog starts nothing: the queue on M already names the next milestone's
 first task, and running it on the closed milestone's branch is the thing that

@@ -65,8 +65,11 @@ verdict.
   2. If `git diff --name-only origin/main...M`
      lists anything under `.github/workflows/`, do not merge, whatever CI
      says — `human-merge-required` runs the PR's own copy of `ci.yml`
-     (`docs/workflow.md` § Merge authority). Otherwise wait for its CI, fix
-     any red check or conflict as on any PR, and merge it into `main`. Then
+     (`docs/workflow.md` § Merge authority). Otherwise wait for its CI and
+     merge it into `main`. The reviewer skips the milestone PR, so never push
+     a fix to M directly: a red check is fixed in a `claude/task-review-*` PR
+     into M, reviewed and merged like any other, and a conflict by merging
+     `main` into M, as the watchdog does. Then
      fire the Routine as in `/next-task` step 6; it cuts the next milestone's
      branch. If the diff touched workflows or the merge is refused for lack of
      permission, notify the human once naming the PR and which it is, and
