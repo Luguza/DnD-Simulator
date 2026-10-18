@@ -50,6 +50,7 @@ __all__ = [
     "PROFICIENCY_BONUS",
     "SHIELD_AC_BONUS",
     "SIZE_ORDER",
+    "SIZE_WIDTH_CELLS",
     "THIRD_CASTER_SLOTS",
     "ability_modifier",
     "proficiency_bonus",
@@ -117,6 +118,27 @@ SIZE_ORDER: Final[Mapping[Size, int]] = MappingProxyType(
 )
 """Sizes ranked smallest to largest, so that "one size larger than you" is a
 comparison of two ints rather than a hand-written ordering per rule."""
+
+SIZE_WIDTH_CELLS: Final[Mapping[Size, int]] = MappingProxyType(
+    {
+        # The XPHB "Creature Size" table, in grid squares rather than feet: a
+        # Tiny creature's 2.5 feet and a Medium one's 5 both round to the one
+        # square they are placed in, and Gargantuan's "20 feet or more" is
+        # floored at the 20 the table prints.
+        Size.TINY: 1,
+        Size.SMALL: 1,
+        Size.MEDIUM: 1,
+        Size.LARGE: 2,
+        Size.HUGE: 3,
+        Size.GARGANTUAN: 4,
+    }
+)
+"""How many squares on a side a creature of each size occupies.
+
+`core/geometry.py` is what reads it: a footprint is what distance, reach and a
+template's coverage are measured against, so the one place a size becomes a
+number of squares is here beside the rest of the rules tables.
+"""
 
 PROFICIENCY_BONUS: Final[Mapping[int, int]] = MappingProxyType(
     {

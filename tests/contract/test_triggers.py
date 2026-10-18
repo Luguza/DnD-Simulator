@@ -34,7 +34,7 @@ from typing import Final
 import pytest
 
 from dndsim.core.errors import EngineAssemblyError
-from dndsim.core.geometry import Cell, distance_ft, in_reach
+from dndsim.core.geometry import Cell, distance_ft, in_reach, route
 from dndsim.core.timeline import InitiativeKey
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.economy import ActionEconomy
@@ -44,7 +44,7 @@ from dndsim.hooks.contexts import Cell as CellRef
 from dndsim.hooks.contexts import Context, LeaveReachContext
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.source import HookSource
-from dndsim.rules.enums import Ability, ActionCost
+from dndsim.rules.enums import Ability, ActionCost, Size
 
 SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 10))
 
@@ -128,10 +128,12 @@ def _seat(initiative: int) -> InitiativeKey:
     )
 
 
-def _creature(name: str, at: Cell, *, initiative: int = 10) -> Creature:
+def _creature(
+    name: str, at: Cell, *, initiative: int = 10, size: Size = Size.MEDIUM
+) -> Creature:
     return Creature(
         name=name,
-        stats=StatBlock(abilities=SCORES, max_hp=30, level=5),
+        stats=StatBlock(abilities=SCORES, max_hp=30, level=5, size=size),
         position=at,
         weapon=GREATSWORD,
         initiative=_seat(initiative),
@@ -139,7 +141,12 @@ def _creature(name: str, at: Cell, *, initiative: int = 10) -> Creature:
 
 
 def _threatener(
-    name: str, at: Cell, *, initiative: int = 10, takes: bool = True
+    name: str,
+    at: Cell,
+    *,
+    initiative: int = 10,
+    takes: bool = True,
+    size: Size = Size.MEDIUM,
 ) -> tuple[Creature, OpportunityAttack, ActionEconomy, Policy]:
     """A creature that owns an opportunity attack, its economy and its policy.
 
@@ -148,7 +155,7 @@ def _threatener(
     for out of here is what it would be paid for out of in a real encounter.
     Only the policy is still a stand-in, because `w2e` owns the compiler.
     """
-    creature = _creature(name, at, initiative=initiative)
+    creature = _creature(name, at, initiative=initiative, size=size)
     policy = Policy(takes=takes)
     creature.dispatcher.bind(gate=policy)
     reaction = OpportunityAttack(creature)
@@ -320,15 +327,39 @@ def test_the_per_step_cost_is_linear_in_watchers_not_in_the_room(
 
     queries = 0
 
-    def counting_distance(origin: Cell, destination: Cell) -> int:
+    def counting_distance(
+        origin: Cell,
+        destination: Cell,
+        *,
+        origin_size: Size = Size.MEDIUM,
+        destination_size: Size = Size.MEDIUM,
+    ) -> int:
         nonlocal queries
         queries += 1
-        return distance_ft(origin, destination)
+        return distance_ft(
+            origin,
+            destination,
+            origin_size=origin_size,
+            destination_size=destination_size,
+        )
 
-    def counting_reach(origin: Cell, destination: Cell, reach_ft: int) -> bool:
+    def counting_reach(
+        origin: Cell,
+        destination: Cell,
+        reach_ft: int,
+        *,
+        origin_size: Size = Size.MEDIUM,
+        destination_size: Size = Size.MEDIUM,
+    ) -> bool:
         nonlocal queries
         queries += 1
-        return in_reach(origin, destination, reach_ft)
+        return in_reach(
+            origin,
+            destination,
+            reach_ft,
+            origin_size=origin_size,
+            destination_size=destination_size,
+        )
 
     monkeypatch.setattr("dndsim.engine.triggers.distance_ft", counting_distance)
     monkeypatch.setattr("dndsim.engine.triggers.in_reach", counting_reach)
@@ -486,3 +517,29 @@ def test_an_empty_route_moves_nobody() -> None:
 
     assert walk_provoking(mover, (), []) == ()
     assert mover.position == Cell(2, 2)
+
+
+def test_a_large_watcher_gets_the_opportunity_attack_its_anchor_would_miss() -> None:
+    """The move: clause, the route and the offer, end to end on the case debt 9
+    named (`core/geometry.py`, w1d).
+
+    Both guards are anchored at (-2, 0) with a 5-foot reach, and the runner
+    starts at (0, 0) and is sent to (3, 0). The Large guard fills
+    (-2, 0)-(-1, 1), so its nearest square is one step from the runner and the
+    first step of the route leaves its reach: one swing, from (0, 0) to (1, 0).
+    The Medium guard stands only on (-2, 0), which is 10 feet from the runner,
+    so it never had the runner in reach and is never offered anything. A grid
+    that read an anchor rather than a footprint would have given both the second
+    answer."""
+    walked = route(Cell(0, 0), Cell(3, 0))
+    assert walked == (Cell(1, 0), Cell(2, 0), Cell(3, 0))
+
+    runner = _creature("Runner", Cell(0, 0))
+    ogre, swings, _, _ = _threatener("Ogre", Cell(-2, 0), size=Size.LARGE)
+    walk_provoking(runner, walked, [ogre])
+    assert swings.swings == [(Cell(0, 0), Cell(1, 0))]
+
+    runner = _creature("Runner", Cell(0, 0))
+    goblin, missed, _, _ = _threatener("Goblin", Cell(-2, 0))
+    walk_provoking(runner, walked, [goblin])
+    assert missed.swings == []
