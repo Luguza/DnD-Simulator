@@ -39,9 +39,8 @@ class Petrified(Incapacitated):
 
     @hook("on_incoming_damage")
     def resist_damage(self, ctx: IncomingDamageContext) -> R:
-        """Resists every member of `DamageType` rather than only the ones
-        this hit carries — "You have Resistance to all damage", and
-        `engine/damage.py` reads the ledger per type."""
+        """Resists every member of `DamageType` rather than only the ones this
+        hit carries: "You have Resistance to all damage"."""
         for damage_type in enums.DamageType:
             ctx.add_resistance(damage_type)
         return R.APPLIED

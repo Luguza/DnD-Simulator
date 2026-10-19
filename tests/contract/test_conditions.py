@@ -98,8 +98,14 @@ DAMAGE: Final = 13
 
 DEX: Final = Ability.DEXTERITY
 
+ORIGIN: Final = Cell(0, 0)
+EAST: Final = Cell(1, 0)
+NORTH: Final = Cell(0, 1)
+"""Three cells, each pair of them five feet apart — inside a greatsword's
+reach, which is the only distance an attack here is made at."""
 
-def combatant(name: str, *, cell: Cell = Cell(0, 0)) -> Creature:
+
+def combatant(name: str, *, cell: Cell = ORIGIN) -> Creature:
     """A level-5 martial with a greatsword, AC 15 and 40 hit points.
 
     `Armour.natural()` is the one legitimate way for an AC to be a number
@@ -182,7 +188,7 @@ def test_the_afflicted_creatures_own_attack_rolls_have_disadvantage(
     A single die would take the 17 for 24 and hit, and the exhausted script is
     what says two d20s were drawn rather than one.
     """
-    swinger, target = combatant("swinger"), combatant("target", cell=Cell(1, 0))
+    swinger, target = combatant("swinger"), combatant("target", cell=EAST)
     impose(swinger, condition(swinger))
     rng = ScriptedRng([HIGH, LOW])
 
@@ -200,7 +206,7 @@ def test_an_attack_on_the_afflicted_creature_has_advantage(
 ) -> None:
     """Scripted 3 then 17 resolves on the 17: 17 + 7 = 24 against AC 15 hits,
     where the 3 alone would total 10 and miss. 2d6 (5 + 4 = 9) + 4 = 13."""
-    swinger, target = combatant("swinger"), combatant("target", cell=Cell(1, 0))
+    swinger, target = combatant("swinger"), combatant("target", cell=EAST)
     impose(target, condition(target))
     rng = ScriptedRng([LOW, HIGH, 5, 4])
 
@@ -212,10 +218,29 @@ def test_an_attack_on_the_afflicted_creature_has_advantage(
     assert rng.exhausted
 
 
+def test_being_incapacitated_alone_does_not_swing_an_attack_roll() -> None:
+    """Incapacitated's four clauses are all about acting, not about being hit.
+
+    So an attack on an Incapacitated creature is a flat roll — one d20, natural
+    10 + 7 = 17 against AC 15, for 2d6 (5 + 4) + 4 = 13 — and the advantage the
+    case above found under Paralyzed, Stunned and Unconscious is each of those
+    conditions' own clause rather than something inherited from this one.
+    """
+    swinger, target = combatant("swinger"), combatant("target", cell=EAST)
+    impose(target, Incapacitated(target))
+    rng = ScriptedRng([HIT, 5, 4])
+
+    outcome, damage = resolve_attack(swinger, target, rng=rng)
+
+    assert outcome is Outcome.HIT
+    assert damage == DAMAGE
+    assert rng.exhausted
+
+
 def test_an_invisible_creatures_own_attack_rolls_have_advantage() -> None:
-    """"your attack rolls have Advantage": scripted 3 then 17 resolves on the
+    """ "your attack rolls have Advantage": scripted 3 then 17 resolves on the
     17 for 24 against AC 15, and the hit deals 2d6 (5 + 4) + 4 = 13."""
-    swinger, target = combatant("unseen"), combatant("target", cell=Cell(1, 0))
+    swinger, target = combatant("unseen"), combatant("target", cell=EAST)
     impose(swinger, Invisible(swinger))
     rng = ScriptedRng([LOW, HIGH, 5, 4])
 
@@ -229,7 +254,7 @@ def test_an_invisible_creatures_own_attack_rolls_have_advantage() -> None:
 def test_an_attack_on_an_invisible_creature_has_disadvantage() -> None:
     """The other half of the same sentence: scripted 17 then 3 resolves on the
     3 for 3 + 7 = 10 against AC 15."""
-    swinger, target = combatant("swinger"), combatant("unseen", cell=Cell(1, 0))
+    swinger, target = combatant("swinger"), combatant("unseen", cell=EAST)
     impose(target, Invisible(target))
     rng = ScriptedRng([HIGH, LOW])
 
@@ -249,7 +274,7 @@ def test_a_petrified_creature_is_attacked_with_advantage_and_resists_it() -> Non
     2d6 (5 + 4) + 4 = 13 slashing is halved to 13 // 2 = 6 (XPHB, "Round
     Down"), so the statue loses 6 where an unresisting target loses 13.
     """
-    swinger, statue = combatant("swinger"), combatant("statue", cell=Cell(1, 0))
+    swinger, statue = combatant("swinger"), combatant("statue", cell=EAST)
     impose(statue, Petrified(statue))
     rng = ScriptedRng([LOW, HIGH, 5, 4])
 
@@ -262,10 +287,10 @@ def test_a_petrified_creature_is_attacked_with_advantage_and_resists_it() -> Non
 
 
 def test_a_frightened_creature_attacks_with_disadvantage() -> None:
-    """"You have Disadvantage on ability checks and attack rolls while the
+    """ "You have Disadvantage on ability checks and attack rolls while the
     source of fear is within line of sight." Scripted 17 then 3 resolves on
     the 3: 3 + 7 = 10 against AC 15."""
-    victim, dragon = combatant("victim"), combatant("dragon", cell=Cell(1, 0))
+    victim, dragon = combatant("victim"), combatant("dragon", cell=EAST)
     impose(victim, Frightened(victim, caster=dragon))
     rng = ScriptedRng([HIGH, LOW])
 
@@ -279,13 +304,14 @@ def test_a_frightened_creature_attacks_with_disadvantage() -> None:
 # --- The two conditions written about the creature that imposed them --------
 
 
-def test_a_grappled_creature_attacks_anyone_but_the_grappler_with_disadvantage(
-) -> None:
-    """"You have Disadvantage on attack rolls against any target other than the
+def test_a_grappled_creature_attacks_anyone_but_the_grappler_with_disadvantage() -> (
+    None
+):
+    """ "You have Disadvantage on attack rolls against any target other than the
     grappler." Scripted 17 then 3 resolves on the 3 for 10 against AC 15."""
     victim = combatant("victim")
-    grappler = combatant("grappler", cell=Cell(1, 0))
-    bystander = combatant("bystander", cell=Cell(0, 1))
+    grappler = combatant("grappler", cell=EAST)
+    bystander = combatant("bystander", cell=NORTH)
     impose(victim, Grappled(victim, caster=grappler))
     rng = ScriptedRng([HIGH, LOW])
 
@@ -301,7 +327,7 @@ def test_a_grappled_creature_attacks_the_grappler_with_no_disadvantage() -> None
     """The exception the same sentence names. One d20, not two: the scripted 17
     is the roll, for 17 + 7 = 24 against AC 15, and 2d6 (5 + 4) + 4 = 13."""
     victim = combatant("victim")
-    grappler = combatant("grappler", cell=Cell(1, 0))
+    grappler = combatant("grappler", cell=EAST)
     impose(victim, Grappled(victim, caster=grappler))
     rng = ScriptedRng([HIGH, 5, 4])
 
@@ -314,11 +340,11 @@ def test_a_grappled_creature_attacks_the_grappler_with_no_disadvantage() -> None
 
 
 def test_a_charmed_creature_cannot_attack_the_charmer() -> None:
-    """"You can't attack the charmer." Not a miss — an attack that does not
+    """ "You can't attack the charmer." Not a miss — an attack that does not
     happen, so `outcome` is None and no d20 is drawn (the empty script raises
     if one is)."""
     victim = combatant("victim")
-    charmer = combatant("charmer", cell=Cell(1, 0))
+    charmer = combatant("charmer", cell=EAST)
     impose(victim, Charmed(victim, caster=charmer))
 
     result = resolve_attack(victim, charmer, rng=no_dice())
@@ -334,8 +360,8 @@ def test_a_charmed_creature_may_attack_anybody_else() -> None:
     a stranger for natural 10 + 7 = 17 against AC 15 and 2d6 (5 + 4) + 4 = 13,
     on one undisturbed d20."""
     victim = combatant("victim")
-    charmer = combatant("charmer", cell=Cell(1, 0))
-    stranger = combatant("stranger", cell=Cell(0, 1))
+    charmer = combatant("charmer", cell=EAST)
+    stranger = combatant("stranger", cell=NORTH)
     impose(victim, Charmed(victim, caster=charmer))
     rng = ScriptedRng([HIT, 5, 4])
 
@@ -351,7 +377,7 @@ def test_a_charmed_creature_may_attack_anybody_else() -> None:
 
 
 def test_a_restrained_creatures_dexterity_saves_have_disadvantage() -> None:
-    """"You have Disadvantage on Dexterity saving throws." Scripted 7 then 18
+    """ "You have Disadvantage on Dexterity saving throws." Scripted 7 then 18
     resolves on the 7: 7 + 2 (Dexterity 14) = 9, which fails DC 11."""
     victim = combatant("victim")
     impose(victim, Restrained(victim))
@@ -397,7 +423,7 @@ def test_a_poisoned_creatures_ability_checks_have_disadvantage() -> None:
 def test_a_frightened_creatures_ability_checks_have_disadvantage() -> None:
     """The check half of "You have Disadvantage on ability checks and attack
     rolls while the source of fear is within line of sight"."""
-    victim, dragon = combatant("victim"), combatant("dragon", cell=Cell(1, 0))
+    victim, dragon = combatant("victim"), combatant("dragon", cell=EAST)
     impose(victim, Frightened(victim, caster=dragon))
 
     ctx = make_check(victim)
@@ -435,7 +461,7 @@ def test_an_incapacitated_creature_rolls_initiative_with_disadvantage(
 
 
 def test_an_invisible_creature_rolls_initiative_with_advantage() -> None:
-    """"If you're Invisible when you roll Initiative, you have Advantage on the
+    """ "If you're Invisible when you roll Initiative, you have Advantage on the
     roll"."""
     victim = combatant("victim")
     impose(victim, Invisible(victim))
@@ -449,9 +475,8 @@ def test_an_invisible_creature_rolls_initiative_with_advantage() -> None:
 # --- Exhaustion -------------------------------------------------------------
 
 
-def test_exhaustion_is_the_exception_and_a_second_application_is_a_level(
-) -> None:
-    """"This condition is cumulative. Each time you receive it, you gain 1
+def test_exhaustion_is_the_exception_and_a_second_application_is_a_level() -> None:
+    """ "This condition is cumulative. Each time you receive it, you gain 1
     Exhaustion level" — the glossary's declared exception to "A condition
     doesn't stack with itself".
 
@@ -475,7 +500,7 @@ def test_exhaustion_is_the_exception_and_a_second_application_is_a_level(
 def test_a_d20_test_is_reduced_by_two_times_the_exhaustion_level(
     levels: int, total: int
 ) -> None:
-    """"When you make a D20 Test, the roll is reduced by 2 times your
+    """ "When you make a D20 Test, the roll is reduced by 2 times your
     Exhaustion level": 13 + 2 (Dexterity 14) - 2 * level, so 13, 11 and 9.
 
     DC 13 is cleared at one level and missed at two, which is the clause doing
@@ -497,7 +522,7 @@ def test_exhaustion_reduces_the_attack_roll_too() -> None:
     """An attack roll is a D20 Test: natural 10 + 7 - 2 = 15 meets AC 15 at one
     level, and 10 + 7 - 4 = 14 misses it at two. 2d6 (5 + 4) + 4 = 13 — the
     reduction is on the roll and not on the damage."""
-    swinger, target = combatant("weary"), combatant("target", cell=Cell(1, 0))
+    swinger, target = combatant("weary"), combatant("target", cell=EAST)
     impose(swinger, Exhaustion(swinger))
 
     first = resolve_attack(swinger, target, rng=ScriptedRng([HIT, 5, 4]))
@@ -529,7 +554,7 @@ def test_exhaustion_reaches_every_d20_test_the_registry_defines() -> None:
 
 
 def test_a_long_rest_removes_one_exhaustion_level() -> None:
-    """"Finishing a Long Rest removes 1 of your Exhaustion levels." From level
+    """ "Finishing a Long Rest removes 1 of your Exhaustion levels." From level
     2 that leaves level 1, so the save the level-2 case failed now reads
     13 + 2 - 2 = 13 and clears DC 13."""
     weary = combatant("weary")
@@ -544,7 +569,7 @@ def test_a_long_rest_removes_one_exhaustion_level() -> None:
 
 
 def test_the_condition_ends_when_its_last_level_is_removed() -> None:
-    """"When your Exhaustion level reaches 0, the condition ends." Nothing is
+    """ "When your Exhaustion level reaches 0, the condition ends." Nothing is
     attached and nothing is reduced: 13 + 2 = 15."""
     weary = combatant("weary")
     weary.effects.apply(Exhaustion(weary))
@@ -560,11 +585,11 @@ def test_the_condition_ends_when_its_last_level_is_removed() -> None:
 
 
 def test_a_petrified_creature_cannot_be_poisoned() -> None:
-    """"You have Immunity to the Poisoned condition": the application lands
+    """ "You have Immunity to the Poisoned condition": the application lands
     nothing, so the statue's attack roll is not given the Disadvantage the
     Poisoned condition would have imposed — natural 10 + 7 = 17 on one d20
     hits AC 15 for 2d6 (5 + 4) + 4 = 13."""
-    statue, target = combatant("statue"), combatant("target", cell=Cell(1, 0))
+    statue, target = combatant("statue"), combatant("target", cell=EAST)
     impose(statue, Petrified(statue))
 
     assert statue.effects.apply(Poisoned(statue)) is None
@@ -578,7 +603,7 @@ def test_a_petrified_creature_cannot_be_poisoned() -> None:
 def test_the_same_poison_lands_on_a_creature_that_is_not_petrified() -> None:
     """The control for the case above, which a store that refused every
     Poisoned condition would also pass."""
-    victim, target = combatant("victim"), combatant("target", cell=Cell(1, 0))
+    victim, target = combatant("victim"), combatant("target", cell=EAST)
 
     assert victim.effects.apply(Poisoned(victim)) is not None
     assert attached(victim) == ["poisoned"]
@@ -589,10 +614,10 @@ def test_the_same_poison_lands_on_a_creature_that_is_not_petrified() -> None:
 
 
 def test_unconscious_leaves_prone_attached_when_it_ends() -> None:
-    """"When this condition ends, you remain Prone." Unconscious is gone and
+    """ "When this condition ends, you remain Prone." Unconscious is gone and
     Prone is on, so the creature's own attacks still have Disadvantage:
     scripted 17 then 3 resolves on the 3 for 3 + 7 = 10 against AC 15."""
-    sleeper, target = combatant("sleeper"), combatant("target", cell=Cell(1, 0))
+    sleeper, target = combatant("sleeper"), combatant("target", cell=EAST)
     worn = impose(sleeper, Unconscious(sleeper))
 
     sleeper.effects.remove(worn)
@@ -611,7 +636,7 @@ def test_deafened_changes_nothing_a_combat_round_can_see() -> None:
     The attack is the behavioural half: one d20, natural 10 + 7 = 17 against
     AC 15, and 2d6 (5 + 4) + 4 = 13.
     """
-    victim, target = combatant("victim"), combatant("target", cell=Cell(1, 0))
+    victim, target = combatant("victim"), combatant("target", cell=EAST)
     impose(victim, Deafened(victim))
 
     assert Deafened.HANDLERS == ()
@@ -667,7 +692,7 @@ def test_a_condition_written_about_its_imposer_refuses_to_arrive_without_one(
 def test_a_second_application_of_a_condition_does_not_stack(
     condition: type[Condition],
 ) -> None:
-    """"A condition doesn't stack with itself; a recipient either has a
+    """ "A condition doesn't stack with itself; a recipient either has a
     condition or doesn't" — so the second application is absorbed by the first
     and the creature holds one."""
     victim = combatant("victim")

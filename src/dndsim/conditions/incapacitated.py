@@ -14,9 +14,8 @@ class Incapacitated(Condition):
     """Unable to act, and surprised when it rolls Initiative.
 
     The base of Paralyzed, Petrified, Stunned and Unconscious, each of whose
-    rules text says "You have the Incapacitated condition": a subclass inherits
-    these handlers through `HookSource.HANDLERS` and this class's gaps through
-    `Condition.__init_subclass__`.
+    rules text says "You have the Incapacitated condition"
+    (`docs/decisions.md` § w1h).
     """
 
     __slots__ = ()

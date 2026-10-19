@@ -22,10 +22,7 @@ __all__ = ["Condition", "SourcedCondition"]
 def _accumulate(cls: "type[Condition]", field: str) -> tuple[str, ...]:
     """Every entry `field` carries in the MRO, base-first, without duplicates.
 
-    A composed condition — Paralyzed has the Incapacitated condition — inherits
-    its bases' handlers through `HookSource.HANDLERS`, so it inherits their gaps
-    too; declaring its own would otherwise shadow them and the collection test
-    would report it as whole.
+    Why a subclass accumulates rather than replaces: `docs/decisions.md` § w1h.
     """
     seen: dict[str, None] = {}
     for klass in reversed(cls.__mro__):
@@ -39,8 +36,7 @@ class Condition(Effect):
 
     `STACKING` is `Effect`'s inherited `REFRESH`, which is the glossary's "A
     condition doesn't stack with itself; a recipient either has a condition or
-    doesn't"; `Exhaustion` is the declared exception and says so in its own
-    module.
+    doesn't. The Exhaustion condition is an exception to that rule."
     """
 
     __slots__ = ()
@@ -51,9 +47,9 @@ class Condition(Effect):
     NEEDS_HOOK: ClassVar[tuple[str, ...]] = ()
     """Clauses that cannot be expressed at all, as `<what is missing>: <clause>`.
 
-    The escape valve `ROADMAP.md` § Standing rules, 2 names, as a tuple because
-    a condition is a list of clauses and one of them failing says nothing about
-    the rest. Accumulated down the hierarchy by `__init_subclass__`.
+    The escape valve `ROADMAP.md` § Standing rules, 2 names, one entry per
+    clause and each naming the debt row that owns it; `__init_subclass__`
+    accumulates them down the hierarchy (`docs/decisions.md` § w1h).
     """
 
     APPROXIMATED: ClassVar[tuple[str, ...]] = ()
@@ -69,9 +65,8 @@ class SourcedCondition(Condition):
     """A condition whose rules text names the creature that imposed it — the
     charmer, the grappler, the source of fear.
 
-    `caster` is `Effect`'s field for that creature and is required here: every
-    clause these three conditions have that mentions the source needs it, and a
-    `None` would make the handler silently skip.
+    `caster` is `Effect`'s field for that creature, and is required rather than
+    optional here.
     """
 
     __slots__ = ()

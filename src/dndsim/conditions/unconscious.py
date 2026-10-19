@@ -34,9 +34,8 @@ class Unconscious(Incapacitated, Prone):
     def unconscious_incoming_attacks(self, ctx: AttackDeclaredContext) -> R:
         """Grants "Attack rolls against you have Advantage" in its own right.
 
-        Inheriting Prone's grant would read the same today and stop being the
-        same the moment Prone's `APPROXIMATED` distance test lands: this clause
-        is unconditional and Prone's is not.
+        Not redundant with the grant inherited from `Prone`, whose clause is
+        conditional where this one is not (`docs/decisions.md` § w1h).
         """
         ctx.grant_advantage(self.name)
         return R.APPLIED

@@ -32,9 +32,8 @@ class Exhaustion(Condition):
     one level.
 
     The glossary's declared exception to "A condition doesn't stack with
-    itself", and the level is this effect's charge count — a count that ends the
-    effect when it runs out is exactly what `Effect.charges` is, so a Long Rest
-    `consume()`s one and the store lets go at zero.
+    itself". The level is this effect's charge count, which is why a Long Rest
+    `consume()`s one (`docs/decisions.md` § w1h).
     """
 
     __slots__ = ()
@@ -63,12 +62,9 @@ class Exhaustion(Condition):
 
     @hook("on_effect_applied", phase=Phase.EARLY)
     def accumulate(self, ctx: EffectContext) -> R:
-        """Takes a second application as a level rather than letting it attach.
-
+        """Takes a second application as a level rather than letting it attach:
         "This condition is cumulative. Each time you receive it, you gain 1
-        Exhaustion level" — which no `Stacking` member says, so the incumbent
-        counts the arrival itself and refuses it.
-        """
+        Exhaustion level" (`docs/decisions.md` § w1h)."""
         if ctx.effect.name != self.name:
             return R.SKIPPED
         self.charges = self.level + 1

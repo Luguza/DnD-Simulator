@@ -9,8 +9,7 @@ __all__ = ["Deafened"]
 class Deafened(Condition):
     """You cannot hear.
 
-    The condition's one clause is an ability check, so it carries no handler:
-    nothing in a combat round is decided by hearing.
+    Its one clause is an ability check, so there is no handler to declare.
     """
 
     __slots__ = ()
