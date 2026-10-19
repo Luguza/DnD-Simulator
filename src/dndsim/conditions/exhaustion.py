@@ -3,6 +3,7 @@
 from typing import Final
 
 from dndsim.conditions.base import Condition
+from dndsim.core.errors import EngineAssemblyError
 from dndsim.hooks.contexts import (
     AbilityCheckContext,
     AttackDeclaredContext,
@@ -56,9 +57,15 @@ class Exhaustion(Condition):
 
     @property
     def level(self) -> int:
-        """This creature's Exhaustion level."""
+        """This creature's Exhaustion level, which is its charge count."""
         charges = self.charges
-        return 0 if charges is None else charges
+        if charges is None:
+            raise EngineAssemblyError(
+                "exhaustion was built without its level: `charges` is the "
+                "level, and a level of none is not a level. Only "
+                "Exhaustion(owner) assembles one."
+            )
+        return charges
 
     @hook("on_effect_applied", phase=Phase.EARLY)
     def accumulate(self, ctx: EffectContext) -> R:

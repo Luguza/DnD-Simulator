@@ -210,9 +210,9 @@ collide inside one MRO if they are not distinct, and makes `Unconscious` declare
 its own Advantage grant beside the one it inherits from `Prone`. **A clause that
 cannot be written is declared, never approximated into silence**: `NEEDS_HOOK`
 and `APPROXIMATED` are tuples on the class, accumulated down the MRO, and the
-declaration is the larger half of this task — fifteen entries over ten
+declaration is the larger half of this task — sixteen entries over eleven
 structural gaps, every one of them pointing at the register row that owns it,
-and **#38–#47** are new rows. And **Petrified is the
+and **#38–#48** are new rows. And **Petrified is the
 fourth condition that fails Strength and Dexterity saves automatically**, not
 the third: the row and debt #37 both named three, and the correction rides this
 PR rather than a spec PR because what the row asked for was implementable

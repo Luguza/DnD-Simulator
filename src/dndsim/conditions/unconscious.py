@@ -28,6 +28,10 @@ class Unconscious(Incapacitated, Prone):
         'distance is not on the context: "Any attack roll that hits you is a '
         'Critical Hit if the attacker is within 5 feet of you." '
         "(ROADMAP.md § The W0 debt register #40)",
+        "a creature's weapon is not on the `Combatant` view a handler is "
+        "given, and nothing picks a dropped one back up: "
+        '"you drop whatever you\'re holding." '
+        "(ROADMAP.md § The W0 debt register #48)",
     )
 
     @hook("on_incoming_attack_declared")

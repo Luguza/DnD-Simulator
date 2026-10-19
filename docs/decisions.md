@@ -3274,17 +3274,17 @@ report itself whole.
 
 Nothing in `conditions/` reports a gap in prose. Every entry is data a
 collection test reads, which is what `CLAUDE.md` § Architecture promises ("a
-collection test lists them") and what keeps the count honest: fifteen
+collection test lists them") and what keeps the count honest: sixteen
 `NEEDS_HOOK` entries, each quoting the clause it could not write, and three
-`APPROXIMATED` ones. The fifteen reduce to **ten** distinct structural gaps
+`APPROXIMATED` ones. The sixteen reduce to **eleven** distinct structural gaps
 once the clauses that want the same missing thing are merged — six conditions
 want a Speed that can be changed and four a save that can be failed. Every
 entry names the register row that owns it, so the register is the record and
 the tuple is the pointer: rows #28 and #37 were already open, #38, #39, #40,
-#41, #44, #45, #46 and #47 are new, and two further gaps that are not clause-
-level — #42 and #43 below — make ten new rows in all. (#21 and #27 are each the
-same gap seen from another file and are cited from the new row rather than
-duplicated into it.)
+#41, #44, #45, #46, #47 and #48 are new, and two further gaps that are not
+clause-level — #42 and #43 below — make eleven new rows in all. (#21 and #27
+are each the same gap seen from another file and are cited from the new row
+rather than duplicated into it.)
 
 ### Petrified is the fourth condition that cannot save, not the third
 
@@ -3372,6 +3372,37 @@ does not authorise and `conditions/` may not make. It is the same shape as
 `w1c` wiring the two effect hooks that `w0e` had declared with no possible
 caller — one package along. Debt #42.
 
+### What the independent test pass found
+
+`CLAUDE.md` § Working rules keeps the author of a change away from its tests,
+and on this task that bought two findings and no behavioural disagreement —
+every clause's arithmetic matched what the glossary gives, on the first run.
+
+- **Unconscious's "you drop whatever you're holding" was silently absent.** It
+  had been filed with the out-of-combat clauses below on the grounds that
+  nothing carries an inventory, which is the wrong reading: the clause has a
+  combat consequence and `Creature.weapon` exists, so it is *nearly*
+  expressible and the honest answer is a declaration. It is now `NEEDS_HOOK`
+  and debt #48. The three clauses still undeclared are the ones below, and the
+  review named each of them, which is what makes leaving them out a decision
+  rather than an oversight.
+- **`Exhaustion.level` answered 0 for a state that cannot happen.**
+  `Effect.charges` is `int | None` and Exhaustion's `__init__` always sets it,
+  so the narrowing was unreachable — and answering 0 would have reached
+  `ModifierBag.add(flat=0)`, which raises two frames away about an empty
+  contribution. It raises `EngineAssemblyError` here instead, naming the real
+  fault (DESIGN.md § Failing loudly).
+
+Two of the pass's own derivations are worth keeping rather than re-deriving.
+The breadth of Exhaustion's D20 Test coverage is asserted **off the hook
+registry** — every spec whose context is a `D20TestContext`, less the
+attacker's side of an incoming attack — so a sixth D20 Test hook cannot land
+uncovered, which is the only way `on_death_save` and `on_concentration_check`
+are reachable at all before `w1j` and `w5a`. And the row's acceptance test
+**tokenises** the engine's sources rather than scanning them for substrings:
+five files in `engine/`, `hooks/` and `core/` discuss conditions in prose, so a
+substring scan fails on the documentation it is supposed to be ignoring.
+
 ### What it cost the benchmark
 
 Nothing, and it was not priced. `ROADMAP.md` § Sequencing principles, 10 names
@@ -3393,14 +3424,14 @@ creature costs exactly what any other `HookSource` costs, which `w0i` measured.
   you" both need to ask a second creature what it is carrying, and `Combatant`
   is a read-only view with no store behind it — the same wall `apply_pending()`
   hit in `w1c` and the roster `w2c` owns answers.
-- **No out-of-combat clause.** Charmed's social Advantage, Deafened's and
-  Blinded's hearing and sight checks, Petrified's weight and ageing, Grappled's
-  drag-and-carry and Unconscious's dropped weapon are not modelled and are not
-  debt: a combat simulator rolls no social check and carries no inventory, so
-  there is no task that would retire a row for them (#27's own argument — a
-  debt row nobody can retire is worse than no row). The ability-check clauses
-  *are* declared, because `on_ability_check` exists and the gap is a missing
-  mutator.
+- **No out-of-combat clause.** Charmed's social Advantage, Incapacitated's "You
+  can't speak", Petrified's weight and ageing, and Unconscious's "You're
+  unaware of your surroundings" are not modelled and are not debt: there is no
+  task that would retire a row for them, which is #27's own argument — a debt
+  row nobody can retire is worse than no row. Blinded's and Deafened's ability-
+  check clauses *are* declared, because `on_ability_check` exists and what is
+  missing is a mutator (#38), and so is Grappled's drag-and-carry, because
+  movement is already owed (#28).
 - **No `source_ref` field.** `features/base.py` is `w3a`'s and that is where
   the field is designed; the quoted rules sentence is in each handler's
   docstring beside the code it governs until then.
