@@ -34,10 +34,10 @@ the two levers deliberately not taken. **W1 is under way.**
 The plans were then re-read against what the wave measured
 (`docs/decisions.md` § The W0 plan review). Two things came out of it that
 matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
-first cuts and deferred obligations W0 left behind — twenty-five rows open, of
+first cuts and deferred obligations W0 left behind — twenty-six rows open, of
 which thirteen are W0's, one is `w1e`'s, two are `w1f`'s, three are `w1c`'s, one
-is `w1b`'s, two are `w1d`'s and three were found by the W1 critical-path gate —
-and the task that retires each;
+is `w1b`'s, two are `w1d`'s, three were found by the W1 critical-path gate and
+one by the mid-wave gate — and the task that retires each;
 check it for the file you are about to touch. And **`w1k` is a
 new task**, an M0 re-measure at the end of W1, because the measured ~31.5k had
 5% of headroom and W1 adds the per-round cost the spike does not model.
@@ -159,6 +159,28 @@ rate** — an `Enum` hashed twice per distance query — and the one-square fast
 path that fixed it leaves the module running 2.8% *fewer* Python calls than
 before the task. `docs/decisions.md` § w1d has the arguments and both
 measurements; it retires debt-register row #9 and opens **#33** and **#34**.
+
+The W1 mid-wave gate then re-read the plans against those three
+(`docs/decisions.md` § The W1 mid-wave review). None of them moved a number the
+plan assumes, so the projection over the budget is unchanged; three things from
+it change how the next tasks are done. **`w1g` could not be built from what its
+row said** — save-for-half has to land in `w1e`'s halving ledger and no API
+reaches it from `engine/saves.py`, so the row now carries the decision (widen
+`resolve_damage()`) and the obligation to settle that signature. **Read
+`docs/decisions.md` § The W1 mid-wave review before writing it**: the routes
+that look open, and why each of them is wrong, are argued there and nowhere
+else. **A save-ends effect's
+repeat save has no owner** — DESIGN.md writes out both geometric series and
+`w3f` declares the timing for the scorer, but nothing rolls the save, so it is
+debt **#35**, split into `w1g`'s enum and `w2c`'s roll. Giving `w1g` the
+`resolve_damage()` signature also **put it on the hot path**, so it prices itself
+like the five the critical-path gate named and `w1k` totals six attributions, not
+five. And **the paired spike
+run stopped resolving anything**: three tasks bought "not distinguishable from
+zero" against pair-to-pair spreads wider than the effect they were measuring,
+while the profile and the call count are what attributed `w1d`'s regression
+(`docs/decisions.md` § w1b, § w1c, § w1d have the ratios), so sequencing
+principle 10 now asks for the deterministic witness beside the rate.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
@@ -366,8 +388,8 @@ there is local to a module.
 | `creatures/resources.py`, pools, slots, `transaction()` | § w1b |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |
-| `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review |
-| the performance budget, pricing a change | § w0i, § The W1 critical-path review |
+| `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review, § The W1 mid-wave review |
+| the performance budget, pricing a change | § w0i, § The W1 critical-path review, § The W1 mid-wave review |
 | `engine/triggers.py`, `Dispatcher.responsive()` | § w0g3 |
 | `.claude/skills/`, `CODING_STANDARDS.md`, the review loop | § The PR, review and retro skills |
 

@@ -30,8 +30,8 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 4 | w1c — `Effect`, `EffectStore`, stacking | done | #31 |
 | 5 | w1b — resources, `SpellSlots`, `transaction()` | done | #32 |
 | 6 | w1d — grid geometry completed | done | #41 |
-| — | ⏸ plan review | next | |
-| 7 | w1g — saving throws, DCs, save-for-half | queued | |
+| — | ⏸ plan review | done | #42 |
+| 7 | w1g — saving throws, DCs, save-for-half | next | |
 | 8 | w1h — the 15 combat conditions | queued | |
 | 9 | w1i — structured event log | queued | |
 | — | ⏸ plan review | queued | |
@@ -41,7 +41,8 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 
 Order within W1 is the critical path first (`w1e → w1f`, the two 🔒 tasks
 everything downstream trusts), then the three files W0 left as first cuts, then
-the leaves. `w1k` depends on `w1a`–`w1f` and `w1j`, which is why it is last.
+the leaves. `w1k` depends on `w1a`–`w1g`, `w1i` and `w1j`, which is why it is
+last: every row that prices itself has to have landed before the totalling.
 
 W2 rows are added by the M0 / W1 milestone review, not before it — the review
 is what decides whether they are still the right rows.

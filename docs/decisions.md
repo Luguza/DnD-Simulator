@@ -2498,6 +2498,466 @@ Small precisely because Small takes the general path and must agree.
   `steps_within()`'s and the turn loop's, unchanged by anything here.
 - **Nothing charges movement against the economy** — debt 28, still `w2c`'s.
 
+## The W1 mid-wave review
+
+`w1c`, `w1b` and `w1d` landed between this gate and the critical-path one. The
+model is § The W0 plan review: compare what the plan assumes against what the
+wave measured. The headline is that **nothing measured moved a number the plan
+assumes** — all three tasks priced themselves at or inside their container's
+noise — so the projection over the budget stands untouched (§ The W1
+critical-path review owns that number) and `w1k` is still the measurement that
+settles it. What did move is what three completed tasks oblige
+of the four rows behind them, and in one case the obligation was that the next
+row could not be built from what it said.
+
+### `w1g` was six words written before three of its dependencies existed
+
+The row read "Saving throws, DC calculation, save-for-half" with a done-when of
+"legendary resistance expressible". That was accurate when W1 was planned.
+`w1b`, `w1c` and `w1e` have since landed, and between them they make three of
+those deliverables concrete and one of them impossible with the API that exists.
+
+**Save-for-half is the impossible one, and the failure mode is the one the
+standards forbid by name.** A halving belongs in `w1e`'s `MitigationLedger`,
+in the halvings step between the flat reductions and resistance. `ctx.halve()`
+is the ledger's only writer, and it goes through `_acting_source()`, which
+raises `PhaseError` with "a mutation with nobody to attribute it to is the
+engine reaching into a context it has not entered" unless a handler is
+mid-dispatch. `resolve_damage()` takes `amounts` and a `DamageContexts`, and
+nothing else: there is no parameter through which a caller passes mitigation in.
+So `engine/saves.py` has three routes and only one of them is open without a
+decision:
+
+- **Halve at the call site.** Open, wrong, and the route an agent working from
+  the old row reaches for. `CODING_STANDARDS.md` § Boundaries names it — "a
+  resistance check, halving or temp-HP subtraction anywhere else is a second
+  ordering that will disagree with the canonical one" — and here it would
+  disagree immediately rather than eventually: halving before the call puts
+  save-for-half *ahead* of immunity and the flat reductions instead of in the
+  halvings step, so a creature immune to the damage type takes half of nothing
+  correctly and a Heavy Armor Master reduction applies to an already-halved
+  number. `w1e` reordered this file precisely to stop that.
+- **Have the spell attach a handler.** Expressible today and still wrong: a
+  handler on `on_incoming_damage` fires for every instance of damage the target
+  takes, so the halving has to carry a condition identifying its own event, and
+  that is machinery for what is a property of one resolution.
+- **Widen `resolve_damage()` to take caller-supplied mitigation.** The answer.
+  It is the only route that leaves the resolution order in one file, and it
+  composes exactly as `w1e` ruled: a save-for-half halving and a resistance are
+  two steps rather than one, and two halvings stack because the "counts once"
+  clause names Resistance.
+
+The gate names the routes and the choice; it does not make the change. The
+signature is `engine/damage.py`'s and `w1e` froze that file, so `w1g` settles it
+and records it in a section of its own — which is the same split the
+critical-path gate used when it corrected `w1c`'s done-when rather than
+rewriting `refuse_pending()` itself.
+
+The other three are cheaper and are the reason the row grew rather than
+splitting:
+
+- **Legendary Resistance is now an acceptance test rather than an aspiration.**
+  `w1b` landed `ResourceSpec` and `Recovery`, so it is a `LONG_REST` pool plus one
+  handler on `on_save_resolved` that spends a charge and flips the failure. The
+  test worth writing is that `engine/saves.py` contains nothing about it.
+- **The save result type is owed to `rules/enums.py`**, which already promises it
+  here: `Outcome`'s docstring says it is scoped to attack rolls on purpose,
+  because 2024 unifies the three D20 Tests but a natural 20 is a critical hit
+  only for an attack roll, and "saving throws get their own result type with
+  `engine/saves.py` (w1g)". A row that did not say so invites a fourth member on
+  `Outcome`.
+- **The registry needs nothing.** `on_forced_save` (the DC's side),
+  `on_saving_throw` (the saver's) and `on_save_resolved` have been in the closed
+  39 since `w0e`; `on_death_save` is `w1j`'s. Saying so is cheaper than an agent
+  discovering it, and a `define_hook()` in this task would be a finding.
+
+This is the second time a gate has found a stale done-when, and the diagnosis is
+the same both times: the register is the index and the done-when is the
+instruction, and three tasks landing between a row's writing and its execution
+is enough to falsify it. The difference is that `w1c`'s row was falsified by one
+task adding call sites, and this one by three tasks adding capability — which is
+the ordinary case, not the exceptional one, for any row whose dependencies land
+in the same wave.
+
+### Nothing rolls a save-ends effect's repeat save
+
+DESIGN.md § Buffs and debuffs writes out both series and says the vocabulary
+carries the timing rather than assuming one, because `1/(1−p_fail)` for a save
+at the end of each of the target's turns and `p_fail/(1−p_fail)` for one at the
+start differ by a whole round, and getting the exponent wrong scores every
+control spell wrong by a factor of `p`. `w3f`'s `Perturbation` declares it —
+`repeat="turn_end"` or `"turn_start"` — for the **scorer**.
+
+Nothing resolves it. `w1c`'s `Effect` carries `duration`, `charges` and
+`caster`; its two turn-boundary sweeps, `expire_before()` and `expire_after()`,
+read deadlines and nothing else; and no row in W1, W2 or W5 asks for a save at a
+boundary. So the repeat save is the third missing piece, not a replacement for a
+working one: no duration can last a minute yet (debt **#16**), and nothing calls
+the sweeps that would end one (debt **#29**).
+
+It is debt **#35**, and it is split the way sequencing principle 8 splits a
+seam. The signature is cheap and lands now, in `w1g`, which is already adding a
+save vocabulary: one enum for the timing, in `rules/enums.py`, read by both the
+engine that rolls the repeat save and `w3f`'s profile key. Two string literals
+in two packages that must agree is the estimator-and-resolver divergence
+DESIGN.md says may never happen, one level up — and this is the level where it
+is invisible, because the scorer's fit absorbs a timing error into a coefficient
+and nothing goes red. The roll itself is `w2c`'s, which owns the boundaries that
+call the sweeps; `w5a` is the first task that produces an effect needing one.
+
+Found by asking question 5 rather than question 2: the obligation is not in any
+decision record, because no completed task deferred it. It is a gap between
+three documents that each assume another closes it.
+
+### `w1k` was told to total numbers that cannot be added
+
+Its row said it "totals attributions". Three of the five are now written and
+they are not the same kind of thing:
+
+Each figure below stays in the section named beside it; what this table records
+is the *kind* of number, which is what decides whether it can be added to
+another.
+
+| Task | What kind of number it recorded | Commensurable? |
+|---|---|---|
+| `w1f` (§ w1f) | a share of the rate, paired, with part of it attributed to `_seal()` | yes — on the path the spike walks |
+| `w1d` (§ w1d) | a Python call count over a fixed run, before and after | yes, and machine-independent |
+| `w1b` (§ w1b) | a table of per-operation microsecond prices | no — the spike cannot reach the pools |
+| `w1c` (§ w1c) | a share of the rate that expressly excludes the expiry sweep | no — nothing calls the sweep |
+
+The two "no" rows are unreachable for **different** reasons, and conflating them
+is the trap. `w1b`'s is debt #15: `tools/spike.py` answers `self.slots.highest`
+from a stand-in flag, so wiring real pools in is what puts the arithmetic on the
+path. That makes #15 a precondition of `w1k`'s measurement rather than a chore
+beside it, and the row now says to retire it first.
+
+`w1c`'s is not #15 and retiring #15 does not touch it. **The sweep has no caller
+anywhere in `tools/`** — `expire_before()` and `expire_after()` are never
+invoked — so wiring real pools and effects into the fixtures leaves it still
+unrun. It is unmeasured for want of a call, not for want of somewhere to put
+one: the spike already runs four turns a round, each calling
+`resets.turn_started()`, and `_hero_turn` builds a real `TimeKey`. So wiring the
+two sweeps at those boundaries is `w1k`'s, and the sweep's per-call cost is
+`w1k`'s number.
+
+What `w1k` cannot supply is the per-boundary *count*, because the spike's four
+turns stand in for a roster `w2c` orders: the cost per call is priced here, the
+multiplier belongs to the loop that knows how many boundaries a round has. That
+split is the whole of it, and this gate's first two drafts of this paragraph both
+got it wrong in the same direction — first by folding the sweep into debt #15,
+then by declaring it unmeasurable before `w2c`. `tools/spike.py`'s own docstring
+says "there is no turn loop here", which is true of an initiative-ordered loop
+and was read as true of the boundaries; the boundaries exist, and only the calls
+are missing. Both corrections came from the review.
+
+That is also why the arithmetic is a multiplication rather than a sum: a
+per-operation price times how often a real scenario performs it, which is what
+`w1b`'s record already said and the row did not. Summing the four numbers above
+gives a figure about nothing. And it is why the cross-check is worth stating,
+since it is the only one available: the multiplication and the re-run should
+agree, and where they do not, a stand-in has been wired wrong. A re-run that
+merely produces a number has no way to know that.
+
+### DESIGN.md over-promises the effect model by one field
+
+§ Durations' Vex row describes the charge as "keyed to a target id". `w1c`
+shipped `Effect.charges` as an `int | None` and ruled the key the feature's own
+state — correctly, and argued in § w1c — but left the table saying otherwise. A
+W4 author writing Vex reads the table, looks for the key on `Effect`, and either
+re-litigates a settled decision or edits `creatures/` from a content batch,
+which is the one thing a content batch may never do. The cell now points at the
+ruling. This is question 4's shape with a small answer: the document was wrong,
+not the code.
+
+### The docstring cleanup is not queued here
+
+A `w1l` row — cutting `src/` and `tests/` docstrings back to their own code —
+was added to the queue in the commit that cleared the hold, and the sixth
+verdict found it twice over. It is removed, and the reason is the gate's own
+headline finding turned on the gate.
+
+The row was not one of this review's findings. This section lists what came out
+of re-reading the plan against `w1c`, `w1b` and `w1d`, and the cleanup is not
+among them: it came from a standards change made on `main` in #43, which is
+ordinary work rather than something the wave measured. `/plan-review` says in as
+many words that **finding nothing is a valid outcome and that changes are not to
+be manufactured to justify the gate**; writing a post-hoc argument into this
+record for a row the gate did not derive is exactly that, and it would also be
+the second copy of #43's reasoning rather than a pointer to it.
+
+And the row could not be built from what it said, which is what `w1g`'s row was
+held up for three rounds to fix. Its **Done when** cited
+`CODING_STANDARDS.md` § Citations and comments "added on `main` by #43", and
+that rule is on neither branch: #43 is open, and it targets `main` from a branch
+that is not `milestone/*`, so `human-merge-required` fails on it by design and
+**the loop may never merge it** (`docs/workflow.md` § Merge authority). Its
+**Depends** cell was `—`. An agent taking the row would meet a done-when it
+cannot check, against a section name that already exists on this branch and
+means something narrower, and would have to guess which rule was meant.
+
+None of that says the cleanup is wrong — #43's own "deliberately not done" asks
+for it, and the measurement behind it is real — #43 counted the docstring lines
+against the code lines in `src/` and in `core/timeline.py`, and the figures are
+its, not this gate's, so they are not copied here. It says the
+row belongs to whoever queues it **after** a human has merged #43 and the rule
+has reached the milestone branch, because only then is its done-when checkable
+and its **Depends** nameable. Queued before that it is a row that reads correct
+and cannot be done, which is the failure mode this whole gate is about.
+
+### What this gate did not change
+
+- **The budget, and the projection over it.** Three tasks measured at or inside
+  the noise, so nothing revises the projection (§ The W1 critical-path review)
+  and nothing revises the 30k budget. The bar for revising the budget is a
+  measurement with an attribution (DESIGN.md § Biggest risks), and this gate has
+  neither.
+- **The round cap.** Two of the three tasks reached it — `w1b` was held at the
+  fourth non-clean verdict and resolved in a later session, `w1c` recorded debt
+  #31 — and in both cases the reviewer was still finding real defects at the
+  cap: `w1b`'s negative-pool bug and `w1c`'s `apply()` re-entrancy were CONFIRMED
+  at rounds 4 and 3. That reads at first like a cap set too low. It is not what
+  it is: `w1b`'s hold was cleared by a **fresh session** repeating the same loop
+  with an empty context, which is the cap working as designed — what degrades
+  across five rounds is the implementer's remaining context, not the reviewer's
+  accuracy. Raising the cap would buy more rounds of a worse implementer. Left
+  alone, and recorded so the next gate can see whether the rate holds.
+  **This gate then hit the cap itself and did not converge**, which makes it
+  three of the last four PRs. Every verdict it drew found something real: a
+  drifted measurement and a `±` over an asymmetric range, a miscount, a
+  misordered debt row, one ruling standing in three places, a retelling that had
+  drifted from the record, a row that contradicted itself, a factual error in a
+  debt row this gate added, an unargued task row that could not be built, and
+  this bullet and `docs/questions.md` #4 both describing a PR that had moved on
+  without them. An earlier draft of this bullet called that a converging review
+  because the findings got smaller up to round four; rounds five onward falsified
+  it, and the claim is withdrawn rather than re-asserted at a higher number —
+  which is itself the lesson, since a snapshot of "how many rounds it took"
+  written *during* the PR is a hostage to the rounds after it.
+  Two things the next gate should take from it, neither of them about the cap's
+  number. **A gate PR that edits the standards is judged by them**, so each new
+  rule wants applying to the gate's own diff before the first push; four of the
+  early findings were exactly that. And **narrative prose about a PR's own
+  progress is a liability inside that PR** — "four verdicts", "no further round
+  will be taken", "fixed and merged" were each true when written and each became
+  a finding, because the document and the thing it describes were being edited in
+  the same branch. Write the record about the *work*, and let the round count and
+  the outcome be read off git and the PR. `docs/questions.md` #4 records the one
+  judgement the cap's own text does not cover.
+- **`w1j`'s and `w1i`'s rows.** Both were re-read. `w1j` says "healing
+  application and temp HP", which `w1e`'s landing the temp-HP *spend* does not
+  falsify — `on_temp_hp_gained` in the same cell makes clear it is the grant —
+  and `w1i`'s pricing instruction is already the shape principle 10 now asks
+  for.
+
+### Retro
+
+The environment axis, over the same three tasks (`.claude/skills/retro`). Eleven
+findings closed across thirteen review rounds, three of them real bugs. Six
+edits: one to the plan, four to the standards, and one pointer in `src/`.
+
+- **Sequencing principle 10 now asks for a deterministic witness beside the
+  paired rate** (`ROADMAP.md`). The protocol as written bought "not
+  distinguishable from zero" three times out of three, against pair-to-pair
+  ratios spanning −6.2% to +5.8% (§ w1b), −2.5% to +1.2% (§ w1c) and −15.1% to
+  +17.4% (§ w1d) — eight to fourteen paired runs each. Every one of those ranges
+  is asymmetric, which is why a `±` summary of them is wrong as well as
+  unpointed: the review of this gate caught exactly that in its first draft. That is the right conclusion and it is not an attribution, which is what
+  the principle exists to produce. What attributed anything was deterministic:
+  `w1d`'s first cut cost 3.5% of the rate, and the profile named the cause
+  without the noise (`distance_ft` 21 ms to 74 ms cumulative, 133k calls added —
+  all four figures are § w1d's, quoted here and owned there),
+  while the fix is quoted to `w1k` as a call count rather than a percentage
+  because that number means the same thing on another machine. The principle now
+  asks for the call count over a fixed run and the cProfile cumulative time of
+  the functions the diff touched, before and after, with the rate kept as the
+  check that the deterministic story is not missing off-path interpreter work.
+  Where they disagree the deterministic one is the finding. This lands before
+  `w1i` and `w1j`, the two remaining priced rows.
+- **"Adding code is a citation change too"** (`CODING_STANDARDS.md`). The
+  existing line covers deleting prose, which `w1e`'s review earned. Its
+  complement was missing and cost three findings here: `creatures/__init__.py`
+  still said the resources were unwritten and `tools/spike.py` said they did not
+  exist (`w1b`, round 1, both CONFIRMED), and a comment in `engine/triggers.py`
+  said two queries "are the same arithmetic today" four lines above a diff that
+  had made it false (`w1d`, CONFIRMED). All three are prose about what does not
+  exist, falsified by the task that makes it exist, in a file the author had no
+  other reason to open.
+- **"What a handler can change is re-read after the dispatch"**
+  (`CODING_STANDARDS.md`). `w1c` shipped the same read-dispatch-use shape twice
+  and the review confirmed both: `apply()` asked what was held before firing
+  `on_effect_applied` and used the answer after, and `remove()` dispatched
+  `on_effect_expired` before letting go. The second was a crash in
+  `list.remove` and a doubled hook. `w1g`, `w1h`, `w1j` and `w2c` all dispatch
+  and then act, so the rule is due before them rather than after.
+- **"A count with an invariant has named writers"** (`CODING_STANDARDS.md`).
+  `ResourcePool.current` shipped as a plain attribute, so `pool.current -= 5`
+  left a pool at −2 past every guard on the spend path. It is the same argument
+  that attribute-locks a context, applied to engine-owned state, and the
+  standards said it only for contexts.
+- **The citation rule extends to measurements** (`CODING_STANDARDS.md`). `w1c`'s
+  median was −0.5% in the commit message, −0.3% in the record and a third figure
+  in `CLAUDE.md`; reconciling the three was a review round. A number lives in the
+  record that measured it and a copy carries the pointer, and a diff that changes
+  one greps for the figure rather than the prose around it.
+
+- **`tools/spike.py`'s docstring named `w2e`'s re-run and not `w1k`'s**
+  (navigation). It is the file a task reads to learn what the benchmark leaves
+  out, and the paragraph saying the spike "understates the eventual per-round
+  cost" pointed only at the APL compiler's re-run. `w1k` is the task that totals
+  what W1 spent and the one that retires debt #15, so it is named there now, and
+  in the module's Sources line.
+
+Nothing here is a check rather than a standard, which is worth saying since the
+retro's split prefers checks. All four of the standards edits are judgement
+calls over shapes a grep cannot distinguish from a correct use: prose about
+another module, a read before a dispatch, a writable count, a quoted number. The
+one mechanical candidate — grepping for a module name near "not written" —
+would fire on every stand-in's own honest docstring, which is most of `tools/`.
+
+No CI run went red on any of the three PRs, and no task reported difficulty
+locating a ruling, so `CLAUDE.md`'s decision-record table gains no row — this
+section is appended to the two that already exist, for planning a wave and for
+pricing a change — and the hooks are left alone.
+
+### Filing a seam is not cutting it, and "signature only" was unbuildable
+
+Two spec findings after the pricing fix, both of this gate's own making and both
+the same mistake in different clothes: a decision recorded in one place that the
+places which have to honour it were never told about.
+
+**Debt #35 obliged an enum and nothing else was told.** The row says `w1g`'s
+timing enum is the one member read by both the engine that rolls the repeat save
+and `w3f`'s `Perturbation.repeat`, "rather than two string literals that can
+disagree" — and DESIGN.md § Buffs and debuffs and `w3f`'s row both still spelled
+the field as `"turn_end"` / `"turn_start"`. A `w3f` agent closing the vocabulary
+from its own row would have closed it on string literals, which is exactly the
+divergence #35 exists to prevent, landing in the one row that owns the field.
+Filing a debt is not cutting a seam: the row records the obligation, and the
+rows that must honour it have to say so too. Both now point at #35, and #35
+points back at them.
+
+**And `w1g`'s scope cell was unbuildable a second time.** It read
+"`engine/damage.py` for `resolve_damage()`'s signature only", which cannot do
+what the row asks: `resolve_damage()` hands `mitigate()` nothing but
+`incoming.mitigation`, and `MitigationLedger.halve()` raises outside a
+dispatching handler, so a caller's halving has to change how the **body**
+assembles what it passes on. The cell now says signature *and* that body, keeps
+`mitigate()`'s order and `ctx.halve()`'s handler-only rule out of scope — which
+is what keeps the row 👥 — and says that if seeding the ledger from the engine
+side needs `hooks/contexts.py`, that sub-item is solo within the task, as
+`w1a`'s `Combatant` and `w1f`'s `Weapon` widenings were.
+
+That is the third time this row has been found unbuildable, each time by the
+reviewer and each time after a fix of this gate's own. The pattern is worth more
+than the three corrections: **a scope cell is a claim about what the task can
+reach, and it is checkable against the code the task must change** — so it wants
+reading against that code, not against the sentence above it. Nothing about
+`w1g`'s intent moved across the three rounds; only the row's account of what it
+may write.
+
+### Widening `resolve_damage()` put `w1g` on the hot path, which the gate missed
+
+Both holds were cleared by a fresh session, and the verdict after the second one
+found the consequence of this gate's own `w1g` fix. Adding `engine/damage.py` to
+that row's scope — so save-for-half can reach `w1e`'s ledger — means `w1g` now
+changes a function `engine/attack.py` calls on **every** attack it resolves
+(`:821` and `:845`). Sequencing principle 10, which this same gate amended two
+sections above, says a task that touches the hot path prices itself; `w1g` was
+not marked **Priced**, and `w1k`'s list of the tasks whose attributions it totals
+still named five. So the gate created exactly the residual that its own `w1k`
+correction is about: a cost on the measured path with nobody told to measure it.
+
+`w1g` is **Priced** now, it is in the list and in `w1k`'s **Depends**, and the W1
+section says why it joined them. The lesson is narrower than "re-read the
+row": **a scope change is a pricing question**, because the hot path is a
+property of the files a task may write and not of what the task is called. Three
+of the five tasks the critical-path gate listed are on it for exactly that
+reason.
+
+Two citation findings came with it, both this gate's own rule turned on it a
+fifth and sixth time, and both fixed by deleting rather than adding: `w1k`'s row
+still carried a bare `5.5%` in the same row that says the figures live in § w1f
+and § w1d and are "not restated here" — one copy was removed at `5339388` and
+this one was read as the critical-path gate's and left — and debt #35 had copied
+DESIGN.md § Buffs and debuffs' two geometric series and the factor-of-`p`
+argument into the register, where a pointer does the work. The register tells a
+task what it owes; it is not where the design's formulas live.
+
+### Held a second time, on a two-word finding, deliberately
+
+The eighth verdict came back clean on the standards axis — the first time in
+this PR — with one PLAUSIBLE on spec, and it is correct. `w1g`'s row builds its
+Legendary Resistance acceptance test on "a `ResourceSpec` with a **per-day**
+`Recovery`", and there is no such trigger: `RecoveryTrigger` has `SHORT_REST`,
+`LONG_REST` and `RECHARGE_5_6`, and its docstring closes membership to
+"DESIGN.md § Resources' seven shapes and nothing beyond them". Legendary
+Resistance's 3/Day recharges on a Long Rest, so the row should say `LONG_REST`.
+
+**The fix is two words and the row is held anyway.** The hazard is worth naming
+first, because it is the one thing here that could do damage: the commit before
+this one added `rules/enums.py` to `w1g`'s packet allowlist, so a `w1g` agent
+reading "per-day" has both the instruction to want a member that does not exist
+and the write access to add one — to a closed rules vocabulary, which is the
+boundary `CODING_STANDARDS.md` guards. The hold contains it, since nothing
+advances off a held row.
+
+The reason for holding rather than spending one more commit is the record above,
+applied to this session. Eight verdicts, and every one found something; the
+three before this were each created or revealed by the push before them. At
+rounds four, five, six and seven the remaining work looked trivial each time and
+each time it was not, so the honest conclusion is not that the work is nearly
+done but that **this session's judgement of "nearly done" on this PR is
+miscalibrated**, and a two-word fix is exactly the shape that judgement keeps
+getting wrong. The round cap exists for that, `w1b`'s hold was cleared by a
+fresh session in one commit, and this gate's own § What this gate did not change
+argues that is the cap working. A session that argues that and then takes a
+ninth round because the finding is small has not understood its own record.
+
+So: the fix is stated here and in a comment on #42, the row is `held`, `w1g` is
+back to `queued`, and the two words belong to whoever picks it up. Nothing else
+on the PR is open — the standards axis is clean and the three CONFIRMED findings
+of round seven are closed.
+
+Closed in the commit after this hold: `w1g`'s row and the paragraph in
+§ `w1g` was six words written before three of its dependencies existed now
+say `LONG_REST`.
+
+### Held at the round cap, with one CONFIRMED finding open
+
+The fifth verdict found a factual error in debt row #35 itself, and it is
+right: the row says that today "a save-ends effect ends on its duration … and a
+Hypnotic Pattern holds for a minute", and neither half is true. `core/timeline.py`
+offers three durations and all of them end one turn ahead — a minute is not
+expressible at all, which is debt **#16** and `w5a`'s — and nothing calls the
+expiry sweeps, which is debt **#29** and `w2c`'s, so an applied effect does not
+expire on any deadline yet. The row therefore misstates the baseline the repeat
+save is meant to fix, in the one cell a `w2c` or `w5a` agent would read to learn
+what the current state is.
+
+`docs/workflow.md` § The review loop sets the cap at three rounds and merges on
+the fourth **only if every CONFIRMED finding is fixed**. One is not, so this is
+the other branch: the `⏸` row goes to `held`, `w1g` goes back to `queued`
+because no row is `next` while a hold stands, and the human is told. The fix is
+one cell and is named here so that a fresh session closes it in a single commit
+rather than re-deriving it: #35's "what it costs" column should state the
+baseline **through #16 and #29** — a save-ends effect has no minute-long
+duration to end on and nothing to expire it even if it had — so the repeat save
+is the third missing piece rather than a replacement for a working one. Nothing
+else in this PR is contested; the four earlier rounds are closed.
+
+That the error sat in a row this gate added, and was found only at the fifth
+look, is itself the retro's point about a gate PR being judged by the standards
+it writes — recorded above rather than argued again here.
+
+Closed in the commit after the hold: #35 and the paragraph above now state the
+baseline through #16 and #29.
+
+Sources: `docs/decisions.md` § w1b, § w1c, § w1d, § w1e, § w1f, § The W0 plan
+review, § The W1 critical-path review; DESIGN.md § Durations, § Buffs and
+debuffs, § Biggest risks; `ROADMAP.md` § Sequencing principles 8 and 10,
+§ The W0 debt register rows #15, #31, #35; `CODING_STANDARDS.md` § Boundaries,
+§ Citations and comments; PRs #31, #32, #41.
+
 ## The PR, review and retro skills
 
 Three skills from Matt Pocock's *Fixing the PR Bottleneck* (AI Engineer, 2026;
