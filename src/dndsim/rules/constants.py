@@ -51,6 +51,7 @@ __all__ = [
     "SHIELD_AC_BONUS",
     "SIZE_ORDER",
     "SIZE_WIDTH_CELLS",
+    "SPELL_SAVE_DC_BASE",
     "THIRD_CASTER_SLOTS",
     "ability_modifier",
     "proficiency_bonus",
@@ -102,6 +103,13 @@ Distinct from `CRITICAL_HIT_THRESHOLD` above, which a Champion lowers: a 19 is a
 Critical Hit for that character and is still not an automatic one, so the two
 numbers stop being equal the moment Improved Critical exists and
 `engine/attack.py` reads each for its own question."""
+
+SPELL_SAVE_DC_BASE: Final = 8
+"""The 8 of "8 + your spellcasting ability modifier + your Proficiency Bonus"
+(XPHB, "Spells" -> Spell Save DC). It is in `rules/` rather than beside
+`engine/saves.py` for the reason `RecoveryTrigger` records: a class feature that
+sets a DC (W4) and `content/`'s stat-block parser (w7a) need the same number and
+neither may import `engine/`."""
 
 DEATH_SAVE_DC: Final = 10
 DEATH_SAVE_SUCCESSES_TO_STABILIZE: Final = 3

@@ -1377,7 +1377,10 @@ baseline whose one fixture change has been priced.
 - **No proficiency system.** `tools/skeleton.py` adds a proficiency bonus
   unconditionally and says why (§ w0h); weapon proficiency belongs to the
   attack (`w1f`) and save proficiency to saving throws (`w1g`), and a flag with
-  one caller invented here would be in both their way.
+  one caller invented here would be in both their way. Both landed and neither
+  added the flag: `engine/attack.py` adds the bonus to every attack (debt #25,
+  `w2f`'s) and `engine/saves.py` adds none to a save (debt #36, `w2f`'s too),
+  because the field is a build fact and `w2f` is what assembles one.
 - **No armour catalogue.** `Armour` is the class; the 5etools entries arrive
   through `content/` in `w2a`, exactly as the 38 weapons do. The two armours
   written by hand are in `tools/spike.py` and `tools/skeleton.py`, where they
@@ -2957,6 +2960,239 @@ review, § The W1 critical-path review; DESIGN.md § Durations, § Buffs and
 debuffs, § Biggest risks; `ROADMAP.md` § Sequencing principles 8 and 10,
 § The W0 debt register rows #15, #31, #35; `CODING_STANDARDS.md` § Boundaries,
 § Citations and comments; PRs #31, #32, #41.
+
+## w1g — saving throws, and the signature save-for-half needed
+
+The row the mid-wave gate rewrote asked for four things: the DC, the roll, the
+save result type, and save-for-half — which it had established could not be
+written with the API that existed (§ The W1 mid-wave review names the three
+routes and why two of them are wrong; they are not rebuilt here). The sequence
+is `engine/saves.py`, the vocabulary is two enums in `rules/enums.py`, and the
+fourth is one keyword on `resolve_damage()`.
+
+### The signature, and where the halving is seeded
+
+`resolve_damage()` takes `halved_by: str | None = None` — the *reason* a caller
+halves, not a number and not a ledger. The body stamps the incoming context as
+`engine.damage`, calls `incoming.halve(halved_by)` and releases the stamp, all
+before `on_incoming_damage` is dispatched.
+
+Three things decided that shape.
+
+**A reason rather than a `Mitigation` object.** The only caller-side mitigation
+the rules have is save-for-half; a reduction, a resistance or an immunity
+arrives from a handler and already has a door. A parameter object would be the
+Speculative Generality `CODING_STANDARDS.md` § Smell baseline names, and the
+widening it would make cheap is the one nothing is asking for. The reason string
+is not decoration: `MitigationLedger.halve()` stores `f"{source}: {reason}"`,
+so what the ledger carries is `engine.damage: a successful saving throw halves
+it` and `w1i`'s log gets the attribution without a second field.
+
+**Seeded before the dispatch, not after.** The victim's handlers run against the
+ledger the engine will actually apply, so Uncanny Dodge on a save-for-half hit
+reads one halving already present and adds the second — which is what
+`test_the_reason_reaches_the_ledger_before_the_victims_handlers_run` pins. After
+the dispatch would be the same arithmetic and a lie to every handler that looks.
+
+**Stamped because the ledger refuses an unattributed change.** `ctx.halve()`
+goes through `_acting_source()`, which raises `PhaseError` unless a source is
+stamped; `engine/attack.py` already seeds a context this way (`hit.stamp(
+"engine.attack", None)`), so the engine naming itself is the established move
+rather than a new one. The stamp is released immediately, because a stamp left
+standing attributes whatever the dispatcher does next to the engine
+(`hooks/contexts.py` on `stamp()`).
+
+What this does *not* do is touch `mitigate()` or the order it runs: a halving
+from the caller and a halving from a handler are the same entry in the same
+list, and two of them stack for the reason `w1e` gives. `ctx.halve()` stays
+handler-only.
+
+`engine/saves.py`'s `save_for_half()` is the one place the condition is
+written — half on a success, full on a failure — so no spell in `w5a` writes
+`if saved` beside a damage call, which is how a second halving rule would get
+in.
+
+**And the case that catches a call-site halving is narrower than it looks.** The
+independent re-derivation CLAUDE.md § Working rules asks for built the
+counterfactual and ran it through the real engine: halving `amounts` per type at
+the call site gives the *same* number as the ledger on an immunity, on a
+resistance, on two halvings and on an evenly-split mixed hit. It differs on a
+flat reduction (9 against 4), on the ledger the victim's handlers read, and on an
+odd mixed hit, where one halving of the total is not two halvings of the parts —
+7 fire and 7 cold against fire resistance is 5 through the ledger and 4 at the
+call site. Those are the tests that defend the signature; the others defend the
+steps around it.
+
+### Two enums, and why the result type is not a boolean
+
+`SaveOutcome` has two members and no critical one. `Outcome`'s docstring has
+promised this since `w0b` and gives the reason: 2024 unifies the three D20 Tests,
+and a natural 20 is a Critical Hit on an attack roll only. The corollary is the
+trap in this file and the two tests written against it — **a natural 20 does not
+succeed on a save and a natural 1 does not fail one.** XPHB's "Rolling 20 or 1"
+says the special effects are the ones the rules for that test specify, and the
+Saving Throws entry specifies none; `rules/constants.py`'s `NATURAL_TWENTY`
+already said the two rolls it names are the attack's.
+
+An enum rather than `succeeded: bool` because the vocabulary is enums for the
+reason `rules/enums.py` opens with — the member serialises into the log and the
+`SimResult` JSON, and `content/` parses it back — and because `SaveResult` is
+what `w5a`'s spells, `w1h`'s conditions and `w8a`'s estimator will all pass
+around. `SaveResolvedContext.succeeded` stays a `bool`: it is one question asked
+of one live event inside a frozen package, and widening it would be a
+`hooks/contexts.py` change with nothing to buy.
+
+`SaveRepeat` is debt **#35**'s declared half — `TURN_END` and `TURN_START`, the
+two members `w2c`'s roll and `w3f`'s `Perturbation.repeat` have to agree on.
+Nothing reads it yet, which is the point: declared after W3 it is a retrofit
+across every control spell in `spells/` (`ROADMAP.md` § Sequencing principles,
+8). The two `E[N]` formulas it selects between are DESIGN.md § Buffs and
+debuffs' and are not copied into the enum.
+
+### The DC, and the bonus a save adds
+
+`save_dc()` is `SPELL_SAVE_DC_BASE + proficiency + modifier`, and the 8 is in
+`rules/constants.py` rather than beside the function that uses it — a fourth
+file, named here because the row's allowlist named three. The argument is
+`RecoveryTrigger`'s: a W4 class feature that sets a DC and `w7a`'s stat-block
+parser need the same number and neither may import `engine/`. The ability is the
+imposer's and is passed in, because nothing on a `Creature` yet says which
+ability it casts with, and a monster's DC is printed rather than derived.
+
+`save_bonus()` is a function for one reason and it is not line count: DESIGN.md
+§ The estimator and the resolver may never diverge means `w8a` has to compute
+`p_fail` from the number this module actually adds to the d20. One function is
+what makes that checkable; the expression inlined into `saving_throw()` would
+invite the estimator to re-derive it, which is the divergence a fitted
+coefficient hides.
+
+It returns the bare ability modifier. **No creature can declare proficiency in a
+save yet** — `StatBlock` has no field for one, a PC's comes from a class (W4) and
+a monster's is printed (`w7a`) — so the proficiency bonus the rules add for a
+proficient save is debt **#36**, owned by `w2f`, which is where equipment and
+build facts are assembled into a creature. It is exact for every creature that
+exists today and wrong for the first one that is proficient.
+
+### A veto is refused at all three hooks
+
+`_settle()` raises `FeatureContractError` if any of the three dispatches vetoed,
+for the reason `engine/attack.py` refuses one past the declaration: `SaveOutcome`
+has no member for a save that did not happen, so honouring a veto would leave
+`saving_throw()` returning something arbitrary. The message names the three
+things a feature that wants to change a save does instead.
+
+It runs **before any die is drawn**, which is the order `engine/attack.py`
+settles its declaration in and not the order this file first had: a save that is
+about to be refused should not have rolled a handler's `1d4` first. Nothing
+observable turned on it — the raise abandons the run — but the asymmetry with the
+one precedent in the tree was the kind that gets copied.
+
+`_settle()` and `_modifier_total()` are each a second copy of a private helper in
+`engine/attack.py`, deliberately. Extracting either means editing a file this
+task's scope excludes, and on the attack's side it would put a cross-module call
+on the hot path that `w1f` spent 5.5% of the rate completing. What is duplicated
+is also not the rule: advantage cancellation lives once, in `AdvantageLedger`,
+and both files read `had_advantage` off it — the copies are `max`/`min` of two
+rolls and a loop over a bag. If `w1j` writes a third, that is the third occurrence
+and the moment to extract one.
+
+### Legendary Resistance, which this file has never heard of
+
+The row's acceptance test. The feature is a `ResourceSpec` with a `LONG_REST`
+`Recovery` and one handler on `on_save_resolved` that spends a charge and calls
+`ctx.succeed()`; `engine/saves.py` has no branch for it, which
+`test_the_saving_throw_sequence_knows_nothing_about_legendary_resistance` asserts
+by reading the module's own source for the words. The roll still happened and
+`SaveResult.total` still says what it was, so the log can show a 5 that became a
+success and `forced_by` says who insisted.
+
+That it works is a statement about `w1b` and `w1c` as much as this task: the pool
+is `w1b`'s, the drain that lands an effect queued from a save hook is `w1c`'s,
+and this file supplied neither.
+
+Writing it turned up one shape worth passing to `w3e`'s paper pass: the feature
+captures its owner's `Resources` at construction, because `self.owner` is a
+`Combatant` and `w1a` deliberately kept the protocol to a name, a seat and the
+three hit-point numbers. Every W4 feature that spends a resource will do the same
+or want the protocol widened, and the pass is where that is decided rather than
+here.
+
+### What it cost the benchmark
+
+Priced as sequencing principle 10 asks, with the deterministic witness first.
+
+**The witness says the diff adds no call.** Over the fixed 200-encounter profiled
+run, `resolve_damage()` is entered 3,934 times before and after, `mitigate()`
+3,934 times, and the whole run's Python call count is drawn from the same two
+values in both arms (1,483,283 and 1,505,799). What the diff adds to the hot path
+is one `is not None` test per instance of damage, on a path that was already
+there — there is no new call to count, which principle 10 names as itself the
+answer.
+
+**That the count has two values at all is the finding worth passing to `w1k`.**
+The 22,516-call difference is one row of the profile, an `__init__` compiled to
+`<string>` — a dataclass-generated constructor — while every named function's
+count, every rolled die and the fight's outcome are identical across the two
+modes and across three `PYTHONHASHSEED`s. It is a cProfile keying artefact rather
+than work, and what it costs is resolution: a call-count delta smaller than
+~22.5k on this harness needs the arms separated by a fixed-seed run each, not one
+pair.
+
+**The rate found the harness before it found the diff.** Eight pairs run
+baseline-then-change gave a median of **−3.0%** (ratios −9.3% to +4.3%) — close
+enough to the −3.5% that failed `w1d`'s first cut to be worth a second
+experiment. Eight more with the order *reversed* gave **+1.5%** (−7.8% to +5.6%).
+The within-pair order is worth about 3% on this container, so a protocol that
+always runs one arm first measures the order; pooled over all sixteen pairs the
+median is **−1.5%** with a span of −9.3% to +5.6%, on a baseline that wandered
+between 24.9k and 28.6k in one session. Which is "not distinguishable from zero"
+for the fourth time running, and the reason principle 10 asks for the witness.
+
+**So `w1g` adds nothing to the shortfall `w1k` is totalling**, and it hands `w1k`
+one amendment to the method rather than a number: alternate the arms within the
+sixteen pairs, because four tasks have now paid for paired runs and the one that
+reversed the order found ±3% of pure harness.
+
+### What this task deliberately did not do
+
+- **No auto-failed save.** Paralyzed, Stunned and Unconscious all fail Strength
+  and Dexterity saves automatically, and `SaveResolvedContext` has `succeed()`
+  with no counterpart — so a condition cannot express one. It is debt **#37**,
+  `w3f`'s via `w3e`, and `w1h` is the first task that meets it. Adding `fail()`
+  here would be a `hooks/contexts.py` change that also has to rule on what a
+  forced success and a forced failure on one save mean, and that ruling has no
+  quoted sentence behind it: Legendary Resistance says the creature may succeed
+  instead of failing, which reads as beating an auto-fail, but reading it is not
+  the same as the rules saying so. Blocked and visible beats a ruling invented in
+  the wrong task.
+- **No pooled or Strategy-supplied save contexts.** `engine/damage.py` and
+  `engine/attack.py` both take a context source because the spike resolves
+  millions of attacks; nothing saves on the hot path, and `w0i`'s own argument
+  for pooling was a measurement rather than a principle.
+- **No ability checks.** `on_ability_check` still has no caller. Nothing before
+  `w2b`'s actions rolls one — a combat simulator rolls no skill check — so a
+  caller invented here would be a third hook fired by nobody rather than a debt.
+- **Nothing rolls the repeat save.** The enum is declared and `w2c` owns the
+  boundaries that call it (debt #35, now half discharged).
+- **Nothing was added to `hooks/contexts.py` but two sentences.** The seeding the
+  row warned might need that package did not: the engine stamps itself and calls
+  the mutator that already exists. Two docstrings there were corrected because
+  the diff falsified them (`CODING_STANDARDS.md` § Citations and comments), and
+  one shape is left alone — `SaveResolvedContext` carries no `imposed_by`, so an
+  `on_save_resolved` handler cannot tell who forced the save where an
+  `on_saving_throw` one can. Nothing needs it yet; `w3e` is where a feature that
+  does would surface it.
+- **No concentration check and no death save.** The first is `w5a`'s, the second
+  `w1j`'s, and both are D20 Tests this module could plausibly have grown a
+  function for; neither has a caller yet.
+
+Sources: XPHB (2024) "D20 Tests" -> Saving Throws and "Rolling 20 or 1",
+"Spells" -> Spell Save DC, "Damage and Healing", Rules Glossary "Round Down";
+DESIGN.md § Buffs and debuffs, § The estimator and the resolver may never
+diverge, § Structural prevention; `docs/decisions.md` § w1e, § w1f, § w1b,
+§ w1c, § w1d, § The W1 mid-wave review; `ROADMAP.md` § Sequencing principles 8
+and 10, § The W0 debt register rows #35, #36, #37; `CODING_STANDARDS.md`
+§ Boundaries, § Smell baseline.
 
 ## The PR, review and retro skills
 

@@ -13,7 +13,7 @@ and five packages — `rules/` (the vocabulary every later package imports),
 (the closed registry of 39 extension points, the 31 contexts they hand out, and
 the decorator, source base class and dispatcher that run them), `creatures/`
 (`Creature`, `StatBlock`, `Armour` and the action economy) and `engine/` (the
-damage resolution order and the movement observer).
+damage, attack and saving-throw sequences and the movement observer).
 
 Work is at wave **W1**; **W0 is complete and M0 was met on measurement**:
 `w0a`–`w0i` are done and the pessimistic performance spike measured **~31.5k
@@ -34,10 +34,11 @@ the two levers deliberately not taken. **W1 is under way.**
 The plans were then re-read against what the wave measured
 (`docs/decisions.md` § The W0 plan review). Two things came out of it that
 matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
-first cuts and deferred obligations W0 left behind — twenty-six rows open, of
+first cuts and deferred obligations W0 left behind — twenty-eight rows open, of
 which thirteen are W0's, one is `w1e`'s, two are `w1f`'s, three are `w1c`'s, one
-is `w1b`'s, two are `w1d`'s, three were found by the W1 critical-path gate and
-one by the mid-wave gate — and the task that retires each;
+is `w1b`'s, two are `w1d`'s, two are `w1g`'s, three were found by the W1
+critical-path gate and one by the mid-wave gate — and the task that retires
+each;
 check it for the file you are about to touch. And **`w1k` is a
 new task**, an M0 re-measure at the end of W1, because the measured ~31.5k had
 5% of headroom and W1 adds the per-round cost the spike does not model.
@@ -181,6 +182,25 @@ zero" against pair-to-pair spreads wider than the effect they were measuring,
 while the profile and the call count are what attributed `w1d`'s regression
 (`docs/decisions.md` § w1b, § w1c, § w1d have the ratios), so sequencing
 principle 10 now asks for the deterministic witness beside the rate.
+
+Then `w1g` **cut `engine/saves.py`** and answered the signature question that
+gate left open: `resolve_damage()` takes `halved_by`, **the reason a caller
+halves rather than a halved number**, which the body seeds into `w1e`'s ledger
+before the dispatch so that save-for-half runs in the halvings step with every
+other halving and two of them stack. `ctx.halve()` stays handler-only and
+`mitigate()` is untouched. Four things every later task inherits: **a natural 20
+does not succeed on a save and a natural 1 does not fail one** — the rule that
+decides an attack roll on its own is the Attack Rolls entry's, and saves resolve
+into `rules/enums.py`'s **`SaveOutcome`**, two members and no critical one;
+**Legendary Resistance is a `w1b` pool and one handler**, with nothing in
+`engine/saves.py` that knows it exists, which is the row's acceptance test;
+**`save_bonus()` is the one place a save's bonus is computed**, because `w8a`'s
+estimator must read the number the resolver adds; and **`SaveRepeat` is
+declared**, discharging the declared half of debt #35. It measured at nothing —
+no call added, and sixteen paired runs whose median moves from −3.0% to +1.5%
+with the *order of the arms*, which is the method amendment it hands `w1k`.
+`docs/decisions.md` § w1g has the arguments and the measurements; it opens
+**#36** and **#37**.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
@@ -383,6 +403,7 @@ there is local to a module.
 | `core/geometry.py`, size, line of sight, templates | § w1d |
 | `engine/damage.py`, the resolution order | § w0g2, § w1e |
 | `engine/attack.py`, the attack sequence | § w1f |
+| `engine/saves.py`, saving throws, save-for-half | § w1g |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
 | `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c |
 | `creatures/resources.py`, pools, slots, `transaction()` | § w1b |
