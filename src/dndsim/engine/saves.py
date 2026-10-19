@@ -16,13 +16,10 @@ Where each step comes from:
   resolution order — `engine/damage.py`; the signature that reaches it is
   argued in `docs/decisions.md` § w1g
 
-Not here: the features that touch a save — each attaches to one of the three
-hooks and this module names none of them; the repeat save a save-ends effect
-offers at a turn boundary, which is `w2c`'s roll against `rules/enums.py`'s
-`SaveRepeat` (debt #35); death saves (`w1j`); ability checks, which no task
-before `w2b` rolls. One first cut lives here and is named so that
-nobody has to rediscover it: a saving throw adds the bare ability modifier,
-because nothing can yet say a creature is proficient in a save (debt #36).
+What this module deliberately does not do, and why, is `docs/decisions.md`
+§ w1g. The one first cut inside the code below: a saving throw adds the bare
+ability modifier, because nothing can yet say a creature is proficient in a
+save (debt #36).
 """
 
 from collections.abc import Mapping, Sequence
@@ -64,8 +61,10 @@ HALVED_BY_SAVE: Final = "a successful saving throw halves it"
 class SaveResult(NamedTuple):
     """What one saving throw did: how it resolved, and against what.
 
-    `forced_by` is every reason a handler gave for declaring a success the dice
-    did not produce, and is empty for a save that resolved on its own.
+    `forced_by` is every reason a handler gave for declaring this save a
+    success, in the order they were claimed. A claim is recorded whether or not
+    the dice had already made the DC: the ledger behind it logs claims rather
+    than what changed the outcome (`hooks/contexts.py`'s `OverrideLedger`).
     """
 
     outcome: SaveOutcome
@@ -88,9 +87,8 @@ def save_bonus(creature: Creature, ability: Ability) -> int:
 
     The ability modifier, and nothing else: no creature can declare proficiency
     in a save yet, so the proficiency bonus the rules add for one is debt #36.
-    A function rather than the expression inlined below, because `w8a`'s
-    estimator has to read the number the resolver uses (DESIGN.md § The
-    estimator and the resolver may never diverge).
+    Why this is a function rather than an expression inside `saving_throw()` is
+    `docs/decisions.md` § w1g.
     """
     return creature.modifier(ability)
 

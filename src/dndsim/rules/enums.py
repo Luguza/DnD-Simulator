@@ -219,11 +219,10 @@ class SaveOutcome(Enum):
 class SaveRepeat(Enum):
     """When a save-ends effect offers its save again.
 
-    Rules vocabulary rather than a detail of whoever rolls it, because two
-    packages have to name the same member: the turn loop that rolls the repeat
-    save (w2c) and `w3f`'s `Perturbation.repeat`, whose two `E[N]` formulas
-    differ by a round (DESIGN.md § Buffs and debuffs, `ROADMAP.md` § The W0 debt
-    register #35).
+    Rules vocabulary, because the engine that rolls the repeat save and the
+    scorer that prices it must name the same member rather than two string
+    literals that can disagree (DESIGN.md § Buffs and debuffs, `ROADMAP.md`
+    § The W0 debt register #35, which own that argument).
     """
 
     TURN_END = "turn_end"

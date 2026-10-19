@@ -3104,7 +3104,11 @@ The row's acceptance test. The feature is a `ResourceSpec` with a `LONG_REST`
 `test_the_saving_throw_sequence_knows_nothing_about_legendary_resistance` asserts
 by reading the module's own source for the words. The roll still happened and
 `SaveResult.total` still says what it was, so the log can show a 5 that became a
-success and `forced_by` says who insisted.
+success and `forced_by` says who insisted. `forced_by` carries every claim a
+handler made, including one made on a save the dice had already won: the ledger
+behind it logs claims rather than what changed the outcome, which is the
+property `OverrideLedger` was written for — two features surviving the same hit
+leave two citations instead of racing (`hooks/contexts.py`).
 
 That it works is a statement about `w1b` and `w1c` as much as this task: the pool
 is `w1b`'s, the drain that lands an effect queued from a save hook is `w1c`'s,
@@ -3185,6 +3189,21 @@ reversed the order found ±3% of pure harness.
 - **No concentration check and no death save.** The first is `w5a`'s, the second
   `w1j`'s, and both are D20 Tests this module could plausibly have grown a
   function for; neither has a caller yet.
+
+### What the review's first round found
+
+Four citation findings and no spec findings, all on prose this diff added, and
+one of them is worth recording rather than just fixing: **the "Not here:"
+paragraph that `engine/damage.py` and `engine/attack.py` both open with is not a
+style a new module may copy.** `CODING_STANDARDS.md` § Citations and comments
+bans a list of what is deliberately absent and a claim about another task in a
+docstring, and exempts only the docstrings already in `src/` — so the two
+sibling files keep theirs as a cleanup task's and this one points here instead.
+The other three were the same rule in smaller places: a design argument in
+`save_bonus()`, future consumers in `SPELL_SAVE_DC_BASE`, and a `SaveResult`
+docstring that described `forced_by` as holding only successes the dice did not
+produce, which it does not. `SaveRepeat`'s docstring was trimmed on the same
+standard before a later round reached it.
 
 Sources: XPHB (2024) "D20 Tests" -> Saving Throws and "Rolling 20 or 1",
 "Spells" -> Spell Save DC, "Damage and Healing", Rules Glossary "Round Down";

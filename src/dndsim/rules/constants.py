@@ -106,10 +106,9 @@ numbers stop being equal the moment Improved Critical exists and
 
 SPELL_SAVE_DC_BASE: Final = 8
 """The 8 of "8 + your spellcasting ability modifier + your Proficiency Bonus"
-(XPHB, "Spells" -> Spell Save DC). It is in `rules/` rather than beside
-`engine/saves.py` for the reason `RecoveryTrigger` records: a class feature that
-sets a DC (W4) and `content/`'s stat-block parser (w7a) need the same number and
-neither may import `engine/`."""
+(XPHB, "Spells" -> Spell Save DC). Why the number is here rather than beside
+`engine/saves.py` is `docs/decisions.md` § w1g, and the shape of the argument is
+`RecoveryTrigger`'s."""
 
 DEATH_SAVE_DC: Final = 10
 DEATH_SAVE_SUCCESSES_TO_STABILIZE: Final = 3
