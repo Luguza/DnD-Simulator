@@ -2668,6 +2668,40 @@ which is the one thing a content batch may never do. The cell now points at the
 ruling. This is question 4's shape with a small answer: the document was wrong,
 not the code.
 
+### The docstring cleanup is not queued here
+
+A `w1l` row — cutting `src/` and `tests/` docstrings back to their own code —
+was added to the queue in the commit that cleared the hold, and the sixth
+verdict found it twice over. It is removed, and the reason is the gate's own
+headline finding turned on the gate.
+
+The row was not one of this review's findings. This section lists what came out
+of re-reading the plan against `w1c`, `w1b` and `w1d`, and the cleanup is not
+among them: it came from a standards change made on `main` in #43, which is
+ordinary work rather than something the wave measured. `/plan-review` says in as
+many words that **finding nothing is a valid outcome and that changes are not to
+be manufactured to justify the gate**; writing a post-hoc argument into this
+record for a row the gate did not derive is exactly that, and it would also be
+the second copy of #43's reasoning rather than a pointer to it.
+
+And the row could not be built from what it said, which is what `w1g`'s row was
+held up for three rounds to fix. Its **Done when** cited
+`CODING_STANDARDS.md` § Citations and comments "added on `main` by #43", and
+that rule is on neither branch: #43 is open, and it targets `main` from a branch
+that is not `milestone/*`, so `human-merge-required` fails on it by design and
+**the loop may never merge it** (`docs/workflow.md` § Merge authority). Its
+**Depends** cell was `—`. An agent taking the row would meet a done-when it
+cannot check, against a section name that already exists on this branch and
+means something narrower, and would have to guess which rule was meant.
+
+None of that says the cleanup is wrong — #43's own "deliberately not done" asks
+for it, and the measurement behind it is real: `src/` carries 3,270 docstring
+lines against 4,569 of code, and `core/timeline.py` 268 against 156. It says the
+row belongs to whoever queues it **after** a human has merged #43 and the rule
+has reached the milestone branch, because only then is its done-when checkable
+and its **Depends** nameable. Queued before that it is a row that reads correct
+and cannot be done, which is the failure mode this whole gate is about.
+
 ### What this gate did not change
 
 - **The budget, and the projection over it.** Three tasks measured at or inside
