@@ -2556,7 +2556,7 @@ The other three are cheaper and are the reason the row grew rather than
 splitting:
 
 - **Legendary Resistance is now an acceptance test rather than an aspiration.**
-  `w1b` landed `ResourceSpec` and `Recovery`, so it is a per-day pool plus one
+  `w1b` landed `ResourceSpec` and `Recovery`, so it is a `LONG_REST` pool plus one
   handler on `on_save_resolved` that spends a charge and flips the failure. The
   test worth writing is that `engine/saves.py` contains nothing about it.
 - **The save result type is owed to `rules/enums.py`**, which already promises it
@@ -2850,6 +2850,10 @@ So: the fix is stated here and in a comment on #42, the row is `held`, `w1g` is
 back to `queued`, and the two words belong to whoever picks it up. Nothing else
 on the PR is open — the standards axis is clean and the three CONFIRMED findings
 of round seven are closed.
+
+Closed in the commit after this hold: `w1g`'s row and the paragraph in
+§ `w1g` was six words written before three of its dependencies existed now
+say `LONG_REST`.
 
 ### Held at the round cap, with one CONFIRMED finding open
 
