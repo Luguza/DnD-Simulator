@@ -32,8 +32,8 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 6 | w1d — grid geometry completed | done | #41 |
 | — | ⏸ plan review | done | #42 |
 | 7 | w1g — saving throws, DCs, save-for-half | done | #45 |
-| 8 | w1h — the 15 combat conditions | next | |
-| 9 | w1i — structured event log | queued | |
+| 8 | w1h — the 15 combat conditions | done | #PR |
+| 9 | w1i — structured event log | next | |
 | — | ⏸ plan review | queued | |
 | 10 | w1j — dying, death saves, healing, temp HP | queued | |
 | 11 | w1k — M0 re-measure 🔒 | queued | |

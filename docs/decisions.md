@@ -1132,9 +1132,11 @@ stop. It is recorded here as a genuine gap for `w3e`'s paper pass to find and
 ### And one left quiet, which is worse
 
 The quoted rule is "a creature **you can see** leaves your reach", and there is
-no visibility gate anywhere in this file. That is exact today — nothing in the
-project is Blinded or Invisible until `w1h` builds the conditions — and it is
-the debt most likely to be forgotten precisely because it costs nothing yet.
+no visibility gate anywhere in this file. That was exact when this was
+written — nothing in the project was Blinded or Invisible — and it is the debt
+most likely to be forgotten precisely because it cost nothing yet. It has since
+stopped being exact: `w1h` landed both conditions, and the gate now has
+something to be wrong about (§ w1h, debt #39).
 The review of this change caught it, and the answer was not to invent a
 visibility model against conditions that do not exist but to put it where the
 other four debts live: row 21 of ROADMAP.md § The W0 debt register, retired by
@@ -3037,8 +3039,10 @@ already said the two rolls it names are the attack's.
 An enum rather than `succeeded: bool` because the vocabulary is enums for the
 reason `rules/enums.py` opens with — the member serialises into the log and the
 `SimResult` JSON, and `content/` parses it back — and because `SaveResult` is
-what `w5a`'s spells, `w1h`'s conditions and `w8a`'s estimator will all pass
-around. `SaveResolvedContext.succeeded` stays a `bool`: it is one question asked
+what `w5a`'s spells and `w8a`'s estimator will pass around. (This named `w1h`'s
+conditions as a third reader and they turned out not to be one: the four that
+touch a save do it by failing one automatically, which is debt #37 and cannot be
+written at all — § w1h.) `SaveResolvedContext.succeeded` stays a `bool`: it is one question asked
 of one live event inside a frozen package, and widening it would be a
 `hooks/contexts.py` change with nothing to buy.
 
@@ -3212,6 +3216,199 @@ diverge, § Structural prevention; `docs/decisions.md` § w1e, § w1f, § w1b,
 § w1c, § w1d, § The W1 mid-wave review; `ROADMAP.md` § Sequencing principles 8
 and 10, § The W0 debt register rows #35, #36, #37; `CODING_STANDARDS.md`
 § Boundaries, § Smell baseline.
+
+## w1h — the 15 conditions, and the clauses that have nowhere to go
+
+The row asked for the 15 combat-relevant conditions as `Effect` subclasses,
+with "no `if creature.is_prone` anywhere in the engine" as the acceptance test.
+The engine side of that was already won: `w0g2` through `w1g` built the
+pipeline without a single condition branch, so this task adds `conditions/` and
+changes nothing above it. What it actually decided is how a condition composes,
+where a clause that cannot be written goes, and which clauses those are.
+
+### A condition is an `Effect`, and the composed four are subclasses
+
+Four of the fifteen say "You have the Incapacitated condition" in their own
+rules text, and Unconscious says "You have the Incapacitated and Prone
+conditions". Inheritance expresses that with machinery that already exists:
+`HookSource._collect()` walks the MRO base-first, so `Stunned(Incapacitated)`
+carries Incapacitated's handlers at Incapacitated's position in dispatch order
+and adds its own after them, and `HookSource.__init_subclass__` re-validates
+every inherited declaration in the subclass that uses it (`hooks/source.py`).
+
+The alternative — applying Incapacitated as a second effect when Paralyzed
+lands — cannot be undone: an effect may queue an application through
+`ctx.apply_effect()` but nothing can *remove* another effect, so Paralyzed
+expiring would leave an Incapacitated behind that the rules do not grant. The
+one place the rules *do* ask for that shape is Unconscious's "When this
+condition ends, you remain Prone", and there it is written as what it is, an
+`on_effect_expired` handler applying a real `Prone`.
+
+Two consequences of inheritance are worth knowing before touching this package:
+
+- **Handler names must not collide inside one MRO.** `_collect()` keys on the
+  method name, so a subclass method sharing a base method's name either
+  replaces it (with `@hook`) or raises (without). That is why Prone's two
+  handlers are `prone_own_attacks` and `prone_incoming_attacks` and
+  Unconscious's is `unconscious_incoming_attacks`: a plain `incoming_attacks`
+  on both would have dropped one of them silently in the class that has both.
+- **Unconscious declares its own Advantage grant beside Prone's.** The two read
+  alike today because Prone's incoming clause is approximated as unconditional
+  Advantage (below). They stop reading alike the moment that approximation is
+  fixed, and then the rules answer is both at once: Advantage from Unconscious
+  and Disadvantage from Prone against a shooter beyond five feet, which the
+  `AdvantageLedger` cancels to a straight roll. Inheriting Prone's grant alone
+  would have made an unconscious creature *harder* to shoot than a standing
+  one.
+
+### The two escape valves are tuples, and they accumulate
+
+`ROADMAP.md` § Standing rules, 2 gives a feature one `NEEDS_HOOK` string and
+one `APPROXIMATED` string. A condition is a list of clauses — Petrified has
+seven — and one of them failing says nothing about the other six, so both are
+`tuple[str, ...]` here and each entry names one clause.
+`Condition.__init_subclass__` unions them down the MRO for the same reason
+`HANDLERS` is unioned: a composed condition inherits its base's handlers, so it
+inherits its base's gaps, and a subclass declaring its own would otherwise
+report itself whole.
+
+Nothing in `conditions/` reports a gap in prose. Every entry is data a
+collection test reads, which is what `CLAUDE.md` § Architecture promises ("a
+collection test lists them") and what keeps the count honest: fifteen
+`NEEDS_HOOK` entries, each quoting the clause it could not write, and three
+`APPROXIMATED` ones. The fifteen reduce to **ten** distinct structural gaps
+once the clauses that want the same missing thing are merged — six conditions
+want a Speed that can be changed and four a save that can be failed. Every
+entry names the register row that owns it, so the register is the record and
+the tuple is the pointer: rows #28 and #37 were already open, #38, #39, #40,
+#41, #44, #45, #46 and #47 are new, and two further gaps that are not clause-
+level — #42 and #43 below — make ten new rows in all. (#21 and #27 are each the
+same gap seen from another file and are cited from the new row rather than
+duplicated into it.)
+
+### Petrified is the fourth condition that cannot save, not the third
+
+The row and debt #37 both name three — Paralyzed, Stunned and Unconscious.
+XPHB, Rules Glossary "Petrified" carries the same sentence: "You automatically
+fail Strength and Dexterity saving throws". So four of the fifteen declare #37,
+and the row's count and the register's are corrected in this PR rather than
+through a spec PR (`docs/workflow.md` § When the spec is wrong): what the row
+*asked* for is implementable exactly as written — declare the gap, do not
+approximate it — and only the number of conditions doing so was wrong. A spec
+PR would have spent a loop cycle to change a numeral that the quoted sentence
+settles.
+
+### Exhaustion: the level is the charge count
+
+Exhaustion is the glossary's own exception to "A condition doesn't stack with
+itself", and neither `Stacking` member expresses it. `REFRESH` overwrites
+`charges` from the arriving effect, so a second application would set the level
+back to 1; `STACK` holds two independent effects, so one Long Rest would remove
+every level at once because each instance would consume its own. So the
+incumbent counts the arrival itself: an `on_effect_applied` handler at
+`Phase.EARLY` increments its own level and vetoes the newcomer, which is the
+hook's stated purpose ("Rage extending rather than stacking",
+`hooks/definitions.py`) rather than a trick played on it.
+
+The level lives in `Effect.charges`. A count that ends the effect when it runs
+out is what `charges` *is*, and `Effect.consume()` is the only public way for
+something to end itself — "Finishing a Long Rest removes 1 of your Exhaustion
+levels. When your Exhaustion level reaches 0, the condition ends" is then one
+call, with the store doing the removal as `creatures/effects.py` insists. A
+`level` field of its own would have needed `self._store.remove(self)`, which is
+private access from outside the package.
+
+`-2` per level is `PER_LEVEL_D20_PENALTY`, contributed through `ctx.bonus` on
+all six D20 Test hooks. Three of those six have no engine caller yet
+(`on_ability_check`, `on_death_save`, `on_concentration_check`), and the
+handlers are declared anyway: the rule is written about the category, the
+registry's six `D20TestContext` hooks *are* the category, and a handler added
+when the caller lands is a retrofit that only the author of this file would
+know was owed (sequencing principle 8's shape). `exhaustion.py` is the one file
+in the package over 60 lines for that reason — eight handlers, none of which is
+more than three lines.
+
+### Prone is approximated; the three save conditions are not
+
+The two calls look alike and went opposite ways, so the difference is the thing
+to record. Prone's "An attack roll against you has Advantage if the attacker is
+within 5 feet of you. Otherwise, that attack roll has Disadvantage" needs the
+attacker's distance, which no context carries and `Combatant` cannot be asked
+for. Both arms of that clause are *expressible*; what is missing is the datum
+that chooses between them. So it is `APPROXIMATED` on the melee arm, because
+Prone exists in this simulator to be applied by the Topple mastery and by a
+shove, and a Prone that did nothing to incoming attacks would score Topple as a
+pure cost — silently, inside a fitted coefficient, which is the failure mode
+DESIGN.md § The estimator and the resolver may never diverge is about.
+
+The automatically failed save has no arm to pick: `SaveResolvedContext` has
+`succeed()` and no counterpart, so the outcome cannot be written at all, and
+`w1g` has already established that adding one is a ruling rather than a mutator
+(§ w1g). `NEEDS_HOOK`, as the row asked. The same test separates Frightened's
+line-of-sight gate (approximated — the clause has one arm and the gate only
+narrows when it applies) from its "You can't willingly move closer to the
+source of fear" (declared — nothing refuses a route).
+
+### A second source of a sourced condition is lost
+
+Charmed, Frightened and Grappled are written about the creature that imposed
+them, which is `Effect.caster`; `SourcedCondition` requires it, because a
+`None` there makes the clause skip silently rather than fail. Under `REFRESH` a
+second Frightened — a second dragon — slides the incumbent's deadline and keeps
+the *first* dragon as the source, since `EffectStore.apply()` copies `duration`
+and `charges` onto the incumbent and not `caster`. That is the glossary's "a
+recipient either has a condition or doesn't" taken at its word, and the loss is
+that one of the two sources is forgotten. `UNIQUE_PER_SOURCE` would hold two
+Frightened conditions at once, which the same sentence forbids. Debt #43.
+
+### The two condition hooks still have no caller
+
+`on_condition_gained` and `on_condition_lost` have been in the closed registry
+since `w0e` and nothing fires them, which this task does not change. The
+announcement belongs beside `on_effect_applied`, in `EffectStore`, and the
+store holds `Effect`s: telling a condition from an effect there means reading a
+field `Effect` does not have, which is a `creatures/effects.py` change this row
+does not authorise and `conditions/` may not make. It is the same shape as
+`w1c` wiring the two effect hooks that `w0e` had declared with no possible
+caller — one package along. Debt #42.
+
+### What it cost the benchmark
+
+Nothing, and it was not priced. `ROADMAP.md` § Sequencing principles, 10 names
+`w1b`, `w1c`, `w1d`, `w1i` and `w1j` as the W1 rows that run the spike paired;
+`w1h` is not one of them and the reason holds on inspection: no file on the hot
+path is touched, and `tools/spike_features.py` is a fixed configuration of
+twenty-five fixtures that this package does not join. A condition attached to a
+creature costs exactly what any other `HookSource` costs, which `w0i` measured.
+
+### What this task deliberately did not do
+
+- **Nothing outside `conditions/`.** Every clause that wants a mutator, a field
+  or a caller in `hooks/` or `creatures/` is declared instead (#28, #37–#47).
+  The one that was tempting is `SaveResolvedContext.fail()`, which four
+  conditions need and `w1g` had already refused for the right reason.
+- **No condition queries anything about another creature.** Grappled's "the
+  condition ends if the grappler has the Incapacitated condition" (XPHB,
+  "Grappling") and Invisible's "unless the effect's creator can somehow see
+  you" both need to ask a second creature what it is carrying, and `Combatant`
+  is a read-only view with no store behind it — the same wall `apply_pending()`
+  hit in `w1c` and the roster `w2c` owns answers.
+- **No out-of-combat clause.** Charmed's social Advantage, Deafened's and
+  Blinded's hearing and sight checks, Petrified's weight and ageing, Grappled's
+  drag-and-carry and Unconscious's dropped weapon are not modelled and are not
+  debt: a combat simulator rolls no social check and carries no inventory, so
+  there is no task that would retire a row for them (#27's own argument — a
+  debt row nobody can retire is worse than no row). The ability-check clauses
+  *are* declared, because `on_ability_check` exists and the gap is a missing
+  mutator.
+- **No `source_ref` field.** `features/base.py` is `w3a`'s and that is where
+  the field is designed; the quoted rules sentence is in each handler's
+  docstring beside the code it governs until then.
+- **No `Perturbation` profile.** `w3f` closes that vocabulary and `DESIGN.md` §
+  Buffs and debuffs names the scorer as its only reader; declaring keys for
+  fifteen conditions against a vocabulary that does not exist is the retrofit
+  that sequencing principle 8 warns about, pointed the other way.
+
 
 ## The PR, review and retro skills
 
