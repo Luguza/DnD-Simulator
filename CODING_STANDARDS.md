@@ -113,8 +113,9 @@ lands. `/retro` applies that split.
   `engine/triggers.py` contradicted by the diff four lines below it.
 - **A measurement lives in one place, like a rule.** The citation rule above is
   about rules and applies unchanged to numbers, which drift faster: `w1c`'s
-  median was quoted as −0.5% in the commit message, −0.3% in the record and a
-  third thing in `CLAUDE.md`, and the review had to reconcile all three. A
+  paired median was quoted three different ways at once — one figure in the
+  commit message, another in `docs/decisions.md` § w1c, which owns it, and a
+  third in `CLAUDE.md` — and the review had to reconcile all three. A
   number belongs in the decision record that measured it, and a copy anywhere
   else carries the pointer to that section beside it — a bare percentage with no
   pointer is a finding even when it currently agrees, because it is the copy

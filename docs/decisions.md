@@ -2696,8 +2696,9 @@ cannot check, against a section name that already exists on this branch and
 means something narrower, and would have to guess which rule was meant.
 
 None of that says the cleanup is wrong — #43's own "deliberately not done" asks
-for it, and the measurement behind it is real: `src/` carries 3,270 docstring
-lines against 4,569 of code, and `core/timeline.py` 268 against 156. It says the
+for it, and the measurement behind it is real — #43 counted the docstring lines
+against the code lines in `src/` and in `core/timeline.py`, and the figures are
+its, not this gate's, so they are not copied here. It says the
 row belongs to whoever queues it **after** a human has merged #43 and the rule
 has reached the milestone branch, because only then is its done-when checkable
 and its **Depends** nameable. Queued before that it is a row that reads correct
@@ -2817,6 +2818,42 @@ No CI run went red on any of the three PRs, and no task reported difficulty
 locating a ruling, so `CLAUDE.md`'s decision-record table gains no row — this
 section is appended to the two that already exist, for planning a wave and for
 pricing a change — and the hooks are left alone.
+
+### Filing a seam is not cutting it, and "signature only" was unbuildable
+
+Two spec findings after the pricing fix, both of this gate's own making and both
+the same mistake in different clothes: a decision recorded in one place that the
+places which have to honour it were never told about.
+
+**Debt #35 obliged an enum and nothing else was told.** The row says `w1g`'s
+timing enum is the one member read by both the engine that rolls the repeat save
+and `w3f`'s `Perturbation.repeat`, "rather than two string literals that can
+disagree" — and DESIGN.md § Buffs and debuffs and `w3f`'s row both still spelled
+the field as `"turn_end"` / `"turn_start"`. A `w3f` agent closing the vocabulary
+from its own row would have closed it on string literals, which is exactly the
+divergence #35 exists to prevent, landing in the one row that owns the field.
+Filing a debt is not cutting a seam: the row records the obligation, and the
+rows that must honour it have to say so too. Both now point at #35, and #35
+points back at them.
+
+**And `w1g`'s scope cell was unbuildable a second time.** It read
+"`engine/damage.py` for `resolve_damage()`'s signature only", which cannot do
+what the row asks: `resolve_damage()` hands `mitigate()` nothing but
+`incoming.mitigation`, and `MitigationLedger.halve()` raises outside a
+dispatching handler, so a caller's halving has to change how the **body**
+assembles what it passes on. The cell now says signature *and* that body, keeps
+`mitigate()`'s order and `ctx.halve()`'s handler-only rule out of scope — which
+is what keeps the row 👥 — and says that if seeding the ledger from the engine
+side needs `hooks/contexts.py`, that sub-item is solo within the task, as
+`w1a`'s `Combatant` and `w1f`'s `Weapon` widenings were.
+
+That is the third time this row has been found unbuildable, each time by the
+reviewer and each time after a fix of this gate's own. The pattern is worth more
+than the three corrections: **a scope cell is a claim about what the task can
+reach, and it is checkable against the code the task must change** — so it wants
+reading against that code, not against the sentence above it. Nothing about
+`w1g`'s intent moved across the three rounds; only the row's account of what it
+may write.
 
 ### Widening `resolve_damage()` put `w1g` on the hot path, which the gate missed
 

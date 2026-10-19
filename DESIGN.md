@@ -1167,9 +1167,13 @@ DEBUFF_PROFILE = Perturbation(
     action_denied=True, speed=0,        # Hypnotic Pattern
     targets="enemies.in(template)",     # a 30-foot cube; one save each
     save=Save(Ability.WIS),             # no repeat save — it just holds
-                                        # a repeating one declares repeat="turn_end"
-                                        # or "turn_start"; the two differ by a
-                                        # whole round of value, see above
+                                        # a repeating one declares repeat=, whose
+                                        # members are the enum `w1g` adds to
+                                        # rules/enums.py and never string
+                                        # literals (ROADMAP debt #35): the engine
+                                        # that rolls the repeat save reads the
+                                        # same member. The two differ by a whole
+                                        # round of value, see above
     ends_on_damage=True,                # so nobody in the party may hit them
     duration=Duration.minutes(1),
     concentration=True,
@@ -1191,8 +1195,11 @@ fixed set every profile may set, and not perturbations at all: `targets=` and
 `duration=`, which § The horizon reads as `duration_or_E[rounds]`;
 `concentration=`, which is what prices the effect through `c[concentration]`;
 and the three that say how it ends — `save=`, its optional `repeat=`
-(`"turn_end"` or `"turn_start"`, which select between the two `E[N]` formulas
-above), and `ends_on_damage=`.
+(end-of-turn or start-of-turn, which select between the two `E[N]` formulas
+above; its members are the enum `w1g` adds to `rules/enums.py`, read by the
+engine that rolls the repeat save as well as by the scorer, and never two sets
+of string literals that can disagree — `ROADMAP.md` § The W0 debt register #35),
+and `ends_on_damage=`.
 
 Keeping them apart is what makes the closed list closable: the perturbation keys
 are a claim about attack mathematics and each one costs a branch in the
