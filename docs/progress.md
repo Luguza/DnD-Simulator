@@ -30,13 +30,14 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 4 | w1c — `Effect`, `EffectStore`, stacking | done | #31 |
 | 5 | w1b — resources, `SpellSlots`, `transaction()` | done | #32 |
 | 6 | w1d — grid geometry completed | done | #41 |
-| — | ⏸ plan review | held | #42 |
-| 7 | w1g — saving throws, DCs, save-for-half | queued | |
+| — | ⏸ plan review | done | #42 |
+| 7 | w1g — saving throws, DCs, save-for-half | next | |
 | 8 | w1h — the 15 combat conditions | queued | |
 | 9 | w1i — structured event log | queued | |
+| 10 | w1l — docstrings cut back to their own code | queued | |
 | — | ⏸ plan review | queued | |
-| 10 | w1j — dying, death saves, healing, temp HP | queued | |
-| 11 | w1k — M0 re-measure 🔒 | queued | |
+| 11 | w1j — dying, death saves, healing, temp HP | queued | |
+| 12 | w1k — M0 re-measure 🔒 | queued | |
 | — | ⏸ **M0 / W1 milestone review** — before any W2 task | queued | |
 
 Order within W1 is the critical path first (`w1e → w1f`, the two 🔒 tasks

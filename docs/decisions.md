@@ -2590,8 +2590,9 @@ control spell wrong by a factor of `p`. `w3f`'s `Perturbation` declares it —
 Nothing resolves it. `w1c`'s `Effect` carries `duration`, `charges` and
 `caster`; its two turn-boundary sweeps, `expire_before()` and `expire_after()`,
 read deadlines and nothing else; and no row in W1, W2 or W5 asks for a save at a
-boundary. So a save-ends effect ends on its stated duration, and Hypnotic
-Pattern holds for a minute.
+boundary. So the repeat save is the third missing piece, not a replacement for a
+working one: no duration can last a minute yet (debt **#16**), and nothing calls
+the sweeps that would end one (debt **#29**).
 
 It is debt **#35**, and it is split the way sequencing principle 8 splits a
 seam. The signature is cheap and lands now, in `w1g`, which is already adding a
@@ -2797,6 +2798,9 @@ else in this PR is contested; the four earlier rounds are closed.
 That the error sat in a row this gate added, and was found only at the fifth
 look, is itself the retro's point about a gate PR being judged by the standards
 it writes — recorded above rather than argued again here.
+
+Closed in the commit after the hold: #35 and the paragraph above now state the
+baseline through #16 and #29.
 
 Sources: `docs/decisions.md` § w1b, § w1c, § w1d, § w1e, § w1f, § The W0 plan
 review, § The W1 critical-path review; DESIGN.md § Durations, § Buffs and
