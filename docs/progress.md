@@ -41,7 +41,8 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 
 Order within W1 is the critical path first (`w1e → w1f`, the two 🔒 tasks
 everything downstream trusts), then the three files W0 left as first cuts, then
-the leaves. `w1k` depends on `w1a`–`w1f` and `w1j`, which is why it is last.
+the leaves. `w1k` depends on `w1a`–`w1g`, `w1i` and `w1j`, which is why it is
+last: every row that prices itself has to have landed before the totalling.
 
 W2 rows are added by the M0 / W1 milestone review, not before it — the review
 is what decides whether they are still the right rows.

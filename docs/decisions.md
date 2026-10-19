@@ -2504,8 +2504,9 @@ Small precisely because Small takes the general path and must agree.
 model is § The W0 plan review: compare what the plan assumes against what the
 wave measured. The headline is that **nothing measured moved a number the plan
 assumes** — all three tasks priced themselves at or inside their container's
-noise — so the ~29.8k projection stands untouched and `w1k` is still the
-measurement that settles it. What did move is what three completed tasks oblige
+noise — so the projection over the budget stands untouched (§ The W1
+critical-path review owns that number) and `w1k` is still the measurement that
+settles it. What did move is what three completed tasks oblige
 of the four rows behind them, and in one case the obligation was that the next
 row could not be built from what it said.
 
@@ -2705,9 +2706,10 @@ and cannot be done, which is the failure mode this whole gate is about.
 ### What this gate did not change
 
 - **The budget, and the projection over it.** Three tasks measured at or inside
-  the noise, so nothing revises ~29.8k and nothing revises 30k. The bar for
-  revising the budget is a measurement with an attribution (DESIGN.md § Biggest
-  risks), and this gate has neither.
+  the noise, so nothing revises the projection (§ The W1 critical-path review)
+  and nothing revises the 30k budget. The bar for revising the budget is a
+  measurement with an attribution (DESIGN.md § Biggest risks), and this gate has
+  neither.
 - **The round cap.** Two of the three tasks reached it — `w1b` was held at the
   fourth non-clean verdict and resolved in a later session, `w1c` recorded debt
   #31 — and in both cases the reviewer was still finding real defects at the
@@ -2828,8 +2830,8 @@ not marked **Priced**, and `w1k`'s list of the tasks whose attributions it total
 still named five. So the gate created exactly the residual that its own `w1k`
 correction is about: a cost on the measured path with nobody told to measure it.
 
-`w1g` is **Priced** now, the list is six in all four places that state it, and
-the W1 section says why `w1g` joined it. The lesson is narrower than "re-read the
+`w1g` is **Priced** now, it is in the list and in `w1k`'s **Depends**, and the W1
+section says why it joined them. The lesson is narrower than "re-read the
 row": **a scope change is a pricing question**, because the hot path is a
 property of the files a task may write and not of what the task is called. Three
 of the five tasks the critical-path gate listed are on it for exactly that
