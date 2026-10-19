@@ -2816,6 +2816,41 @@ locating a ruling, so `CLAUDE.md`'s decision-record table gains no row — this
 section is appended to the two that already exist, for planning a wave and for
 pricing a change — and the hooks are left alone.
 
+### Held a second time, on a two-word finding, deliberately
+
+The eighth verdict came back clean on the standards axis — the first time in
+this PR — with one PLAUSIBLE on spec, and it is correct. `w1g`'s row builds its
+Legendary Resistance acceptance test on "a `ResourceSpec` with a **per-day**
+`Recovery`", and there is no such trigger: `RecoveryTrigger` has `SHORT_REST`,
+`LONG_REST` and `RECHARGE_5_6`, and its docstring closes membership to
+"DESIGN.md § Resources' seven shapes and nothing beyond them". Legendary
+Resistance's 3/Day recharges on a Long Rest, so the row should say `LONG_REST`.
+
+**The fix is two words and the row is held anyway.** The hazard is worth naming
+first, because it is the one thing here that could do damage: the commit before
+this one added `rules/enums.py` to `w1g`'s packet allowlist, so a `w1g` agent
+reading "per-day" has both the instruction to want a member that does not exist
+and the write access to add one — to a closed rules vocabulary, which is the
+boundary `CODING_STANDARDS.md` guards. The hold contains it, since nothing
+advances off a held row.
+
+The reason for holding rather than spending one more commit is the record above,
+applied to this session. Eight verdicts, and every one found something; the
+three before this were each created or revealed by the push before them. At
+rounds four, five, six and seven the remaining work looked trivial each time and
+each time it was not, so the honest conclusion is not that the work is nearly
+done but that **this session's judgement of "nearly done" on this PR is
+miscalibrated**, and a two-word fix is exactly the shape that judgement keeps
+getting wrong. The round cap exists for that, `w1b`'s hold was cleared by a
+fresh session in one commit, and this gate's own § What this gate did not change
+argues that is the cap working. A session that argues that and then takes a
+ninth round because the finding is small has not understood its own record.
+
+So: the fix is stated here and in a comment on #42, the row is `held`, `w1g` is
+back to `queued`, and the two words belong to whoever picks it up. Nothing else
+on the PR is open — the standards axis is clean and the three CONFIRMED findings
+of round seven are closed.
+
 ### Held at the round cap, with one CONFIRMED finding open
 
 The fifth verdict found a factual error in debt row #35 itself, and it is
