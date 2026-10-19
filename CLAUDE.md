@@ -484,6 +484,10 @@ end of `ROADMAP.md` is what a delegated agent receives.
   statement from the lines beneath it. Comment the trap and the ordering that is
   not obvious; nothing else. Four of `w1e`'s five review rounds found prose of
   that kind; the fifth found a real bug (`docs/decisions.md` § w1e).
+- **A docstring covers only its own code**: what it takes, does and returns.
+  The design argument behind it, the alternatives rejected, other modules and
+  future tasks go in `docs/decisions.md`, and the code points there in one
+  line (`CODING_STANDARDS.md` § Citations and comments).
 - Ask the user for clarification when something is ambiguous or looks wrong
   instead of guessing — except in the task loop, which never stops to ask and
   records the question and the choice it took in `docs/questions.md`

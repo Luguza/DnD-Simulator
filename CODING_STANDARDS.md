@@ -90,6 +90,16 @@ lands. `/retro` applies that split.
 
 ## Citations and comments, on every diff
 
+- **A docstring or comment covers only its own code.** A docstring says what
+  its function, class or module takes, does and returns; a comment names the
+  trap in the line beneath it. A design argument, a list of what is
+  deliberately absent, a claim about another module, a caller or a future task
+  is a finding: each is a claim that can drift, and every later review has to
+  re-check it. It belongs in `docs/decisions.md`, and the code points there in
+  one line. Flag it on lines the diff adds or changes only — the docstrings
+  already in `src/` are a cleanup task's, not every PR's. Most review rounds so
+  far were spent on prose rather than code (`docs/decisions.md` § w1e, #25,
+  #42).
 - **A citation points; it does not restate.** A paraphrase or a re-derivation
   beside the code is a second copy of the rule that can drift from it — flag it.
   Where a citation does assert a consequence, work the consequence out rather
