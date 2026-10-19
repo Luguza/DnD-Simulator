@@ -2816,6 +2816,34 @@ locating a ruling, so `CLAUDE.md`'s decision-record table gains no row — this
 section is appended to the two that already exist, for planning a wave and for
 pricing a change — and the hooks are left alone.
 
+### Widening `resolve_damage()` put `w1g` on the hot path, which the gate missed
+
+Both holds were cleared by a fresh session, and the verdict after the second one
+found the consequence of this gate's own `w1g` fix. Adding `engine/damage.py` to
+that row's scope — so save-for-half can reach `w1e`'s ledger — means `w1g` now
+changes a function `engine/attack.py` calls on **every** attack it resolves
+(`:821` and `:845`). Sequencing principle 10, which this same gate amended two
+sections above, says a task that touches the hot path prices itself; `w1g` was
+not marked **Priced**, and `w1k`'s list of the tasks whose attributions it totals
+still named five. So the gate created exactly the residual that its own `w1k`
+correction is about: a cost on the measured path with nobody told to measure it.
+
+`w1g` is **Priced** now, the list is six in all four places that state it, and
+the W1 section says why `w1g` joined it. The lesson is narrower than "re-read the
+row": **a scope change is a pricing question**, because the hot path is a
+property of the files a task may write and not of what the task is called. Three
+of the five tasks the critical-path gate listed are on it for exactly that
+reason.
+
+Two citation findings came with it, both this gate's own rule turned on it a
+fifth and sixth time, and both fixed by deleting rather than adding: `w1k`'s row
+still carried a bare `5.5%` in the same row that says the figures live in § w1f
+and § w1d and are "not restated here" — one copy was removed at `5339388` and
+this one was read as the critical-path gate's and left — and debt #35 had copied
+DESIGN.md § Buffs and debuffs' two geometric series and the factor-of-`p`
+argument into the register, where a pointer does the work. The register tells a
+task what it owes; it is not where the design's formulas live.
+
 ### Held a second time, on a two-word finding, deliberately
 
 The eighth verdict came back clean on the standards axis — the first time in

@@ -172,7 +172,10 @@ that look open, and why each of them is wrong, are argued there and nowhere
 else. **A save-ends effect's
 repeat save has no owner** — DESIGN.md writes out both geometric series and
 `w3f` declares the timing for the scorer, but nothing rolls the save, so it is
-debt **#35**, split into `w1g`'s enum and `w2c`'s roll. And **the paired spike
+debt **#35**, split into `w1g`'s enum and `w2c`'s roll. Giving `w1g` the
+`resolve_damage()` signature also **put it on the hot path**, so it prices itself
+like the five the critical-path gate named and `w1k` totals six attributions, not
+five. And **the paired spike
 run stopped resolving anything**: three tasks bought "not distinguishable from
 zero" against pair-to-pair spreads wider than the effect they were measuring,
 while the profile and the call count are what attributed `w1d`'s regression
