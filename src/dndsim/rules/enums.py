@@ -36,6 +36,8 @@ __all__ = [
     "Mastery",
     "Outcome",
     "RecoveryTrigger",
+    "SaveOutcome",
+    "SaveRepeat",
     "School",
     "Size",
     "WeaponProperty",
@@ -173,8 +175,8 @@ class Outcome(Enum):
     Scoped to attack rolls on purpose. 2024 unifies attack rolls, ability checks
     and saving throws as "D20 Tests", but a natural 20 is only a critical hit for
     an attack roll, so a single outcome type across all three would be a member
-    that means something different in each. Saving throws get their own result
-    type with `engine/saves.py` (w1g).
+    that means something different in each. A saving throw resolves into
+    `SaveOutcome` below.
 
     `is_hit` and `is_critical` exist so that no caller writes
     `outcome in (Outcome.HIT, Outcome.CRITICAL_HIT)` — the crit predicate lives
@@ -196,6 +198,35 @@ class Outcome(Enum):
         """True on a critical hit only. This is the predicate that doubles
         `DamagePart.dice` and never `DamagePart.flat`."""
         return self is Outcome.CRITICAL_HIT
+
+
+@unique
+class SaveOutcome(Enum):
+    """How a **saving throw** resolved: the result type `Outcome` above is
+    scoped away from.
+
+    Two members and no critical one. XPHB, "D20 Tests" -> Saving Throws gives a
+    save no special effect for a natural 20 or a natural 1 — where the Attack
+    Rolls entry beside it gives both (`rules/constants.py`'s `NATURAL_TWENTY`) —
+    so a save meets its DC or it does not. `engine/saves.py` produces one.
+    """
+
+    FAILURE = "failure"
+    SUCCESS = "success"
+
+
+@unique
+class SaveRepeat(Enum):
+    """When a save-ends effect offers its save again.
+
+    Rules vocabulary, because the engine that rolls the repeat save and the
+    scorer that prices it must name the same member rather than two string
+    literals that can disagree (DESIGN.md § Buffs and debuffs, `ROADMAP.md`
+    § The W0 debt register #35, which own that argument).
+    """
+
+    TURN_END = "turn_end"
+    TURN_START = "turn_start"
 
 
 @unique
