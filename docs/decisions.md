@@ -2718,18 +2718,28 @@ and cannot be done, which is the failure mode this whole gate is about.
   across five rounds is the implementer's remaining context, not the reviewer's
   accuracy. Raising the cap would buy more rounds of a worse implementer. Left
   alone, and recorded so the next gate can see whether the rate holds.
-  **This gate then hit the cap itself**, which makes it three of the last four
-  PRs. Its four verdicts found a drifted measurement, a miscount, a misordered
-  debt row, one ruling in three places, a retelling that had drifted from the
-  record, and a row that contradicted itself — every one real, and four of the
-  six were this PR's own new rules turned on the PR that added them. That is the
-  cap behaving as described rather than an argument against it: the findings got
-  smaller each round, ending at a missing pointer, which is what a converging
-  review looks like. What the next gate should watch is not the cap but the
-  pattern underneath it — a gate PR that edits the standards will be judged by
-  them, so it pays to apply each new rule to its own diff before pushing, which
-  this one did not do and spent three rounds learning. `docs/questions.md` #4
-  records the one judgement the cap's own text does not cover.
+  **This gate then hit the cap itself and did not converge**, which makes it
+  three of the last four PRs. Every verdict it drew found something real: a
+  drifted measurement and a `±` over an asymmetric range, a miscount, a
+  misordered debt row, one ruling standing in three places, a retelling that had
+  drifted from the record, a row that contradicted itself, a factual error in a
+  debt row this gate added, an unargued task row that could not be built, and
+  this bullet and `docs/questions.md` #4 both describing a PR that had moved on
+  without them. An earlier draft of this bullet called that a converging review
+  because the findings got smaller up to round four; rounds five onward falsified
+  it, and the claim is withdrawn rather than re-asserted at a higher number —
+  which is itself the lesson, since a snapshot of "how many rounds it took"
+  written *during* the PR is a hostage to the rounds after it.
+  Two things the next gate should take from it, neither of them about the cap's
+  number. **A gate PR that edits the standards is judged by them**, so each new
+  rule wants applying to the gate's own diff before the first push; four of the
+  early findings were exactly that. And **narrative prose about a PR's own
+  progress is a liability inside that PR** — "four verdicts", "no further round
+  will be taken", "fixed and merged" were each true when written and each became
+  a finding, because the document and the thing it describes were being edited in
+  the same branch. Write the record about the *work*, and let the round count and
+  the outcome be read off git and the PR. `docs/questions.md` #4 records the one
+  judgement the cap's own text does not cover.
 - **`w1j`'s and `w1i`'s rows.** Both were re-read. `w1j` says "healing
   application and temp HP", which `w1e`'s landing the temp-HP *spend* does not
   falsify — `on_temp_hp_gained` in the same cell makes clear it is the grant —
