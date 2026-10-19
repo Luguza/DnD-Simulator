@@ -65,7 +65,8 @@ Each wake: read the sticky verdict comment and CI.
   contested. If CI is green and every CONFIRMED finding is fixed, record the
   contested findings in `ROADMAP.md` § The W0 debt register, owned by the next
   milestone review, and go to step 6. Otherwise set the row to `held` and tell
-  the human.
+  the human. Count the PR's verdicts, not this session's
+  (`docs/workflow.md` § The review loop).
 
 ## 6. Merge and hand off
 

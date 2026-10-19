@@ -75,6 +75,11 @@ every finding **CONFIRMED** or **PLAUSIBLE**. It reviews on two axes
   in `ROADMAP.md` § The W0 debt register, owned by the next milestone review.
   Otherwise it sets the row to `held` and notifies the human. PR #19 took 27
   pushes; the cap is what catches that.
+- **The cap counts the PR's verdicts, not the session's.** A session that
+  picks up a held PR pushes only the fix the hold names, and on the next
+  verdict takes the branch above with no further round: it merges, or the
+  row stays `held` for the human to merge or close. #42 ran far past its cap
+  because each session that cleared a hold started counting from one.
 
 A verdict that says *the review did not run* or *did not finish* is not a pass
 and never merges.
