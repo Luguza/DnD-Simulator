@@ -25,7 +25,7 @@ from string import Template
 from typing import Any
 
 TEMPLATE = Template((Path(__file__).parent / "template.html").read_text("utf-8"))
-TASK_ID = re.compile(r"\b(w(\d)[a-z]\d*)\b")
+TASK_ID = re.compile(r"w\d[a-z]\d*")
 DAY_PX = 6
 PHONE_DAY_PX = 2.5
 PACE_WINDOW = 10
@@ -72,7 +72,7 @@ class Debt:
     def owner_keys(self) -> list[str]:
         """The tasks the cell opens with, or the cell itself."""
         ids = []
-        for token in re.findall(r"w\d[a-z]\d*|[A-Za-z]+", plain(self.owner)):
+        for token in re.findall(rf"{TASK_ID.pattern}|[A-Za-z]+", plain(self.owner)):
             if TASK_ID.fullmatch(token):
                 ids.append(token)
             elif token != "and":
@@ -216,7 +216,7 @@ def arrange(waves: list[Wave], queue: list[QueueRow]) -> None:
     rows: list[Item] = []
     for row in queue:
         # A task row opens with its id; a review row may name one later on.
-        found = re.match(r"\s*(w\d[a-z]\d*)\b", row.task)
+        found = re.match(rf"\s*({TASK_ID.pattern})\b", row.task)
         if found is None:
             item = Item("⏸", row.task, review=True)
         else:
@@ -251,7 +251,7 @@ def schedule(waves: list[Wave], prs: list[dict[str, Any]], now: datetime) -> flo
     titled: dict[str, dict[str, Any]] = {}
     merged_first = sorted(prs, key=lambda p: (not p.get("merged_at"), p["number"]))
     for candidate in merged_first:
-        found = re.match(r"\W*(w\d[a-z]\d*)\b", candidate["title"])
+        found = re.match(rf"\W*({TASK_ID.pattern})\b", candidate["title"])
         if found and found.group(1) not in titled:
             titled[found.group(1)] = candidate
     items = [item for wave in waves for item in wave.items]
@@ -402,7 +402,7 @@ def render_gantt(
 def render_debt(debts: list[Debt]) -> tuple[str, str]:
     def order(key: str) -> tuple[int, str]:
         found = TASK_ID.fullmatch(key)
-        return (int(found.group(2)) if found else 99, key)
+        return (int(key[1]) if found else 99, key)
 
     owners = sorted({key for d in debts for key in d.owner_keys}, key=order)
     options = "".join(
