@@ -150,7 +150,7 @@ opportunity attack debt #9 said it silently did not get is now offered, with
 `engine/attack.py` and `engine/triggers.py` passing the two sizes; and **a
 template is measured with the same `distance_ft` as a reach**, which makes
 Fireball's 20-foot radius the 9x9 block of squares within 20 feet of its centre
-rather than a disc (`docs/questions.md` #1) and keeps "20 feet" from naming two
+rather than a disc (`docs/decisions.md` § w1d) and keeps "20 feet" from naming two
 different things. An area reaches only what an unblocked straight line from its
 point of origin reaches, decided on exact integer arithmetic where a graze past
 a lone pillar does not block and two opaque squares meeting at that corner do. Its first cut **failed its own pricing at −3.5% of the

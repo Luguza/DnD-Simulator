@@ -2377,10 +2377,9 @@ rule that a diagonal step costs 5 feet. A Euclidean radius would draw a prettier
 circle and would mean that "20 feet" named one set of squares to the attack
 pipeline and a different one to the spell. That is the drift `in_reach` exists
 to prevent, one subsystem along, so the template asks `distance_ft` like
-everything else. It is recorded as `docs/questions.md` #1 because it is a
-choice a human may want to overturn, not because it is in doubt here; what would
-change if it were overturned is the number of targets an area spell catches,
-which lands on `w5a` and on the placement search in DESIGN.md § AoE.
+everything else. The human confirmed it (§ w1d › The three questions,
+closed). Overturning it would change the number of targets an area spell
+catches, which lands on `w5a` and on the placement search in DESIGN.md § AoE.
 
 The same argument settles the origin: a Sphere is centred on a *square*, not on
 a grid intersection. Intersections are the DMG's optional template rule, the
@@ -2440,8 +2439,8 @@ round. **Rounding up** — `2 * lateral <= along`, one square at 5 feet, three a
 rounding down makes it narrower at every second step, and keeps a 10-foot
 Burning Hands one square wide for its whole length. Up is the lesser error and
 the one a grid cone is usually drawn with, and because it *is* a choice rather
-than something the quoted sentence implies, it is `docs/questions.md` #3 beside
-the sphere's metric. Its second review round is where that distinction was
+than something the quoted sentence implies, it was a question beside the
+sphere's metric until the human confirmed it. Its second review round is where that distinction was
 caught: the first draft of the docstring presented the formula as following from
 the rule. A diagonal cone is
 generated in its own rotated frame rather than by filtering a box, so a cone
@@ -2502,6 +2501,17 @@ Small precisely because Small takes the general path and must agree.
 - **`route()` does not know a creature's speed, still.** Truncation is
   `steps_within()`'s and the turn loop's, unchanged by anything here.
 - **Nothing charges movement against the economy** — debt 28, still `w2c`'s.
+
+### The three questions, closed
+
+`w1d` filed the sphere's metric, the footprint's anchor and the cone's rounding
+as `docs/questions.md` #1–#3. The human closed all three on 2026-10-23,
+confirming every choice, and judged them trivial: each was already settled by a
+convention the project had (the one metric), by the only option defined for
+every size (the low corner), or by being plainly the lesser error (rounding
+up). They were never questions in the sense `docs/workflow.md` § Questions for
+the human now gives the word, and the rows are gone. The reasoning above stands
+as the record.
 
 ## The W1 mid-wave review
 
