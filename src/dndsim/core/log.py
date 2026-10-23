@@ -1,16 +1,10 @@
 """The structured event log: records as tuples, formatting left to the reporter.
 
-A record is a plain tuple whose first element is its kind, written by the code
-that knows what happened and read by whatever renders it — `trace`, the
-`SimResult` breakdowns, a golden. Nothing here formats a string, because a
-record is written on the hot path and read, if at all, long after
-(DESIGN.md § Levers). A record holds names and values, never a live object,
-since a creature goes on changing after the record that mentions it.
-
-Two levels, the CLI's `--log-level=summary|full` (DESIGN.md § CLI surface).
-`summary` keeps what an event *came to* and skips the per-roll records under
-it. The writer asks `log.full` before it builds a per-roll record, so a
-skipped record costs a slot read and not a tuple (`docs/decisions.md` § w1i).
+A record is `(kind, *fields)`, written by the code that knows what happened.
+`LogLevel.SUMMARY` skips the per-roll records a writer marks as such; the
+writer asks `log.full` before building one. Why records hold names rather than
+objects, and why `write` and `full` are shaped for the hot path, is in
+`docs/decisions.md` § w1i.
 """
 
 from collections.abc import Callable, Iterator
@@ -33,22 +27,30 @@ class LogLevel(Enum):
 class EventLog:
     """An append-only sequence of records, in the order they were written.
 
-    `write` is the list's own `append`, bound once, so a write is one C call
-    rather than a Python frame. `full` is `level is LogLevel.FULL`, kept as a
-    plain slot because a writer reads it on every attack.
+    `write(record)` appends one. `full` is `level is LogLevel.FULL`. Nothing on
+    a log can be assigned after construction, so the two cannot disagree.
     """
 
-    __slots__ = ("_records", "full", "level", "write")
+    __slots__ = ("_level", "_records", "full", "write")
 
-    level: LogLevel
+    _level: LogLevel
+    _records: list[Record]
     full: bool
     write: Callable[[Record], None]
 
     def __init__(self, level: LogLevel = LogLevel.FULL) -> None:
-        self.level = level
-        self.full = level is LogLevel.FULL
-        self._records: list[Record] = []
-        self.write = self._records.append
+        records: list[Record] = []
+        object.__setattr__(self, "_level", level)
+        object.__setattr__(self, "_records", records)
+        object.__setattr__(self, "full", level is LogLevel.FULL)
+        object.__setattr__(self, "write", records.append)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError(f"EventLog.{name} is fixed at construction")
+
+    @property
+    def level(self) -> LogLevel:
+        return self._level
 
     def __len__(self) -> int:
         return len(self._records)

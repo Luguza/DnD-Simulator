@@ -3543,7 +3543,10 @@ damage dice under it. The skip is the writer's: it reads `log.full` before it
 builds the tuple, so a skipped record costs a slot read rather than an
 allocation thrown away inside a method. `write` is the list's own bound
 `append`, so a kept record costs one C call and no Python frame. Both are why
-`full` is a plain slot and not a property.
+`full` is a slot and not a property, and why it is kept from disagreeing with
+`level` by refusing every assignment after construction rather than by a
+property the writer would pay a frame for on each read. The first review
+round found the two writable and able to drift.
 
 ### How far the writers go
 

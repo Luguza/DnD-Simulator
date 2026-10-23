@@ -8,6 +8,8 @@ Sources: DESIGN.md § Levers, § CLI surface; `docs/decisions.md` § w1i; ROADMA
 w1i.
 """
 
+import pytest
+
 from dndsim.core.log import EventLog, LogLevel
 
 
@@ -54,3 +56,17 @@ def test_clearing_drops_the_records_and_keeps_the_level() -> None:
     assert log.records == (("second",),)
     assert log.level is LogLevel.SUMMARY
     assert not log.full
+
+
+def test_the_level_cannot_be_changed_under_a_writer() -> None:
+    """`full` is what a writer reads and `level` is what a reader reports; an
+    assignment to either would let them disagree."""
+    log = EventLog()
+
+    with pytest.raises(AttributeError):
+        log.level = LogLevel.SUMMARY  # type: ignore[misc]
+    with pytest.raises(AttributeError):
+        log.full = False
+
+    assert log.full
+    assert log.level is LogLevel.FULL
