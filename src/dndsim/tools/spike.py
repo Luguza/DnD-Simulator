@@ -286,8 +286,8 @@ def build_spike(
     configurations of the same engine, and the difference between the two
     numbers is the whole argument for the lever.
 
-    `log_level` is the event log's, and every attack writes to it: a record per
-    roll is hot-path work (ROADMAP w1i), so it is inside the measurement.
+    `log_level` is the level of the `EventLog` every attack writes to
+    (`docs/decisions.md` § w1i).
     """
     hero = Creature(
         name="Spike",
