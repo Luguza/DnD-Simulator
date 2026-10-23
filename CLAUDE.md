@@ -461,7 +461,7 @@ turns what the reviews found into checks, standards and plan edits.
 
 ## Sequencing rules
 
-`ROADMAP.md` has 77 tasks across waves W0–W8 with explicit dependency edges.
+`ROADMAP.md` has 78 tasks across waves W0–W8 with explicit dependency edges.
 Three constraints dominate:
 
 - **Nothing in W4 or later may start before M2** (API frozen, authoring skill

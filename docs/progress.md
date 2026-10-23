@@ -36,7 +36,8 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 9 | w1i — structured event log | next | |
 | — | ⏸ plan review | queued | |
 | 10 | w1j — dying, death saves, healing, temp HP | queued | |
-| 11 | w1k — M0 re-measure 🔒 | queued | |
+| 11 | w1l — docstrings cut back to their own code | queued | |
+| 12 | w1k — M0 re-measure 🔒 | queued | |
 | — | ⏸ **M0 / W1 milestone review** — before any W2 task | queued | |
 
 Order within W1 is the critical path first (`w1e → w1f`, the two 🔒 tasks
