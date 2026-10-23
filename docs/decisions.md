@@ -3427,6 +3427,12 @@ are reachable at all before `w1j` and `w5a`. And the row's acceptance test
 five files in `engine/`, `hooks/` and `core/` discuss conditions in prose, so a
 substring scan fails on the documentation it is supposed to be ignoring.
 
+The second review found what the first had not: **Initiative is an ability
+check** (XPHB, Rules Glossary "Initiative": a Dexterity check), and
+`on_initiative_roll` is dispatched instead of `on_ability_check`, not as well
+as it. So Poisoned and Frightened, whose Disadvantage covers "ability checks",
+hook both, the same way Exhaustion does.
+
 ### What it cost the benchmark
 
 Nothing, and it was not priced. `ROADMAP.md` § Sequencing principles, 10 names

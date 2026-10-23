@@ -1,7 +1,11 @@
 """Poisoned (XPHB, Rules Glossary). See `docs/decisions.md` § w1h."""
 
 from dndsim.conditions.base import Condition
-from dndsim.hooks.contexts import AbilityCheckContext, AttackDeclaredContext
+from dndsim.hooks.contexts import (
+    AbilityCheckContext,
+    AttackDeclaredContext,
+    InitiativeContext,
+)
 from dndsim.hooks.decorator import R, hook
 from dndsim.rules import enums
 
@@ -25,5 +29,11 @@ class Poisoned(Condition):
     @hook("on_ability_check")
     def ability_checks(self, ctx: AbilityCheckContext) -> R:
         """The check half of the same sentence."""
+        ctx.impose_disadvantage(self.name)
+        return R.APPLIED
+
+    @hook("on_initiative_roll")
+    def initiative_rolls(self, ctx: InitiativeContext) -> R:
+        """The check half again, for Initiative, which is a Dexterity check."""
         ctx.impose_disadvantage(self.name)
         return R.APPLIED
