@@ -3513,3 +3513,81 @@ of review into a check or a rule so the next task does not repeat it.
 
 Upstream's `GLOSSARY.md` and `writing-for-agents` were not brought in: `DESIGN.md`
 is the vocabulary and `CLAUDE.md` § Working rules is the writing guide.
+
+## w1i — the event log, and what a record per roll turned out to cost
+
+`core/log.py` is a list of tuples and a level. What needed deciding was the
+shape of a record, how a writer skips one, and how far to wire the writers.
+
+### A record is a tuple of names and values
+
+A record is `(kind, *fields)` with a lowercase string kind, which is the
+row's "tuples; formatting deferred to the reporter" taken literally. It holds a
+creature's *name* and never the creature: a record is read after the fight has
+moved on, and a reference to a mutable `Creature` would report its hit points at
+read time rather than at write time. Enum members (`Outcome`, `DamageType`) are
+kept as members, because they are immutable and their serialised spelling is
+the reporter's decision (`rules/enums.py` gives them lowercase values for it).
+
+The kinds live with their writer — `ATTACK`, `ATTACK_ROLL` and `DAMAGE_ROLL` in
+`engine/attack.py`, each documented with its field order — rather than in a
+closed enum in `core/`, which sits below every package that would write one and
+cannot know what an attack is. That is a first cut: when `w2g`'s reporter reads
+records from five writers, a vocabulary in one place may be worth its import,
+and nothing here prevents moving the constants.
+
+### The writer asks before it builds
+
+`--log-level=summary` keeps what an attack came to and skips the d20 and the
+damage dice under it. The skip is the writer's: it reads `log.full` before it
+builds the tuple, so a skipped record costs a slot read rather than an
+allocation thrown away inside a method. `write` is the list's own bound
+`append`, so a kept record costs one C call and no Python frame. Both are why
+`full` is a plain slot and not a property.
+
+### How far the writers go
+
+Only the attack pipeline writes, and that is debt #50 (`docs/questions.md` #6
+has the choice). `resolve_attack()` takes `log` as it takes `trigger`: optional,
+and `None` costs one identity test per record site. The `ATTACK` record is
+written after `on_attack_resolved` is sealed, so an attack that raised part-way
+leaves no result in the log; a vetoed attack writes one with `outcome` `None`,
+at both levels, because "prevented" is a result and not a roll.
+
+### What it cost the benchmark
+
+Priced as sequencing principle 10 asks, with the deterministic witness first.
+
+**The witness.** Over the fixed 200-encounter profiled run (6,000 attacks, 3,934
+of them dealing damage), the call count moves from 1,483,283 to **1,489,683 at
+`summary`** and **1,503,551 at `full`**, comparing like with like across
+§ w1g's two-valued keying artefact. `summary`'s 6,400 are one `append` per attack
+plus the per-encounter `clear()`; `full` adds one `append` per attack roll and an
+`append` and a `dict.items()` per damage roll, 6,000 + 2 × 3,934. Every added
+call is a C builtin except the 200 `EventLog.clear()` frames, one per encounter
+reset. `resolve_attack()`'s cumulative time read 0.67–0.71 s before, 0.61–0.67 s
+at `full` and 0.67–0.69 s at `summary` over three runs each: inside its own noise.
+
+**The rate agrees.** Eight interleaved triples on one container, unlogged
+baseline then `full` then `summary`: medians of **+0.1% at `full`** (ratios −7.3%
+to +7.1%) and **+0.2% at `summary`** (−3.8% to +9.6%) against the baseline, and
+−0.6% between the two levels. None of it is distinguishable from zero.
+
+**So the row's question has an answer, and it is neither.** It asked whether
+the skip is the thing that has to be cheap or the record is. Both are: a record
+is at most three C calls and the skip is one attribute read, in a run that
+makes ~250 calls per attack. DESIGN.md § Levers credits `--log-level=summary` with
+"~2–3× on its own", and that figure is the cost of formatting a string per roll,
+which tuple records never pay. What `summary` buys now is memory: `full` holds
+about three records per attack. That is `w2g`'s concern, since the runner decides
+whether a log outlives its iteration.
+
+### What this task deliberately did not do
+
+- **No writer outside `engine/attack.py`** — debt #50, `w2c`.
+- **No time on a record.** No attack context carries a `TimeKey` (§ w1c), so
+  order in the log is the only clock; the round and turn records that give a
+  reporter boundaries are the turn loop's to write.
+- **No serialisation.** JSONL for `trace` and the provenance a `SimResult`
+  carries are `w2g`'s; a tuple of names, numbers and enum members is what they
+  will be read from.

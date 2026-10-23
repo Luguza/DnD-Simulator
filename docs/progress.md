@@ -33,8 +33,8 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | — | ⏸ plan review | done | #42 |
 | 7 | w1g — saving throws, DCs, save-for-half | done | #45 |
 | 8 | w1h — the 15 combat conditions | done | #46 |
-| 9 | w1i — structured event log | next | |
-| — | ⏸ plan review | queued | |
+| 9 | w1i — structured event log | done | |
+| — | ⏸ plan review | next | |
 | 10 | w1j — dying, death saves, healing, temp HP | queued | |
 | 11 | w1l — docstrings cut back to their own code | queued | |
 | 12 | w1k — M0 re-measure 🔒 | queued | |

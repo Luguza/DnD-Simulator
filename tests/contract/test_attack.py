@@ -22,11 +22,15 @@ import pytest
 from dndsim.core.dice import Dice
 from dndsim.core.errors import EngineAssemblyError, FeatureContractError
 from dndsim.core.geometry import Cell
+from dndsim.core.log import EventLog, LogLevel
 from dndsim.core.rng import MersenneRng, Rng, ScriptedRng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.effects import Effect
 from dndsim.creatures.stats import GREATSWORD, Armour, StatBlock, Weapon
 from dndsim.engine.attack import (
+    ATTACK,
+    ATTACK_ROLL,
+    DAMAGE_ROLL,
     FRESH,
     PREVENTED,
     AttackContexts,
@@ -1372,3 +1376,115 @@ def test_a_different_seed_gives_a_different_fight() -> None:
     would also pass. Both sequences are fixed, so this is a statement about two
     particular streams rather than a probabilistic one."""
     assert _fight(20240915) != _fight(1)
+
+
+# --- The event log ----------------------------------------------------------
+
+
+def test_a_full_log_records_the_d20_the_damage_dice_and_the_result() -> None:
+    """Natural 10 + 4 + 3 = 17 against AC 15; 2d6 rolled 5 + 4 = 9 plus the +4
+    modifier is 13 slashing, rolled and then dealt in full."""
+    swinger, target = attacker(), defender()
+    log = EventLog(LogLevel.FULL)
+
+    resolve_attack(swinger, target, rng=ScriptedRng([_HIT, 5, 4]), log=log)
+
+    assert log.records == (
+        (ATTACK_ROLL, "Fighter", "Dummy", 10, 17, False, False),
+        (DAMAGE_ROLL, "Fighter", "Dummy", False, ((DamageType.SLASHING, 13),)),
+        (ATTACK, "Fighter", "Dummy", "Greatsword", Outcome.HIT, 13),
+    )
+
+
+def test_a_summary_log_keeps_the_result_and_skips_the_rolls() -> None:
+    swinger, target = attacker(), defender()
+    log = EventLog(LogLevel.SUMMARY)
+
+    resolve_attack(swinger, target, rng=ScriptedRng([_HIT, 5, 4]), log=log)
+
+    assert log.records == ((ATTACK, "Fighter", "Dummy", "Greatsword", Outcome.HIT, 13),)
+
+
+def test_a_critical_damage_roll_is_logged_as_critical_and_doubled() -> None:
+    """4d6 rolled 6 + 5 + 4 + 3 = 18, plus the +4 modifier once: 22."""
+    swinger, target = attacker(), defender()
+    log = EventLog()
+
+    resolve_attack(swinger, target, rng=ScriptedRng([20, 6, 5, 4, 3]), log=log)
+
+    assert log.records[1] == (
+        DAMAGE_ROLL,
+        "Fighter",
+        "Dummy",
+        True,
+        ((DamageType.SLASHING, 22),),
+    )
+
+
+def test_advantage_is_logged_with_the_d20_it_kept() -> None:
+    """Two d20s, 4 and 10, keep the 10: 10 + 7 = 17."""
+    swinger, target = attacker(), defender()
+    swinger.attach(Reckless(swinger))
+    log = EventLog()
+
+    resolve_attack(swinger, target, rng=ScriptedRng([4, _HIT, 5, 4]), log=log)
+
+    assert log.records[0] == (ATTACK_ROLL, "Fighter", "Dummy", 10, 17, True, False)
+
+
+def test_a_miss_logs_its_d20_and_no_damage_roll() -> None:
+    """Natural 3 + 7 = 10, short of AC 15."""
+    swinger, target = attacker(), defender()
+    log = EventLog()
+
+    resolve_attack(swinger, target, rng=ScriptedRng([_MISS]), log=log)
+
+    assert log.records == (
+        (ATTACK_ROLL, "Fighter", "Dummy", 3, 10, False, False),
+        (ATTACK, "Fighter", "Dummy", "Greatsword", Outcome.MISS, 0),
+    )
+
+
+def test_damage_on_a_miss_is_logged_as_a_damage_roll() -> None:
+    """Graze's flat 4 slashing is rolled (it rolls no die) and resistance
+    halves it to 2: the roll is logged before the defence, the result after."""
+    swinger, target = attacker(), defender()
+    swinger.attach(Graze(swinger))
+    target.attach(SlashResistant(target))
+    log = EventLog()
+
+    resolve_attack(swinger, target, rng=ScriptedRng([_MISS]), log=log)
+
+    assert log.records[1:] == (
+        (DAMAGE_ROLL, "Fighter", "Dummy", False, ((DamageType.SLASHING, 4),)),
+        (ATTACK, "Fighter", "Dummy", "Greatsword", Outcome.MISS, 2),
+    )
+
+
+def test_a_vetoed_attack_is_logged_with_no_outcome_at_every_level() -> None:
+    for level in LogLevel:
+        swinger, target = attacker(), defender()
+        swinger.attach(VetoDeclaration(swinger))
+        log = EventLog(level)
+
+        resolve_attack(swinger, target, rng=no_dice(), log=log)
+
+        assert log.records == ((ATTACK, "Fighter", "Dummy", "Greatsword", None, 0),)
+
+
+def test_logging_does_not_change_the_fight() -> None:
+    """The same seed through the same twenty attacks, unlogged and at each
+    level: the same results and the same hit points, so a log is a witness to
+    the stream and never a draw on it."""
+
+    def fight(log: EventLog | None) -> tuple[list[AttackResult], int]:
+        swinger, target = attacker(), defender()
+        target.hp = 10_000
+        rng = MersenneRng(7)
+        results = [resolve_attack(swinger, target, rng=rng, log=log) for _ in range(20)]
+        return results, target.hp
+
+    unlogged = fight(None)
+
+    assert fight(EventLog(LogLevel.FULL)) == unlogged
+    assert fight(EventLog(LogLevel.SUMMARY)) == unlogged

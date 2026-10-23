@@ -35,7 +35,9 @@ from unittest.mock import patch
 
 import pytest
 
+from dndsim.core.log import LogLevel
 from dndsim.core.timeline import Reset
+from dndsim.engine.attack import ATTACK, ATTACK_ROLL
 from dndsim.hooks.contexts import Context, RoundContext
 from dndsim.hooks.definitions import ON_HIT
 from dndsim.hooks.source import HookSource
@@ -349,6 +351,43 @@ def test_pooling_contexts_does_not_change_the_fight() -> None:
 
     assert pooled.hero.hp == fresh.hero.hp
     assert [e.hp for e in pooled.enemies] == [e.hp for e in fresh.enemies]
+
+
+def test_every_attack_writes_its_records_to_the_log() -> None:
+    """The log is inside the measurement (ROADMAP w1i): one `ATTACK` record per
+    resolution at both levels, and one `ATTACK_ROLL` under each at `full`."""
+    for level, rolls in ((LogLevel.FULL, True), (LogLevel.SUMMARY, False)):
+        spike, rng = build_spike(0, log_level=level)
+
+        resolutions = run_encounter(spike, rng)
+
+        kinds = [record[0] for record in spike.log]
+        assert kinds.count(ATTACK) == resolutions
+        assert kinds.count(ATTACK_ROLL) == (resolutions if rolls else 0)
+
+
+def test_the_log_holds_one_encounter_at_a_time() -> None:
+    """Cleared by `reset()`, like the hit points, so a thousand-encounter run
+    does not measure a list growing to a hundred thousand records."""
+    spike, rng = build_spike(0, log_level=LogLevel.SUMMARY)
+
+    run_encounter(spike, rng)
+    resolutions = run_encounter(spike, rng)
+
+    assert len(spike.log) == resolutions
+
+
+def test_the_same_seed_writes_the_same_log() -> None:
+    """Seed reproduces the event log record for record, which is what `trace`
+    and every regression diff stand on (DESIGN.md § Verification)."""
+    first, first_rng = build_spike(7)
+    second, second_rng = build_spike(7)
+
+    for _ in range(3):
+        run_encounter(first, first_rng)
+        run_encounter(second, second_rng)
+
+        assert first.log.records == second.log.records
 
 
 def test_the_measurement_returns_a_rate_and_a_resolution_count() -> None:
