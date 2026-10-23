@@ -30,6 +30,13 @@ class Petrified(Incapacitated):
         'Dexterity saving throws." '
         "(ROADMAP.md § The W0 debt register #37)",
     )
+    APPROXIMATED = (
+        "a creature already Poisoned when it is Petrified stays Poisoned, where "
+        '"You have Immunity to the Poisoned condition" means the condition '
+        "should not affect it while Petrified lasts — the immunity refuses "
+        "only a Poisoned that arrives later "
+        "(ROADMAP.md § The W0 debt register #49)",
+    )
 
     @hook("on_incoming_attack_declared")
     def petrified_incoming_attacks(self, ctx: AttackDeclaredContext) -> R:
@@ -47,8 +54,9 @@ class Petrified(Incapacitated):
 
     @hook("on_effect_applied", phase=Phase.EARLY)
     def poison_immunity(self, ctx: EffectContext) -> R:
-        """Refuses the Poisoned condition on its way on, which is what
-        "You have Immunity to the Poisoned condition" means here."""
+        """Refuses a Poisoned condition that arrives while Petrified is held,
+        the half of "You have Immunity to the Poisoned condition" that
+        `APPROXIMATED` does not declare lost."""
         if ctx.effect.name != Poisoned.ID:
             return R.SKIPPED
         ctx.veto(self.name)

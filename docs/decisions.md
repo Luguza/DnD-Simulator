@@ -3275,14 +3275,15 @@ report itself whole.
 Nothing in `conditions/` reports a gap in prose. Every entry is data a
 collection test reads, which is what `CLAUDE.md` § Architecture promises ("a
 collection test lists them") and what keeps the count honest: sixteen
-`NEEDS_HOOK` entries, each quoting the clause it could not write, and three
+`NEEDS_HOOK` entries, each quoting the clause it could not write, and four
 `APPROXIMATED` ones. The sixteen reduce to **eleven** distinct structural gaps
 once the clauses that want the same missing thing are merged — six conditions
-want a Speed that can be changed and four a save that can be failed. Every
+want a Speed that can be changed and four a save that can be failed — and
+Petrified's `APPROXIMATED` entry is a twelfth. Every
 entry names the register row that owns it, so the register is the record and
 the tuple is the pointer: rows #28 and #37 were already open, #38, #39, #40,
-#41, #44, #45, #46, #47 and #48 are new, and two further gaps that are not
-clause-level — #42 and #43 below — make eleven new rows in all. (#21 and #27
+#41, #44, #45, #46, #47, #48 and #49 are new, and two further gaps that are not
+clause-level — #42 and #43 below — make twelve new rows in all. (#21 and #27
 are each the same gap seen from another file and are cited from the new row
 rather than duplicated into it.)
 
@@ -3328,7 +3329,7 @@ know was owed (sequencing principle 8's shape). `exhaustion.py` is the one file
 in the package over 60 lines for that reason — eight handlers, none of which is
 more than three lines.
 
-### Prone is approximated; the three save conditions are not
+### Prone is approximated; the four save conditions are not
 
 The two calls look alike and went opposite ways, so the difference is the thing
 to record. Prone's "An attack roll against you has Advantage if the attacker is
@@ -3360,6 +3361,29 @@ and `charges` onto the incumbent and not `caster`. That is the glossary's "a
 recipient either has a condition or doesn't" taken at its word, and the loss is
 that one of the two sources is forgotten. `UNIQUE_PER_SOURCE` would hold two
 Frightened conditions at once, which the same sentence forbids. Debt #43.
+
+### Petrified's immunity is approximated, not written
+
+"You have Immunity to the Poisoned condition" is a veto on Poisoned's arrival,
+which is exact only when Petrified comes first. A creature Poisoned *before* it
+is Petrified keeps Poisoned's handlers running, where XPHB, Rules Glossary
+"Immunity" says an immune condition doesn't affect you. The review of this PR
+found it, and it is declared rather than closed for two reasons.
+
+- **Removing the held Poisoned would be wrong in the other direction.** The
+  immunity lasts as long as Petrified does. A Poisoned with an hour left that
+  outlasts a short petrification should affect the creature again afterwards,
+  and removing it would cure it instead.
+- **Suppressing it needs something the store does not have.** Petrified cannot
+  answer its own arrival (`EffectStore._announce()`'s snapshot rule), so the
+  only code that sees both effects is Poisoned's own `on_effect_applied` and
+  `on_effect_expired`. Writing it there would make Poisoned keep a list of the
+  conditions that grant immunity to it. The general fix is to switch a held
+  effect's handlers off and back on, and that belongs in `creatures/effects.py`,
+  outside this task's file set.
+
+Nothing applies a condition through the engine yet (#42), so the loss is
+invisible until something does. Debt #49.
 
 ### The two condition hooks still have no caller
 

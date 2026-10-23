@@ -1,9 +1,7 @@
 """The closed mapping from a condition's name to the class that implements it.
 
-`rules/enums.py`'s `Condition` is a name and a class in this package is the
-behaviour; this is the one place the two are tied together, so a parser reading
-`"poisoned"` off a stat block and an APL asking whether a creature is Prone
-reach the same class.
+Maps each member of `rules/enums.py`'s `Condition` to the class in this package
+that implements it.
 
 Sources: XPHB (2024) Rules Glossary "Condition"; `docs/decisions.md` § w1h.
 """
