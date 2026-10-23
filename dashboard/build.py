@@ -214,24 +214,28 @@ def fetch_prs() -> list[dict[str, Any]]:
 def arrange(waves: list[Wave], queue: list[QueueRow]) -> None:
     """Put the current wave's rows in queue order, reviews included, and carry
     the queue's status and PR onto each. Waves before the queue's are done."""
-    queued = {m.group(1): r for r in queue if (m := TASK_ID.search(r.task))}
-    live = min((int(t[1]) for t in queued), default=0)
     by_id = {item.id: item for wave in waves for item in wave.items}
+    rows: list[tuple[QueueRow, Item]] = []
+    for row in queue:
+        # A task row opens with its id; a review row may name one later on.
+        found = re.match(r"\s*(w\d[a-z]\d*)\b", row.task)
+        if found is None:
+            item = Item("⏸", row.task, review=True)
+        else:
+            item = by_id.get(found.group(1)) or Item(found.group(1), row.task)
+        item.status = row.status
+        item.pr = int(row.pr.lstrip("#")) if row.pr.lstrip("#").isdigit() else None
+        rows.append((row, item))
+
+    queued = {item.id for _, item in rows if not item.review}
+    live = min((int(task_id[1]) for task_id in queued), default=0)
     for wave in waves:
         if wave.number < live:
             for item in wave.items:
                 item.status = "done"
-        if wave.number != live:
-            continue
-        ordered = []
-        for row in queue:
-            found = TASK_ID.search(row.task)
-            item = by_id[found.group(1)] if found else Item("⏸", row.task, review=True)
-            item.status = row.status
-            item.pr = int(row.pr.lstrip("#")) if row.pr.lstrip("#").isdigit() else None
-            ordered.append(item)
-        rest = [i for i in wave.items if i.id not in queued]
-        wave.items = ordered + rest
+        if wave.number == live:
+            rest = [i for i in wave.items if i.id not in queued]
+            wave.items = [item for _, item in rows] + rest
 
 
 def schedule(waves: list[Wave], prs: list[dict[str, Any]], now: datetime) -> float:
