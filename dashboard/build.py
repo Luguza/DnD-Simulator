@@ -27,6 +27,7 @@ from typing import Any
 TEMPLATE = Template((Path(__file__).parent / "template.html").read_text("utf-8"))
 TASK_ID = re.compile(r"\b(w(\d)[a-z]\d*)\b")
 DAY_PX = 6
+PHONE_DAY_PX = 2.5
 PACE_WINDOW = 10
 
 
@@ -69,9 +70,15 @@ class Debt:
     cost: str
 
     @property
-    def owner_key(self) -> str:
-        found = TASK_ID.search(self.owner)
-        return found.group(1) if found else plain(self.owner)
+    def owner_keys(self) -> list[str]:
+        """The tasks the cell opens with, or the cell itself."""
+        ids = []
+        for token in re.findall(r"w\d[a-z]\d*|[A-Za-z]+", plain(self.owner)):
+            if TASK_ID.fullmatch(token):
+                ids.append(token)
+            elif token != "and":
+                break  # "needs `w1a`", "via `w3e`" name prerequisites
+        return ids or [plain(self.owner)]
 
 
 @dataclass
@@ -124,6 +131,18 @@ def plain(text: str) -> str:
 def short(text: str, limit: int) -> str:
     text = plain(text)
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def current_wave(waves: list["Wave"]) -> "Wave":
+    return next(
+        (w for w in waves if any(i.status != "done" for i in w.items)), waves[-1]
+    )
+
+
+def progress(wave_items: list["Item"]) -> tuple[int, int]:
+    """Tasks done and tasks in all, reviews left out."""
+    tasks = [i for i in wave_items if not i.review]
+    return sum(i.status == "done" for i in tasks), len(tasks)
 
 
 def parse_date(stamp: str | None) -> datetime | None:
@@ -220,7 +239,8 @@ def schedule(waves: list[Wave], prs: list[dict[str, Any]], now: datetime) -> flo
     one after another at the recent pace. Returns that pace in days."""
     by_number = {pr["number"]: pr for pr in prs}
     titled: dict[str, dict[str, Any]] = {}
-    for candidate in sorted(prs, key=lambda p: p["number"]):
+    merged_first = sorted(prs, key=lambda p: (not p.get("merged_at"), p["number"]))
+    for candidate in merged_first:
         found = re.match(r"\W*(w\d[a-z]\d*)\b", candidate["title"])
         if found and found.group(1) not in titled:
             titled[found.group(1)] = candidate
@@ -278,60 +298,59 @@ def render_gantt(
         hour=0, minute=0, second=0, microsecond=0
     )
     finish = max(i.end for i in dated if i.end) + timedelta(days=7)
-    width = int((finish - origin).days * DAY_PX)
+    days = (finish - origin).days
 
     def x(moment: datetime) -> float:
-        return (moment - origin).total_seconds() / 86400 * DAY_PX
+        """Percent of the way along the track."""
+        return (moment - origin).total_seconds() / 86400 / days * 100
 
     owed: dict[str, int] = {}
     for debt in debts:
-        owed[debt.owner_key] = owed.get(debt.owner_key, 0) + 1
+        for key in debt.owner_keys:
+            owed[key] = owed.get(key, 0) + 1
 
     months, ticks = [], []
     cursor = origin.replace(day=1)
     while cursor < finish:
         if cursor >= origin:
-            ticks.append(f'<i style="left:{x(cursor):.0f}px"></i>')
-            months.append(f'<span style="left:{x(cursor):.0f}px">{cursor:%b %Y}</span>')
+            ticks.append(f'<i style="left:{x(cursor):.2f}%"></i>')
+            months.append(f'<span style="left:{x(cursor):.2f}%">{cursor:%b %Y}</span>')
         cursor = (cursor + timedelta(days=32)).replace(day=1)
-    today = f'<b class="today" style="left:{x(now):.0f}px"><em>today</em></b>'
+    today = f'<b class="today" style="left:{x(now):.2f}%"><em>today</em></b>'
 
     def bar(item: Item) -> str:
         if item.start is None or item.end is None:
             return ""
-        left, span = x(item.start), max(x(item.end) - x(item.start), 4)
+        left, span = x(item.start), x(item.end) - x(item.start)
         tip = f"{plain(item.title)}\n{day(item.start)} → {day(item.end)}"
         if item.kind == "planned":
             tip += " (projected)"
         if item.review:
             return (
-                f'<span class="diamond {item.status}" style="left:{left:.0f}px" '
+                f'<span class="diamond {item.status}" style="left:{left:.2f}%" '
                 f'title="{html.escape(tip)}"></span>'
             )
         return (
-            f'<span class="bar {item.kind}" style="left:{left:.0f}px;'
-            f'width:{span:.0f}px" title="{html.escape(tip)}"></span>'
+            f'<span class="bar {item.kind}" style="left:{left:.2f}%;'
+            f'width:{span:.2f}%" title="{html.escape(tip)}"></span>'
         )
 
     rows = [
         f'<div class="row axis"><div class="lab"></div>'
         f'<div class="track">{"".join(months)}</div></div>'
     ]
-    current = next(
-        (w for w in waves if any(i.status != "done" for i in w.items)), waves[-1]
-    )
+    current = current_wave(waves)
     for wave in waves:
-        tasks = [i for i in wave.items if not i.review]
-        done = sum(i.status == "done" for i in tasks)
+        done, total = progress(wave.items)
         spans = [i for i in wave.items if i.start and i.end]
         summary = ""
         if spans:
             left = x(min(i.start for i in spans if i.start))
             right = x(max(i.end for i in spans if i.end))
-            pct = 100 * done / len(tasks) if tasks else 0
+            pct = 100 * done / total if total else 0
             summary = (
-                f'<span class="bar wave" style="left:{left:.0f}px;'
-                f'width:{max(right - left, 4):.0f}px"><span style="width:{pct:.0f}%">'
+                f'<span class="bar wave" style="left:{left:.2f}%;'
+                f'width:{right - left:.2f}%"><span style="width:{pct:.0f}%">'
                 "</span></span>"
             )
         body = []
@@ -355,18 +374,17 @@ def render_gantt(
                 f"{chip}{pr}</div>"
                 f'<div class="track">{bar(item)}</div></div>'
             )
-        state = (
-            "complete" if done == len(tasks) else "active" if wave is current else ""
-        )
+        state = "complete" if done == total else "active" if wave is current else ""
         rows.append(
             f'<details class="wave {state}"{" open" if wave is current else ""}>'
             f'<summary class="row"><div class="lab"><strong>W{wave.number}</strong> '
             f'<span class="t">{inline(wave.title)}</span>'
-            f'<span class="count">{done}/{len(tasks)}</span></div>'
+            f'<span class="count">{done}/{total}</span></div>'
             f'<div class="track">{summary}</div></summary>{"".join(body)}</details>'
         )
     return (
-        f'<div class="gantt" style="--w:{width}px">'
+        f'<div class="gantt" style="--wd:{days * DAY_PX:.0f}px;'
+        f'--wp:{days * PHONE_DAY_PX:.0f}px">'
         f'<div class="overlay">{"".join(ticks)}{today}</div>{"".join(rows)}</div>'
     )
 
@@ -376,15 +394,15 @@ def render_debt(debts: list[Debt]) -> tuple[str, str]:
         found = TASK_ID.fullmatch(key)
         return (int(found.group(2)) if found else 99, key)
 
-    owners = sorted({d.owner_key for d in debts}, key=order)
+    owners = sorted({key for d in debts for key in d.owner_keys}, key=order)
     options = "".join(
         f'<option value="{html.escape(o)}">{html.escape(o)}</option>' for o in owners
     )
     items = "".join(
-        f'<details class="entry" data-owner="{html.escape(d.owner_key)}">'
+        f'<details class="entry" data-owner="{html.escape("|".join(d.owner_keys))}">'
         f'<summary><span class="num">#{d.number}</span>'
         f'<span class="t">{inline(d.title)}</span>'
-        f'<code class="owner">{html.escape(d.owner_key)}</code></summary>'
+        f'<code class="owner">{html.escape(", ".join(d.owner_keys))}</code></summary>'
         f"<dl><dt>Where</dt><dd>{inline(d.where)}</dd>"
         f"<dt>Retired by</dt><dd>{inline(d.owner)}</dd>"
         f"<dt>If nobody does</dt><dd>{inline(d.cost)}</dd></dl></details>"
@@ -419,12 +437,9 @@ def render(
     repo_url: str,
 ) -> str:
     tasks = [i for w in waves for i in w.items if not i.review]
-    done = sum(i.status == "done" for i in tasks)
-    current = next(
-        (w for w in waves if any(i.status != "done" for i in w.items)), waves[-1]
-    )
-    wave_tasks = [i for i in current.items if not i.review]
-    wave_done = sum(i.status == "done" for i in wave_tasks)
+    done, total = progress(tasks)
+    current = current_wave(waves)
+    wave_done, wave_total = progress(current.items)
     up_next = next(
         (i for w in waves for i in w.items if i.status in ("next", "held")), None
     )
@@ -436,12 +451,12 @@ def render(
         return f'<div class="meter"><span style="width:{pct:.1f}%"></span></div>'
 
     stats = [
-        ("Overall", f"{done} / {len(tasks)}", "tasks done", meter(done, len(tasks))),
+        ("Overall", f"{done} / {total}", "tasks done", meter(done, total)),
         (
             f"Wave W{current.number}",
-            f"{wave_done} / {len(wave_tasks)}",
+            f"{wave_done} / {wave_total}",
             inline(current.title),
-            meter(wave_done, len(wave_tasks)),
+            meter(wave_done, wave_total),
         ),
         (
             "Up next",

@@ -9,7 +9,6 @@
 @media (prefers-color-scheme: dark) { :root { --bg:#141413; --card:#1e1e1c; --ink:#ecebe6;
   --muted:#9a9993; --line:#2e2e2b; --accent:#8b97f0; --done:#4fbf82; --active:#e7a33e;
   --held:#ef6b5c; --plan:#5560a8; --track:#2a2a27; } }
-@media (max-width:640px) { :root { --lab:150px; } }
 * { box-sizing:border-box; }
 body { margin:0; background:var(--bg); color:var(--ink);
   font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
@@ -36,7 +35,7 @@ code { font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace; background:var(-
 
 /* Gantt */
 .scroll { overflow-x:auto; border:1px solid var(--line); border-radius:8px; }
-.gantt { position:relative; width:calc(var(--lab) + var(--w)); font-size:13px; }
+.gantt { --w:var(--wd); position:relative; width:calc(var(--lab) + var(--w)); font-size:13px; }
 .overlay { position:absolute; top:0; bottom:0; left:var(--lab); width:var(--w); pointer-events:none; z-index:1; }
 .overlay i { position:absolute; top:0; bottom:0; border-left:1px dashed var(--line); }
 .today { position:absolute; top:0; bottom:0; border-left:2px solid var(--held); }
@@ -58,7 +57,7 @@ details.wave[open] > summary .lab::before { content:"▾"; }
 details.wave.complete > summary strong { color:var(--done); }
 details.wave.active > summary strong { color:var(--active); }
 .count { color:var(--muted); font-variant-numeric:tabular-nums; }
-.bar { position:absolute; top:8px; height:12px; border-radius:3px; }
+.bar { position:absolute; top:8px; height:12px; min-width:4px; border-radius:3px; }
 .bar.done { background:var(--done); }
 .bar.approx { background:repeating-linear-gradient(45deg,var(--done) 0 3px,transparent 3px 6px); border:1px solid var(--done); }
 .bar.active { background:repeating-linear-gradient(45deg,var(--active) 0 4px,color-mix(in srgb,var(--active) 55%,transparent) 4px 8px); }
@@ -99,6 +98,34 @@ ul.prs .meta { display:block; }
 .tag { font-size:11px; border:1px solid var(--muted); color:var(--muted); border-radius:99px; padding:0 6px; }
 .empty { color:var(--muted); }
 footer { margin-top:24px; color:var(--muted); font-size:12.5px; }
+
+/* Phone: each timeline row is its label over a bar, the label pinned while
+   the bars scroll; decisions come before the long debt list. */
+@media (max-width:640px) {
+  :root { --lab:0px; }
+  main { padding:16px 16px 40px; }
+  h1 { font-size:19px; } header { margin-bottom:14px; }
+  .stats { grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+  .stat, .card { padding:12px; border-radius:8px; }
+  .stat .value { font-size:20px; } .stat .value code { font-size:17px; }
+  .stat .sub { font-size:12px; line-height:1.35; }
+  .card + .card, .grid { margin-top:12px; } .grid, .col { gap:12px; }
+  .legend { gap:4px 10px; font-size:11.5px; }
+  .gantt { --w:var(--wp); }
+  .row { flex-direction:column; min-height:0; }
+  .lab { width:calc(100vw - 60px); flex:none; border-right:0; padding:6px 8px 0; font-size:13.5px; }
+  .track { flex:none; width:var(--w); height:26px; }
+  .axis .lab { display:none; } .axis .track { height:24px; }
+  .row.next .lab, .row.active .lab, .row.held .lab { box-shadow:none; }
+  .row.next, .row.active, .row.next .lab, .row.active .lab {
+    background:color-mix(in srgb,var(--active) 12%,var(--card)); }
+  details.wave > summary { padding-bottom:2px; }
+  .grid > #debt { order:1; }
+  details.entry > summary { grid-template-columns:32px minmax(0,1fr); padding:10px 0; }
+  details.entry > summary .owner { grid-column:2; max-width:none; text-align:left; }
+  dl { margin-left:40px; }
+  .filters select { flex:1; }
+}
 </style></head>
 <body><main>
 <header><h1>DnD Simulator Progress</h1>
@@ -142,14 +169,14 @@ at the average pace of the last merges, in queue then ROADMAP order.</footer>
 <script>
 (function () {
   var scroll = document.getElementById("scroll"), today = scroll.querySelector(".today");
-  if (today) scroll.scrollLeft = Math.max(0, today.offsetLeft - scroll.clientWidth / 2);
+  if (today) scroll.scrollLeft = Math.max(0, today.offsetLeft + today.offsetParent.offsetLeft - scroll.clientWidth / 2);
   var q = document.getElementById("debt-q"), owner = document.getElementById("debt-owner");
   var shown = document.getElementById("debt-shown");
   var entries = document.querySelectorAll("#debt-list details");
   function filter() {
     var text = q.value.toLowerCase(), who = owner.value, n = 0;
     entries.forEach(function (e) {
-      var hit = (!who || e.dataset.owner === who) && e.textContent.toLowerCase().indexOf(text) !== -1;
+      var hit = (!who || e.dataset.owner.split("|").indexOf(who) !== -1) && e.textContent.toLowerCase().indexOf(text) !== -1;
       e.hidden = !hit; if (hit) n++;
     });
     shown.textContent = n;
