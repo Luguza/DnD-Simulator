@@ -50,6 +50,8 @@ __all__ = [
     "PROFICIENCY_BONUS",
     "SHIELD_AC_BONUS",
     "SIZE_ORDER",
+    "SIZE_WIDTH_CELLS",
+    "SPELL_SAVE_DC_BASE",
     "THIRD_CASTER_SLOTS",
     "ability_modifier",
     "proficiency_bonus",
@@ -102,6 +104,12 @@ Critical Hit for that character and is still not an automatic one, so the two
 numbers stop being equal the moment Improved Critical exists and
 `engine/attack.py` reads each for its own question."""
 
+SPELL_SAVE_DC_BASE: Final = 8
+"""The 8 of "8 + your spellcasting ability modifier + your Proficiency Bonus"
+(XPHB, "Spells" -> Spell Save DC). Why the number is here rather than beside
+`engine/saves.py` is `docs/decisions.md` § w1g, and the shape of the argument is
+`RecoveryTrigger`'s."""
+
 DEATH_SAVE_DC: Final = 10
 DEATH_SAVE_SUCCESSES_TO_STABILIZE: Final = 3
 DEATH_SAVE_FAILURES_TO_DIE: Final = 3
@@ -117,6 +125,27 @@ SIZE_ORDER: Final[Mapping[Size, int]] = MappingProxyType(
 )
 """Sizes ranked smallest to largest, so that "one size larger than you" is a
 comparison of two ints rather than a hand-written ordering per rule."""
+
+SIZE_WIDTH_CELLS: Final[Mapping[Size, int]] = MappingProxyType(
+    {
+        # The XPHB "Creature Size" table, in grid squares rather than feet: a
+        # Tiny creature's 2.5 feet and a Medium one's 5 both round to the one
+        # square they are placed in, and Gargantuan's "20 feet or more" is
+        # floored at the 20 the table prints.
+        Size.TINY: 1,
+        Size.SMALL: 1,
+        Size.MEDIUM: 1,
+        Size.LARGE: 2,
+        Size.HUGE: 3,
+        Size.GARGANTUAN: 4,
+    }
+)
+"""How many squares on a side a creature of each size occupies.
+
+`core/geometry.py` is what reads it: a footprint is what distance, reach and a
+template's coverage are measured against, so the one place a size becomes a
+number of squares is here beside the rest of the rules tables.
+"""
 
 PROFICIENCY_BONUS: Final[Mapping[int, int]] = MappingProxyType(
     {

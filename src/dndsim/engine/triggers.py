@@ -99,10 +99,8 @@ Null Object policy of DESIGN.md § APL.
   valve is here — `provokes=False` — but what sets it is the Command and the
   condition, and both are `w2b`/`w2c`'s.
 - **Whether the watcher can see the mover.** The rule is "a creature *you can
-  see* leaves your reach", and there is no visibility gate below. It is exact
-  while nothing in the fight is Blinded or Invisible, which is every fight until
-  `w1h` builds the conditions — and wrong the first time one is, so it is the
-  debt most likely to be forgotten because it costs nothing yet.
+  see* leaves your reach", and there is no visibility gate below, so a Blinded
+  watcher or an Invisible mover is offered the attack anyway.
 - **Entering** reach, which 2024 Polearm Master reacts to. There is no hook for
   it: the registry is closed at 39 and this is not the task that opens it. It is
   a genuine gap and it is `w3e`'s paper pass to find and `w3f`'s to batch.
@@ -140,11 +138,12 @@ class _Watcher:
     the watcher is not the one taking a turn.
     """
 
-    __slots__ = ("creature", "reach_ft", "spent", "threatening")
+    __slots__ = ("creature", "reach_ft", "size", "spent", "threatening")
 
     def __init__(self, creature: Creature, *, threatening: bool) -> None:
         self.creature = creature
         self.reach_ft = creature.reach_ft
+        self.size = creature.size
         self.threatening = threatening
         self.spent = False
 
@@ -193,10 +192,17 @@ class MovementWatch:
         """
         mover = self._mover
         origin = mover.position
+        size = mover.size
         pruning = False
         for watcher in self._watchers:
             standing = watcher.creature.position
-            now = in_reach(standing, destination, watcher.reach_ft)
+            now = in_reach(
+                standing,
+                destination,
+                watcher.reach_ft,
+                origin_size=watcher.size,
+                destination_size=size,
+            )
             if watcher.threatening and not now:
                 watcher.threatening = False
                 self._offer(watcher, origin, destination)
@@ -275,10 +281,13 @@ def watch_movement(
     if not provokes:
         return None
     origin = mover.position
+    size = mover.size
     # The furthest any square of a route `squares` long can be from where it
     # starts, because a step is one square in Chebyshev whatever its direction
     # (`core/geometry.py`). A bystander beyond its own reach plus this can never
-    # have the mover inside its reach, so it can never be left.
+    # have the mover inside its reach, so it can never be left. A footprint
+    # wider than one square does not widen it: the distances below are measured
+    # between footprints, and a footprint translates with its anchor.
     horizon = squares * CELL_SIZE_FT
     watchers: list[_Watcher] = []
     for creature in bystanders:
@@ -293,22 +302,36 @@ def watch_movement(
             continue
         reach = creature.reach_ft
         standing = creature.position
-        # `distance_ft` for the horizon and `in_reach` for the flag, rather than
-        # one subtraction doing both. They are the same arithmetic today and
-        # will stop being: `core/geometry.py` says `in_reach` is the one query
-        # "the attack pipeline, the opportunity-attack trigger and the APL's
-        # `enemies.in_reach` selector all ask, in one place so that 'reach'
-        # means the same thing to all three", and `w1d` is the task that makes
-        # that sentence earn its keep by giving a Large creature a reach its
-        # square does not describe (debt 9). An inlined Chebyshev here would be
-        # the copy that quietly does not get that. The horizon is a bounding-box
-        # question rather than a reach one and stays raw distance — `w1d` owes
-        # it the same second look, since a footprint wider than one square
-        # widens the bound too.
-        if distance_ft(standing, origin) > reach + horizon:
+        # `distance_ft` for the horizon and `in_reach` for the flag, rather
+        # than one subtraction doing both: they ask different questions of the
+        # same footprints, and `core/geometry.py` says `in_reach` is the one
+        # query "the attack pipeline, the opportunity-attack trigger and the
+        # APL's `enemies.in_reach` selector all ask, in one place so that
+        # 'reach' means the same thing to all three". `w1d` is what made that
+        # sentence earn its keep, by giving a Large creature a reach its anchor
+        # does not describe (debt 9); an inlined Chebyshev here would be the
+        # copy that quietly did not get it.
+        if (
+            distance_ft(
+                standing,
+                origin,
+                origin_size=creature.size,
+                destination_size=size,
+            )
+            > reach + horizon
+        ):
             continue
         watchers.append(
-            _Watcher(creature, threatening=in_reach(standing, origin, reach))
+            _Watcher(
+                creature,
+                threatening=in_reach(
+                    standing,
+                    origin,
+                    reach,
+                    origin_size=creature.size,
+                    destination_size=size,
+                ),
+            )
         )
     if not watchers:
         return None

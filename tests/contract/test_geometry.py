@@ -1,6 +1,7 @@
-"""The w0g2 grid contract: how far away something is, and how a creature gets there.
+"""The grid contract: how far away something is, what it can see, what a
+template covers, and how a creature gets there.
 
-Three properties carry this file, and the first two are decisions rather than
+Five properties carry this file, and the first two are decisions rather than
 arithmetic — which is why they are pinned here instead of being left to whoever
 next reads `core/geometry.py`:
 
@@ -21,15 +22,25 @@ next reads `core/geometry.py`:
   The cases below pin both paths, the `SEARCH_CELLS` cap that bounds the second,
   and the one thing a caller has to check for itself: a route that did not
   arrive is a route that got as far as it could, told apart by looking at its
-  last cell. `w1d` completes this module; all of it is its inheritance.
+  last cell.
+- **A creature is as big as its size says.** A footprint is anchored at its low
+  corner and every distance is measured between footprints, so a Large
+  creature's 5-foot reach covers the ring around its 2x2 — the opportunity
+  attack debt 9 said it silently did not get — and a template catches it on any
+  one square it stands in.
+- **A template is measured with the same `distance_ft` as everything else**, and
+  it does not reach what no straight line from its point of origin reaches
+  (XPHB, Rules Glossary "Areas of Effect"). The consequence worth seeing in a
+  test rather than arguing about later is that Fireball's 20-foot radius is the
+  9x9 block of squares within 20 feet of its centre (`docs/decisions.md` § w1d).
 
 The route lengths asserted here were checked against an independent
 breadth-first search rather than against the implementation: every fixture with
 an obstacle names the shortest legal length in its docstring and says why no
 shorter one exists.
 
-Sources: XPHB (2024) "Combat" battle-grid rules; DESIGN.md § APL; ROADMAP w0g2,
-w1d.
+Sources: XPHB (2024) "Combat" battle-grid rules, "Creature Size", Rules Glossary
+"Areas of Effect"; DESIGN.md § APL; ROADMAP w0g2, w1d.
 """
 
 import pytest
@@ -37,12 +48,18 @@ import pytest
 from dndsim.core.geometry import (
     SEARCH_CELLS,
     Cell,
+    cone,
     distance_ft,
+    footprint,
+    has_line_of_sight,
     in_reach,
+    line,
     route,
+    sphere,
     steps_within,
 )
 from dndsim.hooks.contexts import Cell as CellProtocol
+from dndsim.rules.enums import Size
 
 
 def arrived(walked: tuple[Cell, ...], destination: Cell) -> bool:
@@ -378,3 +395,257 @@ def test_the_route_is_the_whole_path_and_the_budget_truncates_it() -> None:
     walked = route(Cell(0, 0), Cell(9, 0))
     assert len(walked) == 9
     assert walked[: steps_within(30)] == tuple(Cell(x, 0) for x in range(1, 7))
+
+
+# --- Size, which w0g2 read nowhere (debt 9) ---------------------------------
+
+
+def test_everything_up_to_medium_stands_in_one_square() -> None:
+    """The XPHB "Creature Size" table: Tiny's 2.5 feet and Medium's 5 are both
+    the one square a creature is placed in, which is why `w0g2` was exact for
+    every combatant W1 fights with."""
+    for size in (Size.TINY, Size.SMALL, Size.MEDIUM):
+        assert footprint(Cell(4, 7), size) == (Cell(4, 7),)
+
+
+def test_a_large_creature_occupies_two_squares_by_two() -> None:
+    """10 by 10 feet, and the anchor is the footprint's low corner rather than
+    its centre — a 2x2 has no centre square, so an anchor that meant "centre"
+    would be undefined for Large and Gargantuan and well-defined for Huge."""
+    assert footprint(Cell(0, 0), Size.LARGE) == (
+        Cell(0, 0),
+        Cell(0, 1),
+        Cell(1, 0),
+        Cell(1, 1),
+    )
+    assert len(footprint(Cell(0, 0), Size.HUGE)) == 9
+    assert len(footprint(Cell(0, 0), Size.GARGANTUAN)) == 16
+
+
+def test_distance_is_measured_between_footprints_not_between_anchors() -> None:
+    """An ogre anchored at (0, 0) fills (0, 0)-(1, 1), so a goblin at (2, 0) is
+    one square from the nearest part of it: 5 feet, not the 10 its anchor is
+    away. This is debt 9 in one assertion."""
+    assert distance_ft(Cell(0, 0), Cell(2, 0), origin_size=Size.LARGE) == 5
+    assert distance_ft(Cell(0, 0), Cell(2, 0)) == 10
+
+
+def test_a_size_that_fits_in_one_square_takes_the_same_distance() -> None:
+    """The two-square case is answered by a fast path that skips the size
+    lookups, so the general form has to agree with it everywhere. Small takes
+    the general path with a one-square footprint, which makes this the one test
+    that can tell the two branches apart."""
+    for x in range(-4, 5):
+        for y in range(-4, 5):
+            assert distance_ft(Cell(0, 0), Cell(x, y)) == distance_ft(
+                Cell(0, 0),
+                Cell(x, y),
+                origin_size=Size.SMALL,
+                destination_size=Size.SMALL,
+            )
+
+
+def test_two_footprints_that_overlap_are_no_distance_apart() -> None:
+    """A square inside an ogre is zero feet from it, which is what keeps the gap
+    on an axis from going negative and a distance from coming back below zero."""
+    assert distance_ft(Cell(0, 0), Cell(1, 1), origin_size=Size.LARGE) == 0
+
+
+def test_distance_does_not_depend_on_which_creature_asks() -> None:
+    """Swapping the two creatures swaps the two sizes, and the answer is the
+    same: a reach is a fact about a pair of footprints."""
+    for destination in (Cell(3, 0), Cell(-2, 5), Cell(1, 1)):
+        assert distance_ft(
+            Cell(0, 0), destination, origin_size=Size.LARGE, destination_size=Size.HUGE
+        ) == distance_ft(
+            destination, Cell(0, 0), origin_size=Size.HUGE, destination_size=Size.LARGE
+        )
+
+
+def test_a_large_creature_threatens_the_ring_around_its_whole_square() -> None:
+    """The failure debt 9 named: an ogre with a 5-foot reach is left by a
+    creature stepping off (2, 0), and a grid that read its anchor alone would
+    have called that 10 feet and never offered the opportunity attack."""
+    assert in_reach(Cell(0, 0), Cell(2, 0), 5, origin_size=Size.LARGE)
+    assert in_reach(Cell(0, 0), Cell(2, 2), 5, origin_size=Size.LARGE)
+    assert not in_reach(Cell(0, 0), Cell(3, 0), 5, origin_size=Size.LARGE)
+    assert not in_reach(Cell(0, 0), Cell(2, 0), 5)
+
+
+# --- Line of sight -----------------------------------------------------------
+
+
+def test_an_open_field_is_all_line_of_sight() -> None:
+    assert has_line_of_sight(Cell(0, 0), Cell(9, 4))
+
+
+def test_something_in_the_way_blocks_the_line() -> None:
+    assert not has_line_of_sight(Cell(0, 0), Cell(2, 0), opaque=frozenset({Cell(1, 0)}))
+
+
+def test_a_line_that_only_grazes_a_corner_is_not_blocked() -> None:
+    """(0, 0) -> (2, 2) runs corner to corner through (1, 1), so it touches the
+    corner of (1, 0) and of (0, 1) without entering either. A line that merely
+    reaches the edge of an obstruction has not gone through it, and the opposite
+    rule would have a wall cast a shadow along every diagonal beside it."""
+    assert has_line_of_sight(Cell(0, 0), Cell(2, 2), opaque=frozenset({Cell(1, 0)}))
+    assert not has_line_of_sight(Cell(0, 0), Cell(2, 2), opaque=frozenset({Cell(1, 1)}))
+
+
+def test_two_opaque_squares_meeting_at_a_corner_are_a_wall_with_no_gap() -> None:
+    """A regression for a review finding. The graze rule is about a lone
+    obstruction: a line that touches one corner of a pillar has not entered it.
+    Two opaque squares that touch only at that corner are a diagonal wall, and
+    the point where they meet is not a gap — a line through it is blocked by the
+    pair, which is what makes `sphere()` stop at a wall laid out on a diagonal.
+    (0, 0) -> (2, 2) runs exactly through the corner (1, 1) shares with
+    (1, 0) and (0, 1)."""
+    assert not has_line_of_sight(
+        Cell(0, 0), Cell(2, 2), opaque=frozenset({Cell(1, 0), Cell(0, 1)})
+    )
+    area = sphere(Cell(0, 0), 10, opaque=frozenset({Cell(1, 0), Cell(0, 1)}))
+    assert Cell(1, 1) not in area
+    assert Cell(2, 2) not in area
+    assert Cell(0, 0) in area
+
+
+def test_a_line_along_a_face_is_let_past_by_both_squares_it_separates() -> None:
+    """Two walls either side of a corridor do not close it. Neither square is
+    entered, and neither may read the other across the line as the diagonal
+    pair above — the segment runs through two of each square's corners rather
+    than one, which is what tells the two cases apart."""
+    corridor = frozenset({Cell(1, 1), Cell(2, 1), Cell(1, -1), Cell(2, -1)})
+    assert has_line_of_sight(Cell(0, 0), Cell(4, 0), opaque=corridor)
+
+
+def test_the_two_ends_never_block_their_own_line() -> None:
+    """A wall is in sight of itself and a creature in a doorway is visible from
+    it: the squares at the ends of the line are what is being asked about, not
+    what is in the way."""
+    assert has_line_of_sight(Cell(0, 0), Cell(1, 0), opaque=frozenset({Cell(1, 0)}))
+    assert has_line_of_sight(Cell(1, 0), Cell(3, 0), opaque=frozenset({Cell(1, 0)}))
+
+
+def test_sight_runs_both_ways() -> None:
+    wall = frozenset({Cell(1, 1), Cell(2, 1)})
+    for target in (Cell(3, 3), Cell(2, 2), Cell(-1, 4)):
+        assert has_line_of_sight(Cell(0, 0), target, opaque=wall) == has_line_of_sight(
+            target, Cell(0, 0), opaque=wall
+        )
+
+
+# --- Templates ---------------------------------------------------------------
+
+
+def test_fireballs_sphere_is_every_square_within_twenty_feet() -> None:
+    """A Sphere's point of origin is its centre and the centre is in the area.
+    "Within 20 feet" is `distance_ft`, the question reach asks, so the area is
+    the 9x9 block: a square four diagonal steps out is 20 feet away on this grid
+    and a fifth step is 25. Measuring a template any other way would make
+    "20 feet" mean one thing to an attack and another to a spell
+    (`docs/decisions.md` § w1d)."""
+    area = sphere(Cell(0, 0), 20)
+    assert len(area) == 81
+    assert Cell(0, 0) in area
+    assert Cell(4, 4) in area
+    assert Cell(5, 0) not in area
+
+
+def test_a_sphere_does_not_reach_what_no_straight_line_reaches() -> None:
+    """The point-of-origin rule, which is what stops a Fireball rounding a
+    corner. The wall's own square stays in the area: it blocks the line past
+    itself, not the line to itself."""
+    area = sphere(Cell(0, 0), 10, opaque=frozenset({Cell(1, 0)}))
+    assert Cell(2, 0) not in area
+    assert Cell(1, 0) in area
+    assert Cell(0, 2) in area
+
+
+def test_a_cone_is_as_wide_as_it_is_long() -> None:
+    """A Cone's width at any point equals that point's distance from the point
+    of origin, and the origin is not in the area. A grid cone's width in squares
+    can only be odd, so the rule's even widths round, and this one rounds up:
+    one square at 5 feet, three at 10 and three at 15 (`docs/decisions.md` § w1d,
+    which is also what a 5-square row at 20 feet follows from)."""
+    assert cone(Cell(0, 0), Cell(1, 0), 15) == (
+        Cell(1, 0),
+        Cell(2, -1),
+        Cell(2, 0),
+        Cell(2, 1),
+        Cell(3, -1),
+        Cell(3, 0),
+        Cell(3, 1),
+    )
+
+
+def test_a_cone_pointed_at_a_corner_is_the_shape_of_one_pointed_along_a_row() -> None:
+    """A diagonal cone is laid out in its own rotated frame, so it is seven
+    squares like the one above rather than a staircase of single steps — and a
+    diagonal step is 5 feet like any other, so it is as long."""
+    assert len(cone(Cell(0, 0), Cell(1, 1), 15)) == 7
+    assert Cell(3, 3) in cone(Cell(0, 0), Cell(1, 1), 15)
+
+
+def test_a_line_is_the_squares_that_follow_its_point_of_origin() -> None:
+    """A Line's point of origin is at one end of it and is not in the area, so
+    Lightning Bolt does not catch the caster."""
+    assert line(Cell(0, 0), Cell(1, 0), 15) == (Cell(1, 0), Cell(2, 0), Cell(3, 0))
+    assert line(Cell(0, 0), Cell(1, 1), 15) == (Cell(1, 1), Cell(2, 2), Cell(3, 3))
+
+
+def test_a_template_with_no_direction_is_refused() -> None:
+    """A cone pointed at the square it starts from is a caller that has not
+    chosen a direction, which is a selector gone wrong rather than an empty
+    area — the same argument as routing into an occupied square."""
+    with pytest.raises(ValueError, match="needs a direction"):
+        cone(Cell(0, 0), Cell(0, 0), 15)
+
+
+def test_a_large_creature_is_caught_by_a_template_its_anchor_misses() -> None:
+    """What `Size` reaching geometry buys on the template side: a creature is in
+    an area when any square it occupies is, so an ogre anchored outside a
+    Fireball still burns on the one square of it that is inside."""
+    area = sphere(Cell(0, 0), 10)
+    assert Cell(-3, 0) not in area
+    assert any(cell in area for cell in footprint(Cell(-3, 0), Size.LARGE))
+    assert not any(cell in area for cell in footprint(Cell(-3, 0), Size.MEDIUM))
+
+
+def test_a_template_comes_back_in_the_same_order_every_time() -> None:
+    """Determinism again: a template is walked by the placement search (w8) and
+    by every spell that selects targets from it, so its order may not depend on
+    how the caller built its set of walls."""
+    wall = [Cell(1, 1), Cell(1, 0), Cell(2, 2)]
+    assert sphere(Cell(0, 0), 15, opaque=frozenset(wall)) == sphere(
+        Cell(0, 0), 15, opaque=set(reversed(wall))
+    )
+
+
+# --- Routing a creature wider than one square --------------------------------
+
+
+def test_an_ogre_does_not_fit_through_the_gap_a_goblin_walks() -> None:
+    """A wall down x = 2 with one square open at (2, 0). A Medium creature walks
+    straight through it in four steps; a Large one needs two free squares side
+    by side at every step, and there are none at x = 2, so its route goes round
+    the end of the wall instead of through the hole."""
+    wall = frozenset(
+        {Cell(2, y) for y in (-3, -2, -1)} | {Cell(2, y) for y in (1, 2, 3)}
+    )
+    goblin = route(Cell(0, 0), Cell(4, 0), blocked=wall)
+    assert arrived(goblin, Cell(4, 0))
+    assert goblin == (Cell(1, 0), Cell(2, 0), Cell(3, 0), Cell(4, 0))
+
+    ogre = route(Cell(0, 0), Cell(4, 0), blocked=wall, size=Size.LARGE)
+    assert arrived(ogre, Cell(4, 0))
+    assert Cell(2, 0) not in ogre
+
+
+def test_a_destination_a_wide_creature_does_not_fit_in_is_refused() -> None:
+    """The same raise as a blocked destination, for the same reason: the APL
+    picked a square its creature cannot stand in, and a route that quietly
+    stopped short would read as a movement shortfall instead."""
+    blocked = frozenset({Cell(1, 1)})
+    assert route(Cell(0, 0), Cell(1, 0), blocked=blocked) == (Cell(1, 0),)
+    with pytest.raises(ValueError, match="it is blocked"):
+        route(Cell(0, 0), Cell(1, 0), blocked=blocked, size=Size.LARGE)

@@ -390,7 +390,7 @@ That one flag covers all three hard cases:
 |---|---|
 | **Rage** | `until_end_of_next_turn_of(self)`, plus `refresh()` from `on_declare_attack` / `on_damage_taken` / `on_forced_save` — recomputes against the current clock, so "next turn" slides forward |
 | **Reckless Attack** | `until_start_of_next_turn_of(self)` |
-| **Vex** | `until_end_of_next_turn_of(self)` **plus `charges=1`** keyed to a target id — whichever runs out first removes it |
+| **Vex** | `until_end_of_next_turn_of(self)` **plus `charges=1`** keyed to a target id — whichever runs out first removes it. **The key is the feature's state, not a field on `Effect`**: `Effect.charges` is a count, and which target a charge may be spent against is something only the feature knows (`docs/decisions.md` § w1c). A W4 author needs no engine change for it, and reaching into `creatures/` for one would be a content batch editing the engine |
 
 ### Initiative is a key, not an index
 
@@ -1167,9 +1167,13 @@ DEBUFF_PROFILE = Perturbation(
     action_denied=True, speed=0,        # Hypnotic Pattern
     targets="enemies.in(template)",     # a 30-foot cube; one save each
     save=Save(Ability.WIS),             # no repeat save — it just holds
-                                        # a repeating one declares repeat="turn_end"
-                                        # or "turn_start"; the two differ by a
-                                        # whole round of value, see above
+                                        # a repeating one declares repeat=, whose
+                                        # members are the enum `w1g` adds to
+                                        # rules/enums.py and never string
+                                        # literals (ROADMAP debt #35): the engine
+                                        # that rolls the repeat save reads the
+                                        # same member. The two differ by a whole
+                                        # round of value, see above
     ends_on_damage=True,                # so nobody in the party may hit them
     duration=Duration.minutes(1),
     concentration=True,
@@ -1191,8 +1195,11 @@ fixed set every profile may set, and not perturbations at all: `targets=` and
 `duration=`, which § The horizon reads as `duration_or_E[rounds]`;
 `concentration=`, which is what prices the effect through `c[concentration]`;
 and the three that say how it ends — `save=`, its optional `repeat=`
-(`"turn_end"` or `"turn_start"`, which select between the two `E[N]` formulas
-above), and `ends_on_damage=`.
+(end-of-turn or start-of-turn, which select between the two `E[N]` formulas
+above; its members are the enum `w1g` adds to `rules/enums.py`, read by the
+engine that rolls the repeat save as well as by the scorer, and never two sets
+of string literals that can disagree — `ROADMAP.md` § The W0 debt register #35),
+and `ends_on_damage=`.
 
 Keeping them apart is what makes the closed list closable: the perturbation keys
 are a claim about attack mathematics and each one costs a branch in the
@@ -2191,8 +2198,9 @@ change is 26k against 20k). A later reader who simplifies the generated
 `reopen()` back into a general one will re-take a lever that does not work;
 immutable specs (`ResourceSpec`, `Duration`,
 weapon definitions) shared across every creature; APL compiled once per build;
-structured tuple logging with string formatting deferred to the reporter — worth
-~2–3× on its own (`--log-level=summary`); multiprocessing across iterations;
+structured tuple logging with string formatting deferred to the reporter, which
+leaves `--log-level=summary` saving memory and no measurable time
+(`docs/decisions.md` § w1i); multiprocessing across iterations;
 **adaptive stopping** on confidence-interval width rather than a fixed count.
 
 **Seeding is per iteration, never per worker.** `rng = MersenneRng(mix(master_seed,
@@ -2545,7 +2553,7 @@ Great Weapon Master stops being worth it, exactly as a WoW sim would.
 ## Build order
 
 Nine waves, `W0`–`W8`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
-77 tasks, their dependency edges, delegation modes and the task-packet template.
+78 tasks, their dependency edges, delegation modes and the task-packet template.
 Its § The W0 debt register is the ledger of what W0 left for later waves to
 retire, and which task retires each.
 

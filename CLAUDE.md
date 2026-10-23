@@ -13,7 +13,7 @@ and five packages — `rules/` (the vocabulary every later package imports),
 (the closed registry of 39 extension points, the 31 contexts they hand out, and
 the decorator, source base class and dispatcher that run them), `creatures/`
 (`Creature`, `StatBlock`, `Armour` and the action economy) and `engine/` (the
-damage resolution order and the movement observer).
+damage, attack and saving-throw sequences and the movement observer).
 
 Work is at wave **W1**; **W0 is complete and M0 was met on measurement**:
 `w0a`–`w0i` are done and the pessimistic performance spike measured **~31.5k
@@ -34,11 +34,10 @@ the two levers deliberately not taken. **W1 is under way.**
 The plans were then re-read against what the wave measured
 (`docs/decisions.md` § The W0 plan review). Two things came out of it that
 matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
-first cuts and deferred obligations W0 left behind — twenty-three rows open, of
-which fourteen are W0's, one is `w1e`'s, two are `w1f`'s, three are `w1c`'s and
-three were found by the W1 critical-path gate — and the task that
-retires each;
-check it for the file you are about to touch. And **`w1k` is a
+first cuts and deferred obligations W0 left behind, with the task that retires
+each; the register itself carries the count and the breakdown, which drift with
+every task, and is where to read them.
+Check it for the file you are about to touch. And **`w1k` is a
 new task**, an M0 re-measure at the end of W1, because the measured ~31.5k had
 5% of headroom and W1 adds the per-round cost the spike does not model.
 
@@ -122,6 +121,104 @@ It also wired `on_effect_applied` and
 possible caller. `docs/decisions.md` § w1c has the arguments and the eight
 ratios behind that median; it retires debt-register row #5 and opens #29,
 #30 and #31.
+
+Then `w1b` **completed the resource model** — `ResourceSpec`, `Recovery`,
+`ResourcePool`, the `SpellSlots` facade and `transaction()` — and all seven
+shapes DESIGN.md tabulates fell out of one spec with no branch anywhere. Three
+readings bind every later task: **a pool is one resource and `Resources` is the
+creature's ledger of them**, which is what `creature.resources` is and what fires
+`on_resource_spent`; **a transaction takes as it goes and announces only on the
+commit**, once per pool with the committed total, so a rolled-back spend is told
+to nobody and a veto of a spend that has happened is refused; and **an overdrawn
+pool raises `EconomyError`**, the same exception as an overdrawn action economy,
+while a slot that is merely unavailable stays a fight outcome `can_spend()`
+answers for free. `RecoveryTrigger` is rules vocabulary and lives in
+`rules/enums.py` for the reason `ActionCost` records. It measured at **−0.2% of
+the rate against pair-to-pair ratios spanning −6.2% to +5.8%** — the arithmetic
+itself is priced per operation instead, because the spike cannot reach it while
+debt #15 stands, and **the announcement costs ten times the ledger**.
+`docs/decisions.md` § w1b has the arguments and the table `w1k` multiplies; it
+retires no debt row and opens **#32**.
+
+Then `w1d` **completed the grid** — a footprint, line of sight, the cone,
+sphere and line templates, and a route a creature wider than one square can
+walk. Three things bind every later task: **a size is a footprint anchored at
+its low corner**, so `Creature.position` still names one square and a 2x2 needs
+no centre that does not exist; **a reach is measured between footprints and
+nothing is added to a reach**, so an ogre still swings 5 feet and the
+opportunity attack debt #9 said it silently did not get is now offered, with
+`engine/attack.py` and `engine/triggers.py` passing the two sizes; and **a
+template is measured with the same `distance_ft` as a reach**, which makes
+Fireball's 20-foot radius the 9x9 block of squares within 20 feet of its centre
+rather than a disc (`docs/decisions.md` § w1d) and keeps "20 feet" from naming two
+different things. An area reaches only what an unblocked straight line from its
+point of origin reaches, decided on exact integer arithmetic where a graze past
+a lone pillar does not block and two opaque squares meeting at that corner do. Its first cut **failed its own pricing at −3.5% of the
+rate** — an `Enum` hashed twice per distance query — and the one-square fast
+path that fixed it leaves the module running 2.8% *fewer* Python calls than
+before the task. `docs/decisions.md` § w1d has the arguments and both
+measurements; it retires debt-register row #9 and opens **#33** and **#34**.
+
+The W1 mid-wave gate then re-read the plans against those three
+(`docs/decisions.md` § The W1 mid-wave review). None of them moved a number the
+plan assumes, so the projection over the budget is unchanged; three things from
+it change how the next tasks are done. **`w1g` could not be built from what its
+row said** — save-for-half has to land in `w1e`'s halving ledger and no API
+reaches it from `engine/saves.py`, so the row now carries the decision (widen
+`resolve_damage()`) and the obligation to settle that signature. **Read
+`docs/decisions.md` § The W1 mid-wave review before writing it**: the routes
+that look open, and why each of them is wrong, are argued there and nowhere
+else. **A save-ends effect's
+repeat save has no owner** — DESIGN.md writes out both geometric series and
+`w3f` declares the timing for the scorer, but nothing rolls the save, so it is
+debt **#35**, split into `w1g`'s enum and `w2c`'s roll. Giving `w1g` the
+`resolve_damage()` signature also **put it on the hot path**, so it prices itself
+like the five the critical-path gate named and `w1k` totals six attributions, not
+five. And **the paired spike
+run stopped resolving anything**: three tasks bought "not distinguishable from
+zero" against pair-to-pair spreads wider than the effect they were measuring,
+while the profile and the call count are what attributed `w1d`'s regression
+(`docs/decisions.md` § w1b, § w1c, § w1d have the ratios), so sequencing
+principle 10 now asks for the deterministic witness beside the rate.
+
+Then `w1g` **cut `engine/saves.py`** and answered the signature question that
+gate left open: `resolve_damage()` takes `halved_by`, **the reason a caller
+halves rather than a halved number**, which the body seeds into `w1e`'s ledger
+before the dispatch so that save-for-half runs in the halvings step with every
+other halving and two of them stack. `ctx.halve()` stays handler-only and
+`mitigate()` is untouched. Four things every later task inherits: **a natural 20
+does not succeed on a save and a natural 1 does not fail one** — the rule that
+decides an attack roll on its own is the Attack Rolls entry's, and saves resolve
+into `rules/enums.py`'s **`SaveOutcome`**, two members and no critical one;
+**Legendary Resistance is a `w1b` pool and one handler**, with nothing in
+`engine/saves.py` that knows it exists, which is the row's acceptance test;
+**`save_bonus()` is the one place a save's bonus is computed**, because `w8a`'s
+estimator must read the number the resolver adds; and **`SaveRepeat` is
+declared**, discharging the declared half of debt #35. It measured at nothing —
+no call added, and sixteen paired runs whose median moves from −3.0% to +1.5%
+with the *order of the arms*, which is the method amendment it hands `w1k`.
+`docs/decisions.md` § w1g has the arguments and the measurements; it opens
+**#36** and **#37**.
+
+Then `w1h` **built `conditions/`** — the 15 conditions of the 2024 Rules
+Glossary as `Effect` subclasses, with no branch anywhere in the engine, which was
+the row's acceptance test and was already won before the task started. Three
+things bind the next tasks. **The composed four are subclasses**: "You have the
+Incapacitated condition" is inheritance, so `Stunned(Incapacitated)` carries its
+base's handlers at the base's place in dispatch order — which makes handler names
+collide inside one MRO if they are not distinct, and makes `Unconscious` declare
+its own Advantage grant beside the one it inherits from `Prone`. **A clause that
+cannot be written is declared, never approximated into silence**: `NEEDS_HOOK`
+and `APPROXIMATED` are tuples on the class, accumulated down the MRO, and the
+declaration is the larger half of this task — twenty entries over twelve
+structural gaps, every one of them pointing at the register row that owns it,
+and **#38–#49** are new rows. And **Petrified is the
+fourth condition that fails Strength and Dexterity saves automatically**, not
+the third: the row and debt #37 both named three, and the correction rides this
+PR rather than a spec PR because what the row asked for was implementable
+exactly as written. `docs/decisions.md` § w1h has the arguments, among them why
+Prone is approximated where the four saves are not, and why Exhaustion's level
+is its charge count. It retires no debt row.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
@@ -321,15 +418,20 @@ there is local to a module.
 | `hooks/contexts.py`, `core/errors.py` | § w0f |
 | `hooks/decorator.py`, `hooks/source.py`, `hooks/dispatch.py` | § w0g |
 | `creatures/`, `core/geometry.py` | § w0g2 |
+| `core/geometry.py`, size, line of sight, templates | § w1d |
 | `engine/damage.py`, the resolution order | § w0g2, § w1e |
 | `engine/attack.py`, the attack sequence | § w1f |
+| `engine/saves.py`, saving throws, save-for-half | § w1g |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
 | `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c |
+| `conditions/`, a condition, a declared gap | § w1h |
+| `creatures/resources.py`, pools, slots, `transaction()` | § w1b |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |
-| `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review |
-| the performance budget, pricing a change | § w0i, § The W1 critical-path review |
+| `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review, § The W1 mid-wave review |
+| the performance budget, pricing a change | § w0i, § The W1 critical-path review, § The W1 mid-wave review |
 | `engine/triggers.py`, `Dispatcher.responsive()` | § w0g3 |
+| `core/log.py`, the event log, its records and levels | § w1i |
 | `.claude/skills/`, `CODING_STANDARDS.md`, the review loop | § The PR, review and retro skills |
 
 Add a section there when a task lands, rather than growing this file.
@@ -360,7 +462,7 @@ turns what the reviews found into checks, standards and plan edits.
 
 ## Sequencing rules
 
-`ROADMAP.md` has 77 tasks across waves W0–W8 with explicit dependency edges.
+`ROADMAP.md` has 78 tasks across waves W0–W8 with explicit dependency edges.
 Three constraints dominate:
 
 - **Nothing in W4 or later may start before M2** (API frozen, authoring skill

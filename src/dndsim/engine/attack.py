@@ -20,12 +20,11 @@ Where each step comes from:
 
 Not here: whether the attack is legal or affordable (`w2b`'s Command and the
 action economy), who is offered a reaction to it (`w2c`), the damage steps
-(`engine/damage.py`), the event log (`w1i`). Two first cuts live here and are
-named so that nobody has to rediscover them: every attack resolves at the
-weapon's reach with no ranged branch, because no weapon carries a range until
-`w2a` imports one (debt #24), and the proficiency bonus is added to every
-attack, because nothing can yet say a creature is not proficient with what it
-holds (debt #25).
+(`engine/damage.py`). Two first cuts live here and are named so that nobody
+has to rediscover them: every attack resolves at the weapon's reach with no
+ranged branch, because no weapon carries a range until `w2a` imports one
+(debt #24), and the proficiency bonus is added to every attack, because
+nothing can yet say a creature is not proficient with what it holds (debt #25).
 """
 
 from collections.abc import Mapping
@@ -33,6 +32,7 @@ from typing import Final, NamedTuple, Protocol
 
 from dndsim.core.errors import EngineAssemblyError, FeatureContractError
 from dndsim.core.geometry import in_reach
+from dndsim.core.log import EventLog
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.effects import apply_pending
@@ -69,6 +69,9 @@ from dndsim.rules.constants import NATURAL_ONE, NATURAL_TWENTY
 from dndsim.rules.enums import Ability, DamageType, Outcome, WeaponProperty
 
 __all__ = [
+    "ATTACK",
+    "ATTACK_ROLL",
+    "DAMAGE_ROLL",
     "FRESH",
     "PREVENTED",
     "AttackContexts",
@@ -104,6 +107,19 @@ class AttackResult(NamedTuple):
 
 PREVENTED: Final = AttackResult(None, 0)
 """The result of an attack a handler vetoed. Shared, because it is a constant."""
+
+ATTACK: Final = "attack"
+"""`(ATTACK, attacker, defender, weapon, outcome, damage_dealt)`, at every level.
+
+Names rather than objects; `outcome` is `None` for an attack that was vetoed."""
+
+ATTACK_ROLL: Final = "attack_roll"
+"""`(ATTACK_ROLL, attacker, defender, natural, total, advantage, disadvantage)`,
+at `LogLevel.FULL` only."""
+
+DAMAGE_ROLL: Final = "damage_roll"
+"""`(DAMAGE_ROLL, attacker, defender, critical, ((type, amount), ...))`, at
+`LogLevel.FULL` only: what `roll_damage()` rolled, before any defence."""
 
 
 class Trigger(Protocol):
@@ -614,11 +630,17 @@ def within_reach(attacker: Creature, defender: Creature, weapon: Weapon) -> bool
     attacker has equipped, and it is measured from the attacker's square through
     `in_reach()` — the one query `core/geometry.py` owns, so that the pipeline,
     the opportunity-attack trigger and the APL's `enemies.in_reach` selector
-    cannot come to different answers (`docs/decisions.md` § w0g3). `w1d` is where
-    a Large creature's square stops being one cell, and nothing here changes when
-    it does.
+    cannot come to different answers (`docs/decisions.md` § w0g3). Both sizes go
+    with the two squares, because from `w1d` the query measures between
+    footprints and an ogre reaches a square further than its anchor says.
     """
-    return in_reach(attacker.position, defender.position, weapon.reach_ft)
+    return in_reach(
+        attacker.position,
+        defender.position,
+        weapon.reach_ft,
+        origin_size=attacker.size,
+        destination_size=defender.size,
+    )
 
 
 def _modifier_total(bag: ModifierBag, rng: Rng) -> int:
@@ -680,6 +702,7 @@ def resolve_attack(
     ability: Ability | None = None,
     contexts: AttackContexts = FRESH,
     trigger: Trigger | None = None,
+    log: EventLog | None = None,
 ) -> AttackResult:
     """Resolve one attack by `attacker` against `defender`.
 
@@ -687,6 +710,8 @@ def resolve_attack(
     `attack_ability()` derives from it. `contexts` decides where the contexts
     come from; `trigger` is the APL's `trigger.*` root, told what is being
     offered immediately before each dispatch that can carry gated handlers.
+    `log`, when given, is written the `ATTACK`, `ATTACK_ROLL` and `DAMAGE_ROLL`
+    records above.
 
     Legality is not asked here — whether this creature may attack at all, and
     what it costs, is `w2b`'s Command and the action economy. What is refused is
@@ -723,6 +748,8 @@ def resolve_attack(
     if declared.vetoed:
         declared.close()
         contexts.release()
+        if log is not None:
+            log.write((ATTACK, attacker.name, defender.name, weapon.name, None, 0))
         return PREVENTED
     had_advantage = declared.had_advantage
     had_disadvantage = declared.had_disadvantage
@@ -752,6 +779,18 @@ def resolve_attack(
         had_advantage=had_advantage,
         had_disadvantage=had_disadvantage,
     )
+    if log is not None and log.full:
+        log.write(
+            (
+                ATTACK_ROLL,
+                attacker.name,
+                defender.name,
+                natural,
+                total,
+                had_advantage,
+                had_disadvantage,
+            )
+        )
     strike(ON_ATTACK_ROLLED, rolled)
     met_crit_threshold = rolled.is_critical
     _seal(rolled, "on_attack_rolled", attacker, defender)
@@ -804,6 +843,16 @@ def resolve_attack(
         amounts = roll_damage(
             bag.parts, rng=rng, base_type=weapon.damage_type, critical=critical
         )
+        if log is not None and log.full:
+            log.write(
+                (
+                    DAMAGE_ROLL,
+                    attacker.name,
+                    defender.name,
+                    critical,
+                    tuple(amounts.items()),
+                )
+            )
         if trigger is not None:
             # What the victim's reactions are being offered: how much is on the
             # table if nobody does anything about it (DESIGN.md § APL,
@@ -834,6 +883,16 @@ def resolve_attack(
             amounts = roll_damage(
                 parts, rng=rng, base_type=weapon.damage_type, critical=False
             )
+            if log is not None and log.full:
+                log.write(
+                    (
+                        DAMAGE_ROLL,
+                        attacker.name,
+                        defender.name,
+                        False,
+                        tuple(amounts.items()),
+                    )
+                )
             if trigger is not None:
                 trigger.bind(damage_estimate=sum(amounts.values()))
             damage_dealt = resolve_damage(
@@ -850,5 +909,9 @@ def resolve_attack(
     strike(ON_ATTACK_RESOLVED, resolved)
     _seal(resolved, "on_attack_resolved", attacker, defender)
     contexts.release()
+    if log is not None:
+        log.write(
+            (ATTACK, attacker.name, defender.name, weapon.name, outcome, damage_dealt)
+        )
 
     return AttackResult(outcome, damage_dealt)

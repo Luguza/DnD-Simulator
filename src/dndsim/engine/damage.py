@@ -244,6 +244,7 @@ def resolve_damage(
     rng: Rng,
     attacker: Creature | None = None,
     contexts: DamageContexts = FRESH_DAMAGE,
+    halved_by: str | None = None,
 ) -> int:
     """Deal damage to `defender` and return what it took.
 
@@ -251,8 +252,21 @@ def resolve_damage(
     spent and the return is zero. `on_damage_taken` does not fire when nothing
     landed, but does fire for a hit temporary hit points absorbed whole
     (`docs/decisions.md` § w0g2).
+
+    `halved_by` is a halving the **caller** supplies, with the reason it is
+    halved — save-for-half, through `engine/saves.py`. It is recorded in the
+    ledger rather than applied to `amounts`, so it runs in the halvings step
+    with every other halving; why the signature is this rather than one of the
+    two routes that look open is `docs/decisions.md` § w1g.
     """
     incoming = contexts.incoming(defender=defender, attacker=attacker, amounts=amounts)
+    if halved_by is not None:
+        # Stamped because every ledger mutator refuses a change with nobody to
+        # attribute it to, and seeded before the dispatch so that a handler
+        # reads the ledger the engine will apply (`hooks/contexts.py`).
+        incoming.stamp("engine.damage", None)
+        incoming.halve(halved_by)
+        incoming.stamp(None, None)
     defender.dispatch(ON_INCOMING_DAMAGE, incoming)
     apply_pending(incoming, defender, attacker)
     if incoming.vetoed:

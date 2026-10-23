@@ -957,8 +957,8 @@ class D20TestContext(Context):
     feature wants to do to one — swing the odds and add to the total — so they
     share a base rather than repeating the advantage machinery six times. What
     they do *not* share is the outcome: a natural 20 crits only on an attack
-    roll, which is why `Outcome` stays the attack's and saves get their own
-    result type in `engine/saves.py` (w1g).
+    roll, which is why `Outcome` stays the attack's and a save resolves into
+    `rules/enums.py`'s `SaveOutcome` instead.
     """
 
     _advantage: AdvantageLedger = field(default_factory=AdvantageLedger, repr=False)
@@ -1002,7 +1002,9 @@ class MitigationLedger(_Bag):
     A ledger rather than an arithmetic result because `engine/damage.py` owns
     the resolution order — immunity → flat reductions → halvings → resistance →
     vulnerability → temp HP → HP — and a context that pre-applied any of it
-    would be a second place that order is written.
+    would be a second place that order is written. A halving the caller of
+    `resolve_damage()` supplied is seeded here by the engine for the same
+    reason (`docs/decisions.md` § w1g).
 
     The three type collections are **sets**, which is the third piece of
     structural prevention (DESIGN.md): a damage type cannot be resisted twice,
