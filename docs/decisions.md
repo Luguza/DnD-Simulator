@@ -3579,9 +3579,11 @@ to +7.1%) and **+0.2% at `summary`** (−3.8% to +9.6%) against the baseline, an
 **So the row's question has an answer, and it is neither.** It asked whether
 the skip is the thing that has to be cheap or the record is. Both are: a record
 is at most three C calls and the skip is one attribute read, in a run that
-makes ~250 calls per attack. DESIGN.md § Levers credits `--log-level=summary` with
-"~2–3× on its own", and that figure is the cost of formatting a string per roll,
-which tuple records never pay. What `summary` buys now is memory: `full` holds
+makes ~250 calls per attack. DESIGN.md § Levers credited `--log-level=summary`
+with "~2–3× on its own", and that figure is the cost of formatting a string per
+roll, which tuple records never pay; the third review round caught the sentence
+still standing, and § Levers now says what is measured here. What `summary`
+buys now is memory: `full` holds
 about three records per attack. That is `w2g`'s concern, since the runner decides
 whether a log outlives its iteration.
 
