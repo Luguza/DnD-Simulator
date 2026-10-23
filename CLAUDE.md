@@ -34,12 +34,10 @@ the two levers deliberately not taken. **W1 is under way.**
 The plans were then re-read against what the wave measured
 (`docs/decisions.md` § The W0 plan review). Two things came out of it that
 matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
-first cuts and deferred obligations W0 left behind — twenty-eight rows open, of
-which thirteen are W0's, one is `w1e`'s, two are `w1f`'s, three are `w1c`'s, one
-is `w1b`'s, two are `w1d`'s, two are `w1g`'s, three were found by the W1
-critical-path gate and one by the mid-wave gate — and the task that retires
-each;
-check it for the file you are about to touch. And **`w1k` is a
+first cuts and deferred obligations W0 left behind, with the task that retires
+each; the register itself carries the count and the breakdown, which drift with
+every task, and is where to read them.
+Check it for the file you are about to touch. And **`w1k` is a
 new task**, an M0 re-measure at the end of W1, because the measured ~31.5k had
 5% of headroom and W1 adds the per-round cost the spike does not model.
 
@@ -201,6 +199,26 @@ no call added, and sixteen paired runs whose median moves from −3.0% to +1.5%
 with the *order of the arms*, which is the method amendment it hands `w1k`.
 `docs/decisions.md` § w1g has the arguments and the measurements; it opens
 **#36** and **#37**.
+
+Then `w1h` **built `conditions/`** — the 15 conditions of the 2024 Rules
+Glossary as `Effect` subclasses, with no branch anywhere in the engine, which was
+the row's acceptance test and was already won before the task started. Three
+things bind the next tasks. **The composed four are subclasses**: "You have the
+Incapacitated condition" is inheritance, so `Stunned(Incapacitated)` carries its
+base's handlers at the base's place in dispatch order — which makes handler names
+collide inside one MRO if they are not distinct, and makes `Unconscious` declare
+its own Advantage grant beside the one it inherits from `Prone`. **A clause that
+cannot be written is declared, never approximated into silence**: `NEEDS_HOOK`
+and `APPROXIMATED` are tuples on the class, accumulated down the MRO, and the
+declaration is the larger half of this task — twenty entries over twelve
+structural gaps, every one of them pointing at the register row that owns it,
+and **#38–#49** are new rows. And **Petrified is the
+fourth condition that fails Strength and Dexterity saves automatically**, not
+the third: the row and debt #37 both named three, and the correction rides this
+PR rather than a spec PR because what the row asked for was implementable
+exactly as written. `docs/decisions.md` § w1h has the arguments, among them why
+Prone is approximated where the four saves are not, and why Exhaustion's level
+is its charge count. It retires no debt row.
 
 `DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
 largest change to the project's goal since the founding document: the APL is
@@ -406,6 +424,7 @@ there is local to a module.
 | `engine/saves.py`, saving throws, save-for-half | § w1g |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
 | `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c |
+| `conditions/`, a condition, a declared gap | § w1h |
 | `creatures/resources.py`, pools, slots, `transaction()` | § w1b |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |
