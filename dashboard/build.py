@@ -37,7 +37,6 @@ class Item:
 
     id: str
     title: str
-    mode: str = ""
     status: str = "queued"
     pr: int | None = None
     start: datetime | None = None
@@ -162,8 +161,7 @@ def parse_waves(roadmap: str) -> list[Wave]:
         wave = Wave(int(match.group(1)), match.group(2).strip())
         for row in table_rows(section(roadmap, f"W{wave.number} — ")):
             if TASK_ID.fullmatch(row[0]):
-                mode = row[2] if len(row) > 2 else ""
-                wave.items.append(Item(row[0], row[1], mode))
+                wave.items.append(Item(row[0], row[1]))
         waves.append(wave)
     if not waves:
         raise SystemExit("ROADMAP.md has no '## Wn — ' sections")
