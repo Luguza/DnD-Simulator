@@ -2198,8 +2198,9 @@ change is 26k against 20k). A later reader who simplifies the generated
 `reopen()` back into a general one will re-take a lever that does not work;
 immutable specs (`ResourceSpec`, `Duration`,
 weapon definitions) shared across every creature; APL compiled once per build;
-structured tuple logging with string formatting deferred to the reporter — worth
-~2–3× on its own (`--log-level=summary`); multiprocessing across iterations;
+structured tuple logging with string formatting deferred to the reporter, which
+leaves `--log-level=summary` saving memory and no measurable time
+(`docs/decisions.md` § w1i); multiprocessing across iterations;
 **adaptive stopping** on confidence-interval width rather than a fixed count.
 
 **Seeding is per iteration, never per worker.** `rng = MersenneRng(mix(master_seed,

@@ -64,6 +64,7 @@ from typing import Final
 
 from dndsim.core.dice import Dice
 from dndsim.core.geometry import Cell, distance_ft, route, steps_within
+from dndsim.core.log import EventLog, LogLevel
 from dndsim.core.rng import MersenneRng, Rng, mix
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import Creature
@@ -248,6 +249,7 @@ class Spike:
     contexts: AttackContexts
     enemy_contexts: tuple[AttackContexts, ...]
     sources: tuple[Fixture, ...]
+    log: EventLog
 
     def reset(self) -> None:
         """Put the encounter back to round one.
@@ -257,6 +259,7 @@ class Spike:
         encounter resets, and a benchmark that reset outside the clock would be
         measuring a fight nobody ever starts.
         """
+        self.log.clear()
         self.hero.hp = self.hero.max_hp
         self.hero.position = _HERO_START
         self.state.raging = False
@@ -267,7 +270,9 @@ class Spike:
             enemy.position = start
 
 
-def build_spike(seed: int = 0, *, pooled: bool = True) -> tuple[Spike, Rng]:
+def build_spike(
+    seed: int = 0, *, pooled: bool = True, log_level: LogLevel = LogLevel.FULL
+) -> tuple[Spike, Rng]:
     """Assemble the hostile creature, its three enemies and its compiled APL.
 
     Everything expensive happens here rather than per attack, which is the point
@@ -280,6 +285,9 @@ def build_spike(seed: int = 0, *, pooled: bool = True) -> tuple[Spike, Rng]:
     measured — reused per attack, or allocated per attack. Both are real
     configurations of the same engine, and the difference between the two
     numbers is the whole argument for the lever.
+
+    `log_level` is the level of the `EventLog` every attack writes to
+    (`docs/decisions.md` § w1i).
     """
     hero = Creature(
         name="Spike",
@@ -331,6 +339,7 @@ def build_spike(seed: int = 0, *, pooled: bool = True) -> tuple[Spike, Rng]:
             PooledContexts(enemy, hero, _MAUL) if pooled else FRESH for enemy in enemies
         ),
         sources=sources,
+        log=EventLog(log_level),
     )
     return spike, MersenneRng(mix(seed, 0))
 
@@ -488,8 +497,11 @@ def _execute(spike: Spike, entry: Entry, rng: Rng) -> int:
     spike.economy.spend(ActionCost.ACTION)
     contexts = spike.contexts
     trigger = namespace.trigger
+    log = spike.log
     for _ in range(ATTACKS_PER_TURN):
-        resolve_attack(spike.hero, target, rng=rng, contexts=contexts, trigger=trigger)
+        resolve_attack(
+            spike.hero, target, rng=rng, contexts=contexts, trigger=trigger, log=log
+        )
     return ATTACKS_PER_TURN
 
 
@@ -509,6 +521,7 @@ def _enemy_turns(spike: Spike, rng: Rng, number: int) -> int:
     """
     hero = spike.hero
     trigger = spike.apl.namespace.trigger
+    log = spike.log
     resolutions = 0
     for enemy, contexts in zip(spike.enemies, spike.enemy_contexts, strict=True):
         enemy.dispatcher.resets.turn_started(own=True)
@@ -516,7 +529,9 @@ def _enemy_turns(spike: Spike, rng: Rng, number: int) -> int:
         if destination is not None:
             _step(spike, enemy, destination)
         if distance_ft(enemy.position, hero.position) <= enemy.reach_ft:
-            resolve_attack(enemy, hero, rng=rng, contexts=contexts, trigger=trigger)
+            resolve_attack(
+                enemy, hero, rng=rng, contexts=contexts, trigger=trigger, log=log
+            )
             resolutions += 1
     return resolutions
 
@@ -569,7 +584,12 @@ def _step(spike: Spike, mover: Creature, destination: Cell) -> None:
 
 
 def measure(
-    encounters: int = 1000, repeats: int = 5, seed: int = 0, *, pooled: bool = True
+    encounters: int = 1000,
+    repeats: int = 5,
+    seed: int = 0,
+    *,
+    pooled: bool = True,
+    log_level: LogLevel = LogLevel.FULL,
 ) -> tuple[float, int]:
     """Attack resolutions per second, median of `repeats` runs after a warmup.
 
@@ -585,7 +605,7 @@ def measure(
     `w3i` should treat that as the floor on how little work a timed run may do,
     not as a number to trim when the suite feels slow.
     """
-    spike, rng = build_spike(seed, pooled=pooled)
+    spike, rng = build_spike(seed, pooled=pooled, log_level=log_level)
     _burn(spike, rng, max(encounters // 10, 1))
 
     rates: list[float] = []
@@ -651,6 +671,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "the baseline the pooling lever is worth measuring against",
     )
     parser.add_argument(
+        "--log-level",
+        choices=[level.value for level in LogLevel],
+        default=LogLevel.FULL.value,
+        help="how much of the event log every attack writes",
+    )
+    parser.add_argument(
         "--startup",
         action="store_true",
         help="also measure spawn worker startup, separately",
@@ -658,7 +684,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     rate, resolutions = measure(
-        args.encounters, args.repeats, args.seed, pooled=not args.fresh
+        args.encounters,
+        args.repeats,
+        args.seed,
+        pooled=not args.fresh,
+        log_level=LogLevel(args.log_level),
     )
     verdict = "PASS" if rate >= BUDGET_PER_SECOND else "MISS"
     print(
