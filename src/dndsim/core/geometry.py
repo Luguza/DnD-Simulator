@@ -20,7 +20,7 @@ nobody asked for.
 **One metric answers every question here.** Reach, a sphere's radius and a
 cone's length are all measured with `distance_ft`, so "20 feet" names the same
 set of squares to the attack pipeline, to the opportunity-attack trigger and to
-Fireball (`docs/questions.md` #1).
+Fireball (`docs/decisions.md` § w1d).
 
 **A creature occupies the square its size gives it**, which from `w1d` is
 `SIZE_WIDTH_CELLS` squares on a side, and `Creature.position` anchors that
@@ -234,8 +234,7 @@ def sphere(
     within the radius by `distance_ft`, the same question reach asks, so
     Fireball's 20-foot radius covers the 9x9 block around its centre. Measuring
     a template with a second metric would make "20 feet" name one distance to
-    the attack pipeline and another to the spell; `docs/questions.md` #1 is that
-    choice and what would change if it were answered the other way.
+    the attack pipeline and another to the spell (`docs/decisions.md` § w1d).
     """
     span = radius_ft // CELL_SIZE_FT
     return _lit(
@@ -267,8 +266,7 @@ def cone(
     square at 5 feet, three at 10 and 15, five at 20 and 25 — because rounding
     down would keep a 10-foot cone one square wide and a 20-foot cone three,
     narrower than the rule draws at every second step. That is a choice rather
-    than a consequence, and `docs/questions.md` #3 is the choice and what
-    overturning it would move.
+    than a consequence (`docs/decisions.md` § w1d).
 
     `toward` names one of the eight grid directions rather than an angle. A
     creature chooses a direction by pointing at something, and an arbitrary

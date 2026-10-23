@@ -32,7 +32,7 @@ next reads `core/geometry.py`:
   it does not reach what no straight line from its point of origin reaches
   (XPHB, Rules Glossary "Areas of Effect"). The consequence worth seeing in a
   test rather than arguing about later is that Fireball's 20-foot radius is the
-  9x9 block of squares within 20 feet of its centre (`docs/questions.md` #1).
+  9x9 block of squares within 20 feet of its centre (`docs/decisions.md` § w1d).
 
 The route lengths asserted here were checked against an independent
 breadth-first search rather than against the implementation: every fixture with
@@ -543,7 +543,7 @@ def test_fireballs_sphere_is_every_square_within_twenty_feet() -> None:
     the 9x9 block: a square four diagonal steps out is 20 feet away on this grid
     and a fifth step is 25. Measuring a template any other way would make
     "20 feet" mean one thing to an attack and another to a spell
-    (`docs/questions.md` #1)."""
+    (`docs/decisions.md` § w1d)."""
     area = sphere(Cell(0, 0), 20)
     assert len(area) == 81
     assert Cell(0, 0) in area
@@ -565,7 +565,7 @@ def test_a_cone_is_as_wide_as_it_is_long() -> None:
     """A Cone's width at any point equals that point's distance from the point
     of origin, and the origin is not in the area. A grid cone's width in squares
     can only be odd, so the rule's even widths round, and this one rounds up:
-    one square at 5 feet, three at 10 and three at 15 (`docs/questions.md` #3,
+    one square at 5 feet, three at 10 and three at 15 (`docs/decisions.md` § w1d,
     which is also what a 5-square row at 20 feet follows from)."""
     assert cone(Cell(0, 0), Cell(1, 0), 15) == (
         Cell(1, 0),
