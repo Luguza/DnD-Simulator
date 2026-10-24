@@ -3645,11 +3645,11 @@ Three more things the landed tasks oblige of `w1j`, each now in its row:
 ### Two hooks nothing fires, and nobody owned
 
 `on_kill` fires at the moment `on_reduced_to_zero` does and was named by no row,
-so it rides `w1j` beside debt #8. `on_ability_check` is different: nothing in
-the plan rolls an ability check — initiative fires its own hook, and the 2024
-Grapple and Shove are saves — while three of `w1h`'s conditions hook it. That
-is a decision, not a task, so it is debt **#51** and goes to the milestone
-review with #31, #33 and #43. The other uncalled hooks — turn, round and
+so it rides `w1j` beside debt #8. `on_ability_check` has been hooked by three of
+`w1h`'s conditions and fired by nothing; initiative fires its own hook and the
+2024 Grapple and Shove are saves, so the first check the plan rolls is
+stabilising a dying creature — a Wisdom (Medicine) check, and `w1j`'s. That is
+debt **#51**, in `w1j`'s row. The other uncalled hooks — turn, round and
 encounter boundaries, movement, rests, concentration and casting — are each
 inside a row that names the thing they announce.
 
