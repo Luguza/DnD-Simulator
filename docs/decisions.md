@@ -3648,12 +3648,15 @@ Three more things the landed tasks oblige of `w1j`, each now in its row:
 so it rides `w1j` beside debt #8. `on_ability_check` has been hooked by three of
 `w1h`'s conditions and fired by nothing; initiative fires its own hook and the
 2024 Grapple and Shove are saves, so the first check the plan rolls is
-stabilising a dying creature — a Wisdom (Medicine) check. That is debt
-**#51**: `w1j` builds the roll and fires the hook, and `w2b`, the row that
-builds actions, wraps it in the Action an APL takes, so the stabilise has one
-roll and one action rather than two owners of either. The other uncalled hooks — turn, round and
-encounter boundaries, movement, rests, concentration and casting — are each
-inside a row that names the thing they announce.
+stabilising a dying creature — a Wisdom (Medicine) check. That overturns
+§ w1g's "nothing before `w2b`'s actions rolls one — a combat simulator rolls no
+skill check" on both counts: `w1j` comes before `w2b`, and stabilising is a
+skill check. It is debt **#51**: `w1j` builds the roll and fires the hook, and
+`w2b`, the row that builds actions, wraps it in the Action an APL takes, so the
+stabilise has one roll and one action rather than two owners of either.
+The other uncalled hooks — turn, round and encounter boundaries, movement,
+rests, concentration and casting — are each inside a row that names the thing
+they announce.
 
 ### The arm-order finding lived only in its record
 
