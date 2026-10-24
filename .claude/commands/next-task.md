@@ -30,7 +30,10 @@ touch, and the files themselves.
 
 CLAUDE.md requires this and it is the highest-value step in the loop. Check the
 row against the rest of the design for gaps, contradictions and unstated
-assumptions. If you find a real one, do **not** guess: open a spec PR per
+assumptions. Read the Produces cell against the code the done-when has to
+change: a file the done-when needs and the cell omits is a gap, and it is the
+one this check has found most often (`docs/decisions.md` § The W1 late-wave
+review). If you find a real one, do **not** guess: open a spec PR per
 `docs/workflow.md` § When the spec is wrong, leave the row at `next`, and take
 it through steps 5 and 6 like a task PR.
 

@@ -3596,3 +3596,94 @@ whether a log outlives its iteration.
 - **No serialisation.** JSONL for `trace` and the provenance a `SimResult`
   carries are `w2g`'s; a tuple of names, numbers and enum members is what they
   will be read from.
+
+## The W1 late-wave review
+
+`w1g`, `w1h` and `w1i` landed between this gate and the mid-wave one. The model
+is § The W0 plan review. **Nothing measured moved a number the plan assumes**:
+`w1g`'s witness added no call, `w1h` is off the hot path, and `w1i`'s records
+cost nothing the rate could see (§ w1g, § w1h, § w1i). The projection over the
+budget stands where § The W1 critical-path review put it, and `w1k` still
+settles it. What moved is the row behind them: `w1j` was written before the
+three tasks it now has to build on, and could not be done from what it said.
+
+### `w1j`'s file cell was narrower than its done-when
+
+The row produced `engine/dying.py` and `engine/healing.py` and asked, in the
+same row, for `resolve_damage()` to fire `on_reduced_to_zero` — which is
+`engine/damage.py`, debt #8's own file. That is the third row in a row whose
+Produces cell omitted a file its done-when had to change: § The W1 mid-wave
+review found it in `w1g`'s, and `w1i` wrote to `engine/attack.py` and
+`tools/spike.py` past a cell that named `core/log.py` alone and recorded the
+judgement as `docs/questions.md` #6. Reading the cell against the code is now
+part of `/next-task` step 2 and of this gate's own third question, and `w1k`'s
+cell, which named a measurement and not the `tools/` files the re-measure
+wires, is corrected on the same reading.
+
+Three more things the landed tasks oblige of `w1j`, each now in its row:
+
+- **Consciousness is a condition now.** `w1h` landed `Unconscious`, including
+  the "you remain Prone" handler, and a row that says "a heal at 0 HP restores
+  consciousness" would otherwise be built beside it rather than on it. `w1j`
+  depends on `w1h` and applies the real condition. That makes it the first
+  engine code to apply a condition, which debt #42 had said was `w2b`; the row
+  stays `w2b`'s, since retiring it means telling a condition from an effect in
+  `creatures/effects.py`, and the gap is exact until a feature hooks
+  `on_condition_gained`.
+- **`Creature.is_alive` answers from hit points and names `w1j` in its
+  docstring**, and `engine/triggers.py` and the spike read it. Once a creature
+  at 0 can be dying rather than dead, what that property answers is a decision
+  with readers, and which creatures make death saves at all is a fact nothing
+  carries: DESIGN.md's stop condition says a PC, and a `StatBlock` cannot say
+  which creatures are PCs. Both are `w1j`'s to settle, and the change to fight
+  length is a pricing question.
+- **The third D20 roll.** § w1g kept its two helpers as private copies of
+  `engine/attack.py`'s and named the third copy as the moment to extract them.
+  A death save is that copy, so extraction is in scope rather than a choice
+  `w1j` would have to make outside its files.
+
+### Two hooks nothing fires, and nobody owned
+
+`on_kill` fires at the moment `on_reduced_to_zero` does and was named by no row,
+so it rides `w1j` beside debt #8. `on_ability_check` is different: nothing in
+the plan rolls an ability check — initiative fires its own hook, and the 2024
+Grapple and Shove are saves — while three of `w1h`'s conditions hook it. That
+is a decision, not a task, so it is debt **#51** and goes to the milestone
+review with #31, #33 and #43. The other uncalled hooks — turn, round and
+encounter boundaries, movement, rests, concentration and casting — are each
+inside a row that names the thing they announce.
+
+### The arm-order finding lived only in its record
+
+`w1g` found the within-pair order worth about 3% of the rate and handed `w1k`
+"alternate the arms". It said so in § w1g alone, and `w1i`, the next priced
+task, ran its triples in one fixed order. `w1i`'s conclusion survives, because
+its witness carried it, but a method that reaches the plan only through one
+record reaches the task after it by luck. Sequencing principle 10 now says it,
+together with the keying artefact that sets the witness's resolution.
+
+### Retro
+
+Three PRs and six review rounds between them — one for `w1g`, two for `w1h`,
+three for `w1i` — with no red CI run and nothing sent to the register by the
+round cap. Most of what the rounds found was prose held to `CODING_STANDARDS.md`
+§ Citations and comments (`w1g`'s four findings, `w1i`'s first two rounds); the
+rest was one rules reading (`w1h`: Initiative is an ability check), one
+writable field (`w1i`: `EventLog`'s level), and one DESIGN.md sentence a
+measurement had falsified (`w1i`: § Levers).
+
+- **`/next-task` step 2 reads the Produces cell against the code**
+  (`.claude/commands/next-task.md`), and `/plan-review`'s questions 2 and 3 say
+  what this gate looked for (`.claude/commands/plan-review.md`). Both are the
+  finding above, made where the next reader of a row looks.
+- **Sequencing principle 10 carries `w1g`'s method** (`ROADMAP.md`), for the
+  reason in the section above.
+- The prose findings are not a new standard: they are
+  `CODING_STANDARDS.md` § Citations and comments applied as written, and the
+  file they keep being found in — a new module copying a sibling's "Not here:"
+  paragraph — is exactly what `w1l` cuts. No check is proposed: the mechanical
+  candidate is `w1l`'s own AST test, which lands with it.
+
+Sources: `docs/decisions.md` § w1g, § w1h, § w1i, § The W1 mid-wave review;
+`ROADMAP.md` § Sequencing principles 10, § The W0 debt register rows #8, #42,
+#51; `docs/questions.md` #6; PRs #45, #46, #50.
