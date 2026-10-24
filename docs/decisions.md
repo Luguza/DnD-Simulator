@@ -3639,8 +3639,8 @@ Three more things the landed tasks oblige of `w1j`, each now in its row:
   length is a pricing question.
 - **The third D20 roll.** § w1g kept its two helpers as private copies of
   `engine/attack.py`'s and named the third copy as the moment to extract them.
-  A death save is that copy, so extraction is in scope rather than a choice
-  `w1j` would have to make outside its files.
+  A death save is that copy, so extraction into a new `engine/d20.py` is in
+  scope rather than a choice `w1j` would have to make outside its files.
 
 ### Two hooks nothing fires, and nobody owned
 
@@ -3648,8 +3648,10 @@ Three more things the landed tasks oblige of `w1j`, each now in its row:
 so it rides `w1j` beside debt #8. `on_ability_check` has been hooked by three of
 `w1h`'s conditions and fired by nothing; initiative fires its own hook and the
 2024 Grapple and Shove are saves, so the first check the plan rolls is
-stabilising a dying creature — a Wisdom (Medicine) check, and `w1j`'s. That is
-debt **#51**, in `w1j`'s row. The other uncalled hooks — turn, round and
+stabilising a dying creature — a Wisdom (Medicine) check. That is debt
+**#51**: `w1j` builds the roll and fires the hook, and `w2b`, the row that
+builds actions, wraps it in the Action an APL takes, so the stabilise has one
+roll and one action rather than two owners of either. The other uncalled hooks — turn, round and
 encounter boundaries, movement, rests, concentration and casting — are each
 inside a row that names the thing they announce.
 
