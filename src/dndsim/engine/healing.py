@@ -2,16 +2,15 @@
 
 Where each rule comes from:
 
-- hit points cannot exceed the maximum, and a dead creature regains none —
-  XPHB, "Damage and Healing" -> Healing, and "Dropping to 0 Hit Points" -> Death
+- hit points cannot exceed the maximum — XPHB, "Damage and Healing" -> Healing
+- a dead creature regains none — the project's reading, `docs/decisions.md`
+  § w1j
 - regaining any hit points ends the Unconscious condition dropping to 0 gave,
   and resets the death saving throws — XPHB, "Dropping to 0 Hit Points" ->
   Falling Unconscious, Death Saving Throws
 - temporary hit points do not stack, the larger pool is kept, and they do not
   wake a creature at 0 — XPHB, Rules Glossary, "Temporary Hit Points"; the
   larger-pool reading is `hooks/contexts.py`'s `TempHpContext`
-
-`docs/decisions.md` § w1j has the rulings.
 """
 
 from typing import Final
