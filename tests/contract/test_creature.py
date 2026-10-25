@@ -517,14 +517,14 @@ def test_a_failure_ends_stable() -> None:
     assert tallies(subject) == (False, False, 0, 1)
 
 
-def test_wake_resets_both_tallies_and_stable() -> None:
+def test_reset_death_saves_resets_both_tallies_and_stable() -> None:
     subject = creature()
     subject.succeed_death_save()
     subject.fail_death_save(2)
-    subject.wake()
+    subject.reset_death_saves()
     reset = tallies(subject)
     subject.stabilize()
-    subject.wake()
+    subject.reset_death_saves()
     assert (reset, tallies(subject)) == ((False, False, 0, 0),) * 2
 
 

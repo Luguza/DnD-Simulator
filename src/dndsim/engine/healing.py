@@ -1,16 +1,9 @@
 """Regaining hit points and gaining temporary ones.
 
-Where each rule comes from:
-
-- hit points cannot exceed the maximum — XPHB, "Damage and Healing" -> Healing
-- a dead creature regains none — the project's reading, `docs/decisions.md`
-  § w1j
-- regaining any hit points ends the Unconscious condition dropping to 0 gave,
-  and resets the death saving throws — XPHB, "Dropping to 0 Hit Points" ->
-  Falling Unconscious, Death Saving Throws
-- temporary hit points do not stack, the larger pool is kept, and they do not
-  wake a creature at 0 — XPHB, Rules Glossary, "Temporary Hit Points"; the
-  larger-pool reading is `hooks/contexts.py`'s `TempHpContext`
+The rules are XPHB, "Damage and Healing" -> Healing, "Dropping to 0 Hit Points"
+-> Falling Unconscious and Death Saving Throws, and the Rules Glossary's
+"Temporary Hit Points". That a dead creature regains nothing is the project's
+reading, `docs/decisions.md` § w1j.
 """
 
 from typing import Final
@@ -93,9 +86,8 @@ def grant_temp_hp(creature: Creature, amount: int) -> int:
 
 def _wake(creature: Creature) -> None:
     """What regaining hit points at 0 undoes: the death saving throws, Stable,
-    and the Unconscious condition — whose own handler leaves the creature
-    Prone (`conditions/unconscious.py`)."""
-    creature.wake()
+    and the Unconscious condition."""
+    creature.reset_death_saves()
     for held in tuple(creature.effects):
         if isinstance(held, Unconscious):
             creature.effects.remove(held)

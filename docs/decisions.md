@@ -3733,8 +3733,8 @@ both is `allies.down`, the APL's Healing Word target, which is alive *and* down:
 a dead ally is not a heal target.
 
 `dead`, `stable` and the two tallies are **read-only on `Creature`, moved by six
-named methods** (`die`, `revive`, `wake`, `stabilize`, `succeed_death_save`,
-`fail_death_save`), because they carry two invariants — three failures is
+named methods** (`die`, `revive`, `reset_death_saves`, `stabilize`,
+`succeed_death_save`, `fail_death_save`), because they carry two invariants — three failures is
 dead, three successes is Stable with both tallies reset — and
 `CODING_STANDARDS.md` asks for a count with an invariant to have named writers.
 The first cut had them as plain slots, and the review showed that writing three
@@ -3825,7 +3825,7 @@ hit points and an identical next draw from the generator afterwards — **the sa
 fights**. The per-function diff accounts for every call: −3,941 `max()` (the
 clamp `resolve_damage()` no longer makes on every instance of damage), +1,600
 `is_down` reads (`allies.down` now asks two questions), +1,200 for the spike's
-reset clearing death on its three enemies (`revive()` and the `wake()` it
+reset clearing death on its three enemies (`revive()` and the `reset_death_saves()` it
 calls, 200 times each), +29 for the one drop to 0 the run contains (one
 `on_reduced_to_zero`, one `on_kill`, their contexts and settles), and −999 in
 the generated `__init__` row that § w1g identified as cProfile's keying

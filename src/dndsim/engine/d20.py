@@ -1,9 +1,6 @@
 """What the engine's D20 Tests share: the bag of modifiers summed, the d20 rolled
-under advantage or disadvantage, and a dispatch settled.
-
-Extracted at the third copy (`docs/decisions.md` § w1g, § w1j). The rule these
-read — advantage cancellation — is `AdvantageLedger`'s, in `hooks/contexts.py`;
-what is shared here is the arithmetic on either side of it.
+under advantage or disadvantage, and a dispatch settled. Why these are
+extracted, and which copy stays inline, is `docs/decisions.md` § w1j.
 """
 
 from dndsim.core.errors import FeatureContractError

@@ -323,9 +323,9 @@ class Creature:
     def revive(self) -> None:
         """Bring this creature back from death, with clean tallies."""
         self._dead = False
-        self.wake()
+        self.reset_death_saves()
 
-    def wake(self) -> None:
+    def reset_death_saves(self) -> None:
         """Reset what regaining hit points resets: both tallies, and Stable."""
         self._stable = False
         self._death_save_successes = 0
@@ -333,7 +333,7 @@ class Creature:
 
     def stabilize(self) -> None:
         """Make this creature Stable, which resets both tallies."""
-        self.wake()
+        self.reset_death_saves()
         self._stable = True
 
     def succeed_death_save(self) -> bool:
