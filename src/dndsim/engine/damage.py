@@ -286,11 +286,13 @@ def resolve_damage(
         return 0
     absorbed = min(defender.temp_hp, mitigated.total)
     defender.temp_hp -= absorbed
+    landed = mitigated.total - absorbed
     hp = defender.hp
     if not hp:
-        damaged_at_zero(defender, mitigated.total, critical=critical)
-    else:
-        hp -= mitigated.total - absorbed
+        if landed:
+            damaged_at_zero(defender, landed, critical=critical)
+    elif landed:
+        hp -= landed
         if hp > 0:
             defender.hp = hp
         else:

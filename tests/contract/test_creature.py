@@ -436,19 +436,41 @@ def test_a_creature_starts_undamaged_and_with_no_temporary_hit_points() -> None:
     assert fighter.is_alive
 
 
-def test_being_alive_is_hit_points_and_nothing_else() -> None:
-    """Death saves, stabilising and the Dying condition are w1j's. Until then 0
-    hit points is the end of a combatant's participation, and temporary hit
-    points do not keep a creature at 0 standing — they are spent before hit
-    points, never after them."""
+def test_being_alive_is_not_dying_and_being_down_is_hit_points() -> None:
+    """Two questions since w1j: `is_alive` is whether the creature has died,
+    and a creature at 0 hit points making death saving throws has not;
+    `is_down` is whether its hit points are 0. Temporary hit points keep
+    neither creature up — they are spent before hit points, never after."""
     fighter = creature(max_hp=10)
     fighter.hp = 1
-    on_one_hit_point = fighter.is_alive
+    on_one = (fighter.is_alive, fighter.is_down)
     fighter.hp = 0
-    at_zero = fighter.is_alive
+    at_zero = (fighter.is_alive, fighter.is_down)
     fighter.temp_hp = 5
-    at_zero_with_temporary = fighter.is_alive
-    assert (on_one_hit_point, at_zero, at_zero_with_temporary) == (True, False, False)
+    at_zero_with_temporary = (fighter.is_alive, fighter.is_down)
+    fighter.dead = True
+    dead = (fighter.is_alive, fighter.is_down)
+    assert (on_one, at_zero, at_zero_with_temporary, dead) == (
+        (True, False),
+        (True, True),
+        (True, True),
+        (False, True),
+    )
+
+
+def test_a_creature_starts_alive_undying_and_not_a_player_character() -> None:
+    """Nothing on a `StatBlock` says who is a player character, so it is the
+    constructor's keyword, and its default is the creature that dies at 0."""
+    subject = creature()
+    pc = Creature(name="pc", stats=stats(), position=Cell(0, 0), player_character=True)
+    assert (
+        subject.player_character,
+        subject.dead,
+        subject.stable,
+        subject.death_save_successes,
+        subject.death_save_failures,
+    ) == (False, False, False, 0, 0)
+    assert pc.player_character
 
 
 def test_an_unarmed_creature_threatens_five_feet() -> None:

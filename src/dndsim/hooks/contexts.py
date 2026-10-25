@@ -182,10 +182,11 @@ class Combatant(Protocol):
     No Armor Class: what reads a target's AC is a policy decision, and the APL
     asks the live creature through its namespace rather than through an event's
     view of it. No `is_alive`: whether a creature at 0 is dying or dead is
-    `Creature`'s, and no handler has needed to ask (`docs/decisions.md` § w1j).
-    The rule this protocol lives by is that it declares only what is already
-    settled elsewhere in the design; `w3e` confirms the shape before ~400 features are written
-    against it, and `w3f` is where a gap the paper pass finds gets filled.
+    `Creature`'s, and no handler has needed to ask (`docs/decisions.md`
+    § w1j). The rule this protocol lives by is that it declares only what is
+    already settled elsewhere in the design; `w3e` confirms the shape before
+    ~400 features are written against it, and `w3f` is where a gap the paper
+    pass finds gets filled.
     """
 
     @property

@@ -3759,18 +3759,21 @@ and each refusal names what a feature does instead. A heal can be: "can't
 regain Hit Points" is a rules effect (2024 Chill Touch), so a veto on `on_heal`
 returns zero.
 
-### Damage at 0 counts what the resolution order let through
+### Damage at 0 counts what got past temporary hit points
 
-`damaged_at_zero()` is handed `Mitigated.total`, temporary hit points included.
-The Damage at 0 Hit Points sentence says "take any damage", and `on_damage_taken`
-already fires for a hit temporary hit points absorbed whole (§ w0g2), so the
-project's reading of "taken" is one reading in both places. The alternative —
-only what reached hit points — is defensible and is `docs/questions.md` #7.
+`damaged_at_zero()` is handed what reached hit points, and is not called when
+temporary hit points absorbed the whole hit. The glossary settles it: at 0 hit
+points temporary hit points "can still absorb damage directed at you while
+you're in that state" (XPHB, Rules Glossary, "Temporary Hit Points"), so damage
+they absorbed is not damage that fails a death save or kills outright. The
+first cut passed the whole mitigated amount, on the analogy of `on_damage_taken`
+firing for an absorbed hit (§ w0g2); the independent test pass found the
+sentence and the two tests that pin it.
 
 `critical` is a new keyword on `resolve_damage()`, because "If the damage is
 from a Critical Hit, you suffer two failures" needs to know, and nothing else in
 the damage pipeline does. `engine/attack.py` passes it on a hit — one argument
-beyond the row's "edited only to import", recorded as `docs/questions.md` #8.
+beyond the row's "edited only to import", recorded as `docs/questions.md` #7.
 
 ### Unconscious is named in the engine, in two files, on purpose
 
