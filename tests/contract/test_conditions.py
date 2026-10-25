@@ -732,6 +732,8 @@ def test_a_composed_condition_inherits_its_bases_declared_gaps() -> None:
 
 CONDITION_WORDS: Final = frozenset(member.value for member in enums.Condition)
 
+UNCONSCIOUS_EXEMPTION: Final = frozenset({("healing.py", "unconscious")})
+
 
 def _identifiers(path: Path) -> set[str]:
     """Every identifier in `path`, lowercased, with comments and strings left
@@ -753,6 +755,10 @@ def test_no_condition_is_named_anywhere_in_the_engine() -> None:
     flag it branches on. The check is per identifier rather than per line
     because `is_prone` and `Condition.PRONE` are both the branch this forbids,
     and a docstring that mentions Prone is not.
+
+    One exemption, and only one: `engine/healing.py` defines `Downed`, the real
+    `Unconscious` dropping to 0 gives, as `w1j`'s row requires
+    (`docs/decisions.md` § w1j).
     """
     roots = (engine.__file__, hooks.__file__, core.__file__)
     named = {
@@ -762,6 +768,6 @@ def test_no_condition_is_named_anywhere_in_the_engine() -> None:
         for identifier in _identifiers(path)
         for word in CONDITION_WORDS
         if word in identifier
-    }
+    } - UNCONSCIOUS_EXEMPTION
 
     assert named == set()

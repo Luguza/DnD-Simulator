@@ -432,6 +432,7 @@ there is local to a module.
 | the performance budget, pricing a change | § w0i, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review |
 | `engine/triggers.py`, `Dispatcher.responsive()` | § w0g3 |
 | `core/log.py`, the event log, its records and levels | § w1i |
+| `engine/dying.py`, `engine/healing.py`, `engine/d20.py`, `is_alive` | § w1j |
 | `.claude/skills/`, `CODING_STANDARDS.md`, the review loop | § The PR, review and retro skills |
 
 Add a section there when a task lands, rather than growing this file.

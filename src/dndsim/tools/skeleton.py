@@ -100,7 +100,7 @@ def run_fight(
     """Swing until the defender drops or `_MAX_ROUNDS` is hit. Returns the
     number of attacks made."""
     rounds = 0
-    while defender.is_alive and rounds < _MAX_ROUNDS:
+    while not defender.is_down and rounds < _MAX_ROUNDS:
         rounds += 1
         outcome, damage = resolve_attack(attacker, defender, rng=rng)
         if on_attack is not None:
@@ -130,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     rounds = run_fight(attacker, defender, rng, on_attack=report)
-    if defender.is_alive:
+    if not defender.is_down:
         print(f"{defender.name} is still standing after {rounds} attacks.")
     else:
         print(f"{defender.name} fell after {rounds} attacks.")

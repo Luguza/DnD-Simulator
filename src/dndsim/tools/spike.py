@@ -261,12 +261,14 @@ class Spike:
         """
         self.log.clear()
         self.hero.hp = self.hero.max_hp
+        self.hero.revive()
         self.hero.position = _HERO_START
         self.state.raging = False
         self.state.slots_highest = 5
         self.economy.turn_started(self.hero.speed_ft)
         for enemy, start in zip(self.enemies, _ENEMY_STARTS, strict=True):
             enemy.hp = enemy.max_hp
+            enemy.revive()
             enemy.position = start
 
 

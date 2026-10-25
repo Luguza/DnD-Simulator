@@ -45,8 +45,8 @@ class Exhaustion(Condition):
         '"Your Speed is reduced by a number of feet equal to 5 times your '
         'Exhaustion level." '
         "(ROADMAP.md § The W0 debt register #47)",
-        'nothing kills a creature except damage: "You die if your Exhaustion '
-        'level is 6." '
+        "a handler cannot ask the engine to kill its owner: "
+        '"You die if your Exhaustion level is 6." '
         "(ROADMAP.md § The W0 debt register #44)",
     )
 

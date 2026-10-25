@@ -3692,3 +3692,191 @@ measurement had falsified (`w1i`: § Levers).
 Sources: `docs/decisions.md` § w1g, § w1h, § w1i, § The W1 mid-wave review;
 `ROADMAP.md` § Sequencing principles 10, § The W0 debt register rows #8, #42,
 #51; `docs/questions.md` #6; PRs #45, #46, #50.
+
+## w1j — dying, death saves, healing, and the third D20 roll
+
+Three new engine files — `engine/dying.py`, `engine/healing.py`, `engine/d20.py`
+— and `resolve_damage()` handing them a creature at 0. What needed deciding was
+who dies at 0, what "alive" answers once dying is a state, where the drop fires
+relative to the damage hooks, and how much of the third D20 roll to extract.
+
+### Who rolls death saves is a constructor fact, named as the initiative names it
+
+`Creature(player_character=...)`, default `False`. DESIGN.md § Context says a
+PC rolls death saves; nothing on a `StatBlock` says which creatures are PCs, and
+a stat block is what a creature *is*, where being a player character is what a
+build loader *says* about one — so the fact is the creature's, beside
+`initiative`, not the stat block's. It carries the name `InitiativeKey` already
+uses for the same fact (`core/timeline.py`), so `w2c`, which builds the key,
+reads one field rather than reconciling two. The default is the monster's
+because the cost of a wrong default is asymmetric: a PC built without the flag
+dies at 0 and the fight ends visibly early, where a monster built with it would
+lie on the floor making death saves while the party's damage went into it.
+
+Anything that is not a PC **dies at 0**: `dropped_to_zero()` calls `Creature.die()`,
+and `damaged_at_zero()` does the same for one somehow left at 0 alive. DESIGN.md
+settles that in the same sentence that settles the PC's.
+
+### `is_alive` is not hit points, and its readers wanted `is_down`
+
+`is_alive` is now `not dead`: a creature at 0 making death saves is alive, by
+the rules' own wording (it dies on the third failure). Every reader was re-read
+against that and **none of them meant it**. The two movement checks in
+`engine/triggers.py` ask whether an opportunity attack ended the move, which a
+drop to 0 does whether or not the mover is dying; the watcher filter asks
+whether a creature can take a reaction, which an Unconscious one cannot; the
+spike's `enemies.*` selectors and the skeleton's loop ask whether there is still
+something to hit. All of those are `is_down` — hit points at or below 0 —
+which is the answer `is_alive` gave before, so **the spike fights the same
+fights**: the witness below shows identical outcomes. The one reader that wants
+both is `allies.down`, the APL's Healing Word target, which is alive *and* down:
+a dead ally is not a heal target.
+
+`dead`, `stable` and the two tallies are **read-only on `Creature`, moved by six
+named methods** (`die`, `revive`, `reset_death_saves`, `stabilize`,
+`succeed_death_save`, `fail_death_save`), because they carry two invariants — three failures is
+dead, three successes is Stable with both tallies reset — and
+`CODING_STANDARDS.md` asks for a count with an invariant to have named writers.
+The first cut had them as plain slots, and the review showed that writing three
+failures by hand left a creature dying with nothing to notice. The creature
+keeps the invariants; `engine/dying.py` decides when a rule moves them and fires
+the hooks.
+
+### The drop fires between the hit points and `on_damage_taken`
+
+`resolve_damage()` sets hit points to 0, then `dropped_to_zero()` fires
+`on_reduced_to_zero`, settles the victim (Unconscious, or `Creature.die()`), fires
+`on_kill` for the attacker, and only then does `on_damage_taken` fire. So a
+`prevent()` handler (Relentless Endurance) reads a creature at 0 and leaves it
+at 1, and an `on_damage_taken` handler reads the hit points the event ended on
+rather than an intermediate 0. `overflow` is the damage left over after hit
+points ran out, and temporary hit points have already been spent by then — it
+is what the Instant Death sentence compares against the maximum.
+
+`on_kill` fires when the creature *dropped*, not when it died: "reduce a
+creature to 0 Hit Points" is what Great Weapon Master's Hew says, and a PC that
+drops and starts dying is reduced to 0 all the same. It does not fire for a
+dying creature finished off by damage at 0, which was not reduced to anything.
+
+**Vetoes are refused everywhere but `on_heal`**, for `engine/attack.py`'s and
+`engine/saves.py`'s reason: none of the other five moments can be called off,
+and each refusal names what a feature does instead. A heal can be: "can't
+regain Hit Points" is a rules effect (2024 Chill Touch), so a veto on `on_heal`
+returns zero.
+
+### Damage at 0 counts what got past temporary hit points
+
+`damaged_at_zero()` is handed what reached hit points, and is not called when
+temporary hit points absorbed the whole hit. The glossary settles it: at 0 hit
+points temporary hit points "can still absorb damage directed at you while
+you're in that state" (XPHB, Rules Glossary, "Temporary Hit Points"), so damage
+they absorbed is not damage that fails a death save or kills outright. The
+first cut passed the whole mitigated amount, on the analogy of `on_damage_taken`
+firing for an absorbed hit (§ w0g2); the independent test pass found the
+sentence and the two tests that pin it.
+
+`critical` is a new keyword on `resolve_damage()`, because "If the damage is
+from a Critical Hit, you suffer two failures" needs to know, and nothing else in
+the damage pipeline does. `engine/attack.py` passes it on a hit — one argument
+beyond the row's "edited only to import", recorded as `docs/questions.md` #7.
+
+### The dying Unconscious is its own class, `Downed`
+
+The row asks for the real condition, and `w1h`'s acceptance test forbids any
+condition's name in `engine/`. The test's claim is "no `if creature.is_prone`":
+a condition is behaviour the engine dispatches to and never a flag it branches
+on. Subclassing one is neither, so the test exempts exactly that identifier in
+exactly `engine/healing.py` and stays as strict everywhere else.
+
+**`Downed` subclasses `Unconscious` rather than applying it**, because
+`Unconscious` stacks `REFRESH`: applied to a creature that already holds one
+— from a spell, say — the dying condition merged into the spell's effect, so
+the spell ending left a dying creature conscious and a heal stripped the
+spell's condition. A different class is a different stacking key
+(`creatures/effects.py`), so the two are held apart and each ends on its own
+terms; holding two is harmless because everything `Unconscious` grants is
+idempotent (DESIGN.md § Structural prevention). The fourth review round found
+the merge. `Downed` lives in `engine/healing.py`, beside the removal, because
+the death save's natural 20 regains a hit point through `heal()` and
+`engine/dying.py` importing `engine/healing.py` is the only direction the two
+can import in.
+
+**A dead creature regains nothing and `on_heal` does not fire for it.** Death
+in the rules is undone by magic that revives, which is not healing, so a heal
+aimed at a corpse is a wasted action and returning zero is how the APL sees
+that. Nothing revives a creature yet; whatever does will clear `dead` itself.
+
+A natural 20 goes through `heal()` rather than setting `hp = 1`: it is
+regaining hit points, so `on_heal` fires for it and waking up happens in the one
+place it is written.
+
+### The D20 helpers, extracted at the third copy
+
+`engine/d20.py` holds `modifier_total()`, `roll_d20()` and `settle()`, which is
+§ w1g's prediction taken up. `engine/saves.py` now uses all three and
+`engine/dying.py` uses all three twice (the death save and the Medicine check).
+**`engine/attack.py` imports `modifier_total()` and keeps its inlined roll and
+its own `_seal()`**: the roll is three lines on the hottest path in the project,
+and `_seal()` is not the same helper — it closes the context and reads the
+frame directly, which is what `w1f` priced (§ w1f). An import of a module-level
+function costs what calling the private copy did, which is why the witness
+shows the 12,000 calls moving name and not count.
+
+### What it cost the benchmark
+
+Priced as sequencing principle 10 asks, with the deterministic witness first.
+
+**The witness.** Over the fixed 200-encounter profiled run at seed 0, the whole
+run's call count went from **1,504,052 to 1,502,340**, the same under three
+`PYTHONHASHSEED`s, with an identical fingerprint of every encounter's closing
+hit points and an identical next draw from the generator afterwards — **the same
+fights**. The per-function diff accounts for every call: −3,941 `max()` (the
+clamp `resolve_damage()` no longer makes on every instance of damage), +1,600
+`is_down` reads (`allies.down` now asks two questions), +1,600 for the spike's
+reset clearing death on the hero and its three enemies (`revive()` and the
+`reset_death_saves()` it calls, 200 times each), +29 for the one drop to 0 the run contains (one
+`on_reduced_to_zero`, one `on_kill`, their contexts and settles), and −999 in
+the generated `__init__` row that § w1g identified as cProfile's keying
+artefact. `resolve_damage()`'s cumulative time read 0.133 s before and 0.128 s
+after: inside noise. So the drop is off the hot path in this configuration —
+one per 200 encounters — and what is on it got one call cheaper.
+
+**The rate agrees, after the harness was found first.** Sixteen pairs with
+alternating order, the baseline in a worktree and the change in the main
+checkout, gave a median of −3.6% — against a witness with fewer calls. Sixteen
+more with **both arms in sibling worktrees**, same venv layout, gave **+2.3%**
+(ratios −6.5% to +4.2%; base-first +1.9%, change-first +2.3%; baseline 21.9k–
+24.7k). The checkout an arm runs from was worth about 6% on this container,
+which is a fourth harness artefact for `w1k` to control beside § w1g's arm
+order: **run both arms from the same kind of directory**. Not distinguishable
+from zero, and the witness says why.
+
+**So `w1j` adds nothing to the shortfall `w1k` is totalling.** If the real
+encounter loop drops creatures far more often than the spike's one per 200
+encounters, each drop costs two dispatches and two context allocations, which
+`w1k` can price per call against `w2c`'s count.
+
+### What this task deliberately did not do
+
+- **Nothing calls `death_save()` at the start of a turn.** "Whenever you start
+  your turn with 0 Hit Points" is a turn boundary, and the boundaries are
+  `w2c`'s; this file supplies the roll it calls.
+- **A dead creature keeps its effects**, its Unconscious included. Nothing reads
+  them once `dead` is set, and what ends at death is a question about
+  concentration and summons that `w5a` and `w6a` meet first.
+- **No "regains 1 hit point after 1d4 hours"** for a Stable creature: hours are
+  `w6a`'s rests.
+- **`on_condition_gained` still does not fire** for the Unconscious applied here
+  — debt #42, `w2b`'s, as its row says.
+- **No log records** for drops, death saves or heals — debt #50, `w2c`.
+- **The Medicine check adds the bare Wisdom modifier** — debt #36, widened to
+  skills, `w2f`.
+- **Exhaustion's sixth level still cannot kill** — debt #44, narrowed to the
+  missing mutator and moved to `w3f` via `w3e`.
+
+Sources: XPHB (2024) "Dropping to 0 Hit Points" (Instant Death, Falling
+Unconscious, Death Saving Throws, Rolling 1 or 20, Damage at 0 Hit Points,
+Stabilizing a Character), "Damage and Healing" -> Healing, Rules Glossary
+"Temporary Hit Points"; DESIGN.md § Context; `docs/decisions.md` § w0g2, § w1f,
+§ w1g, § w1h, § The W1 late-wave review; `ROADMAP.md` § Sequencing principles
+10, § The W0 debt register rows #8, #36, #42, #44, #50, #51.

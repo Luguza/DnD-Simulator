@@ -25,15 +25,12 @@ save (debt #36).
 from collections.abc import Mapping, Sequence
 from typing import Final, NamedTuple
 
-from dndsim.core.errors import FeatureContractError
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
-from dndsim.creatures.effects import apply_pending
+from dndsim.engine.d20 import modifier_total, roll_d20, settle
 from dndsim.engine.damage import FRESH_DAMAGE, DamageContexts, resolve_damage
 from dndsim.hooks.contexts import (
-    Context,
     ForcedSaveContext,
-    ModifierBag,
     SaveResolvedContext,
     SavingThrowContext,
 )
@@ -110,18 +107,13 @@ def saving_throw(
         creature=creature, ability=ability, dc=dc, imposed_by=imposed_by
     )
     creature.dispatch(ON_SAVING_THROW, rolling)
-    _settle(rolling, "on_saving_throw", creature, imposed_by)
+    settle(rolling, _refusal("on_saving_throw"), creature, imposed_by)
     had_advantage = rolling.had_advantage
     had_disadvantage = rolling.had_disadvantage
-    bonus = _modifier_total(rolling.bonus, rng)
+    bonus = modifier_total(rolling.bonus, rng)
     rolling.close()
 
-    if had_advantage:
-        natural = max(rng.roll(20), rng.roll(20))
-    elif had_disadvantage:
-        natural = min(rng.roll(20), rng.roll(20))
-    else:
-        natural = rng.roll(20)
+    natural = roll_d20(rng, advantage=had_advantage, disadvantage=had_disadvantage)
     total = natural + save_bonus(creature, ability) + bonus
     outcome = SaveOutcome.SUCCESS if total >= dc else SaveOutcome.FAILURE
 
@@ -133,7 +125,7 @@ def saving_throw(
         succeeded=outcome is SaveOutcome.SUCCESS,
     )
     creature.dispatch(ON_SAVE_RESOLVED, resolved)
-    _settle(resolved, "on_save_resolved", creature, imposed_by)
+    settle(resolved, _refusal("on_save_resolved"), creature, imposed_by)
     forced_by = resolved.forced_by
     if resolved.forced_success:
         outcome = SaveOutcome.SUCCESS
@@ -165,8 +157,8 @@ def force_save(
         creature=imposer, targets=tuple(targets), ability=ability, dc=dc
     )
     imposer.dispatch(ON_FORCED_SAVE, forced)
-    _settle(forced, "on_forced_save", imposer, *targets)
-    dc_bonus = _modifier_total(forced.dc_bonus, rng)
+    settle(forced, _refusal("on_forced_save"), imposer, *targets)
+    dc_bonus = modifier_total(forced.dc_bonus, rng)
     forced.close()
     return tuple(
         saving_throw(
@@ -201,36 +193,14 @@ def save_for_half(
     )
 
 
-def _modifier_total(bag: ModifierBag, rng: Rng) -> int:
-    """A bag of modifiers as one number, Bless's `1d4` included.
-
-    The dice come from the generator the save is being rolled with, which is
-    the requirement `mitigate()` states for a reduction's dice and the same
-    argument (`engine/damage.py`).
-    """
-    total = 0
-    for modifier in bag:
-        total += modifier.flat
-        if modifier.dice is not None:
-            total += modifier.dice.roll(rng)
-    return total
-
-
-def _settle(ctx: Context, stage: str, *among: Creature | None) -> None:
-    """Apply what the dispatch queued and refuse a veto.
-
-    A veto is refused at all three hooks: `SaveOutcome` has no member for a
-    save that was called off, so honouring one would leave this function with
-    nothing to return (`rules/enums.py`). Called before anything is rolled, so
-    that a refused save draws no dice — the order `engine/attack.py` settles
-    its declaration in. The caller closes the context once it has read it.
-    """
-    apply_pending(ctx, *among)
-    if ctx.vetoed:
-        raise FeatureContractError(
-            f"{ctx.veto_reason} vetoed at {stage}, which the saving-throw "
-            "sequence cannot honour: a save either succeeds or fails, and "
-            "neither describes one that did not happen. A feature that means "
-            "to change a save grants advantage, adds to the total through "
-            "ctx.bonus, or declares a success at on_save_resolved."
-        )
+def _refusal(stage: str) -> str:
+    """Why a veto at `stage` is refused: `SaveOutcome` has no member for a save
+    that was called off (`rules/enums.py`). Settled before anything is rolled,
+    so that a refused save draws no dice."""
+    return (
+        f"vetoed at {stage}, which the saving-throw sequence cannot honour: a "
+        "save either succeeds or fails, and neither describes one that did not "
+        "happen. A feature that means to change a save grants advantage, adds "
+        "to the total through ctx.bonus, or declares a success at "
+        "on_save_resolved."
+    )

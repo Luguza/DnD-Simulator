@@ -17,8 +17,8 @@ Where each step comes from:
   adjustment across a mixed-type hit — the project's own rulings, the only two
   here, argued in `docs/decisions.md` § w1e
 
-Not here: rolling the attack (`engine/attack.py`, w1f), dying (`w1j`, debt #8),
-the event log (`w1i`). What a handler queued is applied by
+Not here: rolling the attack (`engine/attack.py`, w1f), what dropping to 0
+means (`engine/dying.py`), the event log (`w1i`). What a handler queued is applied by
 `creatures/effects.py`'s drain after each of the two dispatches. `ctx.reduce()`
 takes no damage type, so a reduction is spent across every surviving type —
 debt #23, `w3f` via `w3e`.
@@ -31,6 +31,7 @@ from typing import Final, Protocol
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.effects import apply_pending
+from dndsim.engine.dying import damaged_at_zero, dropped_to_zero
 from dndsim.hooks.contexts import (
     DamagePart,
     DamageTakenContext,
@@ -245,6 +246,7 @@ def resolve_damage(
     attacker: Creature | None = None,
     contexts: DamageContexts = FRESH_DAMAGE,
     halved_by: str | None = None,
+    critical: bool = False,
 ) -> int:
     """Deal damage to `defender` and return what it took.
 
@@ -258,6 +260,9 @@ def resolve_damage(
     ledger rather than applied to `amounts`, so it runs in the halvings step
     with every other halving; why the signature is this rather than one of the
     two routes that look open is `docs/decisions.md` § w1g.
+
+    `critical` is whether the damage is a Critical Hit's (XPHB, "Dropping to 0
+    Hit Points" -> Damage at 0 Hit Points; `docs/decisions.md` § w1j).
     """
     incoming = contexts.incoming(defender=defender, attacker=attacker, amounts=amounts)
     if halved_by is not None:
@@ -279,7 +284,18 @@ def resolve_damage(
         return 0
     absorbed = min(defender.temp_hp, mitigated.total)
     defender.temp_hp -= absorbed
-    defender.hp = max(defender.hp - (mitigated.total - absorbed), 0)
+    landed = mitigated.total - absorbed
+    hp = defender.hp
+    if not hp:
+        if landed:
+            damaged_at_zero(defender, landed, critical=critical)
+    elif landed:
+        hp -= landed
+        if hp > 0:
+            defender.hp = hp
+        else:
+            defender.hp = 0
+            dropped_to_zero(defender, attacker=attacker, overflow=-hp)
 
     taken = contexts.taken(
         defender=defender,

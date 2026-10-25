@@ -203,12 +203,12 @@ class EnemiesProxy:
         return sum(
             1
             for c in self._side
-            if c.is_alive and distance_ft(origin, c.position) <= feet
+            if not c.is_down and distance_ft(origin, c.position) <= feet
         )
 
     @property
     def alive(self) -> tuple[Creature, ...]:
-        return tuple(c for c in self._side if c.is_alive)
+        return tuple(c for c in self._side if not c.is_down)
 
     @property
     def in_reach(self) -> tuple[Creature, ...]:
@@ -216,7 +216,9 @@ class EnemiesProxy:
         origin = owner.position
         reach = owner.reach_ft
         return tuple(
-            c for c in self._side if c.is_alive and in_reach(origin, c.position, reach)
+            c
+            for c in self._side
+            if not c.is_down and in_reach(origin, c.position, reach)
         )
 
 
@@ -230,7 +232,7 @@ class AlliesProxy:
 
     @property
     def down(self) -> tuple[Creature, ...]:
-        return tuple(c for c in self._side if not c.is_alive)
+        return tuple(c for c in self._side if c.is_alive and c.is_down)
 
 
 class Namespace:

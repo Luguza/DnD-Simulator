@@ -181,11 +181,10 @@ class Combatant(Protocol):
     **What is still deliberately absent is as load-bearing as what is here.**
     No Armor Class: what reads a target's AC is a policy decision, and the APL
     asks the live creature through its namespace rather than through an event's
-    view of it. No `is_alive`: dying is `w1j`'s and a protocol that promised it
-    now would be promising a definition that does not exist yet. The rule this
-    protocol lives by is that it declares only what is already settled elsewhere
-    in the design; `w3e` confirms the shape before ~400 features are written
-    against it, and `w3f` is where a gap the paper pass finds gets filled.
+    view of it. The rule this protocol lives by is that it declares only what is
+    already settled elsewhere in the design; `w3e` confirms the shape before
+    ~400 features are written against it, and `w3f` is where a gap the paper
+    pass finds gets filled.
     """
 
     @property
