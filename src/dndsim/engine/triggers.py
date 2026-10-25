@@ -207,7 +207,7 @@ class MovementWatch:
                 watcher.threatening = False
                 self._offer(watcher, origin, destination)
                 pruning = pruning or watcher.spent
-                if not mover.is_alive:
+                if mover.is_down:
                     # An opportunity attack that dropped the mover ends the
                     # move, and the watchers after this one in initiative order
                     # never get their offer: there is no longer a creature
@@ -298,7 +298,7 @@ def watch_movement(
         # leaves here, and in most fights that is every combatant.
         if creature is mover or not creature.dispatcher.responsive(ON_LEAVE_REACH):
             continue
-        if not creature.is_alive:
+        if creature.is_down:
             continue
         reach = creature.reach_ft
         standing = creature.position
@@ -374,7 +374,7 @@ def walk_provoking(
     walked = []
     for square in route:
         watch.leaving(square)
-        if not mover.is_alive:
+        if mover.is_down:
             break
         mover.position = square
         walked.append(square)

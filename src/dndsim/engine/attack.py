@@ -37,6 +37,7 @@ from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.effects import apply_pending
 from dndsim.creatures.stats import Weapon
+from dndsim.engine.d20 import modifier_total
 from dndsim.engine.damage import (
     FreshDamageContexts,
     resolve_damage,
@@ -53,7 +54,6 @@ from dndsim.hooks.contexts import (
     HitContext,
     IncomingDamageContext,
     MissContext,
-    ModifierBag,
 )
 from dndsim.hooks.definitions import (
     ON_ATTACK_RESOLVED,
@@ -643,22 +643,6 @@ def within_reach(attacker: Creature, defender: Creature, weapon: Weapon) -> bool
     )
 
 
-def _modifier_total(bag: ModifierBag, rng: Rng) -> int:
-    """A bag of modifiers as one number, Bless's `1d4` included.
-
-    The dice come from the attack's own generator, which is the requirement
-    `mitigate()` states for a reduction's dice and the same argument: a second
-    stream reproduces a different fight from the same archived seed with no
-    error anywhere (`engine/damage.py`).
-    """
-    total = 0
-    for modifier in bag:
-        total += modifier.flat
-        if modifier.dice is not None:
-            total += modifier.dice.roll(rng)
-    return total
-
-
 def _seal(ctx: Context, stage: str, attacker: Creature, defender: Creature) -> None:
     """End the moment, after applying what the dispatch queued and refusing what
     it cannot honour.
@@ -753,11 +737,11 @@ def resolve_attack(
         return PREVENTED
     had_advantage = declared.had_advantage
     had_disadvantage = declared.had_disadvantage
-    attack_bonus = _modifier_total(declared.bonus, rng)
+    attack_bonus = modifier_total(declared.bonus, rng)
     # Rolled here rather than at the comparison below, which a natural 1 or 20
     # never reaches: a die drawn on some paths and not others would make the
     # stream depend on the outcome it is deciding.
-    ac_bonus = _modifier_total(declared.ac_bonus, rng)
+    ac_bonus = modifier_total(declared.ac_bonus, rng)
     declared.close()
 
     if had_advantage:
@@ -862,7 +846,12 @@ def resolve_attack(
             # be told the hit was ordinary.
             trigger.bind(crit=critical, damage_estimate=sum(amounts.values()))
         damage_dealt = resolve_damage(
-            defender, amounts, rng=rng, attacker=attacker, contexts=contexts
+            defender,
+            amounts,
+            rng=rng,
+            attacker=attacker,
+            contexts=contexts,
+            critical=critical,
         )
     else:
         miss = contexts.missed(

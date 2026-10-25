@@ -99,14 +99,19 @@ class Creature:
         "_shield",
         "_stats",
         "crit_threshold",
+        "dead",
+        "death_save_failures",
+        "death_save_successes",
         "dispatcher",
         "economy",
         "effects",
         "hp",
         "initiative",
         "name",
+        "player_character",
         "position",
         "resources",
+        "stable",
         "temp_hp",
         "weapon",
     )
@@ -121,6 +126,7 @@ class Creature:
         armour: Armour = UNARMOURED,
         shield: bool = False,
         initiative: InitiativeKey = UNSEATED,
+        player_character: bool = False,
     ) -> None:
         # `position` has no default: two creatures defaulted onto the same cell
         # would be a fight in which everything is in everyone's reach and every
@@ -137,6 +143,15 @@ class Creature:
         self.initiative = initiative
         self.hp = stats.max_hp
         self.temp_hp = 0
+        # Whether dropping to 0 hit points is the start of death saving throws
+        # or the end: a player character rolls them and anything else dies
+        # (DESIGN.md § Context, "What 'runs dry' means"; `docs/decisions.md`
+        # § w1j). The four fields after it are `engine/dying.py`'s to write.
+        self.player_character = player_character
+        self.dead = False
+        self.stable = False
+        self.death_save_successes = 0
+        self.death_save_failures = 0
         # Read off the stat block once. Both are pure functions of a frozen
         # object and the attack pipeline reads them three times per resolution
         # (w0i measured recomputing them at ~1.5% of the budget). Both are
@@ -264,13 +279,14 @@ class Creature:
 
     @property
     def is_alive(self) -> bool:
-        """Whether this creature is still standing.
+        """Whether this creature is alive. A creature at 0 hit points making
+        death saving throws is; `engine/dying.py` decides when it stops being."""
+        return not self.dead
 
-        Hit points only: death saves, stabilising and the Dying condition are
-        `w1j`'s, and until then dropping to 0 is the end of a combatant's
-        participation rather than the beginning of three rounds of dice.
-        """
-        return self.hp > 0
+    @property
+    def is_down(self) -> bool:
+        """Whether this creature is at 0 hit points: dying, stable or dead."""
+        return self.hp <= 0
 
     # -- the hook pipeline -----------------------------------------------------
 
