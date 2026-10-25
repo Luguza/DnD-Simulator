@@ -10,11 +10,10 @@ below: the Medicine check adds the bare Wisdom modifier (debt #36).
 
 from typing import Final, NamedTuple
 
-from dndsim.conditions.unconscious import Unconscious
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
 from dndsim.engine.d20 import modifier_total, roll_d20, settle
-from dndsim.engine.healing import heal
+from dndsim.engine.healing import Downed, heal
 from dndsim.hooks.contexts import (
     AbilityCheckContext,
     DeathSaveContext,
@@ -106,7 +105,7 @@ def dropped_to_zero(
     if not creature.player_character or overflow >= creature.max_hp:
         creature.die()
     else:
-        creature.effects.apply(Unconscious(creature))
+        creature.effects.apply(Downed(creature))
 
     if attacker is not None:
         kill = KillContext(killer=attacker, victim=creature)

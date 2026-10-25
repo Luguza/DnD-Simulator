@@ -732,9 +732,7 @@ def test_a_composed_condition_inherits_its_bases_declared_gaps() -> None:
 
 CONDITION_WORDS: Final = frozenset(member.value for member in enums.Condition)
 
-UNCONSCIOUS_EXEMPTION: Final = frozenset(
-    {("dying.py", "unconscious"), ("healing.py", "unconscious")}
-)
+UNCONSCIOUS_EXEMPTION: Final = frozenset({("healing.py", "unconscious")})
 
 
 def _identifiers(path: Path) -> set[str]:
@@ -758,8 +756,8 @@ def test_no_condition_is_named_anywhere_in_the_engine() -> None:
     because `is_prone` and `Condition.PRONE` are both the branch this forbids,
     and a docstring that mentions Prone is not.
 
-    One exemption, and only one: `engine/dying.py` applies and
-    `engine/healing.py` removes the real `Unconscious`, as `w1j`'s row requires
+    One exemption, and only one: `engine/healing.py` defines `Downed`, the real
+    `Unconscious` dropping to 0 gives, as `w1j`'s row requires
     (`docs/decisions.md` § w1j).
     """
     roots = (engine.__file__, hooks.__file__, core.__file__)

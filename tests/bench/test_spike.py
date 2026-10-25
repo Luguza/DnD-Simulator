@@ -205,6 +205,21 @@ def test_an_encounter_resolves_attacks_in_both_directions() -> None:
     assert spike.hero.hp < spike.hero.max_hp, "the hero was never hit back"
 
 
+def test_a_reset_brings_a_dead_hero_and_its_enemies_back() -> None:
+    """A hero that died in one encounter fights the next: the reset puts back
+    what dying took, not only the hit points."""
+    spike, _ = build_spike(0)
+    spike.hero.hp = 0
+    spike.hero.die()
+    spike.enemies[0].hp = 0
+    spike.enemies[0].die()
+
+    spike.reset()
+
+    assert spike.hero.is_alive and not spike.hero.is_down
+    assert spike.enemies[0].is_alive and not spike.enemies[0].is_down
+
+
 def test_every_encounter_resolves_the_same_number_of_attacks() -> None:
     """The count above is a property of the *shape* of the encounter — five
     rounds, three swings, three enemies — and it has to hold on every seed, not

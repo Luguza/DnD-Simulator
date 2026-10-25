@@ -3780,18 +3780,26 @@ from a Critical Hit, you suffer two failures" needs to know, and nothing else in
 the damage pipeline does. `engine/attack.py` passes it on a hit — one argument
 beyond the row's "edited only to import", recorded as `docs/questions.md` #7.
 
-### Unconscious is named in the engine, in two files, on purpose
+### The dying Unconscious is its own class, `Downed`
 
-The row asks for the real condition, so `engine/dying.py` applies `Unconscious`
-and `engine/healing.py` removes it — and `w1h`'s acceptance test forbids any
+The row asks for the real condition, and `w1h`'s acceptance test forbids any
 condition's name in `engine/`. The test's claim is "no `if creature.is_prone`":
 a condition is behaviour the engine dispatches to and never a flag it branches
-on. Applying and removing one is neither, so the test exempts exactly that
-identifier in exactly those two files and stays as strict everywhere else. The
-removal is in `engine/healing.py` rather than behind a function in
-`engine/dying.py` because the death save's natural 20 regains a hit point
-through `heal()`, and `engine/dying.py` importing `engine/healing.py` is the
-only direction the two can import in.
+on. Subclassing one is neither, so the test exempts exactly that identifier in
+exactly `engine/healing.py` and stays as strict everywhere else.
+
+**`Downed` subclasses `Unconscious` rather than applying it**, because
+`Unconscious` stacks `REFRESH`: applied to a creature that already holds one
+— from a spell, say — the dying condition merged into the spell's effect, so
+the spell ending left a dying creature conscious and a heal stripped the
+spell's condition. A different class is a different stacking key
+(`creatures/effects.py`), so the two are held apart and each ends on its own
+terms; holding two is harmless because everything `Unconscious` grants is
+idempotent (DESIGN.md § Structural prevention). The fourth review round found
+the merge. `Downed` lives in `engine/healing.py`, beside the removal, because
+the death save's natural 20 regains a hit point through `heal()` and
+`engine/dying.py` importing `engine/healing.py` is the only direction the two
+can import in.
 
 **A dead creature regains nothing and `on_heal` does not fire for it.** Death
 in the rules is undone by magic that revives, which is not healing, so a heal
@@ -3819,14 +3827,14 @@ shows the 12,000 calls moving name and not count.
 Priced as sequencing principle 10 asks, with the deterministic witness first.
 
 **The witness.** Over the fixed 200-encounter profiled run at seed 0, the whole
-run's call count went from **1,504,052 to 1,501,940**, the same under three
+run's call count went from **1,504,052 to 1,502,340**, the same under three
 `PYTHONHASHSEED`s, with an identical fingerprint of every encounter's closing
 hit points and an identical next draw from the generator afterwards — **the same
 fights**. The per-function diff accounts for every call: −3,941 `max()` (the
 clamp `resolve_damage()` no longer makes on every instance of damage), +1,600
-`is_down` reads (`allies.down` now asks two questions), +1,200 for the spike's
-reset clearing death on its three enemies (`revive()` and the `reset_death_saves()` it
-calls, 200 times each), +29 for the one drop to 0 the run contains (one
+`is_down` reads (`allies.down` now asks two questions), +1,600 for the spike's
+reset clearing death on the hero and its three enemies (`revive()` and the
+`reset_death_saves()` it calls, 200 times each), +29 for the one drop to 0 the run contains (one
 `on_reduced_to_zero`, one `on_kill`, their contexts and settles), and −999 in
 the generated `__init__` row that § w1g identified as cProfile's keying
 artefact. `resolve_damage()`'s cumulative time read 0.133 s before and 0.128 s

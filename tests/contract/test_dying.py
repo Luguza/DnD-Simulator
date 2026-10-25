@@ -35,6 +35,7 @@ from dndsim.engine.dying import (
     death_save,
     stabilize,
 )
+from dndsim.engine.healing import Downed
 from dndsim.hooks.contexts import (
     AbilityCheckContext,
     DeathSaveContext,
@@ -153,7 +154,7 @@ def test_overflow_equal_to_the_maximum_kills_outright() -> None:
     resolve_damage(victim, {SLASHING: 40}, rng=no_dice())
     assert victim.dead
     assert not victim.is_alive
-    assert Unconscious not in held(victim)
+    assert not any(isinstance(effect, Unconscious) for effect in victim.effects)
 
 
 def test_overflow_one_short_of_the_maximum_knocks_out() -> None:
@@ -162,14 +163,16 @@ def test_overflow_one_short_of_the_maximum_knocks_out() -> None:
     resolve_damage(victim, {SLASHING: 39}, rng=no_dice())
     assert not victim.dead
     assert victim.is_alive and victim.is_down
-    assert held(victim) == [Unconscious]
+    assert held(victim) == [Downed]
 
 
 def test_a_player_character_at_zero_is_unconscious_with_clean_counters() -> None:
+    """What it holds is a `Downed`, which is the real Unconscious."""
     victim = downed()
+    assert issubclass(Downed, Unconscious)
     assert (victim.death_save_successes, victim.death_save_failures) == (0, 0)
     assert not victim.stable
-    assert held(victim) == [Unconscious]
+    assert held(victim) == [Downed]
 
 
 def test_a_monster_dies_at_zero() -> None:
@@ -180,6 +183,21 @@ def test_a_monster_dies_at_zero() -> None:
     resolve_damage(goblin, {SLASHING: MAX_HP}, rng=no_dice())
     assert goblin.dead
     assert held(goblin) == []
+
+
+def test_dropping_to_zero_while_already_unconscious_holds_a_second_one() -> None:
+    """A spell's Unconscious and the drop's are held apart, so the spell ending
+    leaves the creature Unconscious "until you regain any Hit Points"."""
+    victim = pc()
+    spell = victim.effects.apply(Unconscious(victim))
+    assert spell is not None
+    resolve_damage(victim, {SLASHING: MAX_HP}, rng=no_dice())
+    assert held(victim) == [Unconscious, Downed]
+
+    victim.effects.remove(spell)
+    assert victim.hp == 0
+    assert any(isinstance(effect, Unconscious) for effect in victim.effects)
+    assert Downed in held(victim)
 
 
 # --- on_kill -----------------------------------------------------------------
@@ -249,7 +267,7 @@ def test_relentless_endurance_is_once_per_long_rest() -> None:
     resolve_damage(orc, {SLASHING: MAX_HP}, rng=no_dice())
     resolve_damage(orc, {SLASHING: 1}, rng=no_dice())
     assert orc.hp == 0
-    assert held(orc) == [Unconscious]
+    assert held(orc) == [Downed]
 
     orc.resources.recover(RecoveryTrigger.LONG_REST)
     healing.heal(orc, rng=no_dice(), flat=MAX_HP)
@@ -391,7 +409,7 @@ def test_three_successes_make_the_creature_stable() -> None:
     assert victim.stable
     assert (victim.death_save_successes, victim.death_save_failures) == (0, 0)
     assert victim.hp == 0
-    assert held(victim) == [Unconscious]
+    assert held(victim) == [Downed]
     assert probe.stabilised == 1
 
 
@@ -509,7 +527,7 @@ def test_a_medicine_check_that_makes_dc_ten_stabilises() -> None:
     assert victim.stable
     assert (victim.death_save_successes, victim.death_save_failures) == (0, 0)
     assert victim.hp == 0
-    assert held(victim) == [Unconscious]
+    assert held(victim) == [Downed]
 
 
 def test_a_medicine_check_one_short_does_not() -> None:

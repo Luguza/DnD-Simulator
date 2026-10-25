@@ -17,7 +17,18 @@ from dndsim.engine.d20 import modifier_total, settle
 from dndsim.hooks.contexts import HealContext, TempHpContext
 from dndsim.hooks.definitions import ON_HEAL, ON_TEMP_HP_GAINED
 
-__all__ = ["grant_temp_hp", "heal"]
+__all__ = ["Downed", "grant_temp_hp", "heal"]
+
+
+class Downed(Unconscious):
+    """The Unconscious condition dropping to 0 hit points gives.
+
+    Its own class, so that it is held apart from an Unconscious another source
+    gave and each ends on its own terms (`docs/decisions.md` § w1j).
+    """
+
+    __slots__ = ()
+
 
 _TEMP_HP_REFUSAL: Final = (
     "vetoed on_temp_hp_gained, which is observational: the pool has already "
@@ -89,5 +100,5 @@ def _wake(creature: Creature) -> None:
     and the Unconscious condition."""
     creature.reset_death_saves()
     for held in tuple(creature.effects):
-        if isinstance(held, Unconscious):
+        if isinstance(held, Downed):
             creature.effects.remove(held)

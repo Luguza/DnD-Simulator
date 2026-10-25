@@ -23,7 +23,7 @@ from dndsim.creatures.creature import Creature
 from dndsim.creatures.stats import StatBlock
 from dndsim.engine.damage import resolve_damage
 from dndsim.engine.dying import death_save
-from dndsim.engine.healing import grant_temp_hp, heal
+from dndsim.engine.healing import Downed, grant_temp_hp, heal
 from dndsim.hooks.contexts import HealContext, TempHpContext
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.registry import Phase
@@ -135,7 +135,7 @@ def test_a_veto_at_on_heal_leaves_a_downed_creature_unconscious() -> None:
     patient.attach(Withered(patient))
     assert heal(patient, rng=no_dice(), flat=10) == 0
     assert patient.hp == 0
-    assert held(patient) == [Unconscious]
+    assert held(patient) == [Downed]
 
 
 def test_a_dead_creature_regains_nothing_and_fires_nothing() -> None:
@@ -192,6 +192,20 @@ def test_a_healed_creature_that_drops_again_starts_its_saves_afresh() -> None:
     assert not patient.dead
 
 
+def test_a_heal_ends_the_drops_unconscious_and_not_a_spells() -> None:
+    """Regaining hit points ends the Unconscious dropping to 0 gave; one a
+    spell gave ends on the spell's terms, so the creature is still out cold.
+    The Prone the drop's Unconscious leaves behind is beside it."""
+    patient = pc()
+    spell = patient.effects.apply(Unconscious(patient))
+    resolve_damage(patient, {SLASHING: MAX_HP}, rng=no_dice())
+    heal(patient, rng=no_dice(), flat=3)
+    assert patient.hp == 3
+    assert spell in list(patient.effects)
+    assert Downed not in held(patient)
+    assert held(patient) == [Unconscious, Prone]
+
+
 # --- Temporary hit points ----------------------------------------------------
 
 
@@ -243,7 +257,7 @@ def test_temporary_hit_points_do_not_wake_a_creature_at_zero() -> None:
     grant_temp_hp(patient, 5)
     assert patient.hp == 0
     assert patient.temp_hp == 5
-    assert held(patient) == [Unconscious]
+    assert held(patient) == [Downed]
     assert not patient.stable
     death_save(patient, rng=ScriptedRng([12]))
     assert patient.death_save_successes == 1

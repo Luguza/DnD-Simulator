@@ -261,6 +261,7 @@ class Spike:
         """
         self.log.clear()
         self.hero.hp = self.hero.max_hp
+        self.hero.revive()
         self.hero.position = _HERO_START
         self.state.raging = False
         self.state.slots_highest = 5

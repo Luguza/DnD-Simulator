@@ -261,10 +261,8 @@ def resolve_damage(
     with every other halving; why the signature is this rather than one of the
     two routes that look open is `docs/decisions.md` § w1g.
 
-    A creature this drops to 0, or damages while it is at 0, is handed to
-    `engine/dying.py` before `on_damage_taken` fires; `critical` is whether the
-    damage is a Critical Hit's, which is two death saving throw failures rather
-    than one.
+    `critical` is whether the damage is a Critical Hit's (XPHB, "Dropping to 0
+    Hit Points" -> Damage at 0 Hit Points; `docs/decisions.md` § w1j).
     """
     incoming = contexts.incoming(defender=defender, attacker=attacker, amounts=amounts)
     if halved_by is not None:
