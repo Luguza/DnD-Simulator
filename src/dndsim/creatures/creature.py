@@ -56,7 +56,12 @@ from dndsim.hooks.contexts import Context
 from dndsim.hooks.dispatch import Dispatcher
 from dndsim.hooks.registry import HookSpec
 from dndsim.hooks.source import HookSource
-from dndsim.rules.constants import CRITICAL_HIT_THRESHOLD, SHIELD_AC_BONUS
+from dndsim.rules.constants import (
+    CRITICAL_HIT_THRESHOLD,
+    DEATH_SAVE_FAILURES_TO_DIE,
+    DEATH_SAVE_SUCCESSES_TO_STABILIZE,
+    SHIELD_AC_BONUS,
+)
 from dndsim.rules.enums import Ability, Size
 
 __all__ = ["UNSEATED", "Creature"]
@@ -99,9 +104,10 @@ class Creature:
         "_shield",
         "_stats",
         "crit_threshold",
-        "dead",
-        "death_save_failures",
-        "death_save_successes",
+        "_dead",
+        "_death_save_failures",
+        "_death_save_successes",
+        "_stable",
         "dispatcher",
         "economy",
         "effects",
@@ -111,7 +117,6 @@ class Creature:
         "player_character",
         "position",
         "resources",
-        "stable",
         "temp_hp",
         "weapon",
     )
@@ -146,12 +151,13 @@ class Creature:
         # Whether dropping to 0 hit points is the start of death saving throws
         # or the end: a player character rolls them and anything else dies
         # (DESIGN.md § Context, "What 'runs dry' means"; `docs/decisions.md`
-        # § w1j). The four fields after it are `engine/dying.py`'s to write.
+        # § w1j). The four fields after it move only through the methods
+        # under "dying", below.
         self.player_character = player_character
-        self.dead = False
-        self.stable = False
-        self.death_save_successes = 0
-        self.death_save_failures = 0
+        self._dead = False
+        self._stable = False
+        self._death_save_successes = 0
+        self._death_save_failures = 0
         # Read off the stat block once. Both are pure functions of a frozen
         # object and the attack pipeline reads them three times per resolution
         # (w0i measured recomputing them at ~1.5% of the budget). Both are
@@ -281,12 +287,69 @@ class Creature:
     def is_alive(self) -> bool:
         """Whether this creature is alive. A creature at 0 hit points making
         death saving throws is; `engine/dying.py` decides when it stops being."""
-        return not self.dead
+        return not self._dead
 
     @property
     def is_down(self) -> bool:
         """Whether this creature is at 0 hit points: dying, stable or dead."""
         return self.hp <= 0
+
+    # -- dying -------------------------------------------------------------------
+    # Four read-only facts and the six methods that move them, which keep the
+    # tallies' two invariants: three failures is dead, three successes is
+    # Stable with both tallies back at zero (XPHB, "Dropping to 0 Hit Points").
+
+    @property
+    def dead(self) -> bool:
+        return self._dead
+
+    @property
+    def stable(self) -> bool:
+        return self._stable
+
+    @property
+    def death_save_successes(self) -> int:
+        return self._death_save_successes
+
+    @property
+    def death_save_failures(self) -> int:
+        return self._death_save_failures
+
+    def die(self) -> None:
+        """Mark this creature dead. Its hit points are not touched."""
+        self._dead = True
+        self._stable = False
+
+    def revive(self) -> None:
+        """Bring this creature back from death, with clean tallies."""
+        self._dead = False
+        self.wake()
+
+    def wake(self) -> None:
+        """Reset what regaining hit points resets: both tallies, and Stable."""
+        self._stable = False
+        self._death_save_successes = 0
+        self._death_save_failures = 0
+
+    def stabilize(self) -> None:
+        """Make this creature Stable, which resets both tallies."""
+        self.wake()
+        self._stable = True
+
+    def succeed_death_save(self) -> bool:
+        """Count one success, and return whether it made the creature Stable."""
+        self._death_save_successes += 1
+        if self._death_save_successes < DEATH_SAVE_SUCCESSES_TO_STABILIZE:
+            return False
+        self.stabilize()
+        return True
+
+    def fail_death_save(self, failures: int = 1) -> None:
+        """Count `failures` and end Stable; the third failure is death."""
+        self._stable = False
+        self._death_save_failures += failures
+        if self._death_save_failures >= DEATH_SAVE_FAILURES_TO_DIE:
+            self.die()
 
     # -- the hook pipeline -----------------------------------------------------
 

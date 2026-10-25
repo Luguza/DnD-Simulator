@@ -15,13 +15,8 @@ __all__ = ["modifier_total", "roll_d20", "settle"]
 
 
 def modifier_total(bag: ModifierBag, rng: Rng) -> int:
-    """A bag of modifiers as one number, Bless's `1d4` included.
-
-    The dice come from the generator the roll is being made with, which is the
-    requirement `mitigate()` states for a reduction's dice and the same
-    argument: a second stream reproduces a different fight from the same
-    archived seed with no error anywhere (`engine/damage.py`).
-    """
+    """A bag of modifiers as one number, its dice — Bless's `1d4` — drawn
+    from `rng`, which must be the generator the roll itself uses."""
     total = 0
     for modifier in bag:
         total += modifier.flat

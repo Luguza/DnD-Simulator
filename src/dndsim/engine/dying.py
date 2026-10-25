@@ -45,8 +45,6 @@ from dndsim.hooks.definitions import (
 )
 from dndsim.rules.constants import (
     DEATH_SAVE_DC,
-    DEATH_SAVE_FAILURES_TO_DIE,
-    DEATH_SAVE_SUCCESSES_TO_STABILIZE,
     NATURAL_ONE,
     NATURAL_TWENTY,
 )
@@ -58,7 +56,6 @@ __all__ = [
     "DeathSaveResult",
     "damaged_at_zero",
     "death_save",
-    "die",
     "dropped_to_zero",
     "stabilize",
 ]
@@ -121,7 +118,7 @@ def dropped_to_zero(
         return
 
     if not creature.player_character or overflow >= creature.max_hp:
-        die(creature)
+        creature.die()
     else:
         creature.effects.apply(Unconscious(creature))
 
@@ -141,10 +138,9 @@ def damaged_at_zero(creature: Creature, amount: int, *, critical: bool) -> None:
     if creature.dead:
         return
     if not creature.player_character or amount >= creature.max_hp:
-        die(creature)
+        creature.die()
         return
-    creature.stable = False
-    _fail(creature, 2 if critical else 1)
+    creature.fail_death_save(2 if critical else 1)
 
 
 def death_save(creature: Creature, *, rng: Rng) -> DeathSaveResult:
@@ -183,14 +179,15 @@ def death_save(creature: Creature, *, rng: Rng) -> DeathSaveResult:
     if natural == NATURAL_TWENTY:
         heal(creature, rng=rng, flat=1)
     elif natural == NATURAL_ONE:
-        failures = _fail(creature, 2)
+        creature.fail_death_save(2)
+        failures = creature.death_save_failures
     elif total >= DEATH_SAVE_DC:
         successes += 1
-        creature.death_save_successes = successes
-        if successes >= DEATH_SAVE_SUCCESSES_TO_STABILIZE:
-            _become_stable(creature)
+        if creature.succeed_death_save():
+            _announce_stable(creature)
     else:
-        failures = _fail(creature, 1)
+        creature.fail_death_save()
+        failures = creature.death_save_failures
     return DeathSaveResult(natural, total, successes, failures)
 
 
@@ -229,29 +226,12 @@ def stabilize(helper: Creature, creature: Creature, *, rng: Rng) -> bool:
     natural = roll_d20(rng, advantage=had_advantage, disadvantage=had_disadvantage)
     if natural + helper.modifier(Ability.WISDOM) + bonus < STABILIZE_DC:
         return False
-    _become_stable(creature)
+    creature.stabilize()
+    _announce_stable(creature)
     return True
 
 
-def die(creature: Creature) -> None:
-    """Kill `creature`. Its hit points are not touched: death by damage has
-    already put them at 0, and a death by any other cause is not damage."""
-    creature.dead = True
-    creature.stable = False
-
-
-def _fail(creature: Creature, failures: int) -> int:
-    failures += creature.death_save_failures
-    creature.death_save_failures = failures
-    if failures >= DEATH_SAVE_FAILURES_TO_DIE:
-        die(creature)
-    return failures
-
-
-def _become_stable(creature: Creature) -> None:
-    creature.stable = True
-    creature.death_save_successes = 0
-    creature.death_save_failures = 0
+def _announce_stable(creature: Creature) -> None:
     stable = StabilizeContext(creature=creature)
     creature.dispatch(ON_STABILIZE, stable)
     settle(stable, _STABILIZE_REFUSAL, creature)

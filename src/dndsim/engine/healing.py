@@ -95,9 +95,7 @@ def _wake(creature: Creature) -> None:
     """What regaining hit points at 0 undoes: the death saving throws, Stable,
     and the Unconscious condition — whose own handler leaves the creature
     Prone (`conditions/unconscious.py`)."""
-    creature.stable = False
-    creature.death_save_successes = 0
-    creature.death_save_failures = 0
+    creature.wake()
     for held in tuple(creature.effects):
         if isinstance(held, Unconscious):
             creature.effects.remove(held)

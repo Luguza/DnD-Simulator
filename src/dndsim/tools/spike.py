@@ -267,7 +267,7 @@ class Spike:
         self.economy.turn_started(self.hero.speed_ft)
         for enemy, start in zip(self.enemies, _ENEMY_STARTS, strict=True):
             enemy.hp = enemy.max_hp
-            enemy.dead = False
+            enemy.revive()
             enemy.position = start
 
 

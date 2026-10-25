@@ -3713,7 +3713,7 @@ because the cost of a wrong default is asymmetric: a PC built without the flag
 dies at 0 and the fight ends visibly early, where a monster built with it would
 lie on the floor making death saves while the party's damage went into it.
 
-Anything that is not a PC **dies at 0**: `dropped_to_zero()` calls `die()`,
+Anything that is not a PC **dies at 0**: `dropped_to_zero()` calls `Creature.die()`,
 and `damaged_at_zero()` does the same for one somehow left at 0 alive. DESIGN.md
 settles that in the same sentence that settles the PC's.
 
@@ -3732,15 +3732,20 @@ fights**: the witness below shows identical outcomes. The one reader that wants
 both is `allies.down`, the APL's Healing Word target, which is alive *and* down:
 a dead ally is not a heal target.
 
-`dead`, `stable` and the two tallies are plain slots on `Creature`, written only
-by `engine/dying.py` and `engine/healing.py` — the hit-point pattern
-(`creatures/creature.py`'s module docstring): the creature owns the numbers, the
-engine owns the arithmetic.
+`dead`, `stable` and the two tallies are **read-only on `Creature`, moved by six
+named methods** (`die`, `revive`, `wake`, `stabilize`, `succeed_death_save`,
+`fail_death_save`), because they carry two invariants — three failures is
+dead, three successes is Stable with both tallies reset — and
+`CODING_STANDARDS.md` asks for a count with an invariant to have named writers.
+The first cut had them as plain slots, and the review showed that writing three
+failures by hand left a creature dying with nothing to notice. The creature
+keeps the invariants; `engine/dying.py` decides when a rule moves them and fires
+the hooks.
 
 ### The drop fires between the hit points and `on_damage_taken`
 
 `resolve_damage()` sets hit points to 0, then `dropped_to_zero()` fires
-`on_reduced_to_zero`, settles the victim (Unconscious, or `die()`), fires
+`on_reduced_to_zero`, settles the victim (Unconscious, or `Creature.die()`), fires
 `on_kill` for the attacker, and only then does `on_damage_taken` fire. So a
 `prevent()` handler (Relentless Endurance) reads a creature at 0 and leaves it
 at 1, and an `on_damage_taken` handler reads the hit points the event ended on
