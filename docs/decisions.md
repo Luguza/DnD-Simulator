@@ -3819,12 +3819,14 @@ shows the 12,000 calls moving name and not count.
 Priced as sequencing principle 10 asks, with the deterministic witness first.
 
 **The witness.** Over the fixed 200-encounter profiled run at seed 0, the whole
-run's call count went from **1,504,793 to 1,502,480**, with an identical
-fingerprint of every encounter's closing hit points and an identical next draw
-from the generator afterwards — **the same fights**. The per-function diff
-accounts for it: −3,941 `max()` calls (the clamp `resolve_damage()` no longer
-makes on every instance of damage), +1,600 `is_down` reads (`allies.down` now
-asks two questions), +25 calls for the one drop to 0 the run contains (one
+run's call count went from **1,504,052 to 1,501,940**, the same under three
+`PYTHONHASHSEED`s, with an identical fingerprint of every encounter's closing
+hit points and an identical next draw from the generator afterwards — **the same
+fights**. The per-function diff accounts for every call: −3,941 `max()` (the
+clamp `resolve_damage()` no longer makes on every instance of damage), +1,600
+`is_down` reads (`allies.down` now asks two questions), +1,200 for the spike's
+reset clearing death on its three enemies (`revive()` and the `wake()` it
+calls, 200 times each), +29 for the one drop to 0 the run contains (one
 `on_reduced_to_zero`, one `on_kill`, their contexts and settles), and −999 in
 the generated `__init__` row that § w1g identified as cProfile's keying
 artefact. `resolve_damage()`'s cumulative time read 0.133 s before and 0.128 s

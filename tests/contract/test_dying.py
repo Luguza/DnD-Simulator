@@ -311,7 +311,7 @@ def test_a_critical_hit_through_the_attack_pipeline_is_two_failures() -> None:
 
 def test_a_third_failure_from_damage_kills() -> None:
     victim = downed()
-    victim.death_save_failures = 2
+    victim.fail_death_save(2)
     resolve_damage(victim, {SLASHING: 1}, rng=no_dice())
     assert victim.dead
 
@@ -351,7 +351,7 @@ def test_instant_death_at_zero_reads_what_temporary_hit_points_left() -> None:
 
 def test_a_stable_creature_that_is_damaged_stops_being_stable() -> None:
     victim = downed()
-    victim.stable = True
+    victim.stabilize()
     resolve_damage(victim, {SLASHING: 1}, rng=no_dice())
     assert not victim.stable
     assert victim.death_save_failures == 1
@@ -397,7 +397,7 @@ def test_three_successes_make_the_creature_stable() -> None:
 
 def test_a_stable_creature_makes_no_death_saves() -> None:
     victim = downed()
-    victim.stable = True
+    victim.stabilize()
     with pytest.raises(ValueError):
         death_save(victim, rng=no_dice())
 
@@ -504,7 +504,7 @@ def test_only_a_dying_player_character_rolls_a_death_save(state: str) -> None:
 def test_a_medicine_check_that_makes_dc_ten_stabilises() -> None:
     """8 + 2 (Wisdom 14) = 10 against DC 10."""
     victim, cleric = downed(), healer()
-    victim.death_save_failures = 2
+    victim.fail_death_save(2)
     assert stabilize(cleric, victim, rng=ScriptedRng([8])) is True
     assert victim.stable
     assert (victim.death_save_successes, victim.death_save_failures) == (0, 0)
@@ -609,9 +609,9 @@ def not_dying(state: str) -> Creature:
         return goblin
     subject = downed()
     if state == "dead":
-        subject.dead = True
+        subject.die()
     else:
-        subject.stable = True
+        subject.stabilize()
     return subject
 
 

@@ -448,7 +448,7 @@ def test_being_alive_is_not_dying_and_being_down_is_hit_points() -> None:
     at_zero = (fighter.is_alive, fighter.is_down)
     fighter.temp_hp = 5
     at_zero_with_temporary = (fighter.is_alive, fighter.is_down)
-    fighter.dead = True
+    fighter.die()
     dead = (fighter.is_alive, fighter.is_down)
     assert (on_one, at_zero, at_zero_with_temporary, dead) == (
         (True, False),
@@ -471,6 +471,79 @@ def test_a_creature_starts_alive_undying_and_not_a_player_character() -> None:
         subject.death_save_failures,
     ) == (False, False, False, 0, 0)
     assert pc.player_character
+
+
+def tallies(subject: Creature) -> tuple[bool, bool, int, int]:
+    return (
+        subject.dead,
+        subject.stable,
+        subject.death_save_successes,
+        subject.death_save_failures,
+    )
+
+
+@pytest.mark.parametrize(
+    "field", ["dead", "stable", "death_save_successes", "death_save_failures"]
+)
+def test_the_dying_state_cannot_be_assigned(field: str) -> None:
+    """It moves only through the six methods, which keep its invariants."""
+    with pytest.raises(AttributeError):
+        setattr(creature(), field, 1)
+
+
+def test_the_third_failure_kills() -> None:
+    """One, then two at once: three (XPHB "Dropping to 0 Hit Points")."""
+    subject = creature()
+    subject.fail_death_save()
+    alive_on_one = tallies(subject)
+    subject.fail_death_save(2)
+    assert alive_on_one == (False, False, 0, 1)
+    assert subject.dead and not subject.is_alive
+    assert subject.death_save_failures == 3
+
+
+def test_the_third_success_stabilises_and_resets_both_tallies() -> None:
+    subject = creature()
+    subject.fail_death_save()
+    made = [subject.succeed_death_save() for _ in range(3)]
+    assert made == [False, False, True]
+    assert tallies(subject) == (False, True, 0, 0)
+
+
+def test_a_failure_ends_stable() -> None:
+    subject = creature()
+    subject.stabilize()
+    subject.fail_death_save()
+    assert tallies(subject) == (False, False, 0, 1)
+
+
+def test_wake_resets_both_tallies_and_stable() -> None:
+    subject = creature()
+    subject.succeed_death_save()
+    subject.fail_death_save(2)
+    subject.wake()
+    reset = tallies(subject)
+    subject.stabilize()
+    subject.wake()
+    assert (reset, tallies(subject)) == ((False, False, 0, 0),) * 2
+
+
+def test_death_ends_stable_and_revive_clears_death() -> None:
+    subject = creature()
+    subject.stabilize()
+    subject.die()
+    dead = tallies(subject)
+    subject.revive()
+    assert dead == (True, False, 0, 0)
+    assert tallies(subject) == (False, False, 0, 0)
+    assert subject.is_alive
+
+
+def test_revive_after_three_failures_clears_the_tallies() -> None:
+    subject = creature()
+    subject.fail_death_save(3)
+    subject.revive()
+    assert tallies(subject) == (False, False, 0, 0)
 
 
 def test_an_unarmed_creature_threatens_five_feet() -> None:

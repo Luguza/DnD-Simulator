@@ -174,7 +174,7 @@ def test_healing_at_zero_resets_both_death_save_counters() -> None:
 
 def test_healing_a_stable_creature_wakes_it_and_ends_stable() -> None:
     patient = downed()
-    patient.stable = True
+    patient.stabilize()
     heal(patient, rng=no_dice(), flat=1)
     assert not patient.stable
     assert held(patient) == [Prone]
@@ -184,7 +184,7 @@ def test_a_healed_creature_that_drops_again_starts_its_saves_afresh() -> None:
     """Two failures, healed, dropped again: one failure from damage at 0 is
     one, not three."""
     patient = downed()
-    patient.death_save_failures = 2
+    patient.fail_death_save(2)
     heal(patient, rng=no_dice(), flat=1)
     resolve_damage(patient, {SLASHING: 1}, rng=no_dice())
     resolve_damage(patient, {SLASHING: 1}, rng=no_dice())
