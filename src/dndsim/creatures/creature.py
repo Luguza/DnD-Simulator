@@ -285,8 +285,8 @@ class Creature:
 
     @property
     def is_alive(self) -> bool:
-        """Whether this creature is alive. A creature at 0 hit points making
-        death saving throws is; `engine/dying.py` decides when it stops being."""
+        """Whether this creature is alive, which a creature at 0 hit points
+        making death saving throws still is."""
         return not self._dead
 
     @property
@@ -296,8 +296,8 @@ class Creature:
 
     # -- dying -------------------------------------------------------------------
     # Four read-only facts and the six methods that move them, which keep the
-    # tallies' two invariants: three failures is dead, three successes is
-    # Stable with both tallies back at zero (XPHB, "Dropping to 0 Hit Points").
+    # tallies' invariants (XPHB, "Dropping to 0 Hit Points" -> Death Saving
+    # Throws; `docs/decisions.md` § w1j).
 
     @property
     def dead(self) -> bool:
