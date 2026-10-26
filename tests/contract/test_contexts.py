@@ -1,22 +1,11 @@
 """The w0f contract: one context per hook, and no way in but a mutator.
 
-Four properties carry this file, and each of them is a bug that would otherwise
-be found by a feature author months later, in a number that is merely wrong:
+- The registry's context names and this module's classes agree, both ways.
+- Assignment is refused (DESIGN.md § Contexts are attribute-locked).
+- A finished context is sealed, and writing to it raises `PhaseError`.
+- Dice double on a crit and flat does not.
 
-- **The registry and this module agree.** A `HookSpec` names its context as a
-  string because `hooks/contexts.py` sits above the registry and imports it
-  (w0e). That string is checked here, in both directions, so a hook cannot name
-  a context nobody wrote and a context cannot exist that no hook hands out.
-- **Assignment is refused.** `ctx.damage = ...` is how one feature silently
-  deletes another's contribution, and the whole parallel-authoring model rests
-  on it being impossible rather than discouraged (DESIGN.md § Contexts are
-  attribute-locked).
-- **A finished context is finished.** Contexts are pooled, so a handler that
-  stashes one and writes to it later is writing to somebody else's attack. The
-  seal turns the worst consequence of the pool into a `PhaseError`.
-- **Dice double and flat does not.** The one arithmetic rule the data model is
-  shaped to make unmissable, tested here at the level where it is decided
-  rather than through an attack that has not been written yet.
+`docs/decisions.md` § w0f.
 """
 
 from collections import Counter
@@ -59,11 +48,7 @@ BASE_CONTEXTS = {"Context", "D20TestContext"}
 
 
 def seat(n: int) -> InitiativeKey:
-    """The nth place in an order where everyone rolled the same initiative.
-
-    A context only ever carries a place; the tie-break rule itself is under test
-    in `tests/contract/test_timeline.py`.
-    """
+    """The nth place in an order where everyone rolled the same initiative."""
     return InitiativeKey(
         initiative=20, dexterity=10, player_character=True, tiebreak=n / 10
     )
@@ -71,13 +56,9 @@ def seat(n: int) -> InitiativeKey:
 
 @dataclass(frozen=True, slots=True)
 class FakeCreature:
-    """The narrowest thing that satisfies `Combatant` — which is the point of
-    the protocol being narrow.
+    """The narrowest thing that satisfies `Combatant`.
 
-    The three hit-point numbers arrived with `w1a`, which widened the protocol
-    so that an `on_hit` handler can ask whether its target is bloodied. They
-    carry defaults here because no test in this file is about a pool; a test
-    that cares says so."""
+    The three hit-point numbers carry defaults; a test that cares says so."""
 
     name: str
     initiative: InitiativeKey
@@ -88,11 +69,7 @@ class FakeCreature:
 
 @dataclass(frozen=True, slots=True)
 class FakeWeapon:
-    """The narrowest thing that satisfies `Weapon`, which `w1f` widened from a
-    name to the six members a handler has to ask about — the mastery and the
-    properties above all, since a weapon nobody can interrogate leaves every
-    mastery and Great Weapon Master unwritable (ROADMAP § The W0 debt register,
-    #3)."""
+    """The narrowest thing that satisfies `Weapon`'s six members."""
 
     name: str
     damage: Dice = Dice(1, 4)
@@ -129,8 +106,7 @@ def context_classes() -> dict[str, type[Context]]:
 def a_hit(*, outcome: Outcome = Outcome.HIT) -> HitContext:
     """A live `HitContext` with a source stamped, as a dispatcher would.
 
-    The damage bag is passed in because the attack owns it, not the context —
-    the same bag reaches `on_damage_roll` afterwards.
+    The damage bag is passed in because the attack owns it, not the context.
     """
     ctx = HitContext(
         attacker=ROGUE,
@@ -147,7 +123,7 @@ def a_hit(*, outcome: Outcome = Outcome.HIT) -> HitContext:
 
 
 def test_every_hook_names_a_context_class_that_exists() -> None:
-    """The string half of the `HookSpec` contract, checked (w0e's promise)."""
+    """Every hook's context name is a class this module defines."""
     classes = context_classes()
     for spec in all_hooks():
         assert spec.context in classes, (
@@ -157,11 +133,7 @@ def test_every_hook_names_a_context_class_that_exists() -> None:
 
 
 def test_every_context_class_is_handed_out_by_some_hook() -> None:
-    """The other direction: no context exists that nothing dispatches.
-
-    A context nobody hands out is either a hook somebody forgot to define or a
-    Parameter Object written on speculation, and both are worth finding here.
-    """
+    """The other direction: no context exists that nothing dispatches."""
     named = {spec.context for spec in all_hooks()}
     orphans = set(context_classes()) - named - BASE_CONTEXTS
     assert not orphans, f"context classes no hook names: {sorted(orphans)}"
@@ -170,19 +142,8 @@ def test_every_context_class_is_handed_out_by_some_hook() -> None:
 def test_thirty_nine_hooks_share_thirty_one_contexts() -> None:
     """Eight context types are named by two hooks each; 23 have one apiece.
 
-    16 + 23 = 39 hooks over 31 types. The eight are pinned by name rather than
-    counted, because *which* hooks share is the fact a later author needs and a
-    pair of totals would still match if the wrong two shared.
-
-    Two of them are a moment seen from both ends, where the scope and not the
-    context tells the ends apart (DESIGN.md § Hook scope): `on_hit` /
-    `on_hit_taken`, and `on_declare_attack` / `on_incoming_attack_declared`.
-    The other six are the two boundaries of one thing. Note what is **not**
-    here: the other two `SELF`/`TARGET` pairs do *not* share. A save's DC and
-    its roll are different objects, and `on_damage_roll` / `on_incoming_damage`
-    is the sharing this module deliberately rejected — by `on_incoming_damage`
-    the dice are thrown, so the victim is handed rolled amounts rather than the
-    attacker's bag.
+    16 + 23 = 39 hooks over 31 types; the eight are pinned by name
+    (`docs/decisions.md` § w0f).
     """
     shared = Counter(spec.context for spec in all_hooks())
     assert {name for name, count in shared.items() if count > 1} == {
@@ -323,13 +284,8 @@ def test_reopen_rebinds_and_clears() -> None:
 
 
 def test_reopen_refuses_a_field_that_does_not_exist() -> None:
-    """A typo here would leave the previous attack's value in place.
-
-    A `TypeError` from the interpreter's own argument binding rather than a
-    hand-written check: `reopen()` is compiled per context class with the
-    fields as keyword-only parameters (`_make_reopen`), which is what makes
-    the guarantee free on the hot path (w0i).
-    """
+    """A misspelt field raises `TypeError` rather than leaving the previous
+    attack's value in place (`docs/decisions.md` § w0i)."""
     ctx = a_hit()
     with pytest.raises(TypeError, match="unexpected keyword argument 'attaker'"):
         ctx.reopen(attaker=DUMMY)
@@ -355,17 +311,8 @@ def test_reopen_resets_a_defaulted_field_that_is_not_named() -> None:
 
 
 def test_a_context_class_that_escaped_the_decorator_has_no_reopen() -> None:
-    """The failure the compiled `reopen()` opens up, closed.
-
-    `reopen()` is generated per class from that class's field list, so a
-    context declared without `@_context` would inherit the nearest compiled
-    one — `Context`'s, which takes no fields, resets the frame and the pending
-    queue and leaves every field the subclass declared holding the previous
-    event's values. That is a pooled attack on the previous target with no
-    error anywhere. `Context.__init_subclass__` installs a raising `reopen()`
-    on every subclass before the decorator runs, so the class that skipped the
-    decorator keeps it.
-    """
+    """A context class declared without `@_context` raises on `reopen()`
+    rather than inheriting a base's (`docs/decisions.md` § w0i)."""
 
     class Undecorated(HitContext):
         pass
@@ -388,13 +335,8 @@ def test_a_context_class_that_escaped_the_decorator_has_no_reopen() -> None:
 
 
 def test_every_context_class_has_a_reopen_compiled_for_itself() -> None:
-    """The other side of it: the guard above must never fire in this build.
-
-    A `reopen()` inherited from a base is the bug; one in the class's own
-    `__dict__` that is not the raising body is the decorator having run.
-    Checked over every context class this module defines, so a context added
-    in a later wave is covered the day it is written.
-    """
+    """Every context class this module defines has its own compiled
+    `reopen()`, not an inherited one or the raising body."""
     for context_class in context_classes().values():
         own = context_class.__dict__.get("reopen")
         assert own is not None, f"{context_class.__name__} inherits reopen()"
@@ -423,8 +365,8 @@ def test_a_flat_only_part_is_unchanged_by_a_crit() -> None:
 
 
 def test_dice_notation_still_refuses_a_flat_modifier() -> None:
-    """`add(dice="1d8+3")` would smuggle a flat bonus into the field that
-    doubles, which is exactly what `Dice.parse` refuses (w0c)."""
+    """`add(dice="1d8+3")` is refused: a flat bonus may not enter the field
+    that doubles."""
     ctx = a_hit()
     with pytest.raises(ValueError, match="no flat modifier"):
         ctx.damage.add(dice="1d8+3")
@@ -437,8 +379,7 @@ def test_an_empty_contribution_is_refused() -> None:
 
 
 def test_a_modifier_has_no_crit_path_at_all() -> None:
-    """`Modifier` is a separate type so that `Dice.doubled()` is unreachable
-    from a save bonus or a heal."""
+    """`Modifier` has no crit path."""
     assert not hasattr(contexts_module.Modifier, "on_crit")
 
 
@@ -501,7 +442,7 @@ def test_a_type_cannot_be_resisted_twice() -> None:
 
 
 def test_the_victim_records_rather_than_applies() -> None:
-    """Nothing here computes a number: `engine/damage.py` owns the order."""
+    """The victim's context records mitigation and computes no number."""
     ctx = incoming()
     ctx.add_resistance(DamageType.SLASHING)
     ctx.reduce(flat=3)
@@ -514,8 +455,8 @@ def test_the_victim_records_rather_than_applies() -> None:
 
 
 def test_the_victim_is_handed_rolled_damage_not_the_attackers_bag() -> None:
-    """By `on_incoming_damage` the dice are thrown and `damage_type=None` has
-    been resolved, so the resolution order has a number per type to work on."""
+    """`on_incoming_damage` has no damage bag: its amounts are already rolled
+    and typed."""
     assert not hasattr(incoming(), "damage")
 
 
@@ -585,13 +526,8 @@ def test_a_bag_a_context_owns_is_cleared_in_place() -> None:
 
 
 def test_a_context_never_owns_the_attacks_damage() -> None:
-    """The regression guard for the classification itself.
-
-    The damage built at `on_hit` is the damage rolled at `on_damage_roll`, so it
-    belongs to the attack. Declaring it with a `default_factory` on any of these
-    would classify it *owned* and hand `reopen()` a bag to clear that it has no
-    business clearing — and would leave nothing exercising the handed-bag path.
-    """
+    """`damage` is a required, handed-in bag on every attack-damage context,
+    never one the context owns and `reopen()` clears."""
     for cls in (HitContext, MissContext, DamageRollContext):
         assert "damage" in cls._bag_fields
         assert "damage" not in cls._owned_bags, f"{cls.__name__} claims the damage"
@@ -630,9 +566,8 @@ def test_an_unvetoed_context_reports_no_reason() -> None:
 
 
 def test_apply_effect_queues_for_the_engine_to_drain() -> None:
-    """The snapshot rule: an effect applied during a hook must not fire for the
-    event that applied it, which is why Reckless Attack also has to call
-    `grant_advantage()` for the triggering attack."""
+    """The snapshot rule: an effect applied during a hook is queued, not applied
+    to the event that applied it."""
     ctx = make_attack()
     effect = FakeEffect(name="reckless")
     ctx.apply_effect(ROGUE, effect)

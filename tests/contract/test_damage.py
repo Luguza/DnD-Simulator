@@ -1,13 +1,11 @@
 """The damage contract: the crit rule, and the one order damage resolves in.
 
 **immunity -> flat reductions -> halvings -> resistance -> vulnerability ->
-temporary hit points -> hit points.** Every case carries its arithmetic, because
-a bare `== 6` proves nothing about which order produced it, and where `w0g2`
-resolved a case differently the case says what its order gave.
+temporary hit points -> hit points.** Every case carries its arithmetic.
 
 Sources: XPHB (2024) "Damage and Healing", Rules Glossary "Immunity",
-"Vulnerability", "Resistance", "Round Down", "Temporary Hit Points"; ROADMAP
-w0g2, w1e.
+"Vulnerability", "Resistance", "Round Down", "Temporary Hit Points";
+`docs/decisions.md` § w0g2, § w1e.
 """
 
 from collections.abc import Iterable
@@ -61,9 +59,7 @@ def part(
     damage_type: DamageType | None = None,
     source: str = "test.weapon",
 ) -> DamagePart:
-    """One contribution, built directly rather than through `ctx.damage.add()`:
-    what is under test here is what `roll_damage()` makes of a part, not how a
-    feature comes to write one."""
+    """One contribution, built directly rather than through `ctx.damage.add()`."""
     return DamagePart(
         dice=None if dice is None else Dice.parse(dice),
         flat=flat,
@@ -80,11 +76,8 @@ def ledger(
     reductions: Iterable[tuple[str | None, int]] = (),
     halvings: Iterable[str] = (),
 ) -> MitigationLedger:
-    """A ledger built the way a victim's handlers build one.
-
-    Through a live, stamped `IncomingDamageContext` rather than by hand, because
-    the mutators refuse an unattributed change — which is the machinery that
-    makes provenance automatic, and is not this file's to route around.
+    """A ledger built the way a victim's handlers build one: through a live,
+    stamped `IncomingDamageContext`, whose mutators refuse an unattributed change.
     """
     ctx = IncomingDamageContext(defender=creature(), attacker=None, amounts={})
     ctx.stamp("test.victim", Phase.NORMAL)
@@ -126,7 +119,7 @@ def test_a_critical_hit_doubles_the_dice_and_never_the_flat() -> None:
 
     2d6 doubled is 4d6, rolled 6 + 5 + 4 + 3 = 18; the +3 is untouched, so 21.
     Doubling the whole contribution would be 28 and doubling the rolled total
-    would be 25 — the two mistakes this data model exists to prevent.
+    would be 25.
     """
     rng = ScriptedRng([6, 5, 4, 3])
     amounts = roll_damage(
@@ -164,10 +157,8 @@ def test_a_crit_re_rolls_dice_rather_than_multiplying_a_total() -> None:
 
 
 def test_a_part_with_no_type_of_its_own_takes_the_attacks() -> None:
-    """`damage_type=None` is a rule, not a missing value: Sneak Attack's d6s are
-    the dagger's piercing. It is resolved here, at the last moment before the
-    amounts stop being the attacker's, because every step downstream is keyed by
-    type. 3d6 rolled 1 + 2 + 3 = 6."""
+    """`damage_type=None` takes the weapon's type: Sneak Attack's d6s are the
+    dagger's piercing. 3d6 rolled 1 + 2 + 3 = 6."""
     rng = ScriptedRng([1, 2, 3])
     amounts = roll_damage(
         [part("3d6", source="rogue.sneak_attack")],
@@ -271,9 +262,7 @@ def test_immunity_runs_first_so_the_adjustments_are_not_spent_on_it() -> None:
 
 def test_vulnerability_and_resistance_to_the_same_type_no_longer_cancel() -> None:
     """7 halved by Resistance is 3 and doubled by Vulnerability is 6, so the pair
-    loses a point on every odd number. `w0g2` ran vulnerability first for exactly
-    that reason — `(2n) // 2 == n` — and the 2024 text orders it the other way
-    regardless."""
+    loses a point on every odd number (`docs/decisions.md` § w1e)."""
     both = ledger(vulnerable=[FIRE], resist=[FIRE])
     assert mitigate({FIRE: 7}, both, rng=no_dice()).total == 6
 
@@ -290,8 +279,7 @@ def test_resistance_halves_and_rounds_down() -> None:
 
 def test_two_resistances_to_the_same_type_halve_once() -> None:
     """Structural rather than checked for: the ledger keeps a *set*, so a
-    barbarian raging inside a Protection from Energy takes 3, not 1. Neither
-    author has to know the other exists."""
+    barbarian raging inside a Protection from Energy takes 3, not 1."""
     twice = ledger(resist=[FIRE, FIRE])
     assert twice.resistances == frozenset({FIRE})
     assert mitigate({FIRE: 7}, twice, rng=no_dice()).total == 3
@@ -299,10 +287,8 @@ def test_two_resistances_to_the_same_type_halve_once() -> None:
 
 def test_a_flat_reduction_applies_before_resistance() -> None:
     """A penalty is an *adjustment*, and adjustments are applied first. 10
-    slashing less Heavy Armor Master's 3 is 7, and resistance halves that to 3.
-    `w0g2` ruled the other way — resist to 5, then subtract 3, for 2 — and the
-    2024 text settles it: the reduction is worth half to the creature that also
-    has the resistance."""
+    slashing less Heavy Armor Master's 3 is 7, and resistance halves that to 3
+    (`docs/decisions.md` § w1e)."""
     result = mitigate(
         {SLASHING: 10},
         ledger(resist=[SLASHING], reductions=[(None, 3)]),
@@ -312,16 +298,10 @@ def test_a_flat_reduction_applies_before_resistance() -> None:
 
 
 def test_a_halving_applies_after_the_flat_reduction() -> None:
-    """**The one surviving ruling, pinned here.** The text bundles penalties and
-    multipliers into one adjustment step without sequencing them against each
-    other, so the order of these two is the project's. 10 slashing, Heavy Armor
-    Master's -4 leaves 6, and Uncanny Dodge halves that to 3.
-
-    The other order — 10 // 2 = 5, then -4 — leaves 1. Both features together
-    save 9, which is exactly what they save apart (4 and 5): halving first makes
-    them additive, while a reduction is sub-additive with Resistance under the
-    quoted order. Subtracting first keeps one reduction behaving the same way
-    against Uncanny Dodge as against Rage."""
+    """The project's ruling: a flat reduction before a halving
+    (`docs/decisions.md` § w1e). 10 slashing, Heavy Armor Master's -4 leaves 6,
+    and Uncanny Dodge halves that to 3; the other order, 10 // 2 = 5 then -4,
+    would leave 1."""
     result = mitigate(
         {SLASHING: 10},
         ledger(reductions=[(None, 4)], halvings=["uncanny dodge"]),
@@ -355,9 +335,7 @@ def test_resistance_and_a_halving_quarter_the_hit() -> None:
 
 
 def test_two_halvings_halve_twice() -> None:
-    """The "counts once" clause names *Resistance*, and a halving is not
-    Resistance, so halvings are a *list* where the three type collections are
-    sets: two of them apply twice, 9 -> 4 -> 2."""
+    """Two halvings both apply, 9 -> 4 -> 2 (`docs/decisions.md` § w1e)."""
     result = mitigate(
         {SLASHING: 9},
         ledger(halvings=["uncanny dodge", "a second halving"]),
@@ -369,13 +347,10 @@ def test_two_halvings_halve_twice() -> None:
 def test_rage_uncanny_dodge_and_vulnerability_over_one_type() -> None:
     """Every band of the order against a single type:
 
-        slashing 25   less Heavy Armor Master's 3   -> 22
-                      halved by Uncanny Dodge       -> 11
-                      halved by Rage's resistance   ->  5
-                      doubled by vulnerability      -> 10
-
-    `w0g2`'s order gave 11: 25 doubled to 50, resisted to 25, less 3 is 22,
-    halved is 11.
+    slashing 25   less Heavy Armor Master's 3   -> 22
+                  halved by Uncanny Dodge       -> 11
+                  halved by Rage's resistance   ->  5
+                  doubled by vulnerability      -> 10
     """
     result = mitigate(
         {SLASHING: 25},
@@ -445,12 +420,9 @@ def test_an_untyped_adjustment_is_spent_in_proportion() -> None:
 
 
 def test_more_mitigation_never_means_more_damage() -> None:
-    """**The property that picked the apportionment method.** 1 fire beside 5
-    slashing and 5 cold, resisting the latter two: under the largest-remainder
-    method this started as, a 5-point reduction landed 2 damage and a 6-point
-    reduction landed **3**, because the odd point moved off a resisted pile onto
-    the unresisted one. That is the Alabama paradox; it needs three types, so no
-    two-type case here could have caught it.
+    """1 fire beside 5 slashing and 5 cold, resisting the latter two: a larger
+    reduction never lands more damage (the Alabama paradox, `docs/decisions.md`
+    § w1e).
     """
     hit = {FIRE: 1, SLASHING: 5, COLD: 5}
     resisted = [SLASHING, COLD]
@@ -459,8 +431,7 @@ def test_more_mitigation_never_means_more_damage() -> None:
     assert dict(five.amounts) == dict(six.amounts) == {FIRE: 0, SLASHING: 1, COLD: 1}
     assert five.total == six.total == 2
 
-    # The whole sweep, not just the pair the paradox happened to surface on —
-    # and the same sweep with fire vulnerable, which is where it cost double.
+    # The whole sweep of reductions, and the same sweep with fire vulnerable.
     plain = [
         mitigate(hit, ledger(resist=resisted, reductions=[(None, r)]), rng=no_dice())
         for r in range(1, 12)
@@ -490,8 +461,7 @@ def test_the_spend_does_not_depend_on_the_order_the_parts_arrived() -> None:
 def test_the_spend_does_not_look_ahead_to_resistance() -> None:
     """10 fire and 10 slashing against a fire-resistant creature with a 10-point
     reduction: split 5/5 in proportion, fire resists to 2, and 7 lands. Spending
-    all 10 on the unresisted slashing would have left 5 — the better play, and
-    what "adjustments are applied first" forbids."""
+    all 10 on the unresisted slashing would have left 5."""
     result = mitigate(
         {FIRE: 10, SLASHING: 10},
         ledger(resist=[FIRE], reductions=[(None, 10)]),
@@ -502,9 +472,9 @@ def test_the_spend_does_not_look_ahead_to_resistance() -> None:
 
 
 def test_an_adjustment_can_round_a_type_out_of_the_report() -> None:
-    """Under `w0g2` an untyped step could never change `types`; now it can. One
-    point of fire beside 99 of slashing, halved: half a point of fire is no
-    fire, so the creature took 50 slashing and nothing else."""
+    """An untyped step can change `types`. One point of fire beside 99 of
+    slashing, halved: half a point of fire is no fire, so the creature took 50
+    slashing and nothing else."""
     result = mitigate(
         {FIRE: 1, SLASHING: 99}, ledger(halvings=["uncanny dodge"]), rng=no_dice()
     )
@@ -514,9 +484,8 @@ def test_an_adjustment_can_round_a_type_out_of_the_report() -> None:
 
 
 def test_the_two_numbers_agree_because_the_typed_steps_run_last() -> None:
-    """`w0g2` had these two deliberately disagree, because the untyped steps ran
-    last and nothing could reconcile them. The apportionment is that
-    reconciliation, so anything downstream may now read either."""
+    """`Mitigated.total` is the sum of `Mitigated.amounts`
+    (`docs/decisions.md` § w1e)."""
     result = mitigate({FIRE: 8}, ledger(reductions=[(None, 3)]), rng=no_dice())
     assert dict(result.amounts) == {FIRE: 5}
     assert result.total == 5 == sum(result.amounts.values())
@@ -549,21 +518,16 @@ def test_a_reduction_may_roll_dice_and_they_come_from_this_generator() -> None:
 
 
 def test_a_type_resisted_to_nothing_did_not_get_through() -> None:
-    """`types` is what the log and `on_damage_taken` report, so a single point
-    of fire resisted to zero is not a type this creature took damage from."""
+    """A single point of fire resisted to zero is not in `types`."""
     result = mitigate({FIRE: 1, SLASHING: 4}, ledger(resist=[FIRE]), rng=no_dice())
     assert dict(result.amounts) == {FIRE: 0, SLASHING: 4}
     assert result.types == frozenset({SLASHING})
 
 
 def test_the_floor_survives_the_untouched_shortcut() -> None:
-    """The empty ledger skips the order; it must not skip the clamp.
-
-    `DamagePart.flat` is a signed `int` and nothing rejects a negative one, so
-    a contribution that subtracts more than the hit deals reaches `mitigate()`
-    as a negative total. Down the shortcut that would arrive at `resolve_damage`
-    as negative damage — which is temporary hit points granted by a sword. The
-    slow path clamps at zero, so the fast path does too.
+    """The empty ledger skips the order but not the clamp: a negative total
+    from a negative `DamagePart.flat` still floors at zero
+    (`docs/decisions.md` § w0i).
     """
     result = mitigate({SLASHING: -4}, ledger(), rng=no_dice())
     assert result.total == 0
@@ -593,8 +557,7 @@ class Resistant(HookSource):
 
 
 class Watcher(HookSource):
-    """Records what `on_damage_taken` was told, which is what a concentration
-    check and the log both read."""
+    """Records what `on_damage_taken` was told."""
 
     __slots__ = ("seen",)
 
@@ -644,8 +607,7 @@ class HeavyArmour(HookSource):
 
 
 class Warded(HookSource):
-    """An EARLY handler that halts the chain — the one Chain of Responsibility
-    element in a pipeline that is otherwise contributions."""
+    """An EARLY handler that halts the chain."""
 
     ID = "test.ward"
 
@@ -679,9 +641,7 @@ def test_temporary_hit_points_that_cover_the_hit_leave_hit_points_alone() -> Non
 
 def test_hit_points_stop_at_zero_and_the_creature_is_out() -> None:
     """20 damage to a creature with 5 hit points leaves it at 0, not at -15.
-    The return is the whole instance of damage — what the attack dealt, which
-    is what a damage-per-round number sums — while the overflow that matters
-    for instant death is w1j's to read."""
+    The return is the whole instance of damage."""
     dummy = creature(hp=5)
     assert resolve_damage(dummy, {SLASHING: 20}, rng=no_dice()) == 20
     assert dummy.hp == 0
@@ -698,8 +658,7 @@ def test_the_victims_handlers_get_their_chance_before_the_order_runs() -> None:
 
 def test_on_damage_taken_sees_what_landed_and_what_it_was() -> None:
     """After the order, not before: 7 fire resisted to 3, plus 4 slashing
-    untouched, is 7 taken of two types. A handler reading the pre-mitigation 11
-    would over-charge every concentration check in the game."""
+    untouched, is 7 taken of two types, not the pre-mitigation 11."""
     dummy = creature(hp=20)
     dummy.attach(Resistant(dummy))
     watcher = Watcher(dummy)
@@ -723,8 +682,7 @@ def test_a_veto_means_the_damage_did_not_happen() -> None:
 
 def test_damage_is_dispatched_to_the_victim_and_not_the_attacker() -> None:
     """`on_incoming_damage` and `on_damage_taken` are both TARGET-scoped, so the
-    attacker's identically-named handlers stay out of it: the owner of a handler
-    is decided by the hook's scope, never by a feature comparing creatures."""
+    attacker's identically-named handlers stay out of it."""
     attacker = creature("attacker", hp=20)
     defender = creature("defender", hp=20)
     attacker.attach(Resistant(attacker))
@@ -736,10 +694,8 @@ def test_damage_is_dispatched_to_the_victim_and_not_the_attacker() -> None:
 
 
 def test_a_hit_that_landed_on_nothing_does_not_reach_on_damage_taken() -> None:
-    """ "When you take damage" means damage was taken. A creature immune to the
-    only type in the hit takes none, so the hook does not fire and the
-    concentration check that hangs off it is never asked for — the condition
-    lives here rather than inside every handler ever written for the hook.
+    """A creature immune to the only type in the hit takes none, so
+    `on_damage_taken` does not fire.
 
     The same 9 fire twice: once as damage, and once as nothing at all."""
     dummy = creature(hp=20)
@@ -755,10 +711,8 @@ def test_a_hit_that_landed_on_nothing_does_not_reach_on_damage_taken() -> None:
 
 def test_a_hit_a_reduction_ate_whole_does_not_reach_it_either() -> None:
     """The other way to land on nothing: Heavy Armor Master's -10 against a
-    3-point hit leaves 0, so nothing was taken and nothing is reported. Since
-    `w1e` the reduction is spent over the types rather than over a total they
-    never see again, so `Mitigated.types` is empty here too — the hit was
-    slashing, and no slashing damage was taken."""
+    3-point hit leaves 0, so nothing was taken and nothing is reported, and
+    `Mitigated.types` is empty."""
     dummy = creature(hp=20)
     dummy.attach(HeavyArmour(dummy))
     watcher = Watcher(dummy)
@@ -769,10 +723,8 @@ def test_a_hit_a_reduction_ate_whole_does_not_reach_it_either() -> None:
 
 
 def test_a_hit_the_temporary_hit_points_ate_whole_does_reach_it() -> None:
-    """The distinction the rule turns on: temporary hit points are not immunity.
-    The 5 damage happened and those hit points are gone, so the creature took
-    damage and the hook fires — a concentration check is owed for a hit False
-    Life absorbed."""
+    """Temporary hit points are not immunity: 5 damage they absorb is damage
+    taken, so the hook fires."""
     dummy = creature(hp=20, temp_hp=9)
     watcher = Watcher(dummy)
     dummy.attach(watcher)
@@ -835,8 +787,7 @@ class QueuesABandage(HookSource):
 
 
 def test_an_effect_queued_during_damage_lands_on_the_defender() -> None:
-    """The drain that replaced `w0g2`'s refusal (debt #5): `on_incoming_damage`
-    is dispatched, and what its handlers queued is on the creature before
+    """What `on_incoming_damage`'s handlers queued is on the creature before
     mitigation runs."""
     dummy = creature(hp=20)
     dummy.attach(Queuer(dummy))
@@ -849,7 +800,7 @@ def test_an_effect_queued_during_damage_lands_on_the_defender() -> None:
 
 def test_the_second_dispatch_is_drained_too() -> None:
     """`on_damage_taken` fires after hit points have moved, and is drained on
-    the same terms — the pair of call sites is why the register named two."""
+    the same terms."""
     dummy = creature(hp=20)
     dummy.attach(LateQueuer(dummy))
 
@@ -860,9 +811,8 @@ def test_the_second_dispatch_is_drained_too() -> None:
 
 
 def test_an_effect_queued_onto_a_non_participant_is_refused() -> None:
-    """A queued effect names a `Combatant`, which carries no store, so the
-    engine matches it against the creatures the event is between. Anything else
-    needs w2c's roster and says so rather than being dropped (debt #30)."""
+    """A queued effect naming a creature outside the event raises rather than
+    being dropped (debt #30)."""
     dummy, stranger = creature(hp=20), creature(hp=20)
     dummy.attach(QueuesOntoAStranger(dummy, stranger))
 
@@ -872,9 +822,8 @@ def test_an_effect_queued_onto_a_non_participant_is_refused() -> None:
 
 
 def test_something_that_is_only_shaped_like_an_effect_is_refused() -> None:
-    """`hooks/contexts.py`'s `Effect` protocol asks for a name and nothing else,
-    because a name is all a context reads. What a store holds is the class, and
-    the gap between the two is a refusal rather than a silent drop."""
+    """Something the `Effect` protocol accepts but a store cannot hold is
+    refused rather than dropped."""
     dummy = creature(hp=20)
     dummy.attach(QueuesABandage(dummy))
 
@@ -886,8 +835,7 @@ def test_something_that_is_only_shaped_like_an_effect_is_refused() -> None:
 
 
 def test_what_was_rolled_is_what_is_resolved() -> None:
-    """The two halves of this module meeting, which is the path `engine/attack.py`
-    (w1f) will take: a greatsword crit for 2d6 (doubled to 4d6, rolled
+    """Rolling and resolving together: a greatsword crit for 2d6 (doubled to 4d6, rolled
     6 + 6 + 1 + 1 = 14) plus a +3 modifier is 17 slashing; a victim resisting
     slashing takes 17 // 2 = 8, and 20 - 8 leaves 12 hit points."""
     rng = ScriptedRng([6, 6, 1, 1])

@@ -1,17 +1,12 @@
 """The w0g contract: what a handler must look like, and what running one costs.
 
-The dispatcher is the piece every other piece of the project talks through, so
-the properties below are stated once here and assumed everywhere afterwards:
-
 - **A declaration that cannot work fails while it is being read.** A typo'd hook
   name, a wrong context annotation, a missing return, an override that dropped
-  its `@hook`: each of them is a handler that would otherwise never run and
-  never say so, which is the failure mode a pub-sub bus was rejected for.
+  its `@hook`.
 - **Order is decided, not observed.** Phase band, then declared order, then
-  attachment sequence — so two features that have never read each other's code
-  still compose the same way on every run.
+  attachment sequence.
 - **Nothing is spent by a handler that declined.** `once_per` and `costs` follow
-  the return value, which is the whole reason a handler returns anything.
+  the return value.
 - **Provenance is automatic.** The dispatcher stamps; the author writes nothing.
 - **The handler list is a snapshot.** An effect applied mid-hook does not join
   the event that applied it.
@@ -57,10 +52,7 @@ def seat(n: int) -> InitiativeKey:
 
 @dataclass(frozen=True, slots=True)
 class FakeCreature:
-    """The narrowest thing that satisfies `Combatant`.
-
-    The hit-point numbers are `w1a`'s widening of the protocol; nothing in this
-    file reads them, which is why they have defaults."""
+    """The narrowest thing that satisfies `Combatant`; its hit points default."""
 
     name: str
     initiative: InitiativeKey = seat(0)

@@ -1,13 +1,7 @@
 """The w0c contract: randomness is reproducible, injected, and honest.
 
-Determinism is the property every other guarantee in the project rests on — the
-`trace` command, every golden test, every regression diff and every archived
-`SimResult` (DESIGN.md § What is a file). None of those fails loudly when the
-generator drifts; they just quietly stop meaning what they meant. So the stream
-itself is pinned here, against the one oracle left after `w0i` traded PCG32 for
-the standard library's word source: the documented output of
-`random.Random.getrandbits`, and the face mapping this project owns on top of
-it (`core/rng.py`).
+The stream is pinned against `random.Random.getrandbits` and the face mapping
+`core/rng.py` puts on top of it (`docs/decisions.md` § w0i).
 """
 
 import pytest
@@ -16,7 +10,7 @@ from dndsim.core.rng import MersenneRng, Rng, ScriptedRng, ScriptedRngExhausted,
 
 # The first six words of CPython's MT19937 seeded with 42 — the sequence
 # `random.Random(42).getrandbits(32)` yields, which is the standard library's
-# documented output and the half of the stream this project does not own:
+# documented output:
 #
 #   0xa3b1799d 0x1c80317f 0x06671ad1 0xbdd640fb 0x46685257 0x3eb13b90
 #
@@ -37,21 +31,9 @@ REFERENCE_D6_FACES = [4, 6, 6, 2, 2, 5]
 
 
 def test_the_stream_is_pinned_to_the_word_source() -> None:
-    """The one assertion here with an oracle the project cannot fudge.
+    """Seed 42 yields exactly the faces the standard library's words map to.
 
-    Every other test in this file would still pass if `MersenneRng` generated a
-    different sequence, as long as it did so repeatably. This one says *which*
-    sequence, so an "innocent" refactor of the draw is a failure rather than a
-    silent invalidation of every result ever archived.
-
-    The oracle is weaker than it was: `w0c` pinned PCG32 against O'Neill's
-    reference implementation, an algorithm specified outside this interpreter,
-    and `w0i` traded that for the ~7% that `getrandbits` is faster
-    (`docs/decisions.md` § w0i, `core/rng.py`). What is checked here is that the
-    faces follow from the standard library's words by the mapping this project
-    *does* own — so a change to the mapping still fails, and a change to
-    CPython's MT seeding would fail here rather than in a golden test three
-    waves later.
+    Pins *which* sequence, not only that it repeats (`docs/decisions.md` § w0i).
     """
     rng = MersenneRng(REFERENCE_SEED)
     assert [rng.roll(20) for _ in range(6)] == REFERENCE_D20_FACES
@@ -110,17 +92,14 @@ def test_a_huge_seed_is_accepted() -> None:
 
 
 class TestMix:
-    """Per-iteration seeding — the reason `--jobs` is absent from the
-    reproducibility contract (DESIGN.md § Performance)."""
+    """`mix` derives a per-iteration seed (DESIGN.md § Performance)."""
 
     def test_it_is_a_pure_function_of_its_inputs(self) -> None:
         assert mix(42, 4271) == mix(42, 4271)
 
     def test_neighbouring_iterations_get_unrelated_seeds(self) -> None:
-        # A seed reaches MT19937 through `init_by_array`, which is not a hash:
-        # seeds differing by one bit would hand neighbouring iterations streams
-        # nobody has shown to be independent, so `mix` is what has to decorrelate
-        # them. Half the bits should move; above a third is comfortably clear.
+        # MT19937's `init_by_array` is not a hash, so `mix` must decorrelate
+        # neighbouring seeds. Half the bits should move; above a third is clear.
         a, b = mix(42, 0), mix(42, 1)
         assert bin(a ^ b).count("1") > 21
 
@@ -147,13 +126,8 @@ def _iteration_stream(master_seed: int, index: int) -> list[int]:
 
 
 def test_a_run_reproduces_across_worker_counts() -> None:
-    """The `--jobs` guarantee, expressed at the only level w0c can express it.
-
-    A worker is handed a contiguous block of iteration indices. Because the seed
-    is derived from the index and never from the worker, every partition of the
-    same run produces the same per-iteration streams — which is what makes
-    `--jobs` absent from the provenance recorded in a `SimResult`.
-    """
+    """Every partition of a run into contiguous blocks of iteration indices
+    yields the same per-iteration streams."""
     iterations = 40
     serial = [_iteration_stream(2024, i) for i in range(iterations)]
 
@@ -217,6 +191,5 @@ class TestScriptedRng:
 
 @pytest.mark.parametrize("rng", [MersenneRng(1), ScriptedRng([1, 2, 3])])
 def test_both_generators_satisfy_the_protocol(rng: Rng) -> None:
-    """`Rng` is what the engine is typed against; both implementations are
-    substitutable for it, which is the whole point of the protocol."""
+    """Both implementations satisfy the `Rng` protocol."""
     assert 1 <= rng.roll(20) <= 20
