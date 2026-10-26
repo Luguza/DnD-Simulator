@@ -1,20 +1,7 @@
 """The w0d contract: the clock orders play, durations pin themselves to it, and
 once-per budgets come back at the boundary they named.
 
-Three properties here are the ones the roadmap asks for by name, and all three
-are bugs that would never announce themselves:
-
-- **`through_phase` in both directions.** Rage must still be resisting damage
-  while your own `on_turn_end` handlers run; Reckless Attack must already be
-  gone before your `on_turn_start` handlers do. Get the flag backwards and every
-  number in the simulator shifts by a few percent, silently.
-- **`Reset.TURN` vs `Reset.OWN_TURN`.** "Once per turn" is once per *any* turn,
-  so Sneak Attack lands on an opportunity attack during an enemy's turn and
-  again on the rogue's own. "Once on your turn" does not.
-- **An `InitiativeKey` is stable under a change of population.** A summon
-  arriving or a creature dying must not move anybody else on the clock, and must
-  not invalidate a deadline that has already been resolved. The failure mode is
-  an effect quietly expiring on the wrong creature's turn.
+Sources: `docs/decisions.md` § w0d; ROADMAP w0d.
 """
 
 import math
@@ -35,10 +22,7 @@ from dndsim.core.timeline import (
 def seat(n: int) -> InitiativeKey:
     """The nth place in an order where everyone rolled the same initiative.
 
-    Tying the roll and leaving only the draw to separate them is what lets these
-    tests say "earlier in the order" as `seat(0)` and mean it; the tie-break
-    rule itself is under test in `TestInitiativeKey`. The draws are spaced a
-    tenth apart so a summon's chain has somewhere obvious to sit.
+    Only the draw separates the seats, spaced a tenth apart.
     """
     return InitiativeKey(
         initiative=20, dexterity=10, player_character=True, tiebreak=n / 10
@@ -136,7 +120,7 @@ class TestInitiativeKey:
 
 
 class TestAChangingEncounter:
-    """The reason this is a key and not an index."""
+    """Arrivals and deaths move nobody else on the clock."""
 
     def test_a_new_arrival_does_not_move_anybody_else(self) -> None:
         before = [seat(0), seat(1), seat(2)]
@@ -147,9 +131,6 @@ class TestAChangingEncounter:
         assert before == sorted(before)
 
     def test_a_joiner_draws_its_own_tiebreak_and_nobody_is_redrawn(self) -> None:
-        # The point of one independent draw per creature rather than a shuffle
-        # of the entrants: a shuffle has no honest place for a latecomer, and
-        # redrawing one would move everybody already in the order.
         tied = [seat(2), seat(4)]
         joiner = InitiativeKey(20, 10, True, 0.35)
         assert sorted([*tied, joiner]) == [seat(2), joiner, seat(4)]
@@ -172,9 +153,7 @@ class TestAChangingEncounter:
         assert vex.expires_after(TimeKey(1, seat(4), TurnPhase.START))
 
     def test_a_summon_takes_its_turn_immediately_after_its_summoner(self) -> None:
-        # XPHB: the summoned creature shares your Initiative count and takes its
-        # turn immediately after yours. No draw is guaranteed to fall between
-        # two others; a step in the chain always does.
+        # `docs/decisions.md` § w0d (the summon chain).
         summoner = seat(1)
         spirit = summoner.sharing_turn()
         assert summoner < spirit < seat(2)
@@ -182,8 +161,8 @@ class TestAChangingEncounter:
     def test_a_summon_sits_inside_the_count_however_close_the_next_draw_is(
         self,
     ) -> None:
-        # The case a single number cannot do: the next creature's draw is one
-        # ULP away, and the spirit still fits between them.
+        # The next creature's draw is one ULP away, and the spirit still fits
+        # between them.
         summoner = InitiativeKey(20, 10, True, 0.5)
         crowded = InitiativeKey(20, 10, True, math.nextafter(0.5, 1.0))
         assert summoner < summoner.sharing_turn() < crowded
@@ -210,10 +189,8 @@ class TestAChangingEncounter:
         ) == (17, 14, True, 0.25)
 
     def test_a_summon_that_rolls_its_own_initiative_is_an_ordinary_key(self) -> None:
-        # The other convention some tables use: the summon rolls for itself
-        # instead of sharing its summoner's count. Nothing special is needed —
-        # it is a key like any other, landing wherever its roll puts it and
-        # moving nobody.
+        # The summon rolls for itself instead of sharing its summoner's count:
+        # it lands wherever its roll puts it and moves nobody.
         rolled = InitiativeKey(21, 16, True, 0.4)
         assert sorted([seat(0), rolled, seat(1)]) == [rolled, seat(0), seat(1)]
 
@@ -333,8 +310,7 @@ class TestResolvingDurations:
         assert expiry.through_phase
 
     def test_refreshing_slides_the_deadline_forward(self) -> None:
-        # Rage refreshes off on_declare_attack: the same declarative Duration,
-        # re-resolved against the clock of the moment, moves a round on.
+        # The same Duration, re-resolved a round later, moves a round on.
         rage = Duration.until_end_of_next_turn_of(seat(2))
         assert rage.resolve(TimeKey(1, seat(2), TurnPhase.START)).end == TimeKey(
             2, seat(2), TurnPhase.END
@@ -355,7 +331,7 @@ class TestResolvingDurations:
 
 
 class TestThroughPhase:
-    """The load-bearing flag, proven in both directions."""
+    """`through_phase` in both directions."""
 
     def test_rage_survives_the_end_of_turn_hooks_it_expires_on(self) -> None:
         # "until the end of your next turn": the barbarian, third in the order,
@@ -398,8 +374,7 @@ class TestThroughPhase:
             assert not reckless.expires_before(now) and not reckless.expires_after(now)
 
     def test_a_missed_boundary_still_expires(self) -> None:
-        # The sweep runs at every boundary, but an effect applied to a creature
-        # that drops out of the order must not outlive its deadline.
+        # A sweep long after the deadline still expires it.
         rage = Expiry(TimeKey(2, seat(2), TurnPhase.END), through_phase=True)
         later = TimeKey(5, seat(0), TurnPhase.START)
         assert rage.expires_before(later) and rage.expires_after(later)
@@ -424,8 +399,7 @@ class TestResetScopes:
         assert not resets.is_spent("second_wind")
 
     def test_the_two_turn_scopes_are_told_apart_in_one_ledger(self) -> None:
-        # The whole point of two members: the same boundary hands one back and
-        # not the other.
+        # The same boundary hands one back and not the other.
         resets = ResetManager()
         resets.spend("any_turn", Reset.TURN)
         resets.spend("own_turn", Reset.OWN_TURN)
@@ -472,17 +446,14 @@ class TestResetScopes:
         assert not resets.is_spent("great_weapon_master")
 
     def test_spending_a_spent_budget_is_a_caller_bug(self) -> None:
-        # The dispatcher asks is_spent() first, so arriving here twice means the
-        # budget check was skipped — that fails loudly rather than double-dips.
+        # A second spend fails loudly rather than double-dipping.
         resets = ResetManager()
         resets.spend("sneak_attack", Reset.TURN)
         with pytest.raises(ValueError, match="already spent"):
             resets.spend("sneak_attack", Reset.TURN)
 
     def test_scopes_are_not_strings(self) -> None:
-        # Plain Enum, never StrEnum, for the reason rules/enums.py gives:
-        # `scope == "turn"` must be a mypy error rather than a comparison that
-        # quietly works until someone misspells it.
+        # Plain Enum, never StrEnum (`docs/decisions.md` § w0b).
         assert all(not isinstance(scope, str) for scope in Reset)
         assert [scope.value for scope in Reset] == [
             "turn",

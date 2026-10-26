@@ -1,10 +1,6 @@
 """`MersenneRng` rolls fair dice.
 
-Statistical, but not flaky: every draw below comes from a fixed seed, so these
-either pass for ever or fail for everyone. The thresholds are chosen so that a
-*correct* generator would have to be extraordinarily unlucky to trip them, which
-is the point — a biased d20 shifts every DPR number in the project by more than
-most of the features it exists to compare, and it does so silently.
+Every draw comes from a fixed seed, so these tests are deterministic.
 """
 
 from collections import Counter
@@ -30,16 +26,12 @@ def test_faces_are_uniform(sides: int, draws: int) -> None:
 
 
 def test_rejection_sampling_removes_the_modulo_bias() -> None:
-    """The reason `roll` rejects the final partial block instead of taking the
-    modulo of every word.
+    """`roll` shows no modulo bias on a die whose size makes it enormous.
 
-    At die sizes the rules use, the bias a bare `word % sides` would introduce is
-    under 1 part in 10^8 and no test could see it. So this uses a die whose size
-    makes it enormous: 3 * 2^30 faces over 2^32 words leaves a remainder of 2^30,
-    so the bottom third of the faces gets two source words each and the rest one.
-    A naive mapping therefore sends 2^31 of the 2^32 words — half the draws — into
-    that bottom third, where a fair die sends a third. The same rejection is what
-    keeps the d20 clean.
+    3 * 2^30 faces over 2^32 words leaves a remainder of 2^30, so under a bare
+    `word % sides` the bottom third of the faces gets two source words each and
+    the rest one: half the draws land in that third, where a fair die sends a
+    third (`docs/decisions.md` § w0c).
     """
     sides = 3 * 2**30
     rng = MersenneRng(4)

@@ -1,19 +1,11 @@
 """The w0h contract: the walking skeleton actually walks.
 
-Three properties carry this file, all stated in ROADMAP w0h:
+Probes on both creatures record which hooks fire and in what order, a hit's
+damage is checked against a hand-computed number, and two `MersenneRng`s built
+from one seed drive `run_fight()` to the same outcome.
 
-- **The real dispatch path runs.** Probes attached to both creatures record
-  which hooks fired, in which order, and prove the pairs (`on_hit` /
-  `on_hit_taken`) run over the *same* context rather than two copies.
-- **The real attack and damage pipelines run.** `roll_damage()` and `resolve_damage()`
-  from `engine/damage.py` are exercised, not stubbed, so a hit's arithmetic is
-  checked against a hand-computed number the way every damage-order test in
-  this repo is.
-- **A fight is reproducible end to end.** Two `MersenneRng`s built from the same
-  seed drive `run_fight()` to the identical outcome, which is the property the
-  whole determinism story (`core/rng.py`) is for.
-
-Sources: ROADMAP w0h; DESIGN.md § Determinism is the backbone.
+Sources: ROADMAP w0h; DESIGN.md § Determinism is the backbone; `docs/decisions.md`
+§ w0h, § w1f.
 """
 
 from types import MappingProxyType
