@@ -1,8 +1,6 @@
 """The condition contract: what each of the 15 glossary entries does to a roll.
 
-Every number below is derived from the quoted Rules Glossary clause rather than
-from `conditions/`, because the agent that writes an implementation does not
-write its tests (`CLAUDE.md` § Working rules).
+Every number below is derived from the quoted Rules Glossary clause.
 
 Both creatures in every case are built from one helper: a level-5 martial with
 Strength 18 (+4), Dexterity 14 (+2), proficiency +3, a greatsword and AC 15. So
@@ -11,9 +9,8 @@ save adds +2 and a Strength save adds +4.
 
 Three clauses are driven by dispatching their hook on the creature and reading
 the context the handlers were handed — the Initiative roll, the ability check
-and the Long Rest — because no engine code rolls any of the three before `w2c`.
-Everything else goes through `resolve_attack()`, `saving_throw()` or
-`EffectStore.apply()`.
+and the Long Rest. Everything else goes through `resolve_attack()`,
+`saving_throw()` or `EffectStore.apply()`.
 
 Sources: XPHB (2024) Rules Glossary, the 15 condition entries and "Advantage",
 "Resistance", "Round Down"; `docs/decisions.md` § w1h; ROADMAP w1h.
@@ -106,11 +103,7 @@ reach, which is the only distance an attack here is made at."""
 
 
 def combatant(name: str, *, cell: Cell = ORIGIN) -> Creature:
-    """A level-5 martial with a greatsword, AC 15 and 40 hit points.
-
-    `Armour.natural()` is the one legitimate way for an AC to be a number
-    somebody typed (`creatures/stats.py`).
-    """
+    """A level-5 martial with a greatsword, natural AC 15 and 40 hit points."""
     return Creature(
         name=name,
         stats=StatBlock(abilities=SCORES, max_hp=HP, level=5),
@@ -448,9 +441,8 @@ SURPRISED_ON_INITIATIVE: Final = [
 def test_an_incapacitated_creature_rolls_initiative_with_disadvantage(
     condition: type[Condition],
 ) -> None:
-    """The behavioural half of the inheritance: a composed condition is handed
-    its base's handler, so all four of Incapacitated's subclasses are surprised
-    without declaring anything."""
+    """Incapacitated, and each condition that includes it through its base's
+    handler, rolls Initiative with Disadvantage."""
     victim = combatant("victim")
     impose(victim, condition(victim))
 
@@ -503,8 +495,7 @@ def test_a_d20_test_is_reduced_by_two_times_the_exhaustion_level(
     """ "When you make a D20 Test, the roll is reduced by 2 times your
     Exhaustion level": 13 + 2 (Dexterity 14) - 2 * level, so 13, 11 and 9.
 
-    DC 13 is cleared at one level and missed at two, which is the clause doing
-    something rather than being carried.
+    DC 13 is cleared at one level and missed at two.
     """
     weary = combatant("weary")
     for _ in range(levels):
@@ -664,9 +655,8 @@ def test_every_condition_name_has_exactly_one_implementation() -> None:
 def test_a_condition_written_about_its_imposer_refuses_to_arrive_without_one(
     condition: type[SourcedCondition],
 ) -> None:
-    """The charmer, the source of fear and the grappler are each named by every
-    clause their condition has that does anything, so a `None` would be a
-    condition that silently does nothing."""
+    """Charmed, Frightened and Grappled raise when built without a caster
+    (`docs/decisions.md` § w1h)."""
     victim = combatant("victim")
 
     with pytest.raises(ValueError, match="no caster"):
@@ -715,10 +705,8 @@ def test_a_composed_condition_inherits_its_bases_handlers() -> None:
 
 
 def test_a_composed_condition_inherits_its_bases_declared_gaps() -> None:
-    """A clause its base could not express is still unexpressed in the
-    subclass, so the gap is inherited rather than shadowed by the subclass's
-    own declaration — otherwise `w3f`'s collection would report a composed
-    condition as whole."""
+    """A composed condition's `NEEDS_HOOK` and `APPROXIMATED` include its
+    bases' entries as well as its own (`docs/decisions.md` § w1h)."""
     for composed in (Paralyzed, Petrified, Stunned, Unconscious):
         assert set(Incapacitated.NEEDS_HOOK) <= set(composed.NEEDS_HOOK)
     assert set(Prone.NEEDS_HOOK) <= set(Unconscious.NEEDS_HOOK)
@@ -728,7 +716,7 @@ def test_a_composed_condition_inherits_its_bases_declared_gaps() -> None:
     )
 
 
-# --- The ROADMAP row's acceptance test --------------------------------------
+# --- No condition named in the engine ---------------------------------------
 
 CONDITION_WORDS: Final = frozenset(member.value for member in enums.Condition)
 
@@ -747,19 +735,9 @@ def _identifiers(path: Path) -> set[str]:
 
 
 def test_no_condition_is_named_anywhere_in_the_engine() -> None:
-    """The acceptance test the ROADMAP row names — "no `if creature.is_prone`
-    anywhere in the engine".
-
-    A condition is behaviour attached to a creature, so every one of the
-    fifteen is a `HookSource` the engine dispatches to and none of them is a
-    flag it branches on. The check is per identifier rather than per line
-    because `is_prone` and `Condition.PRONE` are both the branch this forbids,
-    and a docstring that mentions Prone is not.
-
-    One exemption, and only one: `engine/healing.py` defines `Downed`, the real
-    `Unconscious` dropping to 0 gives, as `w1j`'s row requires
-    (`docs/decisions.md` § w1j).
-    """
+    """No identifier in `engine/`, `hooks/` or `core/` names a condition, apart
+    from `Unconscious` in `engine/healing.py` (`docs/decisions.md` § w1h,
+    § w1j)."""
     roots = (engine.__file__, hooks.__file__, core.__file__)
     named = {
         (path.name, identifier)

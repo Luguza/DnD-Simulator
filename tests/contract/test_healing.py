@@ -153,8 +153,8 @@ def test_a_dead_creature_regains_nothing_and_fires_nothing() -> None:
 
 
 def test_healing_at_zero_ends_unconscious_and_leaves_the_creature_prone() -> None:
-    """The row: a heal at 0 restores consciousness, and Prone remains through
-    Unconscious's own "When this condition ends, you remain Prone"."""
+    """A heal at 0 ends Unconscious, and Prone remains (Rules Glossary
+    "Unconscious": "When this condition ends, you remain Prone")."""
     patient = downed()
     assert heal(patient, rng=no_dice(), flat=3) == 3
     assert patient.hp == 3
