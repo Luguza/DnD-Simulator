@@ -1,23 +1,6 @@
 """The w1b resource contract: the seven shapes, and the cost that commits whole.
 
-Two properties carry the task, and the rest of the file is arithmetic around
-them:
-
-- **The seven shapes of DESIGN.md § Resources are one model.** Rage, the nine
-  spell slots, Pact Magic, ki, Channel Divinity, sorcery points and a monster's
-  recharge differ only in what their `ResourceSpec` says. If any of them needed
-  a branch in `ResourcePool`, the model would have failed at seven and the ~630
-  content implementations are the ones that would pay for it.
-- **A half-paid ability cannot exist.** Quickened Fireball spends two sorcery
-  points *and* a 3rd-level slot; the transaction commits both or rolls back
-  both, even when what raises is a later step that knows nothing about either
-  (DESIGN.md § Resources).
-
-Underneath sits the same refusal `tests/contract/test_economy.py` pins for the
-action economy: overdrawing raises rather than clamping, because asking is free.
-What is *not* an error is a slot that is merely unavailable — `core/errors.py`
-names that a fight outcome — so every refusal below has a `can_spend()` that
-would have answered it for nothing.
+Overdrawing raises; `can_spend()` asks the same question for nothing.
 
 Sources: DESIGN.md § Resources: one model, no special cases, § Failing loudly —
 layered; XPHB (2024) "Spells" (Spell Slots, Pact Magic); ROADMAP w1b.
@@ -70,17 +53,13 @@ def creature(name: str = "hero", *, level: int = 5) -> Creature:
 
 # --- The seven shapes -------------------------------------------------------
 #
-# DESIGN.md § Resources tabulates these; what the table below adds is that each
-# one is a `ResourceSpec` and nothing else.
+# DESIGN.md § Resources' seven shapes, each a `ResourceSpec` and nothing else.
 
 _RAGES: Final = (2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6)
-"""The XPHB (2024) Barbarian "Rages" column, levels 1-20.
+"""The XPHB (2024) Barbarian "Rages" column, levels 1-20: a fixture.
 
-A fixture, not the feature. The real Rage reads this off the imported
-`classTableGroups` through `table_value()` (ROADMAP § Standing rules, 3), and
-neither exists in W1 — so it is written out rather than fitted to a formula,
-because a formula that happens to agree up to level 11 is what a later agent
-would copy.
+Written out rather than fitted to a formula, which would agree only up to
+level 11.
 """
 
 RAGE: Final = ResourceSpec(
@@ -395,7 +374,7 @@ def test_a_multi_resource_cost_commits_whole() -> None:
 
 
 def test_a_later_step_raising_rolls_both_back() -> None:
-    """The property the Unit of Work exists for: nothing is half paid."""
+    """Nothing is half paid."""
     sorcerer = creature("sorcerer", level=5)
     sorcerer.resources.add(SORCERY_POINTS, *spell_slot_specs(FULL))
     with (
@@ -423,8 +402,8 @@ def test_the_refusal_inside_a_transaction_rolls_the_rest_back() -> None:
 
 
 def test_a_transaction_sees_what_it_has_already_taken() -> None:
-    """Two 3rd-level slots asked of a pool holding two is fine; a third is not,
-    and a ledger that only added up at the commit would let it through."""
+    """Two 3rd-level slots asked of a pool holding two is fine; a third is not
+    (`docs/decisions.md` § w1b)."""
     wizard = creature("wizard", level=5)
     wizard.resources.add(*spell_slot_specs(FULL))
     with pytest.raises(EconomyError), wizard.resources.transaction() as txn:
@@ -435,8 +414,8 @@ def test_a_transaction_sees_what_it_has_already_taken() -> None:
 
 
 def test_a_direct_spend_while_a_transaction_is_open_is_refused() -> None:
-    """Otherwise it announces at once and the rollback cannot reach it, so an
-    exception leaves it spent beside costs that came back."""
+    """It raises, and nothing is spent or announced (`docs/decisions.md`
+    § w1b)."""
     sorcerer = creature("sorcerer", level=5)
     counter = Counter(sorcerer)
     sorcerer.attach(counter)
@@ -581,9 +560,7 @@ def test_a_committed_transaction_announces_once_per_pool() -> None:
 
 
 def test_a_rolled_back_spend_is_announced_to_nobody() -> None:
-    """It did not happen, and a handler told about an event that did not take
-    place is the same wrong number as one not told about one that did
-    (docs/decisions.md § w1c)."""
+    """It did not happen (`docs/decisions.md` § w1b, § w1c)."""
     sorcerer = creature("sorcerer", level=5)
     counter = Counter(sorcerer)
     sorcerer.attach(counter)
@@ -611,8 +588,7 @@ def test_an_effect_queued_by_a_spend_handler_lands() -> None:
 
 
 def test_a_creature_starts_with_no_resources_at_all() -> None:
-    """What a creature has is what its build granted it; an empty ledger is not
-    an empty pool, and the two refusals say different things."""
+    """What a creature has is what its build granted it."""
     hero = creature()
     assert len(hero.resources) == 0
     assert isinstance(hero.resources, Resources)

@@ -1,28 +1,12 @@
 """The closed rules vocabulary — XPHB (2024).
 
-Every package downstream of this one speaks these enumerations instead of
-strings. A misspelled string is a silent no-op; a misspelled enum member is an
-`AttributeError` at import. That is the whole reason this module exists, and it
-is why it is written first (ROADMAP w0b): a rename here is free, and a rename
-after ~630 content implementations exist is a mass edit.
-
-**These are plain `Enum`s, never `StrEnum`s, and that is load-bearing.** Under
-mypy's strict mode (`strict_equality`), comparing a plain `Enum` against a string
-is a non-overlapping comparison and fails type checking:
-
-    if ctx.damage_type == "fire":   # error: Non-overlapping equality check
-
-With `StrEnum` that comparison is legal and *true*, so the day someone writes
-`== "fires"` it silently becomes false and a feature quietly stops working. The
-enum members still carry lowercase string values, which are what the event log
-and the `SimResult` JSON serialise, and what `content/` parses back with
-`DamageType("fire")` — an unknown value raises `ValueError` at the boundary
-rather than travelling inward.
+Plain `Enum`s, never `StrEnum`s, so comparing a member against a string is a
+mypy error; members carry lowercase string values for serialisation and parsing
+(`docs/decisions.md` § w0b).
 
 Sources: XPHB (2024) "Playing the Game" (abilities, damage types, sizes),
 "Rules Glossary" (conditions), "Equipment" (weapon properties, mastery
-properties), and "Spells" (schools of magic). Membership of every enumeration
-below was checked against the XPHB entries in the 5etools dataset.
+properties), and "Spells" (schools of magic).
 """
 
 from enum import Enum, unique
@@ -58,9 +42,8 @@ class Ability(Enum):
 
 @unique
 class DamageType(Enum):
-    """The 13 damage types. Bludgeoning, piercing and slashing are the three
-    physical types; `constants.PHYSICAL_DAMAGE_TYPES` is that grouping, which is
-    what Rage and similar features resist."""
+    """The 13 damage types. `constants.PHYSICAL_DAMAGE_TYPES` groups the three
+    physical ones."""
 
     ACID = "acid"
     BLUDGEONING = "bludgeoning"
@@ -81,13 +64,8 @@ class DamageType(Enum):
 class Condition(Enum):
     """The 15 conditions of the 2024 Rules Glossary.
 
-    Two 2024 changes are encoded by what is *absent*: Surprised is no longer a
-    condition (it is disadvantage on Initiative), and Bloodied and Concentration
-    are *statuses*, not conditions. None of the three belongs here.
-
-    This is the **name** of a condition — the vocabulary the APL, the log and
-    `content/` use. The behaviour of a condition is a `HookSource` subclass in
-    `conditions/` (w1h); the engine never branches on a member of this enum.
+    The **name** of a condition only; its behaviour is a `HookSource` subclass
+    in `conditions/` (`docs/decisions.md` § w0b).
     """
 
     BLINDED = "blinded"
@@ -123,11 +101,8 @@ class Mastery(Enum):
 
 @unique
 class WeaponProperty(Enum):
-    """The 9 weapon properties carried by the 38 XPHB weapons.
-
-    2014's Special property is gone in 2024, and Range is a pair of numbers on
-    the weapon rather than a property.
-    """
+    """The 9 weapon properties carried by the 38 XPHB weapons. Range is a pair
+    of numbers on the weapon, not a member."""
 
     AMMUNITION = "ammunition"
     FINESSE = "finesse"
@@ -142,9 +117,7 @@ class WeaponProperty(Enum):
 
 @unique
 class Size(Enum):
-    """Creature sizes. `constants.SIZE_ORDER` ranks them, because several rules
-    ("no more than one size larger than you") are comparisons rather than
-    equalities."""
+    """Creature sizes. `constants.SIZE_ORDER` ranks them."""
 
     TINY = "tiny"
     SMALL = "small"
@@ -172,15 +145,9 @@ class School(Enum):
 class Outcome(Enum):
     """How an **attack roll** resolved.
 
-    Scoped to attack rolls on purpose. 2024 unifies attack rolls, ability checks
-    and saving throws as "D20 Tests", but a natural 20 is only a critical hit for
-    an attack roll, so a single outcome type across all three would be a member
-    that means something different in each. A saving throw resolves into
-    `SaveOutcome` below.
-
-    `is_hit` and `is_critical` exist so that no caller writes
-    `outcome in (Outcome.HIT, Outcome.CRITICAL_HIT)` — the crit predicate lives
-    in one place, which is the same reason `DamagePart` splits dice from flat.
+    Attack rolls only; a saving throw resolves into `SaveOutcome`
+    (`docs/decisions.md` § w0b). Ask `is_hit` and `is_critical` rather than
+    testing membership.
     """
 
     CRITICAL_MISS = "critical_miss"
@@ -195,20 +162,14 @@ class Outcome(Enum):
 
     @property
     def is_critical(self) -> bool:
-        """True on a critical hit only. This is the predicate that doubles
-        `DamagePart.dice` and never `DamagePart.flat`."""
+        """True on a critical hit only."""
         return self is Outcome.CRITICAL_HIT
 
 
 @unique
 class SaveOutcome(Enum):
-    """How a **saving throw** resolved: the result type `Outcome` above is
-    scoped away from.
-
-    Two members and no critical one. XPHB, "D20 Tests" -> Saving Throws gives a
-    save no special effect for a natural 20 or a natural 1 — where the Attack
-    Rolls entry beside it gives both (`rules/constants.py`'s `NATURAL_TWENTY`) —
-    so a save meets its DC or it does not. `engine/saves.py` produces one.
+    """How a **saving throw** resolved. No critical member: XPHB "D20 Tests"
+    -> Saving Throws (`docs/decisions.md` § w1g).
     """
 
     FAILURE = "failure"
@@ -217,13 +178,7 @@ class SaveOutcome(Enum):
 
 @unique
 class SaveRepeat(Enum):
-    """When a save-ends effect offers its save again.
-
-    Rules vocabulary, because the engine that rolls the repeat save and the
-    scorer that prices it must name the same member rather than two string
-    literals that can disagree (DESIGN.md § Buffs and debuffs, `ROADMAP.md`
-    § The W0 debt register #35, which own that argument).
-    """
+    """When a save-ends effect offers its save again (debt #35)."""
 
     TURN_END = "turn_end"
     TURN_START = "turn_start"
@@ -233,9 +188,8 @@ class SaveRepeat(Enum):
 class CasterProgression(Enum):
     """Which spell-slot table a class advances on.
 
-    `HALF` is the 2024 Paladin/Ranger progression, which grants slots from level
-    1 — not 2014's, which started at level 2. `THIRD` is Eldritch Knight and
-    Arcane Trickster, both inside the martial slice. The tables themselves are
+    `HALF` is the 2024 Paladin/Ranger progression, with slots from level 1;
+    `THIRD` is Eldritch Knight and Arcane Trickster. The tables are
     `constants.spell_slots()`.
     """
 
@@ -249,15 +203,9 @@ class CasterProgression(Enum):
 class ActionCost(Enum):
     """Which slot of the action economy something spends.
 
-    Declared by a handler (`@hook("on_hit", costs=ActionCost.REACTION)`) and
-    consumed by the creature's action economy (w1a); it lives here, at the
-    bottom of the stack, because both `hooks/` and `creatures/` need the same
-    three words and neither may import the other.
-
-    There is no `FREE` member: a handler that costs nothing declares
-    `costs=None`, and a second way of spelling the same thing is a second way
-    for an author to get it wrong. Movement is absent for the opposite reason —
-    it is measured in feet, not in slots, so it is not one of these.
+    Declared by a handler (`@hook("on_hit", costs=ActionCost.REACTION)`). A
+    handler that costs nothing declares `costs=None` (`docs/decisions.md`
+    § w0g).
     """
 
     ACTION = "action"
@@ -269,18 +217,8 @@ class ActionCost(Enum):
 class RecoveryTrigger(Enum):
     """What hands a spent resource back.
 
-    The trigger half of `Recovery` (`creatures/resources.py`), and it lives here
-    for the reason `ActionCost` above records: a rest is a rules word, and
-    `creatures/`, `engine/adventuring_day.py` (w6a) and `content/`'s stat-block
-    parser (w7a) all need the same ones with no import between them.
-
-    Nothing here rolls anything. `RECHARGE_5_6` is fired by whoever rolled the
-    d6 — the turn loop (w2c) — so a pool never reaches for a generator, which is
-    what keeps `core/rng.py`'s single stream single (DESIGN.md § Determinism).
-
-    Membership is DESIGN.md § Resources' seven shapes and nothing beyond them:
-    the other printed recharge ranges arrive with the parser that has the data
-    to read them (w7a).
+    The trigger half of a `Recovery`. `RECHARGE_5_6` is fired by whoever rolled
+    the d6 (`docs/decisions.md` § w1b).
     """
 
     SHORT_REST = "short_rest"

@@ -3,14 +3,12 @@ is allowed to change.
 
 **declare -> roll -> advantage -> hit/crit/miss -> damage -> resolved.** Every
 case carries the arithmetic that produced its number — the attacker below swings
-at natural + 4 (Strength 18) + 3 (proficiency at level 5) — because a bare
-`== 13` proves nothing about which of the modifier, the die and the defence
-produced it.
+at natural + 4 (Strength 18) + 3 (proficiency at level 5).
 
 Sources: XPHB (2024) "D20 Tests" -> Attack Rolls ("Rolling 20 or 1", Critical
 Hits), "Equipment" -> Weapon Properties (Finesse, Reach), Rules Glossary
 "Advantage", "Resistance"; DESIGN.md § Structural prevention over testing;
-`docs/decisions.md` § w1e; ROADMAP w1f.
+`docs/decisions.md` § w1e, § w1f.
 """
 
 from collections.abc import Sequence
@@ -97,8 +95,7 @@ RAPIER: Final = Weapon(
     properties=frozenset({WeaponProperty.FINESSE}),
     mastery=Mastery.VEX,
 )
-"""XPHB "Weapons": 1d8 piercing, Finesse. Hand-written like `GREATSWORD`,
-because `content/` (w2a) is what imports the other 36."""
+"""XPHB "Weapons": 1d8 piercing, Finesse."""
 
 GLAIVE: Final = Weapon(
     name="Glaive",
@@ -110,8 +107,7 @@ GLAIVE: Final = Weapon(
     mastery=Mastery.GRAZE,
     reach_ft=10,
 )
-"""XPHB "Weapons": 1d10 slashing, Heavy, Reach, Two-Handed — 10 feet of reach,
-which is the only thing this file swings it for."""
+"""XPHB "Weapons": 1d10 slashing, Heavy, Reach, Two-Handed — 10 feet of reach."""
 
 
 def attacker(
@@ -129,12 +125,8 @@ def attacker(
 
 
 def defender(*, ac: int = _DEFENDER_AC, cells: int = 1) -> Creature:
-    """A dummy `cells` squares east of the attacker, with a stated AC.
-
-    `Armour.natural()` is the one legitimate way for an AC to be a number
-    somebody typed (`creatures/stats.py`): for a monster the number is what the
-    rules publish.
-    """
+    """A dummy `cells` squares east of the attacker, with a stated
+    `Armour.natural()` AC."""
     return Creature(
         name="Dummy",
         stats=StatBlock(
@@ -229,8 +221,7 @@ class DefenderProbe(HookSource):
 
 
 class Rider(HookSource):
-    """An extra die on a hit — Sneak Attack's shape, and what the defender's
-    `on_hit_taken` handler should be able to see."""
+    """An extra die on a hit — Sneak Attack's shape."""
 
     __slots__ = ("seen",)
 
@@ -281,11 +272,7 @@ class Reckless(HookSource):
 
 
 class Restrained(HookSource):
-    """Advantage granted from the defender's side — the Restrained condition.
-
-    The same roll, swung by the other creature's handler, which is what makes a
-    second grant a real second source rather than the same feature twice.
-    """
+    """Advantage granted from the defender's side — the Restrained condition."""
 
     __slots__ = ()
 
@@ -366,9 +353,7 @@ class Reducer(HookSource):
 class Graze(HookSource):
     """The Graze mastery: the ability modifier as damage on a miss.
 
-    The +4 is the attacker's Strength modifier, written as a literal because a
-    handler is handed a `Combatant` and the mastery feature that reads it for
-    real is W4's.
+    The +4 is the attacker's Strength modifier, written as a literal.
     """
 
     __slots__ = ()
@@ -473,12 +458,7 @@ class QueuesOnHit(HookSource):
 
 
 class Interrupts(HookSource):
-    """An attack begun from inside another attack's first hook.
-
-    `w2c`'s reaction is exactly this shape — a second attack made during
-    somebody else's — which is why the pooled source refuses it and the
-    allocating one does not.
-    """
+    """An attack begun from inside another attack's first hook."""
 
     __slots__ = ("_contexts", "_defender", "_rng", "_swinger", "fired", "result")
 
@@ -530,8 +510,8 @@ class RecordingTrigger:
 
 
 def test_a_hit_dispatches_every_hook_the_hit_side_touches() -> None:
-    """The nine dispatches of one landed attack, in the order the module's
-    docstring claims: the attacker's five and the defender's four.
+    """The nine dispatches of one landed attack, in declaration-to-resolution
+    order: the attacker's five and the defender's four.
 
     Natural 10 + 4 + 3 = 17 against AC 15 is a hit; 2d6 rolled 5 + 4 = 9 plus
     the +4 Strength modifier is 13, and an unarmoured dummy keeps all of it.
@@ -666,8 +646,8 @@ def test_a_lowered_threshold_crits_on_a_19_that_hits() -> None:
 
 
 def test_a_19_that_does_not_reach_the_ac_is_an_ordinary_miss() -> None:
-    """**The distinction `rules/constants.py` keeps two numbers for.** A lowered
-    threshold says which *hits* are critical; it never makes a roll hit. 19 + 7
+    """A lowered threshold says which *hits* are critical; it never makes a
+    roll hit (`docs/decisions.md` § w1f). 19 + 7
     = 26 against AC 30 misses, and it is a plain miss rather than a critical
     anything — no damage is rolled and none is dealt."""
     swinger, target = attacker(), defender(ac=30)
@@ -697,7 +677,7 @@ def test_an_untouched_threshold_leaves_a_19_an_ordinary_hit() -> None:
 
 
 def test_a_critical_hit_doubles_the_dice_and_never_the_modifier() -> None:
-    """The project's flagship structural rule, through the whole pipeline.
+    """Dice double on a crit and flat does not, through the whole pipeline.
 
     2d6 doubled is 4d6, rolled 6 + 5 + 4 + 3 = 18, and the +4 Strength modifier
     is added once: 22. Doubling the rolled total would give 2 * 11 + 4 = 26 and
@@ -750,8 +730,7 @@ def test_disadvantage_rolls_two_d20s_and_keeps_the_lower() -> None:
 
 
 def test_two_sources_of_advantage_are_still_one_advantage() -> None:
-    """Advantage does not stack (XPHB Rules Glossary), and here that is a
-    property of the ledger rather than a rule anybody wrote: two grants from two
+    """Advantage does not stack (XPHB Rules Glossary): two grants from two
     creatures' handlers still draw exactly two d20s. Scripted 3 then 17 resolves
     on 17 for a hit and 2d6 (5 + 4) + 4 = 13; a third d20 would exhaust the
     script."""
@@ -825,7 +804,7 @@ def test_an_ac_bonus_reaches_the_ac_the_total_is_compared_to() -> None:
 
 
 def test_the_damage_dealt_is_what_the_resolution_order_left() -> None:
-    """The attack reports what `engine/damage.py` resolved, not what it rolled:
+    """The attack reports the damage resolved, not what it rolled:
     2d6 (5 + 4) + 4 = 13 slashing, halved by resistance to 13 // 2 = 6."""
     swinger, target = attacker(), defender()
     target.attach(SlashResistant(target))
@@ -840,9 +819,7 @@ def test_the_damage_dealt_is_what_the_resolution_order_left() -> None:
 
 
 def test_a_mitigation_die_comes_out_of_the_attacks_own_stream() -> None:
-    """`mitigate()` is handed the generator the attack is using — a second
-    stream would reproduce a different fight from the same archived seed with no
-    error anywhere (`engine/damage.py`).
+    """`mitigate()` draws from the generator the attack is using.
 
     The script runs out exactly when the attack is over: d20 10, the greatsword's
     5 and 4, and then the reduction's 1d4 rolled 3. 9 + 4 = 13 less 3 is 10.
@@ -883,10 +860,9 @@ def test_damage_added_on_a_miss_is_resolved_through_the_defences() -> None:
 
 
 def test_on_damage_roll_does_not_fire_for_damage_dealt_on_a_miss() -> None:
-    """Graze's sentence gives the number itself, so nothing on the attacker's
-    side gets to build it: the miss path skips `on_damage_roll` and goes
-    straight to the victim's two damage hooks. `on_hit_taken` is absent for the
-    same reason — the attack did not land. 4 flat, unresisted here."""
+    """The miss path skips `on_damage_roll` and `on_hit_taken` and goes
+    straight to the victim's two damage hooks (`docs/decisions.md` § w1f).
+    4 flat, unresisted here."""
     swinger, target = attacker(), defender()
     swinger.attach(Graze(swinger))
     attacker_probe, defender_probe = AttackerProbe(swinger), DefenderProbe(target)
@@ -954,15 +930,8 @@ def test_the_defenders_early_veto_prevents_it_too() -> None:
 
 
 def test_a_veto_once_the_d20_is_on_the_table_is_refused() -> None:
-    """By `on_attack_rolled` the attack has been made and `Outcome` has no
-    member for one that was withdrawn, so a veto there is refused rather than
-    quietly cancelling the attack.
-
-    It is the **feature's** contract that was broken, not the engine's assembly
-    (`core/errors.py`): `ctx.veto()` has no meaning at this hook and no later
-    task gives it one (`docs/decisions.md` § w1f), so there is nothing here that
-    is waiting to be wired in. The author's fix is to gate at
-    `on_declare_attack`.
+    """A veto at `on_attack_rolled` raises `FeatureContractError` rather than
+    cancelling the attack (`docs/decisions.md` § w1f).
     """
     swinger, target = attacker(), defender()
     swinger.attach(VetoRoll(swinger))
@@ -972,8 +941,7 @@ def test_a_veto_once_the_d20_is_on_the_table_is_refused() -> None:
 
 
 def test_a_veto_after_the_attack_landed_is_refused() -> None:
-    """The same refusal on the busiest hook in the project, where a silent no-op
-    would delete a Divine Smite rather than an attack."""
+    """The same refusal at `on_hit`, with no damage dealt."""
     swinger, target = attacker(), defender()
     swinger.attach(VetoHit(swinger))
 
@@ -984,9 +952,7 @@ def test_a_veto_after_the_attack_landed_is_refused() -> None:
 
 def test_the_victims_veto_on_the_shared_context_names_its_own_hook_too() -> None:
     """`on_hit` and `on_hit_taken` are one context sealed once, so the refusal
-    names the pair: a veto cast by the defender's handler must not be reported
-    against a hook on the attacker, which is the first place whoever reads the
-    error will go looking."""
+    names the pair rather than a hook on the attacker."""
     swinger, target = attacker(), defender()
     target.attach(VetoHitTaken(target))
 
@@ -999,16 +965,9 @@ def test_the_victims_veto_on_the_shared_context_names_its_own_hook_too() -> None
 
 
 def test_the_two_refusals_a_sealed_context_makes_are_different_kinds() -> None:
-    """**What `w1c` read.** One dispatch can leave two things behind, and only
-    one of them was the engine's fault: a queued effect, legitimate and drained
-    since `w1c`, and a late veto, a mutator used where it has no meaning and
-    never will be given one.
-
-    The queued-effect half is gone with the refusal it pinned. The `issubclass`
-    assertions stay, and are the half that had to survive the sweep: the types
-    are siblings under `DndSimError`, and a later change making either one
-    inherit the other would let a sweep by type collapse a transitional refusal
-    and a permanent one together.
+    """A late veto raises `FeatureContractError`, and it and
+    `EngineAssemblyError` are siblings: neither inherits the other
+    (`docs/decisions.md` § The W1 critical-path review).
     """
     vetoer, other = attacker(), defender()
     vetoer.attach(VetoHit(vetoer))
@@ -1023,9 +982,8 @@ def test_the_two_refusals_a_sealed_context_makes_are_different_kinds() -> None:
 
 
 def test_an_effect_queued_at_the_declaration_lands_before_the_roll() -> None:
-    """The first of the two call sites `w1c` swept (debt #5). The declaration is
-    drained where the refusal used to be raised — before the d20 — so the effect
-    is on the defender whatever the attack goes on to do, and this one misses."""
+    """The declaration's queue is drained before the d20, so the effect is on
+    the defender whatever the attack goes on to do, and this one misses."""
     swinger, target = attacker(), defender()
     swinger.attach(QueuesAtDeclaration(swinger))
 
@@ -1053,10 +1011,7 @@ class BrandsOnHit(HookSource):
     """Applies the brand to the swinger from `on_hit`, one stage before the
     damage is rolled.
 
-    On the swinger rather than the target because `on_damage_roll` is `SELF` on
-    the attacker (`hooks/definitions.py`): a rider applied to the defender has
-    nothing to contribute with there, which is what makes the attacker the only
-    end this can be asked from.
+    On the swinger, because `on_damage_roll` is `SELF` on the attacker.
     """
 
     __slots__ = ()
@@ -1070,23 +1025,9 @@ class BrandsOnHit(HookSource):
 
 
 def test_the_queue_is_drained_per_dispatch_and_not_per_attack() -> None:
-    """**The scope of the drain, stated rather than left to be discovered.**
-    `hooks/contexts.py` says the engine "drains the queue after the dispatch",
-    and that is per dispatch: an effect applied at one stage of an attack is
-    attached for the stages after it. So a brand applied from `on_hit` is on the
-    swinger when `on_damage_roll` runs, and its die lands on the hit that
-    applied it.
-
-    The snapshot rule the same paragraph states is what this preserves — a
-    handler list fixed per *dispatch*, so an effect applied during a hook never
-    runs in that hook. Reckless Attack still has to call `grant_advantage()`
-    beside applying its effect, because the dispatch its effect would have
-    answered is the one already running.
-
-    Deferring to the end of the attack was the alternative and is refused: it
-    contradicts the sentence above, and it would give `on_incoming_damage` two
-    different meanings depending on whether `resolve_damage()` was reached
-    through an attack or called directly (`docs/decisions.md` § w1c).
+    """The queue is drained per dispatch: a brand applied from `on_hit` is on
+    the swinger when `on_damage_roll` runs, and its die lands on the hit that
+    applied it (`docs/decisions.md` § w1c).
 
     2d6 rolled 4 + 3 = 7, plus the +4 Strength modifier, plus the brand's 1d6
     rolled 5 = 16.
@@ -1102,9 +1043,7 @@ def test_the_queue_is_drained_per_dispatch_and_not_per_attack() -> None:
 
 
 def test_an_effect_queued_on_a_hit_lands_through_seal() -> None:
-    """The hook that wants it most — a rider applying a condition on a hit —
-    and the second call site, `_seal()`, which runs at five further stages of
-    the attack."""
+    """An effect queued from `on_hit` lands on the target."""
     swinger, target = attacker(), defender()
     swinger.attach(QueuesOnHit(swinger))
 
@@ -1124,8 +1063,7 @@ def test_strength_is_the_ability_a_weapon_attack_uses() -> None:
 
 def test_a_finesse_weapon_takes_dexterity_when_it_is_the_better_modifier() -> None:
     """Finesse: "you can use your Dexterity ... for the attack and damage
-    rolls". The wielder here is +4 Dexterity against +2 Strength, so the choice
-    the rules leave open has one sensible answer."""
+    rolls". The wielder here is +4 Dexterity against +2 Strength."""
     nimble = attacker(scores=_NIMBLE, weapon=RAPIER)
     assert attack_ability(nimble, RAPIER) is Ability.DEXTERITY
 
@@ -1220,8 +1158,8 @@ def test_the_equipped_weapon_does_not_lend_its_reach_to_another() -> None:
 
 
 def test_an_attacker_with_no_weapon_is_refused() -> None:
-    """Unarmed strikes are their own attack (`w2b`), so an attack with no weapon
-    at all is an assembly mistake rather than a 1-damage punch."""
+    """An attack with no weapon at all raises rather than becoming a 1-damage
+    punch."""
     swinger, target = attacker(weapon=None), defender()
 
     with pytest.raises(ValueError, match="no weapon"):
@@ -1258,7 +1196,7 @@ def test_a_pool_resolves_attack_after_attack_without_inheriting_the_first() -> N
 def test_a_pool_refuses_an_attack_begun_inside_another() -> None:
     """One pool resolves one attack at a time. The inner attack would be handed
     the outer's live contexts and overwrite the event in flight, so it is
-    refused loudly — `w2c`'s answer is a second pool, not a deeper one."""
+    refused loudly (debt #26)."""
     swinger, target = attacker(), defender()
     pool = PooledContexts(swinger, target, GREATSWORD)
     swinger.attach(Interrupts(swinger, defender=target, rng=no_dice(), contexts=pool))
@@ -1307,14 +1245,8 @@ def test_a_hit_offers_the_trigger_three_moments_and_the_last_carries_both() -> N
                                             Dodge is being offered *this* hit,
                                             and both facts are true of it
 
-    The third moment is the decision `w2e` inherits. `crit` is re-bound there
-    because leaving it at its default would be a **wrong** value rather than an
-    absent one: a policy reading `trigger.crit` while deciding what to do about
-    a critical hit's damage would be told the hit was ordinary, and the protocol
-    has no third state to distinguish "not a crit" from "not yet known".
-    `damage_estimate` at the second moment is the same shape of default and is
-    not pinned as meaning anything — what a handler at `on_hit` may ask is
-    `trigger.crit`.
+    `damage_estimate` at the second moment is not pinned as meaning anything
+    (`docs/decisions.md` § w1f).
 
     The estimate is what is on the table if nobody does anything about it —
     4d6 (6 + 5 + 4 + 3 = 18) + 4 = 22 — and not the 11 the resistance leaves,
@@ -1333,10 +1265,8 @@ def test_a_hit_offers_the_trigger_three_moments_and_the_last_carries_both() -> N
 
 
 def test_a_miss_that_deals_damage_offers_two_moments_and_no_crit() -> None:
-    """The asymmetry the hit branch's re-bind makes deliberate: a miss has no
-    `on_hit` moment to offer, and `crit=False` at the damage moment is a true
-    statement rather than a default standing in for an unknown — a miss is never
-    a Critical Hit.
+    """A miss has no `on_hit` moment to offer, and binds `crit=False` at the
+    damage moment: a miss is never a Critical Hit.
 
     Graze's flat 4 is the whole estimate, and the unresisted victim loses it.
     """
@@ -1363,8 +1293,7 @@ def _fight(seed: int, attacks: int = 25) -> Sequence[AttackResult]:
 
 
 def test_the_same_seed_gives_the_same_fight() -> None:
-    """The backbone: seed plus build reproduces a run byte for byte, which is
-    what makes `trace`, goldens and regression diffs possible."""
+    """The same seed reproduces the same run."""
     first = _fight(20240915)
 
     assert first == _fight(20240915)

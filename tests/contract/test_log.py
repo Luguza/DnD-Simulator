@@ -1,9 +1,5 @@
 """The event log contract: records as tuples, two levels, nothing formatted.
 
-What writes to it, and which records each level keeps, is the writer's contract
-(`tests/contract/test_attack.py` for the attack pipeline). This file holds the
-container's.
-
 Sources: DESIGN.md § Levers, § CLI surface; `docs/decisions.md` § w1i; ROADMAP
 w1i.
 """
@@ -59,8 +55,7 @@ def test_clearing_drops_the_records_and_keeps_the_level() -> None:
 
 
 def test_the_level_cannot_be_changed_under_a_writer() -> None:
-    """`full` is what a writer reads and `level` is what a reader reports; an
-    assignment to either would let them disagree."""
+    """Neither `level` nor `full` can be assigned (`docs/decisions.md` § w1i)."""
     log = EventLog()
 
     with pytest.raises(AttributeError):

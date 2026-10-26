@@ -167,7 +167,7 @@ def test_overflow_one_short_of_the_maximum_knocks_out() -> None:
 
 
 def test_a_player_character_at_zero_is_unconscious_with_clean_counters() -> None:
-    """What it holds is a `Downed`, which is the real Unconscious."""
+    """The condition it holds is a `Downed`, a subclass of `Unconscious`."""
     victim = downed()
     assert issubclass(Downed, Unconscious)
     assert (victim.death_save_successes, victim.death_save_failures) == (0, 0)
@@ -211,8 +211,8 @@ def test_on_kill_fires_on_the_attacker_when_a_monster_dies() -> None:
 
 
 def test_on_kill_fires_when_a_player_character_is_dropped_too() -> None:
-    """The row: `on_kill` fires at the same moment as `on_reduced_to_zero`,
-    unless the drop was prevented — a downed character was dropped."""
+    """`on_kill` fires when a player character is dropped to 0, not only when
+    a creature dies."""
     victim, goblin = pc(), monster()
     probe = probed(goblin)
     resolve_damage(victim, {SLASHING: MAX_HP}, rng=no_dice(), attacker=goblin)
@@ -286,7 +286,7 @@ def test_relentless_endurance_does_not_save_its_owner_from_instant_death() -> No
 
 
 def test_the_engine_knows_nothing_about_relentless_endurance() -> None:
-    """The row's acceptance test: the feature is a resource and a handler."""
+    """No engine module names Relentless Endurance or resources."""
     for module in (damage, dying, healing, attack):
         assert module.__file__ is not None
         source = Path(module.__file__).read_text().lower()
@@ -545,7 +545,7 @@ def test_the_check_uses_the_helpers_wisdom_and_not_the_dying_creatures() -> None
 
 
 def test_stabilising_fires_on_ability_check_on_the_helper() -> None:
-    """The first caller of `on_ability_check`: Wisdom (Medicine), DC 10."""
+    """Wisdom (Medicine), DC 10, fired on the helper."""
     victim, cleric = downed(), healer()
     probe = probed(cleric)
     stabilize(cleric, victim, rng=ScriptedRng([15]))
@@ -642,8 +642,8 @@ RELENTLESS: Final = ResourceSpec(
 
 
 class RelentlessEndurance(HookSource):
-    """The acceptance test's feature: a once-per-Long-Rest pool and one
-    handler, with nothing in the engine that knows it exists."""
+    """A once-per-Long-Rest pool and one `on_reduced_to_zero` handler that
+    prevents the drop unless the overflow kills outright."""
 
     __slots__ = ("ledger",)
 

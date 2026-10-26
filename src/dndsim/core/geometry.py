@@ -1,47 +1,13 @@
 """The grid: where a creature stands, how far away another one is, what it can
 see, what a template covers, and the route between two squares.
 
-Started in W0 rather than W1 because the performance spike is worthless without
-it (`w0g2`): `w0i` measures an attack loop that includes distance and reach
-queries and one real movement per turn, and a stub that answers `5` to every
-question measures nothing. `w1d` completed it with the footprint a size
-implies, line of sight, the three templates and the route resolution a wide
-creature can walk; nothing `w0g2` wrote was rewritten by that task.
-
-**Distance is Chebyshev, times five.** On a battle grid each square is 5 feet
-and a diagonal step costs the same as an orthogonal one, so the distance between
-two cells is the larger of the two axis differences (XPHB, the battle-grid rules
-in "Combat"). The 5-10-5 alternating diagonal from the *Dungeon Master's Guide*
-is a variant and is deliberately not implemented: it is not the default the
-rules present, it makes distance depend on the order steps are taken in, and
-every number this simulator reports would then be conditional on a variant rule
-nobody asked for.
-
-**One metric answers every question here.** Reach, a sphere's radius and a
-cone's length are all measured with `distance_ft`, so "20 feet" names the same
-set of squares to the attack pipeline, to the opportunity-attack trigger and to
-Fireball (`docs/decisions.md` § w1d).
-
-**A creature occupies the square its size gives it**, which from `w1d` is
-`SIZE_WIDTH_CELLS` squares on a side, and `Creature.position` anchors that
-footprint rather than centring it. Every distance here is measured between
-footprints, so a Large creature with a 5-foot reach threatens the ring around
-its 2x2 and not only the ring around one corner of it.
-
-**Movement is a decision, not a pathfinding problem** (DESIGN.md § APL). The
-APL's `move:` clause picks a *destination*; this module walks the shortest legal
-route to it, and there is no tactical pathing here — nor is any planned. What
-that means concretely is that `route()` answers one question, "how do I get
-there", and never the question of where to go. It answers it greedily first,
-because on an open grid the greedy diagonal walk is already a shortest path and
-costs one step per cell, and falls back to a bounded breadth-first search when
-something is in the way — a creature going around a body rather than solving a
-maze. A destination nothing reaches leaves the creature as far along as it got,
-because that is what a creature with movement left and nowhere to go does.
+Distance is Chebyshev times five, measured between footprints; a footprint is
+`SIZE_WIDTH_CELLS` squares on a side, anchored at its low corner. Reach and every
+template are measured by `distance_ft`. `route()` walks to a destination it is
+given and never chooses one. `docs/decisions.md` § w0g2, § w1d.
 
 Sources: XPHB (2024) "Combat" battle-grid rules, "Creature Size", Rules Glossary
-"Areas of Effect"; DESIGN.md § APL and mid-attack decisions, § Performance;
-ROADMAP w0g2, w1d.
+"Areas of Effect".
 """
 
 from collections import deque
@@ -72,11 +38,7 @@ __all__ = [
 class Cell:
     """One 5-foot square, addressed by its column and row.
 
-    A **Value Object**: frozen, hashable, and safely shared, so a set of blocked
-    cells is a set of these and the identity of a square is its coordinates
-    rather than an object somebody has to hold on to. It satisfies the `Cell`
-    protocol `hooks/contexts.py` declares, which is what `MoveContext.route` and
-    `LeaveReachContext.origin` carry.
+    Frozen and hashable: a square's identity is its coordinates.
     """
 
     x: int
@@ -89,15 +51,8 @@ class Cell:
 def footprint(anchor: Cell, size: Size) -> tuple[Cell, ...]:
     """The squares a creature of `size` standing at `anchor` occupies.
 
-    **The anchor is the footprint's low corner, not its centre.** A Large
-    creature's 2x2 has no centre square, so an anchor that meant "centre" would
-    be undefined for every even-sided size and well-defined for exactly Huge;
-    the cells run `+x` and `+y` from the anchor instead, and a build that cares
-    which corner says so by choosing the anchor.
-
-    This is what a caller asks to find out whether a creature is caught by a
-    template: a creature is in an area when any square it occupies is, so a
-    Large creature standing at the edge of a Fireball is in it on one square.
+    The anchor is the footprint's low corner, not its centre: cells run `+x`
+    and `+y` from it (`docs/decisions.md` § w1d).
     """
     return _cells(anchor, SIZE_WIDTH_CELLS[size])
 
@@ -111,25 +66,13 @@ def distance_ft(
 ) -> int:
     """The distance between two creatures' squares in feet.
 
-    The larger axis difference times 5: on the battle grid a diagonal step is
-    one square like any other, so the distance from (0, 0) to (3, 3) is 15 feet
-    and not 21.
+    The larger axis gap between the two footprints, times 5: (0, 0) to (3, 3)
+    is 15 feet, and the gap is zero where footprints touch or overlap. Sizes
+    default to Medium, one square.
 
-    Between **footprints**, which is what makes a size mean anything on the
-    grid: the gap on an axis is zero where the two footprints overlap or touch,
-    so an ogre anchored at (0, 0) is 5 feet from a goblin at (2, 0) rather than
-    10. The sizes default to Medium because one square is the footprint of
-    everything up to one, and a caller that does not know a size is asking about
-    a square rather than about a creature.
-
-    **The one-square case is answered before the sizes are looked up.** This is
-    the hottest query in the engine — `w0i`'s spike asks it about three times per
-    attack resolution — and an `Enum` is hashed by a Python-level `__hash__`, so
-    the two table lookups cost more than the arithmetic they feed
-    (`docs/decisions.md` § w1d). The general form below reduces to it exactly
-    when both footprints are one square, and
-    `test_a_size_that_fits_in_one_square_takes_the_same_distance` is what holds
-    the two to that.
+    The one-square fast path below must agree with the general form;
+    `test_a_size_that_fits_in_one_square_takes_the_same_distance` holds them
+    together (`docs/decisions.md` § w1d).
     """
     across = origin.x - destination.x
     down = origin.y - destination.y
@@ -137,9 +80,7 @@ def distance_ft(
         return CELL_SIZE_FT * max(across, -across, down, -down, 0)
     origin_width = SIZE_WIDTH_CELLS[origin_size]
     destination_width = SIZE_WIDTH_CELLS[destination_size]
-    # The gap on an axis is `max(a - b, b - a, 0)` once each side has given up
-    # the squares its own footprint covers, and the larger of the two gaps is
-    # the distance — so one `max` over both axes is the same answer as two.
+    # One `max` over both axes' gaps is the same answer as the max of two.
     return CELL_SIZE_FT * max(
         across - destination_width + 1,
         -across - origin_width + 1,
@@ -159,11 +100,9 @@ def in_reach(
 ) -> bool:
     """Whether `destination` is within `reach_ft` of `origin`.
 
-    The one query the attack pipeline, the opportunity-attack trigger and the
-    APL's `enemies.in_reach` selector all ask, in one place so that "reach"
-    means the same thing to all three. Reach is inclusive: a 5-foot reach covers
-    the eight squares around you, and a Reach weapon's 10 feet covers the ring
-    beyond them.
+    Inclusive, and measured with `distance_ft` between footprints. The one
+    reach query: callers ask it rather than comparing a distance themselves
+    (`docs/decisions.md` § w0g3).
     """
     return (
         distance_ft(
@@ -179,9 +118,7 @@ def in_reach(
 def steps_within(budget_ft: int) -> int:
     """How many cells of a route a creature with `budget_ft` of movement covers.
 
-    Every step of a route costs one square whatever its direction, so this is a
-    division — written here rather than at each call site because it is the one
-    place the grid's resolution meets a movement budget.
+    Every step costs one square whatever its direction; a negative budget is 0.
     """
     return max(budget_ft, 0) // CELL_SIZE_FT
 
@@ -191,27 +128,11 @@ def has_line_of_sight(
 ) -> bool:
     """Whether an unblocked straight line runs from `origin` to `target`.
 
-    The rule the templates below are built on: an area of effect spreads in
-    straight lines from its point of origin, and a location no unblocked line
-    reaches is not in the area (XPHB, Rules Glossary "Areas of Effect").
-
-    The line runs centre to centre and is blocked by a square it passes
-    *through*. Sliding along a face does not block, and nor does grazing the
-    corner of a lone obstruction, because a line that merely touches the edge of
-    one has not entered it — but **two opaque squares that meet at that corner
-    are a wall with no gap in it**, and a line through the point where they meet
-    is blocked by the pair. The two end squares never block their own line, so a
-    wall is in sight of itself and a creature standing in a doorway is visible
-    from it.
-
-    **`opaque` is not `route()`'s `blocked`.** A creature's square may not be
-    walked into and does not stop a line; a creature in the way is Cover, which
-    is a different rule with a different answer (`w2a`). Nothing in the tree
-    produces terrain yet, so the default is an open field.
-
-    The arithmetic is integer: squares are measured in half-cells, which puts
-    every centre on an odd coordinate and keeps a seeded run reproducible where
-    a float comparison on a diagonal would not be.
+    XPHB Rules Glossary "Areas of Effect". The line runs centre to centre and
+    is blocked by an `opaque` square it passes through, or by two opaque squares
+    meeting at a corner it passes through; a face or a lone corner does not
+    block. The two end squares never block. `opaque` is not `route()`'s
+    `blocked`. Integer arithmetic in half-cells (`docs/decisions.md` § w1d).
     """
     if not opaque:
         return True
@@ -229,12 +150,10 @@ def sphere(
 ) -> tuple[Cell, ...]:
     """The squares a Sphere of `radius_ft` centred on `origin` covers.
 
-    A Sphere's point of origin is its centre, and the centre is in the area
-    (XPHB, Rules Glossary "Areas of Effect"). A square is in it when it is
-    within the radius by `distance_ft`, the same question reach asks, so
-    Fireball's 20-foot radius covers the 9x9 block around its centre. Measuring
-    a template with a second metric would make "20 feet" name one distance to
-    the attack pipeline and another to the spell (`docs/decisions.md` § w1d).
+    XPHB Rules Glossary "Areas of Effect". The centre is included, and a square
+    is in it when `distance_ft` puts it within the radius, so 20 feet is the 9x9
+    block (`docs/decisions.md` § w1d). Squares no line from `origin` reaches are
+    dropped.
     """
     span = radius_ft // CELL_SIZE_FT
     return _lit(
@@ -257,20 +176,11 @@ def cone(
 ) -> tuple[Cell, ...]:
     """The squares a Cone of `length_ft` from `origin` toward `toward` covers.
 
-    A Cone's width at any point along its length equals that point's distance
-    from the point of origin, and the point of origin is not in the area (XPHB,
-    Rules Glossary "Areas of Effect"). A square grid cannot draw that width
-    exactly: a cone laid along a row of squares is symmetric about that row, so
-    its width in squares is always odd and the rule's even widths have to round
-    one way or the other. **It rounds up** — `2 * lateral <= along`, so one
-    square at 5 feet, three at 10 and 15, five at 20 and 25 — because rounding
-    down would keep a 10-foot cone one square wide and a 20-foot cone three,
-    narrower than the rule draws at every second step. That is a choice rather
-    than a consequence (`docs/decisions.md` § w1d).
-
-    `toward` names one of the eight grid directions rather than an angle. A
-    creature chooses a direction by pointing at something, and an arbitrary
-    angle would be a second geometry that nothing on a square grid can act on.
+    XPHB Rules Glossary "Areas of Effect"; the origin is excluded. The width
+    rounds up to odd — `2 * lateral <= along`, so one square at 5 feet, three at
+    10 and 15, five at 20 and 25 — a choice, `docs/decisions.md` § w1d. `toward`
+    picks one of the eight grid directions; raises `ValueError` if it is
+    `origin`.
     """
     dx, dy = _direction(origin, toward, "a cone")
     span = length_ft // CELL_SIZE_FT
@@ -294,15 +204,10 @@ def line(
 ) -> tuple[Cell, ...]:
     """The squares a 5-foot-wide Line of `length_ft` from `origin` covers.
 
-    A Line's point of origin is at one end of it and is not in the area (XPHB,
-    Rules Glossary "Areas of Effect"), so this is the squares that follow the
-    origin in one of the eight grid directions — and a diagonal Line is as long
-    as an orthogonal one of the same square count, because a diagonal step is
-    5 feet like any other.
-
-    **Five feet is the only width here**, which is the width of every Line in
-    the spell list this project imports. A `width_ft` parameter would be one
-    with no caller until `w5a` lands a spell that needs it.
+    XPHB Rules Glossary "Areas of Effect"; the origin is excluded. The squares
+    that follow `origin` in one of the eight grid directions; raises
+    `ValueError` if `toward` is `origin`. Five feet wide only
+    (`docs/decisions.md` § w1d).
     """
     dx, dy = _direction(origin, toward, "a line")
     span = length_ft // CELL_SIZE_FT
@@ -328,22 +233,15 @@ _NEIGHBOURS: Final = (
     (-1, 0),
     (-1, -1),
 )
-"""The eight steps out of a cell, in a **fixed** order.
-
-Fixed because the search below breaks ties between equally short routes by the
-order it expands in, and a run that reproduces byte for byte from a seed cannot
-have a creature's path depend on a set's iteration history (DESIGN.md §
-Determinism is structural).
+"""The eight steps out of a cell, in a **fixed** order: the search breaks ties
+between equally short routes by it, so a set here would break reproducibility.
 """
 
 SEARCH_CELLS: Final = 400
 """How many cells `route()` will examine before giving up on a destination.
 
-A 20x20 area, which is more grid than any creature with a 60-foot Speed can
-cross in a turn, so the cap only ever fires on a destination that is walled off
-rather than merely far. It exists because the grid is unbounded: without it, a
-destination enclosed by other creatures would be an infinite search on the one
-path a turn loop walks every round.
+The grid is unbounded, so without a cap an enclosed destination would search
+forever (`docs/decisions.md` § w0g2).
 """
 
 
@@ -356,49 +254,16 @@ def route(
 ) -> tuple[Cell, ...]:
     """The shortest legal route from `origin` to `destination`, origin excluded.
 
-    Two walks, because the common case and the hard case deserve different
-    prices. The **greedy** walk steps diagonally toward the destination and
-    sidesteps what is in the way; on an open Chebyshev grid that walk *is* the
-    shortest route, and it costs one step per cell rather than a search.
-    Otherwise a breadth-first **search** over the eight neighbours finds the
-    shortest legal route if one exists within `SEARCH_CELLS`. The fast path is
-    what keeps a per-turn movement query off `w0i`'s budget; the search is what
-    keeps "shortest legal route" true rather than aspirational, because a melee
-    creature that stands still behind an ally reports zero damage and blames the
-    build (DESIGN.md § APL).
+    A greedy diagonal walk first, kept only when it arrives in exactly the
+    Chebyshev floor's step count; otherwise a breadth-first search capped at
+    `SEARCH_CELLS`. If nothing arrives, the greedy walk's partial path is
+    returned, so a caller checks `walked and walked[-1] == destination`.
 
-    **The greedy walk is trusted only when it arrives and its length proves it
-    optimal** — when it reached the destination in exactly
-    `distance_ft(origin, destination)` worth of steps, the Chebyshev floor no
-    route can beat. Length alone is not enough: a walk that got stuck can
-    coincidentally stop at the Chebyshev floor's step count without ever
-    reaching the destination, and arrival alone is not enough either — a body
-    diagonally adjacent can send the sidesteps the long way round, reaching the
-    destination in three squares where two exist, and a square of movement lost
-    to that is a melee creature left one square short of the target it chose.
-    Both checks cost one comparison and one subtraction on the path that was
-    already going to return.
-
-    **A route that does not arrive is a route that got as far as it could.** If
-    nothing reaches the destination the greedy walk's partial path is returned,
-    which is what a creature with movement and nowhere to go does. The caller
-    tells the two apart by looking: `walked and walked[-1] == destination`. That
-    distinction is the turn loop's to act on (w2c) — an attack offered against a
-    target it never reached is the bug this sentence exists to prevent.
-
-    `blocked` is *what may not be entered* — any set of cells, since the turn
-    loop builds one per move — and deciding what goes in it belongs to the
-    caller: an enemy's square is blocked, an ally's is not, and the engine (w2c)
-    knows which is which. `size` is the mover's, and a mover wider than one
-    square needs its **whole footprint** clear at every step, so an ogre does
-    not squeeze through a gap a goblin walks. The mover's own squares are not in
-    `blocked` for the same reason they never were: the caller builds the set out
-    of everybody else.
-
-    The route is the whole path regardless of how much movement the creature
-    has; the turn loop truncates it with `steps_within()`, because a creature
-    that runs out of movement halfway has still crossed the cells it crossed and
-    provoked on the way out of everyone's reach.
+    `blocked` is the set of cells that may not be entered, built by the caller
+    and not containing the mover's own squares. `size` is the mover's: its
+    whole footprint must be clear at every step. The route ignores the movement
+    budget; truncate it with `steps_within()`. Raises `ValueError` when the
+    destination itself is blocked. `docs/decisions.md` § w0g2, § w1d.
     """
     width = SIZE_WIDTH_CELLS[size]
     if not _clear(destination, width, blocked):
@@ -425,9 +290,8 @@ def _greedy(
 ) -> tuple[Cell, ...]:
     """Walk toward the destination, giving up an axis to get round what blocks.
 
-    It terminates without a visited set and cannot cycle: every candidate step
-    closes the axis it is chosen for, so the distance on that axis strictly
-    decreases each step until it is zero and the other axis takes over.
+    Needs no visited set: every step closes an axis (`docs/decisions.md`
+    § w0g2).
     """
     walked: list[Cell] = []
     current = origin
@@ -443,13 +307,7 @@ def _greedy(
 def _search(
     origin: Cell, destination: Cell, blocked: AbstractSet[Cell], width: int
 ) -> tuple[Cell, ...] | None:
-    """Breadth-first, so the first route found is a shortest one, or `None`.
-
-    Breadth-first rather than A*: the frontier is capped at a few hundred cells,
-    where the heuristic buys less than the branch it costs, and a queue with no
-    priority is one fewer thing to get subtly wrong on the path a fight walks
-    every round.
-    """
+    """Breadth-first, so the first route found is a shortest one, or `None`."""
     came_from: dict[Cell, Cell] = {}
     seen = {origin}
     frontier = deque((origin,))
@@ -496,12 +354,8 @@ def _candidates(dx: int, dy: int) -> tuple[tuple[int, int], ...]:
     """The diagonal step toward the destination, then the two that give up an
     axis.
 
-    Ordered rather than searched: the first entry is the move that closes both
-    axes, and the fallbacks each close one, so a creature going around an
-    obstacle drifts along it instead of away from it. When the destination is
-    already aligned on an axis the fallbacks are the two diagonals that hold
-    that axis' distance, which is how a route gets past a body standing directly
-    in the doorway.
+    When the destination is aligned on an axis, the fallbacks are the two
+    diagonals that still close it.
     """
     if dx and dy:
         return ((dx, dy), (dx, 0), (0, dy))
@@ -524,9 +378,7 @@ def _cells(anchor: Cell, width: int) -> tuple[Cell, ...]:
 def _clear(anchor: Cell, width: int, blocked: AbstractSet[Cell]) -> bool:
     """Whether a creature `width` squares on a side can stand at `anchor`.
 
-    The one-square case is answered without building a footprint, because it is
-    every step of every route a Medium creature walks and the tuple would be an
-    allocation per candidate cell on `w0i`'s path.
+    The one-square case skips building a footprint: it is on the hot path.
     """
     if width == 1:
         return anchor not in blocked
@@ -549,8 +401,7 @@ def _cone_cell(origin: Cell, dx: int, dy: int, along: int, lateral: int) -> Cell
 
     A diagonal cone is laid out in its own rotated frame — `along` is the
     Chebyshev distance from the origin and `lateral` the difference between the
-    two axes — so that a cone pointed at a corner is the same shape as one
-    pointed along a row rather than a staircase of one-square steps.
+    two axes (`docs/decisions.md` § w1d).
     """
     if dx and dy:
         near = along - abs(lateral)
@@ -589,11 +440,7 @@ def _blocks(
 
     Either the segment passes through the square, or it passes through exactly
     one corner of it and the square diagonally across that corner is opaque
-    too. The second case is a diagonal wall — squares that touch only at their
-    corners, which is the first thing anyone builds out of walls — and letting a
-    line through the point where two of them meet would be a gap in something
-    solid. One opaque square grazed at a corner still lets the line past: that
-    is a pillar, and a line that touches its corner has not entered it.
+    too (`docs/decisions.md` § w1d).
     """
     sides = _sides(cell, origin_x, origin_y, target_x, target_y)
     if sides is None:
@@ -614,12 +461,9 @@ def _sides(
     """Which side of the segment's line each corner of `cell` falls, or `None`
     when the segment cannot touch the square at all.
 
-    Two exact tests in half-cell units. The square's own bands have to overlap
-    the segment's, since a segment wholly to one side of a face is outside —
-    which is also what keeps a corner *beyond* an endpoint from being read as
-    one the segment passes through. Then the sign of each corner's cross product
-    says which side of the line it is on, and a zero is a corner the line runs
-    exactly through.
+    Half-cell units. The band test also keeps a corner *beyond* an endpoint
+    from being read as one the segment passes through. Each value is a corner's
+    cross product: its sign is the side, and zero is a corner on the line.
     """
     low_x, low_y = 2 * cell.x, 2 * cell.y
     high_x, high_y = low_x + 2, low_y + 2

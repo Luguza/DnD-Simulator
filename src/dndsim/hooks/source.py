@@ -1,43 +1,13 @@
-"""`HookSource` — the one shape a feature, a condition, an effect or an item has.
+"""`HookSource`, the base class of every feature, condition, effect and item.
 
-Four kinds of thing plug into the hook pipeline and DESIGN.md is emphatic that
-they are the same kind of thing: "`Effect`, `Condition`, `Feature` and magic
-items are all `HookSource` subclasses with one identical API shape, so learning
-one teaches all four". This class is that shape, and it is deliberately almost
-empty — an id, an owner, and the handlers the class declared. Everything else a
-feature needs is on the context it is handed.
+`__init_subclass__` collects each class's `@hook` declarations and refuses, with
+`FeatureDeclarationError`, a handler whose signature is not `(self, ctx) -> R`,
+whose context annotation is not the class its hook names, whose return is not
+annotated, or an override that dropped its base's `@hook`
+(`docs/decisions.md` § w0g).
 
-**Validation is a Template Method that subclasses cannot skip.** DESIGN.md §
-Hook system, property 2 asks for signature checking at class creation, and
-`__init_subclass__` is the one hook in Python a subclass cannot forget to call:
-there is no `super()` for an author to omit, no decorator to leave off, and no
-base method to override into silence. Every declaration is re-validated for
-every subclass, which costs nothing (it happens once, at import) and means an
-inherited handler is checked in the class that actually uses it.
-
-Four mistakes are refused here, and each of them is a handler that would
-otherwise never run and never say so:
-
-- **A signature that is not `(self, ctx) -> R`.** Anything else means the
-  dispatcher would call it wrongly.
-- **An annotation naming the wrong context.** `on_hit` hands out a
-  `HitContext`; a handler annotated `AttackRollContext` would read fields that
-  are not there. The check is an identity comparison against the class the
-  registry names, so a same-named look-alike in the author's own module is not
-  the context either.
-- **A missing return annotation.** Without it neither mypy nor the reader knows
-  the method is a handler, and a handler that forgets to return is the most
-  common way a `once_per` budget quietly stops being spent.
-- **An override that dropped its `@hook`.** The base's declaration is still in
-  the MRO, so the *base's* body would keep running while the author reads their
-  own. This is the only one of the four that is invisible in a diff.
-
-**The id is provenance.** `parts_by_source["rogue.sneak_attack"]` in a golden
-test, the `trace` output attributing a line to the feature that produced it, and
-the no-op detector's report are all this string, stamped automatically by the
-dispatcher. A class that does not declare one gets its own name in snake_case,
-which is enough for a condition or an effect; features override it with their
-registry id (w3a).
+A source's `ID` is its provenance string; a class that declares none gets its
+own name in snake_case.
 """
 
 import inspect
@@ -60,11 +30,8 @@ class HookSource:
     """Something attached to a creature that answers when the engine asks.
 
     Subclasses declare handlers with `@hook` and are attached to a
-    `Dispatcher`; `self.owner` is the creature the handlers belong to, and
-    *which* creature that is in any given handler is decided by the hook's
-    `Scope` rather than by the feature (DESIGN.md § Hook scope). In an
-    `on_hit_taken` handler the owner is the victim, with no prose and no
-    `if ctx.attacker is self.owner` needed.
+    `Dispatcher`; `self.owner` is the creature the handlers belong to, which
+    the hook's `Scope` decides (DESIGN.md § Hook scope).
     """
 
     __slots__ = ("owner",)
@@ -74,11 +41,7 @@ class HookSource:
 
     HANDLERS: ClassVar[tuple[Handler, ...]] = ()
     """Every declaration this class has, its bases' included, in a fixed order.
-
-    Built once per class at import. The dispatcher reads it at attach time and
-    never afterwards, so the per-creature dispatch table is assembled from
-    tuples that were already sorted out before the simulation started.
-    """
+    Built once per class at import."""
 
     def __init__(self, owner: Combatant) -> None:
         self.owner = owner
@@ -95,9 +58,7 @@ class HookSource:
 def _identify(cls: type[HookSource]) -> str:
     """This class's own declared id, or its name in snake_case.
 
-    `cls.__dict__` rather than `cls.ID`, because an inherited id is the *base's*
-    identity: `Feature` deriving "feature" must not make every feature in the
-    project "feature".
+    Read from `cls.__dict__`, not `cls.ID`: an inherited id is the base's.
     """
     declared = cls.__dict__.get("ID")
     if declared is None:
@@ -114,11 +75,10 @@ def _identify(cls: type[HookSource]) -> str:
 def _collect(cls: type[HookSource]) -> tuple[Handler, ...]:
     """Every declaration in the MRO, base-first, with subclass overrides applied.
 
-    Reverse MRO order so that a base's handlers run in the order the base
-    declared them and a subclass's overriding method keeps its base's position:
-    what an author changed is the body, and a silent reordering of everything
-    else is not something an override should mean.
+    A base's handlers keep the order the base declared them in, and an
+    overriding method keeps its base's position.
     """
+
     collected: dict[str, Handler] = {}
     for klass in reversed(cls.__mro__):
         for name, value in vars(klass).items():

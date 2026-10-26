@@ -133,7 +133,7 @@ to nobody and a veto of a spend that has happened is refused; and **an overdrawn
 pool raises `EconomyError`**, the same exception as an overdrawn action economy,
 while a slot that is merely unavailable stays a fight outcome `can_spend()`
 answers for free. `RecoveryTrigger` is rules vocabulary and lives in
-`rules/enums.py` for the reason `ActionCost` records. It measured at **−0.2% of
+`rules/enums.py` for the reason `docs/decisions.md` § w0g gives for `ActionCost`. It measured at **−0.2% of
 the rate against pair-to-pair ratios spanning −6.2% to +5.8%** — the arithmetic
 itself is priced per operation instead, because the spike cannot reach it while
 debt #15 stands, and **the announcement costs ten times the ledger**.

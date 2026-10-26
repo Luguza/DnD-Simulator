@@ -114,6 +114,17 @@ asserting the first.
   the ACL. Per-class scaling (Rage Damage, Sneak Attack dice) is never in
   `constants.py` — that is `table_value()`.
 
+### What the docstrings argued, recorded here by `w1l`
+
+- **`Condition` encodes two 2024 changes by what it lacks.** Surprised is no
+  longer a condition (it is Disadvantage on Initiative), and Bloodied and
+  Concentration are statuses, not conditions; none of the three is a member.
+- **`WeaponProperty` has no Special member**: 2014's Special property is gone in
+  2024.
+- **`MAX_CHARACTER_LEVEL` is 20, not v1's 12.** Simulating levels 1–12 is a
+  build-schema limit (`w2f`), not a fact about the rules, so the tables run to
+  20.
+
 ## w0c — RNG and dice
 
 > **Superseded in part by [w0i](#w0i--the-pessimistic-performance-spike-m0).**
@@ -149,6 +160,14 @@ asserting the first.
   so a crit re-rolls dice instead of multiplying a total.
 - Measured on the CI-class runner: ~1.8M `roll(20)`/sec/core (~560 ns). Inlining
   measures the same, so the cost is Python call overhead, not the arithmetic.
+
+### What the docstrings argued, recorded here by `w1l`
+
+- **An unseeded run gets its master seed from the caller** (the CLI), where "no
+  seed given" is a policy decision rather than a hidden source of entropy.
+  `core/rng.py` imports `random.Random` — the class, instantiated per generator
+  — and never the module's functions, so there is no ambient generator and no
+  global seed.
 
 ## w0d — timeline
 
@@ -254,6 +273,18 @@ asserting the first.
   the CI freeze guard is `w3f`'s, after the paper pass has added what it proves
   missing.
 
+### What the docstrings argued, recorded here by `w1l`
+
+- **`UnknownHookError` is a `LookupError`**, because it is a failed lookup.
+  `KeyError` was rejected: its `str()` re-quotes the message, which buries the
+  "did you mean" suggestion the caller needs.
+- **`HookRegistry` is a class although there is one registry**, so that its
+  validation can be tested against a throwaway instance rather than by adding
+  a fortieth hook to the real one. `define()` raises plain `ValueError`s because
+  only an edit to `definitions.py` can reach them.
+- **All four Effects-group hooks are `SELF`**: the owner is the creature the
+  effect is on, and an effect ending has no actor to be the other side of.
+
 ## w0f — contexts
 
 - **31 context types for 39 hooks**: eight are named by two hooks each and 23 by
@@ -322,6 +353,20 @@ asserting the first.
   says, because w0f's done-when names `PhaseError`; `w0g` completes it with
   `FeatureContractError`.
 
+### What the docstrings argued, recorded here by `w1l`
+
+- **`kw_only`**: a Parameter Object read at the call site is the point, and it
+  frees base and subclass fields from declaration order. **`eq=False`**: a
+  context is the event, not a value — two attacks that look alike are not the
+  same attack — and identity hashing keeps a pooled object cheap.
+- **Everything that changes between handler calls lives on one `_Frame`** — the
+  stamp, the band, the open flag, the veto — so the context itself stays frozen
+  (`ctx.attacker = x` is a static error as well as a runtime one) and the
+  per-handler stamp is a plain slot store on the hot path, which
+  `object.__setattr__` on a frozen dataclass would not be.
+- **`DndSimError` exists** so a caller embedding the simulator can tell "the
+  simulator refused" from "Python broke".
+
 ## w0g — dispatch
 
 - Three modules for three moments: `decorator.py` marks a function at
@@ -379,6 +424,13 @@ asserting the first.
   resolution. `w0i` owns that number; the cheap lever if it misses is the shape
   of `DamagePart` and `Modifier` (a `NamedTuple` constructs in ~0.38 µs, a plain
   slotted class in ~0.28 µs), not the dispatch design.
+
+### What the docstrings argued, recorded here by `w1l`
+
+- **`dispatch()` does not check that its context is the one the hook names.**
+  The pairing is fixed at import by `source.py` and pinned by `w0f`'s contract
+  test; re-checking it per dispatch costs something on every attack for a
+  mistake that cannot survive one test run.
 
 ## w0g2 — spike substrate
 
@@ -522,6 +574,16 @@ asserting the first.
   `Cell` protocols `hooks/contexts.py` declares, which is what lets those
   protocols stay narrow instead of growing into a second domain model. `w1a`
   still owes the same for `Economy`, `w2f` for `Gate`.
+
+### What the docstrings argued, recorded here by `w1l`
+
+- **`route()`'s search is breadth-first, not A\***: the frontier is capped at a
+  few hundred cells, where the heuristic buys less than the branch it costs, and
+  a queue with no priority is one fewer thing to get subtly wrong on a path a
+  fight walks every round.
+- **`route()`'s blocked cells may be a plain `set`**: the turn loop builds one per
+  move out of who is standing where, and copying it into a `frozenset` per query
+  would be an allocation on the measured path.
 
 ## w0h — walking skeleton
 
@@ -852,6 +914,24 @@ measure, which is the whole subject of this section.
 Sources: DESIGN.md § Performance, § The spike must be pessimistic, § Levers,
 § The benchmark gate, § Condition language; ROADMAP w0i, w1a, w1f, w2e, w3i.
 
+### What the docstrings argued, recorded here by `w1l`
+
+- **`DamagePart.on_crit()` constructs a new part** rather than calling
+  `dataclasses.replace()`: it runs once per contribution on every critical hit,
+  and `replace` reads the field list and builds a keyword dict to do what four
+  positional arguments do.
+- **`tools/spike_features.py`'s mix: most handlers skip and a few apply**, as a
+  real martial's `on_hit` list is mostly riders whose conditions are unmet. A
+  benchmark where every handler applies measures `DamageBag.add()` and calls it
+  dispatch; one where none applies never pays for `once_per` or the economy —
+  both wrong in the flattering direction. Each valve-carrying handler must
+  *apply* at least once, because a gate that always answers no buys the cheap
+  half of the valve and none of what it guards.
+- **`tools/spike_apl.py`** resolves `self.slots.highest` to one attribute rather
+  than a `slots` sub-proxy, which would construct an object per evaluation; and
+  `trigger.*` is bound by the engine rather than scraped off the context, which
+  would be an `isinstance` chain on the hottest path.
+
 ## The W0 plan review — what M0 changed in the plan
 
 Not a task. W0 is complete and M0 is met, so `ROADMAP.md` and `DESIGN.md` were
@@ -1143,8 +1223,8 @@ other four debts live: row 21 of ROADMAP.md § The W0 debt register, retired by
 `w2c` once `w1h` gives it something to ask.
 
 All five of this task's debts are rows 18-22 of that register, which post-dates
-the first draft of this section. The register is the record and the module
-docstring is a local copy of it; when the two disagree, the register wins.
+the first draft of this section. The register is the record; the module docstring
+points at it.
 
 ### Reach is asked through `in_reach()`, not inlined
 
@@ -1160,7 +1240,8 @@ Debt 9 is `Size` reaching geometry nowhere, retired by `w1d`, and what `w1d`
 does is give a Large creature a reach its square does not describe. On that day
 `in_reach` learns something and an inlined Chebyshev does not, and the failure
 is an opportunity attack that a Large creature silently does not get — the exact
-class of bug the sentence in `core/geometry.py` was written to prevent. Both
+class of bug the sentence in `core/geometry.py` was written to prevent (`w1l`
+cut that sentence to a pointer here). Both
 sites now ask `in_reach`. The broad phase keeps a raw `distance_ft` alongside it
 for the horizon cut, because that is a question about the length of the route
 rather than about reach; `w1d` owes that bound the same second look, since a
@@ -1181,6 +1262,18 @@ cheaper to keep honest: the two places that already encode "don't swing at your
 own side" are the `opportunity_attack` Command's legality check (`w2b`) and the
 APL entry's `if:`. A third copy, in the file least able to see what a build
 means, is the copy that would go stale.
+
+### What the docstrings argued, recorded here by `w1l`
+
+- **A watcher is flattened at watch time**, for the reason `BoundHandler` is
+  flattened at attach time: the per-step loop reads `reach_ft` and `threatening`
+  once per watcher per square. `reach_ft` is safe to cache for one move — the
+  watcher is not the one taking a turn.
+- **A `MovementWatch` is not reusable across moves**: who threatens whom is a
+  fact about the positions at the top of a move. Its `LeaveReachContext` is
+  allocated on the first offer and rebound after, because most moves make no
+  offer at all — pooling applied to a cold path, where the cost worth avoiding is
+  the first allocation rather than the hundredth.
 
 ## w1a — the creature completed: equipment, a derived AC, and the economy
 
@@ -1401,6 +1494,13 @@ baseline whose one fixture change has been priced.
   speed penalty needs the effect machinery `w1c` builds. `w2a` imports both
   fields and the first feature that needs them is where they land.
 
+### What the docstrings argued, recorded here by `w1l`
+
+- **`Armour.unarmoured()` does not carry who may also hold a Shield** (the
+  Barbarian's Unarmored Defense works with one, the Monk's does not). That is a
+  legality rule about a build, `builds/schema.py`'s (`w2f`), not arithmetic
+  about an AC.
+
 ## w1e — the damage resolution order, against the 2024 text
 
 The spec review that produced `w1e`'s row (PR #23) found the XPHB sentence that
@@ -1537,7 +1637,7 @@ engine combines it with the hit test and no context changed.
 Only one moment can honour it: before the roll, where "this attack does not
 happen" is a thing that can be true. `resolve_attack()` returns `PREVENTED`
 there — `outcome is None`, no d20 drawn — because `Outcome` is scoped to attack
-rolls on purpose (`rules/enums.py`) and an attack nobody rolled has no member
+rolls on purpose (§ w0b) and an attack nobody rolled has no member
 that describes it. That is the whole reason `AttackResult.outcome` is optional.
 
 At every later stage the attack has been made, and the honest answer is neither
@@ -1671,6 +1771,19 @@ changed predicted would spend it — which is what `w1k` was added to measure.
   outside the weapon's reach.
 - **No opportunity attack.** `engine/triggers.py` makes the offer and `w2c`
   turns it into an attack; this task gives it the sequence to call.
+
+### What the docstrings argued, recorded here by `w1l`
+
+- **`AttackResult` is a `NamedTuple`**, not a frozen dataclass: it is allocated on
+  every resolution, and a two-field tuple is built by the interpreter where a
+  frozen dataclass runs `object.__setattr__` twice.
+- **`Trigger` is a `Protocol`**, because what defines it (`apl/namespace.py`,
+  `w2e`) does not exist yet; the attack sequence's whole knowledge of the APL is
+  that something wants to be told what it is being offered before a dispatch
+  that carries gated handlers. `None` — nobody asking — is the ordinary case.
+- **`AttackContexts` is a Strategy** rather than an `if pool is None` at eight
+  call sites, which keeps the sequence readable as one thing and the two answers
+  — allocate or rebind — honest about what each costs.
 
 ## The W1 critical-path review — the headroom, and three debts with no row
 
@@ -2125,6 +2238,18 @@ Sources: DESIGN.md § Durations, § Structural prevention over testing, § Lever
 § w1a, § w1f, § The W1 critical-path review; `ROADMAP.md` § Sequencing
 principles 10, § The W0 debt register rows #5, #15, #18, w1c, w1k, w2c.
 
+### What the docstrings argued, recorded here by `w1l`
+
+- **`UNSEATED` is one key shared by every creature not yet in initiative**: the
+  roster that draws real keys is `w2c`'s, and until then a shared key says
+  honestly that the order is undecided. `position` has no default at all, because
+  a default there would make a silently wrong fight rather than an undecided one.
+- **`apply_pending()` reads the private `ctx._pending`** rather than
+  `ctx.pending_effects`, which builds a tuple: `resolve_damage()` calls it on
+  every instance of damage, where the queue is almost always empty. The attack's
+  call sites test the list and call only when there is something to apply,
+  which is why the callers do not read alike.
+
 ## w1b — resources, and the three words DESIGN.md left to be read carefully
 
 `ResourceSpec`, `Recovery`, `ResourcePool`, `SpellSlots` and `transaction()` are
@@ -2193,12 +2318,11 @@ and the message now says so.
 
 ### `EconomyError`, not a type of its own
 
-`core/errors.py` calls the action economy "the first thing in the project that
-can be *overdrawn*", and DESIGN.md § Failing loudly lists "resource going
+`core/errors.py` called the action economy "the first thing in the project that
+could be *overdrawn*" until `w1l` cut its docstring to its own code, and DESIGN.md § Failing loudly lists "resource going
 negative" beside the reaction invariant in the same sentence of runtime
 invariants. An overdrawn pool and an overdrawn economy are one mistake, so they
-are one exception; the module docstring is widened by a line rather than a
-sibling class added.
+are one exception, widened to cover both rather than a sibling class added.
 
 What is *not* an error is the distinction that made this cheap: `core/errors.py`
 says in as many words that "a spell slot that is not available" is a fight
@@ -2213,7 +2337,7 @@ which is a build error. `Resources.__getitem__` says which.
 
 ### `RecoveryTrigger` is rules vocabulary, so it lives in `rules/enums.py`
 
-`ActionCost`'s docstring gives the rule: a word that `hooks/` and `creatures/`
+§ w0g's `ActionCost` bullet gives the rule: a word that `hooks/` and `creatures/`
 both need, with no import between them, lives at the bottom of the stack. A rest
 is an XPHB word, and `engine/adventuring_day.py` (w6a) and the stat-block parser
 (w7a) will both speak it. Membership is DESIGN.md § Resources' seven shapes and
@@ -2576,7 +2700,7 @@ splitting:
   handler on `on_save_resolved` that spends a charge and flips the failure. The
   test worth writing is that `engine/saves.py` contains nothing about it.
 - **The save result type is owed to `rules/enums.py`**, which already promises it
-  here: `Outcome`'s docstring says it is scoped to attack rolls on purpose,
+  here: `Outcome`'s docstring said it was scoped to attack rolls on purpose (§ w0b),
   because 2024 unifies the three D20 Tests but a natural 20 is a critical hit
   only for an attack roll, and "saving throws get their own result type with
   `engine/saves.py` (w1g)". A row that did not say so invites a fourth member on
@@ -2661,7 +2785,7 @@ multiplier belongs to the loop that knows how many boundaries a round has. That
 split is the whole of it, and this gate's first two drafts of this paragraph both
 got it wrong in the same direction — first by folding the sweep into debt #15,
 then by declaring it unmeasurable before `w2c`. `tools/spike.py`'s own docstring
-says "there is no turn loop here", which is true of an initiative-ordered loop
+said "there is no turn loop here", which is true of an initiative-ordered loop
 and was read as true of the boundaries; the boundaries exist, and only the calls
 are missing. Both corrections came from the review.
 
@@ -3037,8 +3161,8 @@ steps around it.
 
 ### Two enums, and why the result type is not a boolean
 
-`SaveOutcome` has two members and no critical one. `Outcome`'s docstring has
-promised this since `w0b` and gives the reason: 2024 unifies the three D20 Tests,
+`SaveOutcome` has two members and no critical one. § w0b's `Outcome` bullet has
+promised this from the start and gives the reason: 2024 unifies the three D20 Tests,
 and a natural 20 is a Critical Hit on an attack roll only. The corollary is the
 trap in this file and the two tests written against it — **a natural 20 does not
 succeed on a save and a natural 1 does not fail one.** XPHB's "Rolling 20 or 1"
@@ -3226,6 +3350,16 @@ diverge, § Structural prevention; `docs/decisions.md` § w1e, § w1f, § w1b,
 § w1c, § w1d, § The W1 mid-wave review; `ROADMAP.md` § Sequencing principles 8
 and 10, § The W0 debt register rows #35, #36, #37; `CODING_STANDARDS.md`
 § Boundaries, § Smell baseline.
+
+### What the docstrings argued, recorded here by `w1l`
+
+- **`on_forced_save` fires once for the whole set of targets**, not once per
+  target, because the DC is one number for the area and a bonus to it applies to
+  every save rolled against it.
+- **Evasion is not on `on_save_resolved`**: turning a failed save into half
+  damage is a damage-side change and belongs to `on_incoming_damage`.
+  `SaveResolvedContext.succeed()` is Legendary Resistance — the roll failed and
+  the creature declares a success anyway.
 
 ## w1h — the 15 conditions, and the clauses that have nowhere to go
 
@@ -3880,3 +4014,38 @@ Stabilizing a Character), "Damage and Healing" -> Healing, Rules Glossary
 "Temporary Hit Points"; DESIGN.md § Context; `docs/decisions.md` § w0g2, § w1f,
 § w1g, § w1h, § The W1 late-wave review; `ROADMAP.md` § Sequencing principles
 10, § The W0 debt register rows #8, #36, #42, #44, #50, #51.
+
+## w1l — docstrings cut back to their own code
+
+`CODING_STANDARDS.md` § Citations and comments' first rule applied to every
+docstring and comment in `src/` and `tests/`, which the rule had left to this
+task rather than to every PR that touched a file.
+
+**Where an argument went.** Almost everything cut was already recorded in the
+section the module's row in `CLAUDE.md`'s table names, and the code now points
+there. What was argued only in the code — twenty-odd items, none of them a new
+decision — is written into the section it belongs to, under each section's
+"What the docstrings argued, recorded here by `w1l`" heading, so a pointer to
+§ w0e from `hooks/registry.py` still finds `UnknownHookError`'s reason in § w0e.
+Inbound pointers aimed at removed prose were moved with it, in
+`docs/decisions.md`, `ROADMAP.md` and `CLAUDE.md`. Passages that record what a
+docstring *said* at review time — § The W0 plan review, § w0g3, § The W1
+mid-wave review — stay history, put in the past tense where they had been
+present.
+
+**"No code changes" was checked mechanically, not read.** Every module under
+`src/` and `tests/` was parsed at the milestone branch's head and at this
+branch's, with every bare string statement removed and a body left holding
+only `pass` or `...` treated as empty, and the two `ast.dump`s compared: 80
+modules, 0 differ. It is not committed as a standing test, because it compares
+a tree against a fixed earlier commit, and once this diff merges there is no
+"before" for it to read; the standing guards remain `CODING_STANDARDS.md`
+§ Citations and comments on lines a diff adds, and review.
+
+**What was kept** — what a function takes, does, returns and raises; the trap in
+the line beneath a comment; one-line pointers; XPHB citations of the rule the
+code implements; golden arithmetic in tests (standing rule 4); and phrases other
+files quote word for word, such as `Context`'s drain sentence and the snapshot
+rule. Error-message strings that say "see the module docstring" are values, not
+prose, and were left; `engine/triggers.py`'s module docstring still names the
+refusal they point at.

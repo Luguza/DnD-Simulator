@@ -1,16 +1,9 @@
 """The saving-throw contract: the DC, the roll, and half damage on a success.
 
-Every case carries its arithmetic, because a bare `== 15` proves nothing about
-which rule produced it. The creature every test saves with is a level-5 caster:
-proficiency +3, Strength 10 (+0), Dexterity 14 (+2), Constitution 12 (+1),
-Charisma 18 (+4).
-
-The save-for-half cases are the point of the file, and most of them pass under a
-halving taken at the call site: halving commutes with immunity, with resistance
-and with a second halving. The four that do not are a flat reduction, which the
-halving must follow; an odd mixed-type hit, where one halving of the total and
-one of each part disagree; the ledger the victim's handlers read; and
-vulnerability, which the halving must precede.
+Every case carries its arithmetic. The creature every test saves with is a
+level-5 caster: proficiency +3, Strength 10 (+0), Dexterity 14 (+2),
+Constitution 12 (+1), Charisma 18 (+4). Which save-for-half cases tell the
+ledger's halving from one taken at the call site: `docs/decisions.md` § w1g.
 
 Sources: XPHB (2024) "D20 Tests" -> Saving Throws, "Spells" -> Spell Save DC,
 "Damage and Healing", Rules Glossary "Round Down", "Immunity", "Resistance";
@@ -111,8 +104,7 @@ def test_the_dc_follows_the_proficiency_table_rather_than_a_fixed_bonus() -> Non
 
 
 def test_a_save_adds_the_ability_modifier_and_no_proficiency_yet() -> None:
-    """Dexterity 14 is +2. The +3 proficiency a proficient creature would add
-    is debt #36 — nothing can declare a save proficiency yet."""
+    """Dexterity 14 is +2, with no proficiency added (debt #36)."""
     assert save_bonus(creature(), DEX) == 2
     assert save_bonus(creature(), Ability.STRENGTH) == 0
 
@@ -148,9 +140,8 @@ def test_a_total_one_below_the_dc_fails() -> None:
 
 
 def test_a_natural_twenty_that_misses_the_dc_still_fails() -> None:
-    """20 + 2 = 22 against DC 25. A save has no automatic success: the rule that
-    makes a 20 decide an attack roll on its own is the Attack Rolls entry's, and
-    the Saving Throws entry beside it gives a 20 no effect at all."""
+    """20 + 2 = 22 against DC 25: a natural 20 is no automatic success on a
+    save (XPHB "D20 Tests" -> Saving Throws)."""
     result = saving_throw(creature(), ability=DEX, dc=25, rng=ScriptedRng([20]))
     assert result.outcome is SaveOutcome.FAILURE
     assert result.total == 22
@@ -197,8 +188,7 @@ def test_advantage_and_disadvantage_cancel_to_one_die() -> None:
 def test_a_handlers_bonus_is_added_to_the_total_dice_and_all() -> None:
     """Aura of Protection's +3 and Bless's 1d4 rolling a 4: 13 + 2 + 3 + 4 = 22.
 
-    The bonus dice are drawn before the d20, so the script reads [4, 13] — the
-    same order `engine/attack.py` draws an attack's modifiers in.
+    The bonus dice are drawn before the d20, so the script reads [4, 13].
     """
     saver = creature()
     saver.attach(Aura(saver))
@@ -289,8 +279,7 @@ def test_a_bonus_of_dice_to_the_dc_is_rolled_once_for_the_whole_area() -> None:
 
 
 def test_forcing_a_save_on_nobody_rolls_nothing_and_fires_nothing() -> None:
-    """Nobody is forced, so the imposer's hook does not fire either: a handler
-    on it can carry a `once_per` budget or an action cost."""
+    """With no targets, `on_forced_save` does not fire and nothing is rolled."""
     caster = creature("caster")
     counter = DcWatcher(caster)
     caster.attach(counter)
@@ -331,7 +320,7 @@ def test_legendary_resistance_runs_out() -> None:
 
 
 def test_a_success_the_dice_rolled_spends_nothing() -> None:
-    """The handler asks `ctx.succeeded` first, which is why it is on the context."""
+    """A save the dice made spends no use of the pool."""
     dragon = creature("dragon")
     dragon.resources.add(LEGENDARY)
     dragon.attach(LegendaryResistance(dragon))
@@ -342,8 +331,8 @@ def test_a_success_the_dice_rolled_spends_nothing() -> None:
 
 
 def test_the_saving_throw_sequence_knows_nothing_about_legendary_resistance() -> None:
-    """The acceptance test the ROADMAP row names: the feature above is a
-    resource and a handler, and `engine/saves.py` contains no branch for it."""
+    """`engine/saves.py` contains no branch for Legendary Resistance or for
+    resources."""
     source = Path(saves.__file__).read_text()
     assert "legendary" not in source.lower()
     assert "resource" not in source.lower()
@@ -372,9 +361,8 @@ def test_a_successful_save_takes_half_rounded_down() -> None:
 def test_the_halving_follows_a_flat_reduction() -> None:
     """28 fire, reduced by 10, then halved: (28 - 10) // 2 = 9.
 
-    The case a halving taken at the call site gets wrong: it would halve 28 to
-    14 and then reduce to 4, because the reduction is an adjustment that
-    precedes the halving (`docs/decisions.md` § w1e).
+    A halving taken at the call site would give 28 // 2 - 10 = 4
+    (`docs/decisions.md` § w1e, § w1g).
     """
     target = creature(hp=40)
     target.attach(HeavyArmour(target))
@@ -406,8 +394,8 @@ def test_the_halving_and_a_resistance_are_two_steps() -> None:
 
 
 def test_two_halvings_stack() -> None:
-    """Uncanny Dodge beside a successful save: 28 -> 14 -> 7. The "counts once"
-    clause names Resistance, and a halving is not Resistance."""
+    """Uncanny Dodge beside a successful save: 28 -> 14 -> 7
+    (`docs/decisions.md` § w1e)."""
     target = creature(hp=40)
     target.attach(UncannyDodge(target))
     dealt = save_for_half(
@@ -429,7 +417,7 @@ def test_the_halving_is_spent_across_a_mixed_type_hit_in_proportion() -> None:
 
 def test_the_halving_precedes_a_vulnerability() -> None:
     """7 fire halved to 3, then doubled to 6. Halving after the vulnerability
-    would be 14 // 2 = 7 — the step order, from the save's side."""
+    would be 14 // 2 = 7."""
     target = creature(hp=40)
     target.attach(FireVulnerable(target))
     dealt = save_for_half(target, {FIRE: 7}, rng=no_dice(), outcome=SaveOutcome.SUCCESS)
@@ -440,8 +428,7 @@ def test_an_odd_mixed_hit_halves_the_total_and_not_each_part() -> None:
     """7 fire and 7 cold: 14 halved is 7, apportioned 4 cold and 3 fire, and the
     fire resistance takes its 3 to 1 — 5 in all.
 
-    Halving each part first would be 3 and 3, resisted to 1 and 3, for 4. The
-    even split in the case above cannot tell the two apart; this one can.
+    Halving each part first would be 3 and 3, resisted to 1 and 3, for 4.
     """
     target = creature(hp=40)
     target.attach(FireResistant(target))
@@ -480,8 +467,7 @@ def test_the_reason_reaches_the_ledger_before_the_victims_handlers_run() -> None
 def test_a_veto_at_either_of_the_savers_hooks_is_refused(
     source: object, stage: str
 ) -> None:
-    """`SaveOutcome` has no member for a save that did not happen, so a veto
-    raises rather than resolving to something arbitrary."""
+    """A veto at the saver's hooks raises (`docs/decisions.md` § w1g)."""
     saver = creature()
     saver.attach(source(saver))  # type: ignore[operator]
     with pytest.raises(FeatureContractError, match=stage):
@@ -496,20 +482,18 @@ def test_a_veto_at_the_imposers_hook_is_refused_too() -> None:
 
 
 def test_an_effect_queued_by_a_save_hook_lands_on_the_saver() -> None:
-    """The drain `engine/damage.py` and `engine/attack.py` already do, at the
-    save's hooks (`creatures/effects.py`)."""
+    """An effect queued at a save hook is applied to the saver."""
     saver = creature()
     saver.attach(Shaken(saver))
     saving_throw(saver, ability=DEX, dc=15, rng=ScriptedRng([3]))
     assert [effect.name for effect in saver.effects] == ["rattled"]
 
 
-# --- The vocabulary the scorer and the turn loop share -----------------------
+# --- The save vocabulary -----------------------------------------------------
 
 
 def test_the_repeat_save_timing_is_an_enum_and_not_a_string_literal() -> None:
-    """Debt #35's declared half: `w2c` rolls the repeat save and `w3f`'s
-    `Perturbation.repeat` names the timing, and both read these two members."""
+    """`SaveRepeat` has exactly the two repeat-save timings (debt #35)."""
     assert {timing.value for timing in SaveRepeat} == {"turn_end", "turn_start"}
     assert len(SaveRepeat) == 2
 
@@ -530,8 +514,8 @@ LEGENDARY: Final = ResourceSpec(
 
 
 class LegendaryResistance(HookSource):
-    """The acceptance test's feature: a `w1b` pool and one handler, with nothing
-    in `engine/saves.py` that knows it exists."""
+    """A resource pool and one `on_save_resolved` handler that turns a failure
+    into a success while uses remain."""
 
     __slots__ = ("ledger",)
 
@@ -539,8 +523,8 @@ class LegendaryResistance(HookSource):
 
     def __init__(self, owner: Creature) -> None:
         super().__init__(owner)
-        # Captured at construction because `Combatant` carries no resources and
-        # `self.owner` is one (`docs/decisions.md` § w1a, § w1g).
+        # `self.owner` is a `Combatant`, which carries no resources
+        # (`docs/decisions.md` § w1a, § w1g).
         self.ledger = owner.resources
 
     @hook("on_save_resolved")

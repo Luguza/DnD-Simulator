@@ -1,41 +1,12 @@
 """`ActionEconomy` — what a creature still has to spend this turn.
 
-A ledger of four things and nothing else: an Action, a Bonus Action, a Reaction
-and a number of feet. It holds no rules about *what* may be bought with them —
-that is `actions/` (w2b) — and no rules about *when* a turn begins — that is
-`engine/turn.py` (w2c). What it owns is the one question the dispatcher and the
-turn loop both ask, "can this still be paid for", and the refusal when something
-is spent that was never there.
+A ledger of an Action, a Bonus Action, a Reaction and a number of feet, with no
+rules about what they buy or when a turn begins. Spending what is not there
+raises `EconomyError`; `can_spend()` and `can_move()` ask for free. The reaction
+comes back only in `turn_started()`.
 
-**Action Surge needs no special case, and that is the point** (DESIGN.md § APL).
-A feature that grants another Action calls `grant()`; the turn loop re-polls the
-APL after every action and finds an Action on the table again. Nothing in the
-loop knows why, nothing in the feature knows about the loop, and the same
-sentence covers a Thief's Fast Hands, a Haste action and a Legendary Action.
-
-**Spending what you do not have raises** (`EconomyError`). Asking is free —
-`can_spend()` is what `hooks/dispatch.py` calls for every costed handler and
-what w2c filters its offers through — so reaching the refusal means a caller
-decided not to ask. That is the shape of the bug M0 found by accident: an entry
-charged an Action for a Bonus Action self-buff, and because it cost 0.07% of the
-rate, nothing watching the rate could have found it (docs/decisions.md § The W0
-plan review). A ledger that clamped at zero instead would have hidden it
-completely.
-
-**The reaction comes back at the start of your own turn**, which is why there is
-one method for the boundary and not two. DESIGN.md § Failing loudly states the
-invariant on the *turn* rather than the round: a creature high in initiative may
-legitimately react on an enemy's turn, take its own turn, and react again in the
-same round. `turn_started()` is the only thing that hands a reaction back, so the
-legal sequence works and a second reaction before the creature's own turn has
-begun is the refusal above.
-
-**Movement is feet, not slots.** `ActionCost` deliberately has no member for it
-(`rules/enums.py`), so it is a separate pair of methods here; a Dash grants more
-of it through `grant_movement()`, exactly as Action Surge grants an Action.
-
-Sources: XPHB (2024) "Combat" (Your Turn, Reactions, Movement); DESIGN.md § APL
-and mid-attack decisions, § Failing loudly — layered; ROADMAP w1a, w2b, w2c.
+XPHB (2024) "Combat" (Your Turn, Reactions, Movement); `docs/decisions.md`
+§ w1a.
 """
 
 from types import MappingProxyType
@@ -56,30 +27,20 @@ _NAMES: Final = MappingProxyType(
         ActionCost.REACTION: "Reaction",
     }
 )
-"""What the rules call each slot, for the errors a caller reads. `ActionCost`'s
-own values are identifiers — `bonus_action` — because they are what an APL entry
-and a `costs=` declaration are written in."""
+"""What the rules call each slot, for the errors a caller reads."""
 
 
 class ActionEconomy:
     """One creature's unspent Actions, Bonus Actions, Reactions and movement.
 
-    Satisfies the `Economy` protocol `hooks/dispatch.py` declares — `can_spend`
-    and `spend` — which is the contract `w0g` deferred to this task.
-
-    Counts rather than flags: Action Surge is a second Action, not a flag saying
-    the first one is back, and a creature that has been granted two and spent
-    one has one left in a way no boolean can say.
+    Satisfies the `Economy` protocol (`can_spend`, `spend`). Each slot is a
+    count, not a flag, so a grant adds one more (`docs/decisions.md` § w1a).
     """
 
     __slots__ = ("actions", "bonus_actions", "movement_ft", "reactions")
 
     def __init__(self) -> None:
-        # A creature starts an encounter with its reaction in hand and nothing
-        # else: it may take an opportunity attack in the first round before its
-        # own turn has come round, and it may not take an Action, a Bonus
-        # Action or a step until that turn begins. `turn_started()` is what
-        # hands it the other three.
+        # Reaction in hand and nothing else until `turn_started()`.
         self.actions = 0
         self.bonus_actions = 0
         self.reactions = 1
@@ -88,8 +49,7 @@ class ActionEconomy:
     # -- the `Economy` protocol ------------------------------------------------
 
     def can_spend(self, cost: ActionCost) -> bool:
-        """Whether one of `cost` is still in hand. Asking costs nothing and
-        changes nothing, which is what makes the refusal in `spend()` fair."""
+        """Whether one of `cost` is still in hand. Changes nothing."""
         if cost is _ACTION:
             return self.actions > 0
         if cost is _BONUS_ACTION:
@@ -114,10 +74,8 @@ class ActionEconomy:
     # -- what features and the turn loop do to it ------------------------------
 
     def grant(self, cost: ActionCost, count: int = 1) -> None:
-        """Hand the creature another Action, Bonus Action or Reaction.
-
-        Action Surge, and every feature shaped like it. `count` is how many.
-        """
+        """Hand the creature `count` more of an Action, Bonus Action or
+        Reaction."""
         if count < 1:
             raise EconomyError(f"a grant of {count} {_NAMES[cost]}s grants nothing")
         if cost is _ACTION:
@@ -132,13 +90,7 @@ class ActionEconomy:
         return distance_ft <= self.movement_ft
 
     def move(self, distance_ft: int) -> None:
-        """Spend feet of movement, or raise if the creature has not got them.
-
-        The five-foot step is the unit the mover walks in (`engine/triggers.py`),
-        so this is called once per square rather than once per move — a route
-        that runs out halfway is a real thing a creature does, and the turn loop
-        finds out by asking `can_move()` before each step.
-        """
+        """Spend feet of movement, or raise if the creature has not got them."""
         if distance_ft < 0:
             raise EconomyError(f"{distance_ft} ft is not a distance to move")
         if distance_ft > self.movement_ft:
@@ -149,7 +101,7 @@ class ActionEconomy:
         self.movement_ft -= distance_ft
 
     def grant_movement(self, distance_ft: int) -> None:
-        """Add feet of movement: a Dash, and everything shaped like one."""
+        """Add feet of movement."""
         if distance_ft < 1:
             raise EconomyError(f"a grant of {distance_ft} ft grants nothing")
         self.movement_ft += distance_ft
@@ -157,10 +109,8 @@ class ActionEconomy:
     def turn_started(self, movement_ft: int) -> None:
         """The creature's own turn has begun: everything back.
 
-        `movement_ft` is the creature's speed *now* rather than a copy this
-        object took when it was built, because a Rage, a Longstrider or a set
-        of heavy armour changes it between turns and a ledger holding its own
-        stale copy would be the second place a speed could be written.
+        `movement_ft` is the creature's speed now; the ledger keeps no copy of
+        it (`docs/decisions.md` § w1a).
         """
         if movement_ft < 0:
             raise EconomyError(f"a speed of {movement_ft} ft is not a speed")

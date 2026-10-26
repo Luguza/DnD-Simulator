@@ -1,32 +1,8 @@
-"""The w1a action-economy contract: what a creature may still spend, and when.
-
-`ActionEconomy` is the first real implementer of the `Economy` protocol
-`hooks/dispatch.py` has been declaring since `w0g` — the contract test that
-`w0g` was owed and that ROADMAP § The W0 debt register files under #10, because
-"the protocol and the class drift, and `costs=` stops being paid" is a failure
-nothing else in the project would notice.
-
-Four properties are worth more than the arithmetic:
-
-- **Action Surge is a grant and nothing else** (DESIGN.md § APL). A feature that
-  hands its owner another Action calls one method; the turn loop re-polls and
-  finds an Action on the table. No branch anywhere knows why.
-- **A reaction comes back at the start of your own turn, never at the top of a
-  round** (DESIGN.md § Failing loudly). The invariant is stated on the turn
-  boundary deliberately: a creature high in initiative may react on an enemy's
-  turn, take its own turn, and react again in the same round, and an accounting
-  per round would raise on that legal sequence.
-- **Overdrawing raises rather than clamping.** Asking is free, so reaching the
-  refusal means a caller decided not to ask — and the bug it catches is the one
-  M0 found by accident, an entry charging an Action for a Bonus Action, which
-  cost 0.07% of the rate and would never be found by watching the rate
-  (docs/decisions.md § The W0 plan review).
-- **Movement is feet, not slots.** `ActionCost` has no member for it on purpose,
-  so a Dash grants feet exactly as Action Surge grants an Action.
+"""The `ActionEconomy` contract: what a creature may still spend, and when.
 
 Sources: XPHB (2024) "Combat" (Your Turn, Reactions, Movement, the Dash action);
-DESIGN.md § APL and mid-attack decisions, § Failing loudly — layered; ROADMAP
-w1a, w2b, w2c.
+DESIGN.md § APL and mid-attack decisions, § Failing loudly — layered;
+`docs/decisions.md` § w1a.
 """
 
 from typing import Final
@@ -80,21 +56,18 @@ def hit_on(defender: Creature) -> HitContext:
 
 
 def started() -> ActionEconomy:
-    """An economy at the top of its owner's turn, which is the state almost
-    every question below is asked in."""
+    """An economy at the top of its owner's turn."""
     economy = ActionEconomy()
     economy.turn_started(SPEED)
     return economy
 
 
-# --- the protocol debt w0g left to this task ---------------------------------
+# --- the Economy protocol ----------------------------------------------------
 
 
 def test_the_action_economy_is_the_economy_the_dispatcher_asks() -> None:
-    """`hooks/dispatch.py` declares `Economy` rather than importing this class,
-    because `hooks/` sits below `creatures/` and the dependency points one way
-    only. The annotation is what mypy checks; the membership assertion is what
-    fails loudly if the protocol grows a member this class does not have."""
+    """`ActionEconomy` satisfies the dispatcher's `Economy` protocol, and the
+    protocol has no member beyond `can_spend` and `spend`."""
     economy: Economy = ActionEconomy()
     assert frozenset(name for name in vars(Economy) if not name.startswith("_")) == {
         "can_spend",
@@ -104,12 +77,9 @@ def test_the_action_economy_is_the_economy_the_dispatcher_asks() -> None:
 
 
 def test_a_creatures_reaction_runs_once_and_comes_back_on_its_turn() -> None:
-    """The whole loop, through the real dispatcher rather than a stand-in: a
-    reaction feature is offered, pays for itself out of the creature's own
-    economy, and is not offered again until that creature's turn begins.
-    `tests/contract/test_dispatch.py` proves the dispatcher's half against a
-    fake; this is the half `w1a` owes, and the two meeting is the drift the
-    debt register (#10) is about."""
+    """Through the real dispatcher, a reaction feature pays for itself out of
+    its creature's own economy and is not offered again until that creature's
+    turn begins."""
     fighter = Creature(
         name="fighter",
         stats=StatBlock(abilities=SCORES, max_hp=20),
@@ -150,20 +120,17 @@ def test_a_turn_hands_back_one_of_each_and_a_full_speed() -> None:
 
 
 def test_the_speed_is_the_creatures_speed_now_rather_than_a_stored_copy() -> None:
-    """A Rage, a Longstrider or a set of heavy armour changes a speed between
-    turns, and a ledger holding its own copy would be the second place a speed
-    could be written — the same argument that keeps the damage order in one
-    file."""
+    """`turn_started()` hands back the speed it is given, not a stored copy
+    (`docs/decisions.md` § w1a)."""
     economy = started()
     economy.turn_started(SPEED + 10)
     assert economy.movement_ft == SPEED + 10
 
 
 def test_a_reaction_comes_back_on_your_own_turn_and_not_before() -> None:
-    """The invariant DESIGN.md § Failing loudly states on the turn boundary: a
-    creature that reacted on an enemy's turn has nothing until its own turn
-    begins, and then has it again — including for a second reaction later in the
-    same round, which is legal and which a per-round account would refuse."""
+    """A spent reaction is unavailable until the creature's own turn begins,
+    and is then spendable again in the same round (DESIGN.md § Failing
+    loudly)."""
     economy = started()
     economy.spend(REACTION)
     assert not economy.can_spend(REACTION)
@@ -178,8 +145,8 @@ def test_a_reaction_comes_back_on_your_own_turn_and_not_before() -> None:
 
 
 def test_action_surge_is_a_grant_and_needs_no_special_case() -> None:
-    """Action Surge "simply grants another action slot and the loop asks again"
-    (DESIGN.md § APL). The whole of it, from the economy's side."""
+    """A granted Action is spendable after the turn's own is spent
+    (DESIGN.md § APL)."""
     economy = started()
     economy.spend(ACTION)
     assert not economy.can_spend(ACTION)
@@ -191,8 +158,7 @@ def test_action_surge_is_a_grant_and_needs_no_special_case() -> None:
 
 
 def test_a_grant_of_two_leaves_one_after_the_first_is_spent() -> None:
-    """Counts rather than flags: a creature granted two Actions and having spent
-    one has one left, which is a thing no boolean can say."""
+    """A creature granted two Actions and having spent one has one left."""
     economy = started()
     economy.spend(ACTION)
     economy.grant(ACTION, 2)
@@ -201,8 +167,7 @@ def test_a_grant_of_two_leaves_one_after_the_first_is_spent() -> None:
 
 
 def test_a_grant_of_nothing_is_refused_rather_than_ignored() -> None:
-    """A feature granting zero of something has a bug in it, and the quiet
-    version of that bug is a feature that appears to work."""
+    """A grant of zero raises rather than being ignored."""
     with pytest.raises(EconomyError, match="grants nothing"):
         started().grant(ACTION, 0)
 
@@ -211,10 +176,7 @@ def test_a_grant_of_nothing_is_refused_rather_than_ignored() -> None:
 
 
 def test_spending_an_action_that_is_not_there_raises() -> None:
-    """Asking is free — `can_spend()` answers before anything is spent and the
-    turn loop filters its offers through it — so this is a caller that decided
-    not to ask. Clamping at zero instead would hide the M0 finding: an entry
-    charging an Action for a Bonus Action, at 0.07% of the rate."""
+    """Overdrawing raises rather than clamping (`docs/decisions.md` § w1a)."""
     economy = started()
     economy.spend(ACTION)
     with pytest.raises(EconomyError, match="no Action left"):
@@ -222,8 +184,7 @@ def test_spending_an_action_that_is_not_there_raises() -> None:
 
 
 def test_the_refusal_for_a_second_reaction_names_the_rule_it_broke() -> None:
-    """The error is read by whoever wrote the caller, and the caller's likeliest
-    mistake here is accounting per round rather than per turn."""
+    """The refusal names the per-turn rule a per-round account breaks."""
     economy = started()
     economy.spend(REACTION)
     with pytest.raises(EconomyError, match="start of each of your own turns"):
@@ -231,9 +192,7 @@ def test_the_refusal_for_a_second_reaction_names_the_rule_it_broke() -> None:
 
 
 def test_a_bonus_action_and_an_action_are_not_interchangeable() -> None:
-    """The M0 finding in one assertion: a creature that has spent its Action
-    still has its Bonus Action, and spending the wrong one is not a rounding
-    error in the rate but a different turn."""
+    """A creature that has spent its Action still has its Bonus Action."""
     economy = started()
     economy.spend(ACTION)
     assert economy.can_spend(BONUS)
@@ -245,8 +204,7 @@ def test_a_bonus_action_and_an_action_are_not_interchangeable() -> None:
 
 
 def test_movement_is_spent_in_feet_and_runs_out() -> None:
-    """A five-foot step is the unit the mover walks in, so this is asked once
-    per square rather than once per move (`engine/triggers.py`)."""
+    """Movement is spent five feet at a time until the speed is gone."""
     economy = started()
     for _ in range(SPEED // 5):
         assert economy.can_move(5)
@@ -256,8 +214,7 @@ def test_movement_is_spent_in_feet_and_runs_out() -> None:
 
 
 def test_a_route_longer_than_the_speed_is_refused_at_the_step_that_pays() -> None:
-    """A creature that runs out halfway has still crossed the cells it crossed
-    (docs/decisions.md § w0g2), which is why the turn loop asks per step."""
+    """The step that would overdraw the remaining speed raises."""
     economy = started()
     economy.move(SPEED)
     with pytest.raises(EconomyError, match="more than the 0 ft"):
@@ -273,8 +230,7 @@ def test_dash_grants_feet_exactly_as_action_surge_grants_an_action() -> None:
 
 
 def test_a_negative_distance_is_not_a_move() -> None:
-    """Spending a negative number of feet would hand movement back, which is a
-    Dash spelled as a bug."""
+    """A negative move and a zero movement grant both raise."""
     with pytest.raises(EconomyError, match="not a distance"):
         started().move(-5)
     with pytest.raises(EconomyError, match="grants nothing"):
@@ -282,9 +238,8 @@ def test_a_negative_distance_is_not_a_move() -> None:
 
 
 def test_movement_does_not_come_out_of_an_action() -> None:
-    """`ActionCost` has no movement member on purpose (`rules/enums.py`):
-    movement is measured in feet, not in slots, and a creature that has walked
-    its whole speed still has everything else."""
+    """A creature that has walked its whole speed still has its Action, Bonus
+    Action and Reaction."""
     economy = started()
     economy.move(SPEED)
     assert economy.can_spend(ACTION)

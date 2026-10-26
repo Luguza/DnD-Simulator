@@ -1,55 +1,18 @@
 """The pessimistic performance spike (ROADMAP w0i) — the M0 gate.
 
-**Budget: ≥30,000 attack resolutions per second per core**, on a deliberately
-hostile configuration, measured before any content is written. DESIGN.md
-§ Performance sizes the workload it protects: ~10k iterations x 5 encounters x
-5 rounds x 5 creatures x 3 attacks is about 4M attack resolutions for one build
-comparison — around two minutes a core, or under twenty seconds across eight of
-them.
+Measures attack resolutions per second per core against `BUDGET_PER_SECOND`, on
+a deliberately hostile configuration: a hero carrying the twenty-five sources
+of `tools/spike_features.py` and the hand-compiled APL of `tools/spike_apl.py`,
+three enemies swinging back, and both sides walking real routes on a real grid.
+`measure_startup()` times a spawned worker separately.
 
-That figure was 50,000 until M0. The spike is what revised it: the original was
-set before anything had been measured, and `docs/decisions.md` § w0i has the
-measurement, the revision pass that took the architecture from 17k to ~31.5k,
-and the argument for why the remaining distance was not reachable by tuning.
-
-**Why the configuration is what it is.** "The obvious way to run this is against
-a stub creature and an attack loop. That measurement is worthless… M0 exists to
-be the cheap moment to revise; a stub spends that moment on nothing." So:
-
-- **25 attached `HookSource`s, 15 of them on `on_hit`** — `tools/spike_features.py`,
-  which is also where the applies-versus-skips mix is argued.
-- **An 8-condition APL, re-evaluated per action**, with a `target:` selector and
-  a `move:` clause, hand-compiled over the proxy shape `w2e` will emit —
-  `tools/spike_apl.py`. Three of the eight are `gate:` answers given *inside*
-  the attack, which is what puts policy evaluation on the hot path rather than
-  once a turn.
-- **Real movement on a real grid**: both sides reposition every round through
-  `core/geometry.route()` over a real blocked-cell set, so distance and reach
-  queries are in the measurement.
-- **Both directions of the attack.** The hero swings three times a round and
-  three enemies swing back, because four of the twenty-five sources listen on
-  the victim's side and a benchmark that never took a hit would not run them.
-- **Worker startup measured separately** (`measure_startup()`): on Windows a
-  worker is `spawn`ed, so it re-imports the package and rebuilds every
-  character. `compare --sweep dummy.ac=10:22` pays that thirteen times, and it
-  is the cost an inner-loop benchmark never sees.
-
-**What is deliberately not in the measurement, and why that is honest.** There
-is no turn loop here, so `w1c`'s per-boundary expiry sweep never runs, and
-`self.slots.highest` is answered by a stand-in flag rather than by `w1b`'s
-pools (debt #15), so none of the pool arithmetic runs either — it is priced per
-operation in `docs/decisions.md` § w1b instead. The spike therefore
-*understates* the eventual per-round cost. `w1k` is the re-measure that totals
-what W1 spent, and the task that retires debt #15; `w2e`'s re-run of this
-benchmark is where the real APL compiler has to come in at or under the number
-below.
-What the spike does not understate is the per-attack cost, which is where the
-budget is spent.
+`docs/decisions.md` § w0i has the configuration's reasoning and the
+measurements; what the measurement leaves out is debt #15 and § The W1
+mid-wave review.
 
 Run it: `python -m dndsim.tools.spike` (add `--startup` for the worker cost).
 
-Sources: DESIGN.md § Performance, § The spike must be pessimistic, § Levers;
-ROADMAP w0i, w1k, w2e.
+DESIGN.md § Performance, § The spike must be pessimistic.
 """
 
 import argparse
@@ -101,20 +64,14 @@ __all__ = [
 ]
 
 BUDGET_PER_SECOND: Final = 30_000
-"""The M0 gate (ROADMAP w0i, DESIGN.md § Performance). Attack resolutions per
-second per core, on the configuration this module builds.
+"""The M0 gate: attack resolutions per second per core, on the configuration
+this module builds.
 
-**Revised down from 50,000 at M0, deliberately and once.** The original figure
-was set before anything had been measured and turned out to sit at the
-theoretical floor of this object model in CPython; the spike measures ~31.5k
-after the revision pass in `docs/decisions.md` § w0i, and 30,000 is that number
-with the run-to-run spread taken off. Lowering it again is the one edit in this
-file that must not be made quietly — it is how a project stops noticing that it
-has become slow."""
+Revised down from 50,000 once, at M0. **Lowering it again must not be done
+quietly** (`docs/decisions.md` § w0i)."""
 
 ATTACKS_PER_TURN: Final = 3
-"""Extra Attack at level 12, which is what DESIGN.md § Performance sizes the
-4M-resolution workload with."""
+"""The hero's attacks per Attack action (DESIGN.md § Performance)."""
 
 ROUNDS_PER_ENCOUNTER: Final = 5
 ENEMIES: Final = 3
@@ -132,56 +89,31 @@ _HERO_SCORES: Final = MappingProxyType(
 _ENEMY_SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 12))
 
 _HERO_HP: Final = 70
-"""Sized against the two things that pull in opposite directions.
-
-**Upwards:** the hero has to survive all five rounds of being swung at by three
-enemies — one that dropped mid-encounter would end the benchmark early and make
-the measurement depend on the dice. Across a thousand encounters on three seeds
-this hero never falls below a third of it.
-
-**Downwards:** the APL's reaction entry is `trigger.damage_estimate >= self.hp *
-0.25`, so an inflated pool is a gate that can never answer yes — and a
-reaction-costing handler that never applies means the dispatcher's economy valve
-is only ever asked in the affirmative and `ctx.halve()` is never on the measured
-path. At 70 the entry fires about 0.4 times an encounter: often enough to be
-measured, rarely enough to still be a reaction rather than a rider."""
+"""Trap: large enough that the hero never drops, small enough that Uncanny
+Dodge's `self.hp * 0.25` gate still answers yes (`docs/decisions.md` § w0i)."""
 
 _ENEMY_HP: Final = 1_000
 _HERO_START: Final = Cell(0, 0)
+# Spread out, so that focus-firing the lowest-hp enemy means walking.
 _ENEMY_STARTS: Final = (Cell(5, 0), Cell(0, 5), Cell(7, 6))
 
 
 def _seat(place: int) -> InitiativeKey:
-    """The `place`th key in a fixed order, hero first.
-
-    The spike never rolls initiative — it runs the hero's turn and then the
-    enemies' — so the keys only have to be distinct and ordered. Tying the roll
-    and separating them on the draw is the cheapest way to say that; `w2c` draws
-    the real ones (`core/timeline.py`).
-    """
+    """The `place`th key in a fixed order, hero first: distinct and ordered,
+    never rolled."""
     return InitiativeKey(
         initiative=20, dexterity=10, player_character=place == 0, tiebreak=place / 10
     )
 
 
 _HERO_SEAT: Final = _seat(0)
-"""Spread out, so that focus-firing the lowest-hp enemy means walking."""
 
 _MAUL: Final = Weapon(
     name="Maul", damage=Dice(2, 6), damage_type=DamageType.BLUDGEONING
 )
-"""What the enemies swing. Big enough that a good roll is worth a reaction —
-which is what puts Uncanny Dodge's gate, its reaction cost and `ctx.halve()` on
-the measured path — and no bigger, because the enemies exist to make the hero's
-four defensive sources run rather than to end the encounter. `RageResistance`
-halves it, which is most of why 70 hp lasts five rounds."""
+"""What the enemies swing, sized with `_HERO_HP` (`docs/decisions.md` § w0i)."""
 
 _PLATE: Final = Armour.heavy("Plate", 18)
-"""AC 18, and no Dexterity: the hero's AC was a literal on its stat block until
-`w1a` derived it from equipment, and plate is the XPHB entry that gives the 18
-this benchmark has always run against. The enemies wear natural armour for 16
-— they are stand-ins for monsters, and a monster's AC is the number its stat
-block prints (`creatures/stats.py`)."""
 
 _TURN_COSTS: Final = MappingProxyType(
     {
@@ -191,36 +123,19 @@ _TURN_COSTS: Final = MappingProxyType(
         "attack": ActionCost.ACTION,
     }
 )
-"""What the turn loop offers, and what each one costs to take.
+"""What the turn loop offers, and what each one costs to take; the other four
+entries are `gate:` answers given inside an event.
 
-The other four entries are riders and reactions, which are never offered as a
-turn action — they are `gate:` answers given inside an event (DESIGN.md § APL:
-"one flat ordered list; **the engine filters to currently-offered ids**").
-
-**The costs are the XPHB ones, and that is load-bearing rather than flavour.**
-Rage, Second Wind and Healing Word are all Bonus Actions in the 2024 rules; only
-the Attack action is an Action. An earlier version of this file charged all four
-an Action, which made the offer filter wrong in a way that quietly ate the
-measurement: `second_wind`'s entry sits *above* `attack` in the list and its
-`if:` is `self.hp_pct < 0.5`, so the first turn the hero dropped under half it
-spent its Action on Second Wind — and, since nothing here heals, stayed under
-half and never swung again for the rest of the encounter. It cost 21 of 30,000
-resolutions a run, which is well under the noise floor and is not why this is
-fixed; it is fixed because an encounter whose resolution count depends on the
-dice is one the exact-integer assertions in `tests/bench/test_spike.py` can only
-hold at the seed they were written against."""
+Trap: the costs are the XPHB ones and are load-bearing — charging Second Wind
+an Action makes the attack count depend on the dice (`docs/decisions.md`
+§ w0i)."""
 
 _MAX_ACTIONS_PER_TURN: Final = 4
 
 
 def _offer_table() -> tuple[frozenset[str], ...]:
-    """The four possible offers, precomputed at import.
-
-    There are two bits of economy the turn loop can be in — Action spent or
-    not, Bonus Action spent or not — so there are four answers `_offered()` can
-    give, and building the set per decision would put an allocation on a path
-    that is asked up to four times a turn for nothing.
-    """
+    """The four possible offers, indexed by (Action left, Bonus Action left),
+    precomputed so `_offered()` allocates nothing."""
     return tuple(
         frozenset(
             action
@@ -252,13 +167,8 @@ class Spike:
     log: EventLog
 
     def reset(self) -> None:
-        """Put the encounter back to round one.
-
-        What a runner does between the five encounters of an iteration, and
-        deliberately inside the measurement: 4M resolutions come with 50k
-        encounter resets, and a benchmark that reset outside the clock would be
-        measuring a fight nobody ever starts.
-        """
+        """Put the encounter back to round one. Runs inside the timed region
+        (`docs/decisions.md` § w0i)."""
         self.log.clear()
         self.hero.hp = self.hero.max_hp
         self.hero.revive()
@@ -277,19 +187,10 @@ def build_spike(
 ) -> tuple[Spike, Rng]:
     """Assemble the hostile creature, its three enemies and its compiled APL.
 
-    Everything expensive happens here rather than per attack, which is the point
-    of DESIGN.md § Levers: the dispatch table is sorted once at attach time, the
-    namespace proxies are built once per creature, and the APL is compiled once
-    per build. A spike that rebuilt any of them per turn would be measuring the
-    loader.
-
-    `pooled` picks which half of the § Levers claim about contexts is being
-    measured — reused per attack, or allocated per attack. Both are real
-    configurations of the same engine, and the difference between the two
-    numbers is the whole argument for the lever.
-
-    `log_level` is the level of the `EventLog` every attack writes to
-    (`docs/decisions.md` § w1i).
+    Everything built once per encounter is built here (DESIGN.md § Levers).
+    `pooled` reuses each side's attack contexts rather than allocating them per
+    attack; `log_level` is the level of the `EventLog` every attack writes to
+    (`docs/decisions.md` § w1i). Returns the spike and its seeded rng.
     """
     hero = Creature(
         name="Spike",
@@ -328,10 +229,7 @@ def build_spike(
     spike = Spike(
         hero=hero,
         enemies=enemies,
-        # The roster, built once: `engine/triggers.py` walks it per move to work
-        # out who could react to it, and rebuilding it there would put a tuple
-        # allocation on a path whose whole claim is that it costs nothing when
-        # nobody in the room owns a reaction.
+        # Built once: it is walked on every move.
         combatants=(hero, *enemies),
         apl=apl,
         state=state,
@@ -348,9 +246,8 @@ def build_spike(
 
 # --- the eight entries, hand-compiled ---------------------------------------
 #
-# Each is one row of the YAML in DESIGN.md § APL, written as the callable the
-# w2e compiler will emit for it. The comment above each is the clause it came
-# from, so a reviewer can check the translation without running anything.
+# Each is one row of the YAML in DESIGN.md § APL; the comment above each is the
+# clause it was compiled from.
 
 
 def _entries() -> tuple[Entry, ...]:
@@ -426,9 +323,7 @@ def _close_on_the_weakest(ns: Namespace) -> Cell | None:
 def run_encounter(spike: Spike, rng: Rng, rounds: int = ROUNDS_PER_ENCOUNTER) -> int:
     """One encounter. Returns the attack resolutions it took to run.
 
-    The unit the budget is quoted in is the attack resolution, so this counts
-    every dispatched attack — the hero's three a round and the enemies' one
-    each — rather than turns or rounds.
+    Counts every resolved attack on both sides.
     """
     spike.reset()
     resolutions = 0
@@ -459,13 +354,7 @@ def _hero_turn(spike: Spike, rng: Rng, number: int) -> int:
 
 
 def _offered(spike: Spike) -> frozenset[str]:
-    """The ids currently on the table, which is what the APL filters against.
-
-    "The engine filters to currently-offered ids" (DESIGN.md § APL), and what
-    makes an id offered is that the economy can still pay for it — so this is
-    `_TURN_COSTS` read through the hero's `ActionEconomy`, indexed rather than
-    rebuilt.
-    """
+    """The ids the hero's economy can still pay for (DESIGN.md § APL)."""
     economy = spike.economy
     return _OFFERS[2 * (economy.actions > 0) + (economy.bonus_actions > 0)]
 
@@ -476,11 +365,7 @@ def _execute(spike: Spike, entry: Entry, rng: Rng) -> int:
     if action != "attack":
         if action == "rage":
             spike.state.raging = True
-        # rage flips the flag its dependent riders read; second_wind and
-        # healing_word do nothing at all. What each *does* is w2b's and none of
-        # it is on the path the budget is about — what each *costs* is this
-        # file's, because the economy is what decides whether the hero still
-        # gets to swing this turn (`_TURN_COSTS`).
+        # Only the cost is modelled; second_wind and healing_word do nothing.
         spike.economy.spend(_TURN_COSTS[action])
         return 0
 
@@ -489,9 +374,7 @@ def _execute(spike: Spike, entry: Entry, rng: Rng) -> int:
         _walk(spike, entry.move(namespace))
     target = None if entry.target is None else entry.target(namespace)
     if target is None:
-        # The move: clause could not close the distance — a real outcome on a
-        # real grid, and the reason `APL_FALLTHROUGH` is a counter in the report
-        # rather than an exception (DESIGN.md § APL).
+        # The move: clause could not close the distance; the Action is spent.
         spike.economy.spend(ActionCost.ACTION)
         return 0
 
@@ -510,16 +393,8 @@ def _execute(spike: Spike, entry: Entry, rng: Rng) -> int:
 def _enemy_turns(spike: Spike, rng: Rng, number: int) -> int:
     """The other side of the fight: three featureless attackers, closing.
 
-    They carry no sources of their own — what they are for is the hero's four
-    defensive ones, which is also why their attacks go through the same
-    `resolve_attack()` and the same damage pipeline.
-
-    **The hero's `trigger` goes with them.** `trigger.*` is what the engine is
-    offering the creature being asked, and the only gate on this side of the
-    attack — Uncanny Dodge's `trigger.damage_estimate >= self.hp * 0.25` — is
-    the hero's, answered while an enemy swings. Leaving it unbound here would
-    hand that gate the estimate from the hero's own last swing, which is both
-    the wrong number and a policy call that never changes.
+    Trap: the hero's `trigger` is passed with their attacks, because the gate
+    answered on this side is the hero's (`docs/decisions.md` § w0i).
     """
     hero = spike.hero
     trigger = spike.apl.namespace.trigger
@@ -544,13 +419,8 @@ def _walk(spike: Spike, destination: Cell | None) -> None:
 
 
 def _step(spike: Spike, mover: Creature, destination: Cell) -> None:
-    """Resolve one `move:` decision into a walked route.
-
-    "Movement is a decision, not a pathfinding problem: the selector picks a
-    destination and the engine walks the shortest legal route to it"
-    (DESIGN.md § APL). The blocked set is rebuilt per move because it is:
-    everybody else's square is occupied, and who is standing where changes
-    every turn.
+    """Walk `mover` along the shortest legal route toward `destination`, as
+    far as its speed allows, past everybody else's square (DESIGN.md § APL).
     """
     blocked = frozenset(
         creature.position for creature in spike.combatants if creature is not mover
@@ -563,13 +433,8 @@ def _step(spike: Spike, mover: Creature, destination: Cell) -> None:
     reachable = walked[: steps_within(mover.speed_ft)]
     if not reachable:
         return
-    # `engine/triggers.py` is what actually moves the creature, because the
-    # opportunity-attack offer has to be made from the square being left rather
-    # than the one being entered. Nothing in this spike owns an `on_leave_reach`
-    # handler, so what is in the measurement here is the audience computation
-    # and its verdict — the case the design claims costs nothing, measured
-    # rather than asserted. A configuration where the offers actually fire is
-    # `w2c`'s to add when the turn loop and the Command exist to fire them.
+    # Nobody here owns a movement reaction, so only the audience computation
+    # is measured (`docs/decisions.md` § w0g3).
     stepped = walk_provoking(mover, reachable, spike.combatants)
     if not stepped:
         return
@@ -595,17 +460,9 @@ def measure(
 ) -> tuple[float, int]:
     """Attack resolutions per second, median of `repeats` runs after a warmup.
 
-    Median rather than mean and warmed up rather than cold, because DESIGN.md
-    § The benchmark gate asks for exactly that of the CI gate `w3i` builds on
-    top of this: "a gate that fires on noise gets disabled within a month, at
-    which point performance decays exactly as predicted".
-
-    **The default is a thousand encounters because two hundred was not enough.**
-    At 200 the same machine returned 29.4k, 30.6k and 32.1k on three consecutive
-    runs — a 9% spread, wide enough to swallow the regression a gate is for. At
-    1000 (about a second of work per repeat) the spread is 0.2%. Whoever builds
-    `w3i` should treat that as the floor on how little work a timed run may do,
-    not as a number to trim when the suite feels slow.
+    Returns the rate and the resolutions in one repeat. The default of a
+    thousand encounters is a floor, not a number to trim (`docs/decisions.md`
+    § w0i).
     """
     spike, rng = build_spike(seed, pooled=pooled, log_level=log_level)
     _burn(spike, rng, max(encounters // 10, 1))
@@ -630,22 +487,9 @@ def _burn(spike: Spike, rng: Rng, encounters: int) -> int:
 def measure_startup(workers: int = 4) -> float:
     """Seconds to bring one `spawn`ed worker to the point of simulating.
 
-    Measured separately and never folded into the rate above, because it is a
-    per-worker cost rather than a per-attack one: "at 10k iterations that
-    amortises to nothing; at `compare --sweep dummy.ac=10:22` it is paid
-    thirteen times over" (DESIGN.md § Performance). What it times is what
-    Windows actually pays — a fresh interpreter, a fresh import of the package,
-    and every character rebuilt — because `spawn` shares no memory with its
-    parent.
-
-    **A subprocess rather than `multiprocessing.Pool`, deliberately.** `spawn`
-    brings a worker up by re-importing the parent's `__main__` module, so a
-    pool started from a script without an `if __name__ == "__main__"` guard —
-    or from inside a test runner, whose `__main__` is the runner — re-runs that
-    module in every worker. A benchmark that can fork-bomb the machine it is
-    measuring is not one anybody will run twice. Launching the interpreter
-    directly measures the same three costs with none of that, and is what
-    `sim/runner.py` (w2g) should be checked against when the real pool lands.
+    A fresh interpreter, a fresh import of the package and the spike rebuilt,
+    averaged over `workers` subprocesses. Trap: a subprocess, never
+    `multiprocessing.Pool` (`docs/decisions.md` § w0i).
     """
     command = [
         sys.executable,
