@@ -1,25 +1,20 @@
-"""The saving-throw sequence, in the one file it is ever written in.
+"""The saving-throw sequence.
 
 **force -> roll -> compare -> resolved**, with the DC's side dispatched once for
 the whole set of targets and the roll's two hooks once per target.
 
-Where each step comes from:
+Sources:
 
 - 8 + the ability modifier + the proficiency bonus — XPHB, "Spells" -> Spell
   Save DC (`rules/constants.py`)
 - the save succeeds when the total equals or beats the DC — XPHB, "D20 Tests"
   -> Saving Throws
 - a natural 20 does not succeed on its own and a natural 1 does not fail on its
-  own — the same entry, which gives a save no effect for either, against the
-  Attack Rolls entry that gives both (`rules/constants.py`'s `NATURAL_TWENTY`)
-- half damage on a successful save, taken in the halvings step of the one
-  resolution order — `engine/damage.py`; the signature that reaches it is
-  argued in `docs/decisions.md` § w1g
+  own — the same entry (`docs/decisions.md` § w1g)
+- half damage on a successful save, in the halvings step of `engine/damage.py`
+  — `docs/decisions.md` § w1g
 
-What this module deliberately does not do, and why, is `docs/decisions.md`
-§ w1g. The one first cut inside the code below: a saving throw adds the bare
-ability modifier, because nothing can yet say a creature is proficient in a
-save (debt #36).
+One first cut: a saving throw adds the bare ability modifier (debt #36).
 """
 
 from collections.abc import Mapping, Sequence
@@ -60,8 +55,7 @@ class SaveResult(NamedTuple):
 
     `forced_by` is every reason a handler gave for declaring this save a
     success, in the order they were claimed. A claim is recorded whether or not
-    the dice had already made the DC: the ledger behind it logs claims rather
-    than what changed the outcome (`hooks/contexts.py`'s `OverrideLedger`).
+    the dice had already made the DC.
     """
 
     outcome: SaveOutcome
@@ -82,9 +76,7 @@ def save_dc(creature: Creature, ability: Ability) -> int:
 def save_bonus(creature: Creature, ability: Ability) -> int:
     """What `creature` adds to a saving throw of `ability` before any handler.
 
-    The ability modifier, and nothing else: no creature can declare proficiency
-    in a save yet, so the proficiency bonus the rules add for one is debt #36.
-    Why this is a function rather than an expression inside `saving_throw()` is
+    The ability modifier, and nothing else: debt #36. Why this is a function is
     `docs/decisions.md` § w1g.
     """
     return creature.modifier(ability)
@@ -144,8 +136,8 @@ def force_save(
     """Make each of `targets` save against `dc`, and return one result each.
 
     `on_forced_save` fires once for the whole set rather than once per target,
-    because the DC is one number for the area and a bonus to it applies to
-    every save rolled against it; with no targets it does not fire at all.
+    and a bonus to the DC applies to every save; with no targets it does not
+    fire at all.
     `dc` is the imposer's own — `save_dc()` derives a spellcaster's, and a
     monster's is printed.
     """
@@ -179,9 +171,8 @@ def save_for_half(
 ) -> int:
     """Deal `amounts` to `defender`, halved on a successful save.
 
-    The halving is recorded for `engine/damage.py` to apply in its own step
-    rather than taken off `amounts` here, which would put it ahead of immunity
-    and the flat reductions (`docs/decisions.md` § w1g).
+    The halving is applied in `engine/damage.py`'s halvings step
+    (`docs/decisions.md` § w1g).
     """
     return resolve_damage(
         defender,
@@ -194,9 +185,7 @@ def save_for_half(
 
 
 def _refusal(stage: str) -> str:
-    """Why a veto at `stage` is refused: `SaveOutcome` has no member for a save
-    that was called off (`rules/enums.py`). Settled before anything is rolled,
-    so that a refused save draws no dice."""
+    """The refusal message for a veto at `stage` (`docs/decisions.md` § w1g)."""
     return (
         f"vetoed at {stage}, which the saving-throw sequence cannot honour: a "
         "save either succeeds or fails, and neither describes one that did not "

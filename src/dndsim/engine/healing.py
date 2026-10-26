@@ -21,11 +21,8 @@ __all__ = ["Downed", "grant_temp_hp", "heal"]
 
 
 class Downed(Unconscious):
-    """The Unconscious condition dropping to 0 hit points gives.
-
-    Its own class, so that it is held apart from an Unconscious another source
-    gave and each ends on its own terms (`docs/decisions.md` § w1j).
-    """
+    """The Unconscious condition dropping to 0 hit points gives, held apart from
+    an Unconscious another source gave (`docs/decisions.md` § w1j)."""
 
     __slots__ = ()
 
