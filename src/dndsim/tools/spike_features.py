@@ -1,41 +1,13 @@
 """Twenty-five hook sources, shaped like a level-12 martial's — the load the
 performance spike measures against (ROADMAP w0i).
 
-**These are fixtures, not content.** Nothing here is an implementation of an
-XPHB feature: there is no `source_ref`, no golden test and no `expectation`, and
-none of it survives into `features/` (W4). What each class reproduces is the
-*cost shape* of the real thing — how many contexts fields a handler reads, how
-often it applies rather than skips, whether it carries a `once_per` ledger
-lookup, an economy check or an APL gate — because that shape is what the budget
-is spent on. Names echo the features they stand in for so the distribution is
-reviewable against a real character sheet; the bodies deliberately do not
-implement the rules.
+Fixtures, not content: each reproduces the *cost shape* of the feature it is
+named for — the fields it reads, how often it applies rather than skips, and
+whether it carries a `once_per` budget, a reaction cost or an APL gate — and
+none implements the rules. Fifteen are on `on_hit`, the rest spread over the
+other hot hooks. `docs/decisions.md` § w0i.
 
-**The distribution is the pessimistic case DESIGN.md § The spike must be
-pessimistic asks for**: 25 attached sources, 15 of them on `on_hit`, "which is
-what a level-12 Barbarian actually looks like", and the remaining ten spread
-over the other hot hooks so that no hook in the attack sequence is measured
-empty.
-
-Two properties of the mix matter more than the count:
-
-- **Most handlers skip, a few apply.** A real martial's `on_hit` list is mostly
-  riders whose conditions are not met on any given swing — the damage that
-  actually lands comes from three or four of them. A benchmark where every
-  handler applies would measure `DamageBag.add()` fifteen times and call it
-  dispatch; one where none applies would never pay for `once_per` or the
-  economy. Both are wrong in the flattering direction.
-- **Every escape valve in the dispatcher is exercised.** Three handlers carry a
-  `once_per` budget (two `TURN`, one `OWN_TURN`), one costs a `REACTION`, and
-  three are gated on the APL — so the ledger lookup, the economy query and the
-  gate call are all in the measurement rather than in a comment about future
-  work. Each of the six is reached by a handler that *applies* at least once,
-  not merely by one that declares the valve: `tests/bench/test_spike.py` checks
-  that through the dispatcher's own counter, because a gate that always answers
-  no buys the cheap half of the valve and none of what it guards.
-
-Sources: DESIGN.md § The spike must be pessimistic, § The uniform handler shape;
-ROADMAP w0i.
+DESIGN.md § The spike must be pessimistic.
 """
 
 from dndsim.core.timeline import Reset
@@ -58,16 +30,12 @@ from dndsim.tools.spike_apl import SpikeState
 
 __all__ = ["ON_HIT_SOURCES", "SOURCES", "Fixture"]
 
-"""The one weapon `w0g2` defines, and the stand-in for a Heavy property."""
-
 
 class Fixture(HookSource):
     """The shared shape: a counter, and no handlers of its own.
 
-    No `@hook` on this class deliberately. `HookSource.__init_subclass__`
-    refuses an override that dropped its decorator, so a base carrying a
-    handler would make every subclass below re-declare it; a base carrying only
-    state costs nothing and keeps the twenty-five declarations independent.
+    Trap: a handler here would have to be re-declared, decorator and all, by
+    every subclass that overrides it (`HookSource.__init_subclass__`).
     """
 
     __slots__ = ("state", "tally")
@@ -82,14 +50,7 @@ class Fixture(HookSource):
 
 
 class HeavyWeaponRider(Fixture):
-    """Applies on every hit with a Heavy weapon: the always-on rider.
-
-    A real Great Weapon Master asks the weapon whether it is Heavy, and until
-    `w1f` widened the `Weapon` protocol it could not: the spike matched the
-    weapon's name instead and said so here, which is the gap that became debt #3
-    and one this fixture found rather than invented. It asks properly now, at
-    the cost the note promised the identity check was standing in for.
-    """
+    """Applies on every hit with a Heavy weapon: the always-on rider."""
 
     @hook("on_hit")
     def rider(self, ctx: HitContext) -> R:
@@ -161,11 +122,7 @@ class FrenzyDice(Fixture):
 
 
 class GrazeMastery(Fixture):
-    """Attaches to `on_hit` and never fires there — its moment is `on_miss`.
-
-    The commonest skip in the project: a handler on the busiest hook whose
-    condition is about a different outcome entirely.
-    """
+    """Attaches to `on_hit` and always skips there."""
 
     @hook("on_hit")
     def graze(self, ctx: HitContext) -> R:
@@ -215,26 +172,14 @@ class SavageAttacker(Fixture):
 
 
 class BloodiedBonus(Fixture):
-    """Applies against a target already below half its hit points — the
-    sometimes-true rider.
-
-    It reads the defender's pool, which is what a real one does and what this
-    fixture could not do until `w1a` widened the `Combatant` protocol: through
-    W0 the condition was asked of the damage bag instead, with a paragraph here
-    saying why. What has not changed is the property that paragraph was
-    defending — the condition is **sometimes true**, because a rider whose
-    condition can never hold is the exact thing the no-op detector exists to
-    find (DESIGN.md § No-op detector), and one hiding in the benchmark would
-    quietly make the measurement cheaper than the thing it stands for.
-    """
+    """Applies against a Bloodied target. Its condition must stay sometimes
+    true (`docs/decisions.md` § w1a)."""
 
     @hook("on_hit")
     def bloodied(self, ctx: HitContext) -> R:
         defender = ctx.defender
-        # Hit points only. A creature is Bloodied while it has half its hit
-        # points or fewer, and temporary hit points are not hit points — they
-        # are a buffer in front of them (XPHB, Rules Glossary). Adding the two
-        # would read a creature at 30 of 100 behind 21 temporary as unhurt.
+        # Hit points only, never temporary ones (XPHB, Rules Glossary ->
+        # Bloodied).
         if defender.hp * 2 > defender.max_hp:
             return R.SKIPPED
         ctx.damage.add(flat=2)
@@ -254,8 +199,7 @@ class CleaveWatch(Fixture):
     """A `LATE` handler, so the phase bands are not all one value."""
 
     # PHASE: a follow-up attack must see the whole of the damage the ordinary
-    # riders contributed, so it is ordered after them by band rather than by a
-    # fragile `order=` number.
+    # riders contributed.
     @hook("on_hit", phase=Phase.LATE)
     def cleave(self, ctx: HitContext) -> R:
         if ctx.outcome is not Outcome.CRITICAL_HIT:
@@ -281,7 +225,7 @@ ON_HIT_SOURCES: tuple[type[Fixture], ...] = (
     RelentlessTally,
     CleaveWatch,
 )
-"""The fifteen ROADMAP w0i asks for on the busiest hook, in attachment order."""
+"""The fifteen on the busiest hook, in attachment order."""
 
 
 # --- the other ten, spread across the rest of the attack sequence -----------
@@ -308,10 +252,8 @@ class FightingStyle(Fixture):
 class VexSpender(Fixture):
     """`on_attack_rolled`: reads the roll and spends a charge on a good one.
 
-    Its condition is about the roll rather than about advantage, so that it
-    applies on roughly half of all attacks: this build grants itself advantage
-    on every swing, and a fixture keyed on `not ctx.had_advantage` would be a
-    handler that can never fire in the one configuration it is measured in.
+    Trap: keyed on the roll, not on advantage, which this build has on every
+    swing.
     """
 
     @hook("on_attack_rolled")
@@ -354,17 +296,8 @@ class RetaliationWatch(Fixture):
 
 
 class UncannyDodge(Fixture):
-    """`on_incoming_damage`: gated on the APL *and* costing a reaction.
-
-    The only handler that pays for two of the dispatcher's escape valves in the
-    same call — economy then gate, the expensive two of the three DESIGN.md
-    § The uniform handler shape says are asked "in ascending order of cost". It
-    is also the only one whose valve ever *denies*: it applies roughly twice
-    every five encounters, and the reaction it spends is then gone until the
-    hero's turn comes back round, so `can_spend()` answers False for the
-    enemies still to swing that round. No `once_per` — the reaction is the
-    budget, which is why the gate is what has to be reachable.
-    """
+    """`on_incoming_damage`: gated on the APL *and* costing a reaction — the
+    only handler whose valve ever denies (`docs/decisions.md` § w0i)."""
 
     @hook("on_incoming_damage", costs=ActionCost.REACTION, gate="rogue.uncanny_dodge")
     def dodge(self, ctx: IncomingDamageContext) -> R:
@@ -416,6 +349,5 @@ SOURCES: tuple[type[Fixture], ...] = (
     BloodiedWatch,
     TurnUpkeep,
 )
-"""All twenty-five, in attachment order — which is the last tiebreak in dispatch
-order (`hooks/dispatch.py`), so this tuple is what makes the spike's ordering
-reproducible from run to run."""
+"""All twenty-five, in attachment order, which is the last tiebreak in dispatch
+order."""
