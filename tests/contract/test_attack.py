@@ -510,8 +510,8 @@ class RecordingTrigger:
 
 
 def test_a_hit_dispatches_every_hook_the_hit_side_touches() -> None:
-    """The nine dispatches of one landed attack, in the order the module's
-    docstring claims: the attacker's five and the defender's four.
+    """The nine dispatches of one landed attack, in declaration-to-resolution
+    order: the attacker's five and the defender's four.
 
     Natural 10 + 4 + 3 = 17 against AC 15 is a hit; 2d6 rolled 5 + 4 = 9 plus
     the +4 Strength modifier is 13, and an unarmoured dummy keeps all of it.
