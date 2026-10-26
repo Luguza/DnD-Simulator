@@ -1,8 +1,6 @@
 """`Condition` — the shape the 15 share, and the two ways a clause can fail.
 
-A condition is an `Effect` (DESIGN.md § Durations: "one API shape for all
-four"), so everything about attaching, expiring and stacking is already
-`creatures/effects.py`'s. What this module adds is the link back to the rules
+A condition is an `Effect`; this module adds the link back to the rules
 vocabulary and the two declarations a clause that cannot be written makes.
 
 Sources: XPHB (2024) Rules Glossary "Condition"; DESIGN.md § Durations;

@@ -1,5 +1,4 @@
-"""Engine-agnostic primitives: randomness, dice, geometry, time, logging.
+"""Engine-agnostic primitives: randomness, dice, geometry, time, logging, errors.
 
-Nothing here knows what a creature or a hook is. Like `rules/`, names are not
-re-exported: one name, one import path.
+Names are not re-exported: one name, one import path (`docs/decisions.md` § w0b).
 """

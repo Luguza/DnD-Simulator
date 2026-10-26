@@ -1,8 +1,5 @@
 """The closed mapping from a condition's name to the class that implements it.
 
-Maps each member of `rules/enums.py`'s `Condition` to the class in this package
-that implements it.
-
 Sources: XPHB (2024) Rules Glossary "Condition"; `docs/decisions.md` § w1h.
 """
 

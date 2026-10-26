@@ -1,8 +1,4 @@
-"""Typer CLI — a thin adapter over `api.py`. Built in W2 (roadmap task w2h).
-
-Reserved now so the `dndsim` entry point resolves to a clear message instead of
-an import error.
-"""
+"""The `dndsim` entry point: `main` reports that the CLI is not implemented."""
 
 import sys
 

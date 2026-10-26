@@ -1,26 +1,8 @@
 """The exceptions the engine raises at its own contract boundaries.
 
-Errors live in one module below everything else because they are the vocabulary
-of DESIGN.md § Failing loudly — layered, and that section is a single story told
-at four moments (import, load, runtime, report). Spreading the types across the
-modules that happen to raise them would make the layering readable only by
-grepping for `class .*Error`.
-
-Everything here is a *contract* violation — the caller did something the design
-says nobody may do — never a modelling outcome. A creature at 0 hit points, a
-spell slot that is not available, an attack that misses: none of those are
-errors, and none of them belong here.
-
-`PhaseError` arrives with `hooks/contexts.py` (w0f) because a context is the
-first object in the project with a lifetime shorter than the run.
-`FeatureContractError` and its two companions arrive with the dispatcher (w0g),
-which is the first code able to observe a handler at all — one at the moment the
-handler's class is created, one at the moment it returns, and one for the
-machinery it declared that nobody wired in.
-
-`EconomyError` arrives with the action economy (w1a), which is the first thing
-in the project that can be *overdrawn*, and covers the second — a resource pool
-(w1b) — on the same argument rather than through a type of its own.
+Each is a contract violation — the caller did something nobody may do — never a
+modelling outcome: a miss, a creature at 0 hit points, a spell slot that is not
+available are not errors. The layering is DESIGN.md § Failing loudly.
 """
 
 __all__ = [
@@ -34,103 +16,45 @@ __all__ = [
 
 
 class DndSimError(Exception):
-    """The base of every error the simulator raises deliberately.
-
-    It exists so that a caller embedding the simulator can distinguish "the
-    simulator refused" from "Python broke", which is the difference between a
-    bug report worth reading and a traceback.
-    """
+    """The base of every error the simulator raises deliberately."""
 
 
 class PhaseError(DndSimError):
-    """A context was mutated at a moment its own lifecycle had passed.
+    """A context was mutated out of its phase band or after its hook closed.
 
-    Two mistakes reach here, and they are the same mistake seen at two scales
-    (DESIGN.md § Runtime invariants):
-
-    - **A mutator called out of band.** `ctx.veto()` belongs to `EARLY` and
-      `FINAL`, the two bands the design gives a handler permission to halt the
-      chain in; a `NORMAL` handler calling it is claiming an authority its phase
-      does not carry.
-    - **A mutator called after the moment.** A context is live only while its
-      hook is dispatching. Because contexts are pooled and reused (DESIGN.md §
-      Levers), a handler that stashes one and writes to it later is not merely
-      writing to a finished event — it is writing to whichever event is using
-      that object now.
-
-    It is not an `AttributeError`: the attribute exists and the mutator is the
-    right one to call, which is precisely why the timing is worth naming
-    separately from "you assigned to a field".
+    `docs/decisions.md` § w0f.
     """
 
 
 class EconomyError(DndSimError):
     """Something was spent that the creature did not have to give.
 
-    One of DESIGN.md § Failing loudly's named runtime invariants — "a second
-    reaction spent before the creature's own turn has begun" — and the general
-    case of it: an Action, a Bonus Action or a foot of movement taken by a
-    creature with none left.
-
-    The other named one is "resource going negative", which is why
-    `creatures/resources.py` raises this rather than a type of its own: an
-    overdrawn pool and an overdrawn economy are one mistake. Note what is *not*
-    here — a spell slot that is merely unavailable is a fight outcome, as the
-    module docstring says.
-
-    It is a contract violation rather than a fight outcome because **asking is
-    free**. `can_spend()` answers before anything is spent, the dispatcher calls
-    it for every costed handler and the turn loop (w2c) filters its offers
-    through it, so reaching here means a caller decided not to ask. Silently
-    clamping instead would hand back the bug M0 found by accident — a creature
-    spending an Action on something that costs a Bonus Action — as a fight that
-    merely reports a disappointing average.
+    Raised for an overdrawn action economy and an overdrawn resource pool
+    (`docs/decisions.md` § w1a, § w1b).
     """
 
 
 class FeatureContractError(DndSimError):
     """A feature broke the contract every handler signs.
 
-    The named case in DESIGN.md § Failing loudly is the return value: a handler
-    is a function from a context to a `HookResult`, and one that returns `None`
-    — the shape of a handler whose author forgot the `return` — would otherwise
-    be indistinguishable from one that deliberately did nothing. That
-    distinction is what the no-op detector and the `once_per` budget both read,
-    so absorbing it would make two other mechanisms quietly wrong rather than
-    loudly broken.
+    The named case is a handler returning anything but a `HookResult`
+    (DESIGN.md § Failing loudly).
     """
 
 
 class FeatureDeclarationError(FeatureContractError, ImportError):
     """A class said something impossible about itself while being created.
 
-    A bad handler signature, an annotation naming the wrong context, an
-    override that forgot to re-declare its hook, a malformed id: all of them are
-    mistakes visible at class-creation time, which is the earliest moment the
-    information exists (DESIGN.md § Fail at the earliest moment). Raised from
-    `HookSource.__init_subclass__`, it therefore surfaces while the feature
-    module is being imported and nothing has run yet.
-
-    It **is** an `ImportError`, and that is the point rather than a flourish
-    (ROADMAP w0g, "bad signature is an `ImportError`"): a batch of ~630 content
-    modules is loaded by a tool that already distinguishes "this module would
-    not import" from "this module misbehaved", and a declaration mistake belongs
-    on the first side of that line. It is also a `FeatureContractError`, because
-    the contract broken is the same one — only noticed earlier.
+    Raised at class creation, so it surfaces while the module is imported. It
+    is an `ImportError` as well as a `FeatureContractError` (`docs/decisions.md`
+    § w0g).
     """
 
 
 class EngineAssemblyError(DndSimError):
     """A handler declared machinery the engine it is running in does not have.
 
-    `costs=ActionCost.REACTION` needs an action economy to spend from and
-    `gate="apl.id"` needs an action list to ask, and both arrive later than the
-    dispatcher does (w1a, w2f). Until they are wired in, a handler that declares
-    one must raise rather than run: a reaction that fires without being paid for
-    and a gate that is treated as open are both silent corruptions of every
-    number the simulation produces, and silence is the one failure this design
-    refuses everywhere else.
-
-    It is not a `FeatureContractError`: the feature declared something
-    legitimate, and it is the assembly around it that is incomplete.
+    For example `costs=` with no action economy or `gate=` with no action list.
+    The feature is not at fault, so this is not a `FeatureContractError`
+    (`docs/decisions.md` § w0g).
     """
