@@ -1,6 +1,6 @@
 # Task queue
 
-Milestone branch: `milestone/m0-w1`
+Milestone branch: `milestone/m1-w2`
 
 The serial work queue. **Exactly one row is `next`.** A task's own pull request
 flips its row to `done` and the row below to `next`, so merging is what advances
@@ -38,12 +38,28 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 10 | w1j — dying, death saves, healing, temp HP | done | #52 |
 | 11 | w1l — docstrings cut back to their own code | done | |
 | 12 | w1k — M0 re-measure 🔒 | done | |
-| — | ⏸ **M0 / W1 milestone review** — before any W2 task | next | |
+| — | ⏸ **M0 / W1 milestone review** — before any W2 task | done | |
+| 13 | w2i — the M0 levers 🔒 | next | |
+| 14 | w2b — `Action` Commands and the stabilise | queued | |
+| 15 | w2c — turn loop, initiative, opportunity attacks 🔒 | queued | |
+| — | ⏸ plan review | queued | |
+| 16 | w2e — the APL compiler 🔒 | queued | |
+| 17 | w2a — content ACL | queued | |
+| 18 | w2d — `TargetDummy` | queued | |
+| — | ⏸ plan review | queued | |
+| 19 | w2f — build schema and `Character` | queued | |
+| 20 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |
+| 21 | w2h — the CLI | queued | |
+| — | ⏸ **M1 / W2 milestone review** | queued | |
 
 Order within W1 is the critical path first (`w1e → w1f`, the two 🔒 tasks
 everything downstream trusts), then the three files W0 left as first cuts, then
 the leaves. `w1k` depends on `w1a`–`w1g`, `w1i` and `w1j`, which is why it is
 last: every row that prices itself has to have landed before the totalling.
 
-W2 rows are added by the M0 / W1 milestone review, not before it — the review
-is what decides whether they are still the right rows.
+Order within W2 is `w2i` first — the levers `w1k`'s shortfall names, so no W2
+row prices itself against a baseline already known to be under budget — then
+the critical path (`w2b → w2c → w2e`, the turn loop and the APL everything
+after them runs on), then the leaves, with `w2g` and `w2h` last because they
+depend on nearly everything else. `w2g` carries the M1 golden
+(`docs/decisions.md` § The M0 / W1 milestone review).

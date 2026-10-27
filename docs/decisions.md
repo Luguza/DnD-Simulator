@@ -3316,6 +3316,8 @@ reversed the order found ±3% of pure harness.
 - **No ability checks.** `on_ability_check` still has no caller. Nothing before
   `w2b`'s actions rolls one — a combat simulator rolls no skill check — so a
   caller invented here would be a third hook fired by nobody rather than a debt.
+  Overturned on both counts by § The W1 late-wave review: stabilising is a
+  skill check, and `w1j` rolls it.
 - **Nothing rolls the repeat save.** The enum is declared and `w2c` owns the
   boundaries that call it (debt #35, now half discharged).
 - **Nothing was added to `hooks/contexts.py` but two sentences.** The seeding the
@@ -4189,3 +4191,122 @@ branch's pre-task rate back, ~0.96 of W0's, which projects to ~30.2k.
 
 Sources: ROADMAP `w1k`, § Sequencing principles 10; DESIGN.md § Performance,
 § Biggest risks; § w0i, § w1b, § w1c, § w1g, § w1j, § The W1 mid-wave review.
+
+## The M0 / W1 milestone review
+
+`w1j`, `w1l` and `w1k` landed since the late-wave gate, and W1 with them. The
+model is § The W0 plan review. **One measurement moved a number the plan
+assumes, and it is the one M0 is about**: `w1k` measured the budget missed by
+about a quarter (§ w1k). Everything else this gate changed follows from that
+or from the seven debt rows the earlier gates filed against it.
+
+### The shortfall: levers first, budget untouched, W2 not held
+
+`w1k` accepted the shortfall without revising the budget and filed three costs
+against this review (#53–#55). What it left open is whether W2 waits. It does
+not wait on a number; it waits on one task. **`w2i` runs first** and takes the
+engine-side levers § w1k names — the slot table, the `refresh()` that rebuilds
+what it holds, the ~26 µs apply and remove, and `TimeKey` comparison through
+`Enum.value` — which depend on nothing W2 builds. Every W2 row that prices itself would
+otherwise price against a baseline already known to be under budget, and the
+levers are cheap and come with a measured upper bound.
+
+Holding W2 until the rate is back over 30k was rejected: removing the three
+costs *entirely* gives back about 0.96 of W0's rate (§ w1k); `w2i`'s levers
+only shrink them, and the main part of #55, the sweep count, is `w2c`'s and
+could never land under a hold — so a hold on the number might never clear, and
+only the human can lift it. Changing the spike's configuration — one smite a turn, as
+XPHB Divine Smite's Bonus Action allows, or dropping the `raging()` scan — was
+rejected for `w2i` too: it makes the hostile configuration do less work, which
+revises the measurement rather than the engine. So #53 and #54 are split the
+way #55 is: `w2i` retires their engine halves, and their configuration halves
+are owned by the M1 / W2 milestone review, which decides them with `w2i`'s
+re-measure in hand and records the choice in `docs/questions.md`. `w2i`
+measures against the same W0 commit `w1k` did, `d71e619`, because `main` stops
+being W0 when this milestone merges. `docs/questions.md` #11 records the choice.
+
+**`w2c` and `w2e` no longer compare against "`w0i`'s number".** Both rows asked
+the benchmark to come in at or under it, which was a regression test while the
+rate cleared the budget and is now a test neither row can pass or fail by its
+own work. Each prices itself against the branch before it, with a witness, as
+every W1 task did (sequencing principle 10). The absolute number is still
+carried, by `w2i`'s re-measure and by `docs/questions.md` #10.
+
+### The four rows filed against this gate
+
+- **#31 and #43 move to `w3f`, via `w3e`.** Both ask what an effect remembers
+  when it is applied again — the incumbent a refresh replaces, the second source
+  of a condition — and both are choices about the effect model rather than
+  patches to it. Nothing in W1 or W2 needs the answer, except `w1j`'s dying
+  Unconscious, which met #43's shape and stepped round it by being its own class
+  (§ w1j, `Downed`) — a workaround for one engine-applied condition and not for
+  authored ones. The paper pass is the first moment the project can see whether
+  any feature needs either answer, and `w3f` is the last moment it is cheap to
+  give one, so that is the owner.
+- **#33 is retired by a ruling: v1 is an open field.** No wave plans terrain,
+  and § w1d built line of sight against an `opaque` set nothing fills. The ruling
+  is in DESIGN.md § Settled decisions (Positioning). The parameter stays — it
+  costs nothing on the path and is where a cover rule plugs in — because cutting
+  landed code is not a gate's edit (`docs/questions.md` #12).
+- **#52's three wording fixes are made**: sequencing principle 10 uses § w1g's
+  "worth about 3%"; § w1g's "No ability checks" bullet points at the late-wave
+  review that overturned it; #49 says "as an action".
+
+### M1 had no owner for its golden, and a Fighter nothing builds
+
+M1 is "a level-5 Fighter with a greatsword kills a dummy, golden-verified". No
+W2 row authors a Fighter feature, which is right — features are authored only
+after W3's freeze — and no W2 row produces the golden, which is a gap. The M1
+blockquote now says the Fighter is featureless and carries an explicit attack
+`apl:` — the default `best_scored` entry offers nothing until `w8b`, so a build
+without one never swings. `w2g`'s done-when carries the golden: it is the first
+row with a build, a dummy and an encounter to run together. The golden runs at
+the encounter level on `ScriptedRng`, below the API, which seeds `MersenneRng`
+from a seed list and takes no generator; `w3a`'s harness comes after M1
+(`docs/questions.md` #13).
+
+### What this gate did not change
+
+- **No DESIGN.md claim was contradicted by what landed**, except § Performance,
+  which still described a spent margin rather than a measured miss and now cites
+  § w1k.
+- **No W8 seam is uncut.** The three W2 signatures are still in `w2e` and `w2g`,
+  and the `Perturbation` vocabulary is still `w3f`'s.
+- **`w2a`–`w2h` are otherwise as written.** Each was re-read against its
+  dependencies and the debt rows it owns, and none of them names a file the
+  landed code has since moved.
+
+### Retro
+
+Three PRs, all merged: `w1j` (#52) after four non-clean verdicts, a hold the
+human cleared and a clean fifth; `w1l` (#53) and `w1k` (#54) after one fix round
+each. No red CI run on any of them.
+
+- **`w1j` was held at the round cap on a defect an open debt row described.**
+  The CONFIRMED finding — the dying Unconscious merging into one another source
+  gave — is #43's shape exactly, in `creatures/effects.py`'s `Stacking`, and
+  CLAUDE.md's "check it for the file you are about to touch" did not make the
+  task look. `/next-task` step 2 now greps the register for every file in the
+  Produces cell (`.claude/commands/next-task.md`), and CLAUDE.md names the
+  incident beside the instruction.
+- **`w1k`'s method finding is now sequencing principle 10's**: price a cost by
+  removing it from the spike, because a tight-loop price came in 2.5× short.
+  § The W1 late-wave review moved `w1g`'s arm-order finding into the principle
+  for the same reason — a method that lives in one record reaches the next task
+  by luck.
+- **CLAUDE.md § Project state was cut from about 230 lines to about 60.** It had
+  grown a paragraph per task, each restating its decision record, in the file
+  every agent loads. It now holds the state, the M0 position, and one line per
+  ruling with the section that argues it. The hot-path list gained
+  `core/timeline.py`, `creatures/effects.py` and `creatures/resources.py`, which
+  `w1k` showed are on it.
+- **`/next-task`'s file sizes were stale** by a factor of up to eight (ROADMAP
+  "17KB" against 139KB); the line now says only that each is over 100KB.
+- **Not proposed:** a check that a spike `reset()` restores every new piece of
+  creature state, for `w1j`'s second CONFIRMED finding. It has happened once,
+  in a fixture, and a test would pin the fixture rather than the engine.
+
+Sources: § w1j, § w1l, § w1k, § The W1 late-wave review; `ROADMAP.md`
+§ Sequencing principles 10, § The W0 debt register rows #31, #33, #43, #49,
+#52–#55, W2, M1; DESIGN.md § Settled decisions, § Performance;
+`docs/questions.md` #10–#14; PRs #52, #53, #54.

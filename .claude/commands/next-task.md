@@ -6,7 +6,7 @@ Work the queue. One task, one branch, one PR, reviewed until clean.
 `docs/workflow.md` is the procedure; this is the checklist.
 
 **Read only what you need.** `DESIGN.md`, `ROADMAP.md` and `docs/decisions.md`
-are 82KB, 17KB and 72KB — grep them for the claim you need, never read them end
+are each well over 100KB — grep them for the claim you need, never read them end
 to end. Budget your reading to: the queue row, the ROADMAP row for your id, the
 `docs/decisions.md` section CLAUDE.md's table names for the files you will
 touch, and the files themselves.
@@ -33,7 +33,10 @@ row against the rest of the design for gaps, contradictions and unstated
 assumptions. Read the Produces cell against the code the done-when has to
 change: a file the done-when needs and the cell omits is a gap, and it is the
 one this check has found most often (`docs/decisions.md` § The W1 late-wave
-review). If you find a real one, do **not** guess: open a spec PR per
+review). Then grep `ROADMAP.md` § The W0 debt register for every file in that
+cell: an open row in a file you are changing is a defect your change can meet,
+and `w1j` was held at the round cap on one (`docs/decisions.md` § The M0 / W1
+milestone review). If you find a real one, do **not** guess: open a spec PR per
 `docs/workflow.md` § When the spec is wrong, leave the row at `next`, and take
 it through steps 5 and 6 like a task PR.
 

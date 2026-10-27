@@ -55,7 +55,7 @@ settled decisions and not implementation detail.
 |---|---|
 | Language | Python 3.11+, OOP, library-first with a CLI adapter |
 | Ruleset | XPHB (2024), **levels 1–12** |
-| Positioning | Square grid, 5 ft cells, real distance, opportunity attacks, true AoE templates |
+| Positioning | Square grid, 5 ft cells, real distance, opportunity attacks, true AoE templates. **An open field**: no terrain, walls or cover in v1, so line of sight is implemented and nothing blocks it (`docs/decisions.md` § The M0 / W1 milestone review) |
 | Movement | **An APL decision, not an engine heuristic** — a `move:` clause, same grammar as `if:` |
 | Targeting | **An APL decision** — a `target:` selector expression per entry |
 | Policy | SimC-style Action Priority List — the *language*; see the next row for where the list comes from |
@@ -2104,11 +2104,13 @@ seconds across eight.
 > per-step measurements and the two levers taken (a compiled `reopen()`, and
 > MT19937 words in place of PCG32) are in `docs/decisions.md` § w0i.
 >
-> **The margin that revision bought is spent.** `w1f`'s completed attack
-> pipeline cost 5.5% of the rate against a 5% margin, so the budget is now the
-> number to hold rather than the number being cleared. It is not revised again
-> here and, per § Biggest risks, is not to be revised by anyone who cannot
-> attribute the shortfall.
+> **It is missed at the end of W1, and not revised.** `w1k` wired the real
+> effects, pools and sweeps into the spike and measured it about a quarter under
+> the budget, attributed to three costs with a lever each (`docs/decisions.md`
+> § w1k). The budget is the number to hold, not the number being cleared: per
+> § Biggest risks it is not revised by anyone who cannot attribute the
+> shortfall, and with the shortfall attributed, whether it comes down is the
+> human's (`docs/questions.md` #10). `w2i` takes the levers first.
 
 ### The spike must be pessimistic, or M0 proves nothing
 
@@ -2553,7 +2555,7 @@ Great Weapon Master stops being worth it, exactly as a WoW sim would.
 ## Build order
 
 Nine waves, `W0`–`W8`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
-78 tasks, their dependency edges, delegation modes and the task-packet template.
+79 tasks, their dependency edges, delegation modes and the task-packet template.
 Its § The W0 debt register is the ledger of what W0 left for later waves to
 retire, and which task retires each.
 
@@ -2719,7 +2721,7 @@ more dangerous failure than a check that fails.
    with a confidence column, human triage of the low-confidence and gap rows
    only, and the additive-vs-structural split that makes the hook-gap budget
    honest.
-6. **Review capacity, not agent throughput, is the constraint.** Roughly 175
+6. **Review capacity, not agent throughput, is the constraint.** Roughly 176
    nominal agent-days funnel through one person; every parallelism gain lands on
    the same desk. *Mitigated by:* designing artefacts to be reviewable in minutes
    — disposition tables, quoted citations, arithmetic in goldens, the file-size
