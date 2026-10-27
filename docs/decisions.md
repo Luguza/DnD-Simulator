@@ -4212,9 +4212,10 @@ otherwise price against a baseline already known to be under budget, and the
 levers are cheap and come with a measured upper bound.
 
 Holding W2 until the rate is back over 30k was rejected: removing the three
-costs *entirely* gives back about 0.96 of W0's rate (§ w1k), and the levers can
-only shrink two of them, so a hold on the number might never clear, and only the
-human can lift it. Changing the spike's configuration — one smite a turn, as
+costs *entirely* gives back about 0.96 of W0's rate (§ w1k); `w2i`'s levers
+only shrink them, and the main part of #55, the sweep count, is `w2c`'s and
+could never land under a hold — so a hold on the number might never clear, and
+only the human can lift it. Changing the spike's configuration — one smite a turn, as
 XPHB Divine Smite's Bonus Action allows, or dropping the `raging()` scan — was
 rejected for `w2i` too: it makes the hostile configuration do less work, which
 revises the measurement rather than the engine. So #53 and #54 are split the
@@ -4256,10 +4257,13 @@ carried, by `w2i`'s re-measure and by `docs/questions.md` #10.
 M1 is "a level-5 Fighter with a greatsword kills a dummy, golden-verified". No
 W2 row authors a Fighter feature, which is right — features are authored only
 after W3's freeze — and no W2 row produces the golden, which is a gap. The M1
-blockquote now says the Fighter is featureless, and `w2g`'s done-when carries
-the golden: it is the first row that can run a build against a dummy through
-the API, and it writes on `ScriptedRng` directly because `w3a`'s harness comes
-after M1 (`docs/questions.md` #13).
+blockquote now says the Fighter is featureless and carries an explicit attack
+`apl:` — the default `best_scored` entry offers nothing until `w8b`, so a build
+without one never swings. `w2g`'s done-when carries the golden: it is the first
+row with a build, a dummy and an encounter to run together. The golden runs at
+the encounter level on `ScriptedRng`, below the API, which seeds `MersenneRng`
+from a seed list and takes no generator; `w3a`'s harness comes after M1
+(`docs/questions.md` #13).
 
 ### What this gate did not change
 

@@ -2721,7 +2721,7 @@ more dangerous failure than a check that fails.
    with a confidence column, human triage of the low-confidence and gap rows
    only, and the additive-vs-structural split that makes the hook-gap budget
    honest.
-6. **Review capacity, not agent throughput, is the constraint.** Roughly 175
+6. **Review capacity, not agent throughput, is the constraint.** Roughly 176
    nominal agent-days funnel through one person; every parallelism gain lands on
    the same desk. *Mitigated by:* designing artefacts to be reviewable in minutes
    — disposition tables, quoted citations, arithmetic in goldens, the file-size
