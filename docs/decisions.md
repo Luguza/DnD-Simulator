@@ -20,7 +20,7 @@ re-litigated by the next agent through the area.
 | `hooks/decorator.py`, `hooks/source.py`, `hooks/dispatch.py` | [w0g](#w0g--dispatch) |
 | `creatures/`, `engine/damage.py`, `core/geometry.py` | [w0g2](#w0g2--spike-substrate) |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | [w0h](#w0h--walking-skeleton) |
-| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | [w0i](#w0i--the-pessimistic-performance-spike-m0) |
+| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | [w0i](#w0i--the-pessimistic-performance-spike-m0), [w1k](#w1k--the-m0-re-measure-and-the-shortfall-it-attributes) |
 | `ROADMAP.md`, `DESIGN.md`, planning a wave | [the W0 plan review](#the-w0-plan-review--what-m0-changed-in-the-plan) |
 | `.claude/skills/`, `CODING_STANDARDS.md`, the review loop | [the PR, review and retro skills](#the-pr-review-and-retro-skills) |
 
@@ -4049,3 +4049,141 @@ files quote word for word, such as `Context`'s drain sentence and the snapshot
 rule. Error-message strings that say "see the module docstring" are values, not
 prose, and were left; `engine/triggers.py`'s module docstring still names the
 refusal they point at.
+
+## w1k — the M0 re-measure, and the shortfall it attributes
+
+**Verdict: M0 is missed on measurement, by about a quarter, and the budget is
+not revised.** With the real W1 substrate wired into the spike, the hostile
+configuration runs at **0.703 of the W0 tree's rate** on one container — which,
+carried onto the ~31.5k `w0i` measured on its own machine, is **~22.1k against a
+30k budget**. The shortfall is attributed below to three costs, each with its
+own lever and an owner, and the question a second revision would answer is put
+to the human (`docs/questions.md` #10) rather than taken by the loop.
+
+### What was wired, and what was left a stand-in
+
+Debt #15 is retired. `tools/spike.py` now:
+
+- gives the hero a real `rage` pool (DESIGN.md § Resources' shape, five uses)
+  and the nine full-caster slot pools of a level-12 caster;
+- takes the APL's `rage` by spending a use and applying `SpikeRage`, a real
+  `Effect` lasting `until_end_of_next_turn_of` the hero and refreshed from
+  `on_declare_attack` — one of the three hooks DESIGN.md § Durations names;
+- answers `self.raging` by asking the store and `self.slots.highest` with
+  `spells.highest()`, and has Divine Smite spend `spells.spend(1,
+  allow_upcast=True)` each time it lands;
+- calls **both sweeps for every creature's store at every turn**:
+  `expire_before(start)` before the turn and `expire_after(end)` after it, four
+  turns a round — 32 calls a round. That count is the naive correct one (an
+  effect anchored on any seat can be held by any creature) and the upper bound;
+  the real one is `w2c`'s, which is why the per-call price is recorded beside it.
+- clears every store and recovers the pools on `reset()`, inside the timed
+  region, as it already reset hit points.
+
+**The slots are sized so the fight does not change.** Sixteen slots at level 12
+against at most fifteen hero swings, spent lowest first, keep `highest()` at 6
+for the whole encounter, so the smite gate answers exactly as the stand-in's
+constant 5 did. The witness confirms it: every encounter's closing hit points
+and the generator's next draw are identical before and after, so the delta below
+is the substrate's cost and not a different fight. Two consequences of that
+choice, both reachable only by changing the configuration: a critical hit
+smites whatever `highest()` says, so a hero out of slots would raise
+`EconomyError` from `spend()`; and the smite lands on every hit the gate allows,
+up to three a turn, where XPHB Divine Smite is cast as a Bonus Action and so
+lands at most once — the fixture spends about three times the rules' rate. That
+is the pessimism `w0i` chose for the rider, now paid in pool arithmetic too.
+
+**What stays a stand-in**: `SpikeState.marked` (Hunter's Mark's target, by
+name), and `raging()` itself — a store scan that the State pattern would not
+need, because a real Rage carries its rage-dependent handlers and nothing asks
+whether it is up (DESIGN.md § `Effect` and `Condition`). Four fixtures ask it
+anyway, because `w0i`'s twenty-five sources are the configuration and moving two
+of them onto the effect changes the attached count. A store's clock is not
+reset by `reset()`; the first sweep of the next encounter moves it back to round
+1 before anything is applied, so nothing resolves against a stale clock.
+
+### The witness
+
+Over the fixed 200-encounter profiled run at seed 0, both arms run the same way
+from sibling worktrees: **1,503,280 calls before, 2,035,086 after** (+35%), the
+same fights. The per-function diff names every source: `SpellSlots._slots` and
+the generators and `current` reads it drives (~150k, from `highest()` asked on
+2,604 non-critical hits and `spend()` on 2,876 smites); the 32,000 `_sweep`
+calls and the two public methods in front of them; `TimeKey._ordinal` and the
+Python-level `Enum.value` it reads, on the 7,800 sweeps that find Rage held; the
+9,617 `raging()` scans; 3,000 refreshes; 3,475 `ResourceSpentContext` dispatches;
+and the dispatch-table re-sorts that 200 attaches and 199 detaches cost.
+
+### The rate, and the attribution
+
+Twelve rotated triples on one container, all three arms in sibling worktrees
+(§ w1g's arm order and § w1j's checkout both controlled):
+
+| Arm | Median | Ratio to W0, median (span) |
+|---|---|---|
+| `main` — W0 complete | 29,078 | — |
+| the milestone branch before this task | 27,955 | 0.959 (0.885–1.029) |
+| this task | 20,168 | **0.703** (0.634–0.787) |
+
+This task against the branch before it is **0.730** (0.641–0.836), and eight
+rotated rounds of five arms — the task with each of the three costs removed in
+turn — attribute it, as microseconds per resolution taken back by the removal:
+
+| Removed | µs/resolution (span) | Per-call prices × counts |
+|---|---|---|
+| the slot pools (gate reads 6, smite spends nothing) | **6.5** (2.5–10.6) | 2.5 |
+| Rage as an `Effect` (a flag again; empty sweeps still run) | **7.1** (3.0–10.0) | 3.0 |
+| the sweeps (Rage held but never swept) | **4.1** (−2.3–11.7) | 1.4 |
+| all of it | 14.6 | 5.8 |
+
+The per-call prices, median of seven runs of 100k on the same container:
+`expire_before`/`expire_after` on an empty store 0.09 µs, on a store holding an
+effect not yet due 0.90/0.66 µs; `raging()` 0.29–0.39 µs; `Effect.refresh()`
+0.94 µs; `spells.highest()` 1.81 µs; `spells.spend(1, allow_upcast=True)` 3.56 µs;
+building, applying and removing a `SpikeRage` 26.2 µs; `recover(LONG_REST)` over
+ten pools 2.06 µs.
+
+**The cross-check disagrees, and uniformly.** The row asked for the
+multiplication to be checked against the re-run because a disagreement would
+catch a stand-in wired wrong. The multiplication explains 5.8 µs of 14.6, but it
+falls short by the same factor of about 2.5 on each of the three costs, which a
+miswired component would not do: it would disagree on one row. Disabling the
+garbage collector moves neither arm, so it is not allocation. What it says is
+that a per-operation price taken in a tight loop underprices the same operation
+inside the encounter by about 2.5× on this container — `w1b`'s method, which
+this row was told to multiply, is a lower bound. **Price a cost by removing it
+from the spike, not by timing it alone**; the ablation is what attributes here.
+
+### The decision
+
+The row allows the shortfall to be accepted or revised away. **It is accepted
+and not revised**: the budget stays at 30k and `test_the_spike_meets_the_m0_budget`
+now fails when asked, which is the true state. Lowering the budget a second time
+is the edit `w0i` said must not be made quietly and DESIGN.md § Biggest risks
+names as the failure mode, and a loop with no human in it is not where it gets
+made; `docs/questions.md` #10 puts it to the human with the numbers.
+
+What makes the acceptance an action rather than a shrug is that each cost has a
+lever, a measured upper bound and an owner — debt #53, #54 and #55, all owned by
+the M0 / W1 milestone review, which writes the W2 rows they would land in:
+
+- **#53, the slot queries** (~6.5 µs). `Resources.spells` builds a facade per
+  access and `SpellSlots` walks every pool through a generator on every
+  question; a slot table built once in `add()` is the engine-side lever, and the
+  fixture's three-smites-a-turn is the configuration-side one. Neither was taken
+  here: the first is `creatures/resources.py`, outside this row's files, and the
+  second makes the spike do less work, which needs its own pricing.
+- **#54, Rage as an `Effect`** (~7.1 µs). Per encounter, one apply and one
+  remove at ~26 µs; per swing, a refresh building a `TimeKey` and an `Expiry`;
+  per question, a store scan. The scan is this spike's artifact; the refresh and
+  the attach are what every duration-carrying feature in W4 will pay.
+- **#55, the sweep count** (~4.1 µs). 32 calls a round at 0.09 µs empty and up to
+  0.9 µs holding something, of which `TimeKey` comparison through `Enum.value` is
+  a visible part. `w2c` owns the multiplier and can sweep only the stores that
+  hold something.
+
+Taken together they are larger than the gap: removing all three gives the
+branch's pre-task rate back, ~0.96 of W0's, which projects to ~30.2k.
+
+Sources: ROADMAP `w1k`, § Sequencing principles 10; DESIGN.md § Performance,
+§ Biggest risks; § w0i, § w1b, § w1c, § w1g, § w1j, § The W1 mid-wave review.

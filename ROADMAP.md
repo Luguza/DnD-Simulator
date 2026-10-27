@@ -251,8 +251,8 @@ afterwards.
 
 W0 is complete and M0 was met on measurement, so this plan has been re-read
 against what the wave actually taught rather than against what it assumed. (The
-margin behind that measurement is since spent, and the budget is now projected
-to be missed — § What the W1 critical-path gate changed.) Most of what it taught
+margin behind that measurement is since spent, and `w1k` measured the budget
+missed by about a quarter — `docs/decisions.md` § w1k.) Most of what it taught
 is already in `docs/decisions.md`; what follows is the part that changes *the
 plan*.
 
@@ -268,8 +268,9 @@ discharging the declared half of that one, and `w1h` has opened twelve — the
 clauses of the fifteen conditions that cannot be written with the API that
 exists — and `w1i` has opened one; the late-wave gate then found a second
 hook with no caller and no owner (#51) and left one row at its round cap (#52),
-and `w1j` has retired two (#8, #51) and narrowed a third (#44), so the table
-stands at forty-one.
+and `w1j` has retired two (#8, #51) and narrowed a third (#44), and `w1k` has
+retired one (#15) and opened three (#53–#55), so the table stands at
+forty-three.
 Every one of them was the right thing to write — a hostile spike needs real
 machinery now, not finished machinery later — and every one of them is invisible
 six months from now, when the file around it has grown and the paragraph
@@ -283,8 +284,9 @@ an agent will actually look. This table is the index, not the specification.
 do not move — they are cited from code and from `docs/decisions.md`, and a
 register that renumbered itself would make every citation say something else.
 Retired so far: **#1, #2, #4 and #10 by `w1a`**, **#7 by `w1e`**, **#3 and
-#6 by `w1f`**, **#5 by `w1c`**, **#9 by `w1d`** and **#8 and #51 by `w1j`**
-(`docs/decisions.md` § w1a, § w1e, § w1f, § w1c, § w1d, § w1j).
+#6 by `w1f`**, **#5 by `w1c`**, **#9 by `w1d`**, **#8 and #51 by `w1j`** and
+**#15 by `w1k`** (`docs/decisions.md` § w1a, § w1e, § w1f, § w1c, § w1d,
+§ w1j, § w1k).
 
 | # | The stand-in or debt | Where | Retired by | What it costs if nobody does |
 |---|---|---|---|---|
@@ -292,7 +294,6 @@ Retired so far: **#1, #2, #4 and #10 by `w1a`**, **#7 by `w1e`**, **#3 and
 | 12 | `Dispatcher.bind()` is never called | `hooks/dispatch.py` | `w2f` | every gated handler raises `EngineAssemblyError` at the first gate |
 | 13 | `GREATSWORD` is hardcoded | `creatures/stats.py` | `w2a` | a second weapon definition beside the imported 38 |
 | 14 | The APL is hand-compiled callables | `tools/spike_apl.py` | `w2e` | the budget is defended by a compiler that does not exist yet (already in `w2e`'s row — `w0i` set this precedent) |
-| 15 | Effects and resources are fixture stand-ins in the spike | `tools/spike_apl.py` | **`w1k`** | the budget never sees the per-round cost `w0i` says it understates |
 | 16 | No multi-round `Duration` anchor | `core/timeline.py` | `w5a` | nothing lasting a minute is expressible — a `core/` change made after the registry freeze, which is why it is named now |
 | 17 | No healer-side heal hook | `hooks/definitions.py` | `w3f`, via `w3e` | `on_heal` is `TARGET` by design, so Disciple of Life and every heal-boosting feature has nowhere to attach |
 | 18 | `_offer()` raises on a queued effect | `engine/triggers.py` | `w2c` | every effect a reaction applies is refused — 2024 Sentinel's speed-to-zero above all; the raise is the reminder, and it is the same debt as #5 one hook along |
@@ -329,6 +330,9 @@ Retired so far: **#1, #2, #4 and #10 by `w1a`**, **#7 by `w1e`**, **#3 and
 | 49 | A condition already held is not suppressed by an immunity that arrives after it | `creatures/effects.py` (the suppression), read by `conditions/` | `w3f`, via `w3e` | Petrified's "You have Immunity to the Poisoned condition" is written as a veto on Poisoned's arrival, so a creature Poisoned *before* it is Petrified stays Poisoned and keeps its Disadvantage — where XPHB, Rules Glossary "Immunity" says an immune condition doesn't affect you. What is missing is a way to switch a held effect's handlers off while the immunity lasts and back on after it (`docs/decisions.md` § w1h says why removing it is not the fix). Exact while nothing applies a condition deliberately (#42). Found by the review of `w1h`'s PR (`docs/decisions.md` § w1h) |
 | 50 | Only the attack pipeline writes to the event log | `core/log.py`, written from `engine/attack.py`; every other writer is unwired | `w2c` | DESIGN.md § Resources says every spend is appended to the log and the resource-spend report is a group-by over it, and nothing but `resolve_attack()` writes a record: not `Resources`, not `engine/saves.py`, not `EffectStore`, not `resolve_damage()` called outside an attack, and no turn or round boundary, so a reporter cannot yet tell one round from the next. `w2c` builds the encounter and is the first thing that holds a log for a whole fight, which is where every writer gets it (`docs/decisions.md` § w1i) |
 | 52 | Three agreed wording fixes left at #51's round cap | `ROADMAP.md` § Sequencing principles 10, `docs/decisions.md` § w1g | **the M0 / W1 milestone review** | recorded rather than fixed because the fourth verdict is the cap (`docs/workflow.md` § The review loop); neither is contested. Principle 10 says the arm order "moved its median by about 3%", where § w1g's two medians differ by 4.5 points and § w1g's own phrase is "worth about 3%" — the sentence should use § w1g's phrase. And § w1g's "No ability checks" bullet still says nothing before `w2b` rolls one, which § The W1 late-wave review overturned (#51) — it wants a one-line pointer there. And #49 says it is "exact while nothing applies a condition deliberately (#42)", which `w1j`'s `Unconscious` now does — it should say "as an action", as #42 does. Harmless to `w1j` meanwhile: its row names the Medicine check and #51, and a row outranks the record it cites |
+| 53 | `SpellSlots` walks every pool on every question | `creatures/resources.py`, `tools/spike_features.py` | **the M0 / W1 milestone review** | ~6.5 µs of a ~49 µs resolution in the spike (`docs/decisions.md` § w1k): `Resources.spells` builds a facade per access and `highest()`/`spend()` walk all pools through a generator. A slot table built once in `add()` is the engine lever; the fixture smiting up to three times a turn, where XPHB Divine Smite is a Bonus Action, is the configuration one and needs its own pricing |
+| 54 | Rage as an `Effect` costs ~7 µs a resolution | `creatures/effects.py`, `core/timeline.py`, `tools/spike_features.py` | **the M0 / W1 milestone review** | an apply and a remove at ~26 µs an encounter, a `refresh()` per swing building a `TimeKey` and an `Expiry`, and the spike's `raging()` store scan — the last an artifact of the stand-in it replaced, the first two what every duration-carrying W4 feature pays (§ w1k) |
+| 55 | Every store is swept at every turn boundary | `tools/spike.py`, `engine/turn.py` when it exists | `w2c`, priced by the M0 / W1 milestone review | ~4.1 µs a resolution at 32 sweep calls a round, the naive correct count; `w2c` owns the multiplier and can sweep only stores that hold something. `TimeKey` comparison reads `Enum.value`, a Python-level property, on every non-empty sweep (§ w1k) |
 
 ### What the W1 critical-path gate changed
 

@@ -17,13 +17,12 @@ damage, attack and saving-throw sequences and the movement observer).
 
 Work is at wave **W1**; **W0 is complete and M0 was met on measurement**:
 `w0a`–`w0i` are done and the pessimistic performance spike measured **~31.5k
-attack resolutions/sec/core** against a budget of 30k. **That margin is spent
-and the budget is now projected to be missed** — `w1f`'s completed attack
-pipeline cost 5.5% of the rate, which puts the hostile configuration at ~29.8k,
-under the ≥30k floor. It is a projection across machines rather than a
-measurement; `w1k` is the re-measure that settles it, and nothing revises the
-budget on a projection (DESIGN.md § Performance, `docs/decisions.md`
-§ The W1 critical-path review).
+attack resolutions/sec/core** against a budget of 30k. **`w1k` then measured
+the budget missed**: with the real effects, pools and sweeps wired in, the
+spike runs at 0.70 of the W0 tree's rate, ~22k projected onto `w0i`'s machine.
+The shortfall is attributed to three costs (debt #53–#55), the budget is **not**
+revised, and whether to revise it is `docs/questions.md` #10 — read
+`docs/decisions.md` § w1k before pricing anything against it.
 The gate fired on the way — the spike came in at 17k
 against the 50k the design had assumed, a revision pass across the hot path
 took it to ~31.5k, and the budget was revised to 30k because 50k turned out to
@@ -427,9 +426,9 @@ there is local to a module.
 | `conditions/`, a condition, a declared gap | § w1h |
 | `creatures/resources.py`, pools, slots, `transaction()` | § w1b |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
-| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |
+| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k |
 | `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review |
-| the performance budget, pricing a change | § w0i, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review |
+| the performance budget, pricing a change | § w0i, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § w1k |
 | `engine/triggers.py`, `Dispatcher.responsive()` | § w0g3 |
 | `core/log.py`, the event log, its records and levels | § w1i |
 | `engine/dying.py`, `engine/healing.py`, `engine/d20.py`, `is_alive` | § w1j |

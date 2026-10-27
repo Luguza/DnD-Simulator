@@ -19,6 +19,7 @@ from dndsim.core.geometry import Cell, distance_ft, in_reach
 from dndsim.creatures.creature import Creature
 from dndsim.hooks.contexts import Context
 from dndsim.hooks.source import HookSource
+from dndsim.tools.spike_features import raging
 
 __all__ = [
     "AlliesProxy",
@@ -27,7 +28,6 @@ __all__ = [
     "Entry",
     "Namespace",
     "SelfProxy",
-    "SpikeState",
     "TargetProxy",
     "TriggerProxy",
     "first",
@@ -51,17 +51,12 @@ def _live(reference: "ReferenceType[Creature]") -> Creature:
 
 
 class SelfProxy:
-    """The `self.*` root: the acting creature, and the state features hold.
+    """The `self.*` root: the acting creature, its effects and its pools."""
 
-    `raging` and `slots_highest` are answered from `SpikeState`, a stand-in
-    (debt #15).
-    """
+    __slots__ = ("_ref",)
 
-    __slots__ = ("_ref", "_state")
-
-    def __init__(self, creature: Creature, state: "SpikeState") -> None:
+    def __init__(self, creature: Creature) -> None:
         self._ref: ReferenceType[Creature] = ref(creature)
-        self._state = state
 
     @property
     def hp(self) -> int:
@@ -82,13 +77,13 @@ class SelfProxy:
 
     @property
     def raging(self) -> bool:
-        return self._state.raging
+        return raging(_live(self._ref))
 
     @property
     def slots_highest(self) -> int:
         """`self.slots.highest`, resolved to one attribute rather than a
         sub-proxy."""
-        return self._state.slots_highest
+        return _live(self._ref).resources.spells.highest()
 
 
 class TargetProxy:
@@ -199,18 +194,6 @@ class Namespace:
         self.allies = allies
         self.target = TargetProxy()
         self.trigger = TriggerProxy()
-
-
-class SpikeState:
-    """Stand-in state the fixtures write and the namespace reads, in place of
-    a rage `Effect` and the spell-slot pools (debt #15)."""
-
-    __slots__ = ("marked", "raging", "slots_highest")
-
-    def __init__(self) -> None:
-        self.raging = False
-        self.slots_highest = 5
-        self.marked: str | None = None
 
 
 Condition: TypeAlias = Callable[[Namespace], bool]
