@@ -7,8 +7,7 @@ three enemies swinging back, and both sides walking real routes on a real grid.
 `measure_startup()` times a spawned worker separately.
 
 `docs/decisions.md` § w0i has the configuration's reasoning and the
-measurements; what the measurement leaves out is debt #15 and § The W1
-mid-wave review.
+measurements, and § w1k what the completed W1 substrate added to them.
 
 Run it: `python -m dndsim.tools.spike` (add `--startup` for the worker cost).
 
@@ -21,6 +20,7 @@ import sys
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import cache
 from statistics import median
 from types import MappingProxyType
 from typing import Final
@@ -29,15 +29,22 @@ from dndsim.core.dice import Dice
 from dndsim.core.geometry import Cell, distance_ft, route, steps_within
 from dndsim.core.log import EventLog, LogLevel
 from dndsim.core.rng import MersenneRng, Rng, mix
-from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
+from dndsim.core.timeline import Duration, InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.economy import ActionEconomy
+from dndsim.creatures.resources import spell_slot_specs
 from dndsim.creatures.stats import GREATSWORD, Armour, StatBlock, Weapon
 from dndsim.engine.attack import FRESH, AttackContexts, PooledContexts, resolve_attack
 from dndsim.engine.triggers import walk_provoking
 from dndsim.hooks.contexts import MoveContext, TurnContext
 from dndsim.hooks.definitions import ON_MOVE, ON_TURN_START
-from dndsim.rules.enums import Ability, ActionCost, DamageType
+from dndsim.rules.enums import (
+    Ability,
+    ActionCost,
+    CasterProgression,
+    DamageType,
+    RecoveryTrigger,
+)
 from dndsim.tools.spike_apl import (
     AlliesProxy,
     Apl,
@@ -45,12 +52,11 @@ from dndsim.tools.spike_apl import (
     Entry,
     Namespace,
     SelfProxy,
-    SpikeState,
     first,
     lowest_hp,
     toward_until_in_reach,
 )
-from dndsim.tools.spike_features import SOURCES, Fixture
+from dndsim.tools.spike_features import RAGE, SOURCES, Fixture, SpikeRage, SpikeState
 
 __all__ = [
     "ATTACKS_PER_TURN",
@@ -107,6 +113,12 @@ def _seat(place: int) -> InitiativeKey:
 
 
 _HERO_SEAT: Final = _seat(0)
+_SEATS: Final = tuple(_seat(place) for place in range(ENEMIES + 1))
+
+_RAGE_LASTS: Final = Duration.until_end_of_next_turn_of(_HERO_SEAT)
+
+_SLOTS: Final = CasterProgression.FULL
+"""Trap: sized so the smite's gate never runs dry (`docs/decisions.md` § w1k)."""
 
 _MAUL: Final = Weapon(
     name="Maul", damage=Dice(2, 6), damage_type=DamageType.BLUDGEONING
@@ -170,12 +182,16 @@ class Spike:
         """Put the encounter back to round one. Runs inside the timed region
         (`docs/decisions.md` § w0i)."""
         self.log.clear()
-        self.hero.hp = self.hero.max_hp
-        self.hero.revive()
-        self.hero.position = _HERO_START
-        self.state.raging = False
-        self.state.slots_highest = 5
-        self.economy.turn_started(self.hero.speed_ft)
+        hero = self.hero
+        hero.hp = hero.max_hp
+        hero.revive()
+        hero.position = _HERO_START
+        for creature in self.combatants:
+            effects = creature.effects
+            for effect in tuple(effects):
+                effects.remove(effect)
+        hero.resources.recover(RecoveryTrigger.LONG_REST)
+        self.economy.turn_started(hero.speed_ft)
         for enemy, start in zip(self.enemies, _ENEMY_STARTS, strict=True):
             enemy.hp = enemy.max_hp
             enemy.revive()
@@ -200,6 +216,7 @@ def build_spike(
         armour=_PLATE,
         initiative=_HERO_SEAT,
     )
+    hero.resources.add(RAGE, *spell_slot_specs(_SLOTS))
     enemies = tuple(
         Creature(
             name=f"Enemy{index}",
@@ -207,7 +224,7 @@ def build_spike(
             position=start,
             armour=Armour.natural(16),
             weapon=_MAUL,
-            initiative=_seat(index + 1),
+            initiative=_SEATS[index + 1],
         )
         for index, start in enumerate(_ENEMY_STARTS)
     )
@@ -219,7 +236,7 @@ def build_spike(
         hero.attach(source)
 
     namespace = Namespace(
-        own=SelfProxy(hero, state),
+        own=SelfProxy(hero),
         enemies=EnemiesProxy(hero, enemies),
         allies=AlliesProxy((hero,)),
     )
@@ -333,14 +350,34 @@ def run_encounter(spike: Spike, rng: Rng, rounds: int = ROUNDS_PER_ENCOUNTER) ->
     return resolutions
 
 
+@cache
+def _boundaries(number: int) -> tuple[tuple[TimeKey, TimeKey], ...]:
+    """Each seat's turn in round `number`, as its start and end on the clock."""
+    return tuple(
+        (TimeKey(number, seat, TurnPhase.START), TimeKey(number, seat, TurnPhase.END))
+        for seat in _SEATS
+    )
+
+
+def _expire_before(spike: Spike, now: TimeKey) -> None:
+    """Sweep every combatant's store before `now`'s hooks
+    (`docs/decisions.md` § w1k)."""
+    for creature in spike.combatants:
+        creature.effects.expire_before(now)
+
+
+def _expire_after(spike: Spike, now: TimeKey) -> None:
+    for creature in spike.combatants:
+        creature.effects.expire_after(now)
+
+
 def _hero_turn(spike: Spike, rng: Rng, number: int) -> int:
     hero = spike.hero
+    start, end = _boundaries(number)[0]
+    _expire_before(spike, start)
     hero.dispatcher.resets.turn_started(own=True)
     spike.economy.turn_started(hero.speed_ft)
-    turn = TurnContext(
-        creature=hero,
-        time=TimeKey(round=number, initiative=_HERO_SEAT, phase=TurnPhase.START),
-    )
+    turn = TurnContext(creature=hero, time=start)
     hero.dispatch(ON_TURN_START, turn)
     turn.close()
 
@@ -350,6 +387,7 @@ def _hero_turn(spike: Spike, rng: Rng, number: int) -> int:
         if entry is None:
             break
         resolutions += _execute(spike, entry, rng)
+    _expire_after(spike, end)
     return resolutions
 
 
@@ -364,7 +402,9 @@ def _execute(spike: Spike, entry: Entry, rng: Rng) -> int:
     action = entry.action
     if action != "attack":
         if action == "rage":
-            spike.state.raging = True
+            hero = spike.hero
+            hero.resources.spend(RAGE.key)
+            hero.effects.apply(SpikeRage(hero, duration=_RAGE_LASTS))
         # Only the cost is modelled; second_wind and healing_word do nothing.
         spike.economy.spend(_TURN_COSTS[action])
         return 0
@@ -400,7 +440,11 @@ def _enemy_turns(spike: Spike, rng: Rng, number: int) -> int:
     trigger = spike.apl.namespace.trigger
     log = spike.log
     resolutions = 0
-    for enemy, contexts in zip(spike.enemies, spike.enemy_contexts, strict=True):
+    turns = _boundaries(number)[1:]
+    for enemy, contexts, (start, end) in zip(
+        spike.enemies, spike.enemy_contexts, turns, strict=True
+    ):
+        _expire_before(spike, start)
         enemy.dispatcher.resets.turn_started(own=True)
         destination = toward_until_in_reach(enemy.position, enemy.reach_ft, hero)
         if destination is not None:
@@ -410,6 +454,7 @@ def _enemy_turns(spike: Spike, rng: Rng, number: int) -> int:
                 enemy, hero, rng=rng, contexts=contexts, trigger=trigger, log=log
             )
             resolutions += 1
+        _expire_after(spike, end)
     return resolutions
 
 

@@ -35,6 +35,10 @@ from dndsim.tools.spike import (
     ENEMIES,
     ROUNDS_PER_ENCOUNTER,
     Spike,
+    _boundaries,
+    _enemy_turns,
+    _expire_after,
+    _expire_before,
     _hero_turn,
     build_spike,
     measure,
@@ -42,7 +46,13 @@ from dndsim.tools.spike import (
     run_encounter,
 )
 from dndsim.tools.spike_apl import Apl
-from dndsim.tools.spike_features import ON_HIT_SOURCES, SOURCES
+from dndsim.tools.spike_features import (
+    ON_HIT_SOURCES,
+    RAGE,
+    SOURCES,
+    SpikeRage,
+    raging,
+)
 
 _RESOLUTIONS_PER_ENCOUNTER = ROUNDS_PER_ENCOUNTER * (ATTACKS_PER_TURN + ENEMIES)
 """Five rounds of three hero swings and one swing from each of three enemies."""
@@ -223,7 +233,7 @@ def test_a_wounded_hero_takes_second_wind_and_still_swings() -> None:
     """
     spike, rng = build_spike(0)
     spike.reset()
-    spike.state.raging = True
+    spike.hero.effects.apply(SpikeRage(spike.hero))
     spike.hero.hp = spike.hero.max_hp // 4
 
     resolutions = _hero_turn(spike, rng, 1)
@@ -260,11 +270,11 @@ def test_rage_is_taken_on_the_first_turn_and_not_again() -> None:
     per action rather than once: `not self.raging` stops being true after it
     fires, and the loop falls through to the attack."""
     spike, rng = build_spike(0)
-    assert not spike.state.raging
+    assert not raging(spike.hero)
 
     run_encounter(spike, rng)
 
-    assert spike.state.raging
+    assert raging(spike.hero)
 
 
 def test_the_victims_gate_is_asked_about_the_swing_that_is_landing() -> None:
@@ -373,6 +383,114 @@ def test_the_measurement_returns_a_rate_and_a_resolution_count() -> None:
 
     assert resolutions == 5 * _RESOLUTIONS_PER_ENCOUNTER
     assert rate > 0
+
+
+# --- the W1 substrate in place of the stand-ins -----------------------------
+
+
+def _smites(spike: Spike) -> int:
+    return next(
+        handler.applied
+        for source in spike.hero.dispatcher.sources()
+        for handler in spike.hero.dispatcher._bound[source]
+        if f"{handler.source_id}.{handler.handler.name}" == "divine_smite.smite"
+    )
+
+
+def test_a_rage_that_is_not_kept_up_ends_with_the_heros_next_turn() -> None:
+    """The sweeps are wired: a Rage taken on turn one and not refreshed since —
+    the enemies' swings are not the hero's — is still up through the hero's
+    next turn and gone once it ends (`Duration.until_end_of_next_turn_of`)."""
+    spike, rng = build_spike(0)
+    spike.reset()
+    _hero_turn(spike, rng, 1)
+    _enemy_turns(spike, rng, 1)
+    start, end = _boundaries(2)[0]
+
+    _expire_before(spike, start)
+    assert raging(spike.hero), "the Rage ended before the turn it lasts through"
+
+    _expire_after(spike, end)
+    assert not raging(spike.hero), "the sweep at the end of the turn missed it"
+
+
+def test_a_rage_kept_up_by_swinging_lasts_the_whole_encounter() -> None:
+    """One Rage, applied once and refreshed by every round's swings, so its
+    deadline after the last round is the end of the hero's turn after it."""
+    spike, rng = build_spike(0)
+    spike.reset()
+
+    for number in range(1, ROUNDS_PER_ENCOUNTER + 1):
+        _hero_turn(spike, rng, number)
+        _enemy_turns(spike, rng, number)
+        assert raging(spike.hero), f"the Rage was gone after round {number}"
+
+    (rage,) = spike.hero.effects
+    assert isinstance(rage, SpikeRage)
+    assert rage.expiry is not None
+    assert rage.expiry.end == _boundaries(ROUNDS_PER_ENCOUNTER + 1)[0][1]
+
+
+def test_rage_spends_one_use_an_encounter_and_the_reset_gives_it_back() -> None:
+    spike, rng = build_spike(0)
+    pool = spike.hero.resources[RAGE.key]
+
+    for _ in range(3):
+        run_encounter(spike, rng)
+        assert pool.current == pool.maximum - 1
+
+    spike.reset()
+    assert pool.current == pool.maximum
+
+
+def test_a_reset_leaves_no_effect_on_any_creature() -> None:
+    spike, rng = build_spike(0)
+    run_encounter(spike, rng)
+    spike.enemies[0].effects.apply(SpikeRage(spike.enemies[0]))
+
+    spike.reset()
+
+    assert [len(c.effects) for c in spike.combatants] == [0] * (ENEMIES + 1)
+
+
+def test_divine_smite_spends_a_real_slot_each_time_it_lands() -> None:
+    """One slot per smite applied, and the reset puts every one of them back."""
+    spike, rng = build_spike(0)
+    slots = spike.hero.resources.spells
+    spike.reset()
+    full, highest = slots.total_above(1), slots.highest()
+
+    run_encounter(spike, rng)
+
+    assert _smites(spike) > 0, "the smite never landed, so nothing was spent"
+    assert slots.total_above(1) == full - _smites(spike)
+
+    spike.reset()
+    assert (slots.total_above(1), slots.highest()) == (full, highest)
+
+
+def test_the_smites_slot_gate_never_runs_dry_within_an_encounter() -> None:
+    """`self.slots.highest >= 3` must answer yes to the last swing, as the
+    stand-in it replaced always did (`docs/decisions.md` § w1k)."""
+    for seed in range(6):
+        spike, rng = build_spike(seed)
+        for _ in range(10):
+            run_encounter(spike, rng)
+
+            assert spike.hero.resources.spells.highest() >= 3, (
+                f"seed {seed} ran its highest slot down to "
+                f"{spike.hero.resources.spells.highest()} in one encounter"
+            )
+
+
+def test_the_sweeps_move_every_stores_clock() -> None:
+    """The last boundary swept is the end of the last seat's last turn."""
+    spike, rng = build_spike(0)
+
+    run_encounter(spike, rng)
+
+    last = _boundaries(ROUNDS_PER_ENCOUNTER)[-1][1]
+    assert [c.effects.now for c in spike.combatants] == [last] * (ENEMIES + 1)
 
 
 # --- the M0 gate itself ------------------------------------------------------

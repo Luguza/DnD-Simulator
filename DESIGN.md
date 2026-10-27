@@ -2646,7 +2646,9 @@ more dangerous failure than a check that fails.
    arithmetic across machines and not a measurement, which is `w1k`'s to take,
    but the plan no longer describes a margin it does not have. The risk is no
    longer that the headroom erodes unwatched; it is that `w1k` is reached with a
-   shortfall and five candidate causes.
+   shortfall and five candidate causes. **`w1k` measured it**: about a quarter
+   under, attributed to three costs with an owner each, and the budget not
+   revised (`docs/decisions.md` § w1k).
    *Mitigated by:* `w1k`, the M0 re-measure at the end of W1 against the real
    `EffectStore` and `ResourcePool`; each W1 task that touches the hot path
    pricing itself so that `w1k` totals attributions rather than discovering a

@@ -7,15 +7,23 @@ whether it carries a `once_per` budget, a reaction cost or an APL gate — and
 none implements the rules. Fifteen are on `on_hit`, the rest spread over the
 other hot hooks. `docs/decisions.md` § w0i.
 
+Rage is the one that is not a fixture: `SpikeRage` is a real `Effect`, applied
+by the APL, refreshed by every swing and ended by the sweep, and Divine Smite
+spends a real spell slot (`docs/decisions.md` § w1k).
+
 DESIGN.md § The spike must be pessimistic.
 """
 
+from typing import Final
+
 from dndsim.core.timeline import Reset
+from dndsim.creatures.creature import Creature
+from dndsim.creatures.effects import Effect
+from dndsim.creatures.resources import ALL, Recovery, ResourceSpec
 from dndsim.hooks.contexts import (
     AttackDeclaredContext,
     AttackResolvedContext,
     AttackRollContext,
-    Combatant,
     DamageRollContext,
     DamageTakenContext,
     HitContext,
@@ -25,10 +33,59 @@ from dndsim.hooks.contexts import (
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.registry import Phase
 from dndsim.hooks.source import HookSource
-from dndsim.rules.enums import ActionCost, DamageType, Outcome, WeaponProperty
-from dndsim.tools.spike_apl import SpikeState
+from dndsim.rules.enums import (
+    ActionCost,
+    DamageType,
+    Outcome,
+    RecoveryTrigger,
+    WeaponProperty,
+)
 
-__all__ = ["ON_HIT_SOURCES", "SOURCES", "Fixture"]
+__all__ = [
+    "ON_HIT_SOURCES",
+    "RAGE",
+    "SOURCES",
+    "Fixture",
+    "SpikeRage",
+    "SpikeState",
+    "raging",
+]
+
+RAGE: Final = ResourceSpec(
+    key="rage",
+    label="Rage",
+    maximum=5,
+    recovery=(
+        Recovery(RecoveryTrigger.SHORT_REST, 1),
+        Recovery(RecoveryTrigger.LONG_REST, ALL),
+    ),
+)
+"""A level-12 Barbarian's uses, in DESIGN.md § Resources' shape."""
+
+
+class SpikeRage(Effect):
+    """Rage as the State pattern has it: attached while it lasts, and kept up
+    by attacking (DESIGN.md § Durations)."""
+
+    @hook("on_declare_attack")
+    def keep_up(self, ctx: AttackDeclaredContext) -> R:
+        self.refresh()
+        return R.APPLIED
+
+
+def raging(creature: Creature) -> bool:
+    """Whether `creature` holds a `SpikeRage`: the store, asked."""
+    return any(type(effect) is SpikeRage for effect in creature.effects)
+
+
+class SpikeState:
+    """The one stand-in the fixtures still share: whose name Hunter's Mark
+    holds."""
+
+    __slots__ = ("marked",)
+
+    def __init__(self) -> None:
+        self.marked: str | None = None
 
 
 class Fixture(HookSource):
@@ -38,10 +95,13 @@ class Fixture(HookSource):
     every subclass that overrides it (`HookSource.__init_subclass__`).
     """
 
-    __slots__ = ("state", "tally")
+    __slots__ = ("creature", "state", "tally")
 
-    def __init__(self, owner: Combatant, state: SpikeState) -> None:
+    def __init__(self, owner: Creature, state: SpikeState) -> None:
         super().__init__(owner)
+        # The owner as a `Creature`, for the store and the pools a
+        # `Combatant` does not carry.
+        self.creature = owner
         self.state = state
         self.tally = 0
 
@@ -82,21 +142,23 @@ class PoisonedBlade(Fixture):
 
 class SneakAttack(Fixture):
     """Conditional dice: the biggest rider on the list, and it lands only while
-    the state flag the APL set on turn one is up."""
+    the Rage the APL applied on turn one is attached."""
 
     @hook("on_hit", once_per=Reset.TURN)
     def sneak(self, ctx: HitContext) -> R:
-        if not self.state.raging:
+        if not raging(self.creature):
             return R.SKIPPED
         ctx.damage.add(dice="6d6")
         return R.APPLIED
 
 
 class DivineSmite(Fixture):
-    """Gated on the APL: `trigger.crit or (self.slots.highest >= 3 and ...)`."""
+    """Gated on the APL: `trigger.crit or (self.slots.highest >= 3 and ...)`,
+    and paid for with the lowest slot left (`docs/decisions.md` § w1k)."""
 
     @hook("on_hit", gate="paladin.divine_smite")
     def smite(self, ctx: HitContext) -> R:
+        self.creature.resources.spells.spend(1, allow_upcast=True)
         ctx.damage.add(dice="3d8", damage_type=DamageType.RADIANT)
         return R.APPLIED
 
@@ -115,7 +177,7 @@ class FrenzyDice(Fixture):
 
     @hook("on_hit")
     def frenzy(self, ctx: HitContext) -> R:
-        if not self.state.raging:
+        if not raging(self.creature):
             return R.SKIPPED
         ctx.damage.add(dice="1d6")
         return R.APPLIED
@@ -269,7 +331,7 @@ class RageDamage(Fixture):
 
     @hook("on_damage_roll")
     def rage(self, ctx: DamageRollContext) -> R:
-        if not self.state.raging:
+        if not raging(self.creature):
             return R.SKIPPED
         ctx.damage.add(flat=3)
         return R.APPLIED
@@ -310,7 +372,7 @@ class RageResistance(Fixture):
 
     @hook("on_incoming_damage")
     def resist(self, ctx: IncomingDamageContext) -> R:
-        if not self.state.raging:
+        if not raging(self.creature):
             return R.SKIPPED
         ctx.add_resistance(DamageType.SLASHING)
         ctx.add_resistance(DamageType.PIERCING)
