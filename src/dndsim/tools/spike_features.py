@@ -154,12 +154,7 @@ class SneakAttack(Fixture):
 
 class DivineSmite(Fixture):
     """Gated on the APL: `trigger.crit or (self.slots.highest >= 3 and ...)`,
-    and paid for with the lowest slot left.
-
-    Trap: the hero's slots are sized so the gate never runs dry within an
-    encounter, which keeps the smite landing as often as the stand-in it
-    replaced (`docs/decisions.md` § w1k).
-    """
+    and paid for with the lowest slot left (`docs/decisions.md` § w1k)."""
 
     @hook("on_hit", gate="paladin.divine_smite")
     def smite(self, ctx: HitContext) -> R:

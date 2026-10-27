@@ -27,8 +27,8 @@ The gate fired on the way — the spike came in at 17k
 against the 50k the design had assumed, a revision pass across the hot path
 took it to ~31.5k, and the budget was revised to 30k because 50k turned out to
 sit at the theoretical floor of this object model in CPython.
-`docs/decisions.md` § w0i has the measurements, what each change bought, and
-the two levers deliberately not taken. **W1 is under way.**
+`docs/decisions.md` § w0i has the M0 measurements (superseded by § w1k's),
+what each change bought, and the two levers deliberately not taken. **W1 is under way.**
 
 The plans were then re-read against what the wave measured
 (`docs/decisions.md` § The W0 plan review). Two things came out of it that
@@ -386,7 +386,7 @@ catch. It is not optional.
 **Performance is a design constraint, not a later concern.** Budget is ≥30k
 attack resolutions/sec/core, revised down from 50k by the W0 spike itself,
 which measured ~31.5k on the hostile configuration (`docs/decisions.md` § w0i)
-and has since spent that margin on `w1f`'s completed attack pipeline — so the
+and is now measured missed, at ~22k, with W1's substrate wired in (§ w1k) — so the
 budget is the number to hold, and it is not revised a second time by anyone who
 cannot attribute the shortfall (DESIGN.md § Biggest risks). Contexts are pooled and mutable
 (engine-owned, hot path); everything a feature stores is frozen (author-owned,

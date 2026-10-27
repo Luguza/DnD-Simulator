@@ -118,9 +118,7 @@ _SEATS: Final = tuple(_seat(place) for place in range(ENEMIES + 1))
 _RAGE_LASTS: Final = Duration.until_end_of_next_turn_of(_HERO_SEAT)
 
 _SLOTS: Final = CasterProgression.FULL
-"""Sixteen slots at level 12, one more than an encounter's swings: spent lowest
-first, the highest stays at 6 and the smite's gate answers as it always did
-(`docs/decisions.md` § w1k)."""
+"""Trap: sized so the smite's gate never runs dry (`docs/decisions.md` § w1k)."""
 
 _MAUL: Final = Weapon(
     name="Maul", damage=Dice(2, 6), damage_type=DamageType.BLUDGEONING
@@ -362,8 +360,8 @@ def _boundaries(number: int) -> tuple[tuple[TimeKey, TimeKey], ...]:
 
 
 def _expire_before(spike: Spike, now: TimeKey) -> None:
-    """Every store, before `now`'s hooks: the count is `w2c`'s, the call is
-    priced here (`docs/decisions.md` § w1k)."""
+    """Sweep every combatant's store before `now`'s hooks
+    (`docs/decisions.md` § w1k)."""
     for creature in spike.combatants:
         creature.effects.expire_before(now)
 

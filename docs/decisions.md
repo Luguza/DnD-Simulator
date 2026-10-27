@@ -643,7 +643,9 @@ path, w0g2, w0h, w1f.
 
 **Verdict: the gate fired, the architecture was revised, and the budget was
 revised with it — 50,000 attack resolutions/sec/core became 30,000, against a
-measured ~31,500.** The spike first ran at 17,231. Measured on Windows 11,
+measured ~31,500.** *Superseded as the current measurement by § w1k: with W1's
+effects, pools and sweeps wired in, the same configuration runs at 0.703 of this
+section's tree, ~22.1k projected — the budget missed, not met.* The spike first ran at 17,231. Measured on Windows 11,
 CPython 3.11.14, one core, median of five runs of a thousand encounters after a
 warmup. `w0i` is a stop-and-revise gate, so both revisions happened here rather
 than in W4; what follows is what the spike is, what each change bought, and why
