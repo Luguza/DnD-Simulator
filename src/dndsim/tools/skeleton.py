@@ -1,29 +1,8 @@
 """The walking skeleton (ROADMAP w0h): one featureless creature attacking
-another through the *real* dispatch path and the *real* damage pipeline.
+another through the real dispatch path and the real attack and damage pipeline.
 
-W0 built five substrates — the registry, the contexts, the dispatcher,
-`Creature`/`StatBlock` and `engine/damage.py` — and none of them had ever run
-together. `w0i`'s pessimistic spike is the load-bearing measurement that decided
-whether the dispatch design survived to W1, and a spike against those substrates
-in isolation would have measured nothing: this module is what made it an
-integrated one, by making a fight actually happen first (ROADMAP § The critical
-path).
-
-**The attack sequence this file used to hand-sequence is gone** (debt #6). It was
-written here because `engine/attack.py` did not exist yet, and `w1f` built it;
-what is left is the fight — two featureless creatures, a fixed weapon, and a
-loop that swings until one of them drops — calling the sequence the project
-ships. A benchmark that defends a budget on its own copy of the pipeline defends
-nothing.
-
-**Two creatures, no `HookSource` attached.** "Featureless" is the point
-(ROADMAP w0h) — a creature with nothing listening on any of its ten dispatched
-hooks costs one failed dict lookup per hook and proves the Null Object ending
-works, which is the cheapest possible thing to get wrong at tens of thousands of
-resolutions per second.
-
-Sources: DESIGN.md § The closed hook list, § Structural prevention over testing;
-ROADMAP § The critical path, w0g2, w0h, w1f.
+Two creatures with no `HookSource` attached, a fixed weapon, and a loop that
+swings until the defender drops. `docs/decisions.md` § w0h, § w1f.
 """
 
 import argparse
@@ -60,14 +39,10 @@ _DUMMY_SCORES: Final[Mapping[Ability, int]] = MappingProxyType(
 )
 
 _CHAIN_MAIL: Final = Armour.heavy("Chain Mail", 16)
-"""AC 16, and no Dexterity: the fighter's AC was a literal on the stat block
-until `w1a` derived it from equipment, and chain mail is the XPHB entry that
-gives the number this script has always run with (`w2a` imports the rest)."""
 
 _MAX_ROUNDS: Final = 50
-"""A safety cap, not a rule: a level-5 fighter vs. an AC-15, 40-hp dummy
-resolves in a handful of attacks, and a fight that has not ended by 50 is a
-bug in this script rather than an unlucky streak worth waiting out."""
+"""A safety cap, not a rule: a fight not over by 50 attacks is a bug in this
+script (`docs/decisions.md` § w0h)."""
 
 
 def build_fighter(name: str = "Fighter") -> Creature:
@@ -100,7 +75,7 @@ def run_fight(
     """Swing until the defender drops or `_MAX_ROUNDS` is hit. Returns the
     number of attacks made."""
     rounds = 0
-    while defender.is_alive and rounds < _MAX_ROUNDS:
+    while not defender.is_down and rounds < _MAX_ROUNDS:
         rounds += 1
         outcome, damage = resolve_attack(attacker, defender, rng=rng)
         if on_attack is not None:
@@ -130,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     rounds = run_fight(attacker, defender, rng, on_attack=report)
-    if defender.is_alive:
+    if not defender.is_down:
         print(f"{defender.name} is still standing after {rounds} attacks.")
     else:
         print(f"{defender.name} fell after {rounds} attacks.")

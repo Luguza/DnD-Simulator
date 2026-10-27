@@ -1,77 +1,11 @@
-"""The 31 Parameter Objects the 39 hooks hand to a handler, and the mutators
-that are the only way to change one.
+"""The 31 Parameter Objects the 39 hooks hand to a handler, the contributions
+and ledgers a handler appends to, and the participant protocols they carry.
 
-One hook, one context type, and the context is the *entire* surface a feature is
-allowed to touch during an event. That is the second of DESIGN.md's five
-load-bearing ideas, and the reason ~630 independently-authored features can run
-over the same attack without clobbering each other: **nobody writes a field.**
-
-**Attribute-locked, mutator-only.** Every context is a frozen, slotted
-dataclass whose `__setattr__` refuses with an explanation. `ctx.damage = ...`
-and `ctx.advantage = True` both raise `AttributeError` at the moment they are
-written rather than silently winning a race with the feature that ran before.
-What a feature *may* do is call a mutator — `ctx.damage.add(...)`,
-`ctx.grant_advantage(...)`, `ctx.apply_effect(...)` — each of which appends to a
-collection instead of replacing a value, so two features doing the same thing is
-addition and never assignment. The lock is against accident, not malice: the
-engine's own `reopen()` writes through `object.__setattr__`, and so could a
-determined author. Making the wrong thing *awkward and loud* is the whole
-mechanism.
-
-**A context is live only while its hook is dispatching.** Contexts are pooled
-and reused across attacks (DESIGN.md § Levers), so a handler that stashes one
-and mutates it on a later turn is not writing to a finished event — it is
-writing to whichever event owns that object now. `close()` seals a context when
-its moment ends and every mutator raises `PhaseError` afterwards, which turns
-the most dangerous consequence of pooling into a loud failure the first time it
-happens. It does not catch the case where the object has already been recycled
-and re-opened; nothing cheap does, and the seal costs one boolean test on a path
-that runs a handful of times per attack.
-
-**Provenance is stamped, never passed.** The dispatcher calls `stamp()` with the
-acting source before each handler, so `ctx.damage.add(dice="2d6")` is attributed
-to `rogue.sneak_attack` with no author effort and the per-feature damage
-breakdown falls out for free. There is deliberately no `source=` argument for a
-feature to get wrong or to lie with; a mutation made with nothing stamped is a
-`PhaseError`, because it is the engine reaching into a context it has not
-entered.
-
-**Two contribution types, because two crit rules.** `DamagePart` splits `dice`
-from `flat` — dice double on a critical hit, flat never does, and the author
-never touches the crit path (DESIGN.md § Structural prevention). `Modifier` is
-the same dice/flat split for everything whose dice *don't* double: a bonus to a
-D20 Test, healing, temporary hit points, a bump to a save DC. They are separate
-types rather than one with a flag precisely so that `Dice.doubled()` is
-reachable from exactly one of them.
-
-**Participants are structural, not imported.** `hooks/` sits below `creatures/`
-— a creature holds a dispatch table, so the dependency runs upward — and the
-roadmap builds contexts (w0f) two tasks before the first `Creature` exists
-(w0g2). A context therefore names what it carries through narrow `Protocol`s:
-`Combatant`, `Weapon`, `Spell`, `Effect`, `Cell`. Each declares only what is
-already settled elsewhere in the design (`Duration` anchors on
-`creature.initiative`; the log and provenance need a name), and each is
-meant to *stay* narrow — a protocol that grows to mirror `Creature` is a second
-domain model, and the check that keeps it honest is w0g2 asserting its real
-classes satisfy these.
-
-What is deliberately absent:
-
-- **No pool.** `reopen()` is the reuse primitive; who owns the pool is the
-  dispatcher's question (w0g) and the attack sequence's (`engine/attack.py`,
-  w1f). A pool here would be a
-  second place that knows when an event ends.
-- **No rolling.** A context collects contributions; `engine/damage.py` (w1e) and
-  `engine/attack.py` (w1f) own the arithmetic and the resolution order. A
-  context that could roll would be a second place the damage order could be
-  written.
-- **No speculative mutators.** Casting, movement and effect contexts carry their
-  participants and little else, because the W1–W3 slice has no feature that
-  changes those events. Fields are additive; a mutator that shipped early and
-  wrong is not.
-
-Sources: DESIGN.md § Hook system, § Structural prevention over testing,
-§ Failing loudly — layered, § Levers; ROADMAP w0f.
+Every context is attribute-locked: assigning a field raises `AttributeError`,
+and a feature changes an event only through a mutator. A mutator raises
+`PhaseError` after `close()` or with no source stamped, and every contribution
+is attributed to the stamped source. `reopen()` rebinds a pooled context to a
+new event. `docs/decisions.md` § w0f has the design, § w0i the pooling.
 """
 
 import dataclasses
@@ -149,43 +83,15 @@ __all__ = [
 
 
 # --- What a context carries ------------------------------------------------
-# Structural, narrow, and meant to stay that way; see the module docstring.
 # Members are read-only properties so that a frozen dataclass satisfies them.
 
 
 class Combatant(Protocol):
-    """A creature as a context needs to know it: a name, a place in the order,
-    and the pool a hit comes out of.
+    """A creature as a context needs to know it: a name, a place in the
+    initiative order, and its hit points.
 
-    `initiative` is here because `core/timeline.py` already builds on it —
-    `Duration` anchors on an `InitiativeKey` rather than on a creature, precisely
-    so that `core/` need not know what a creature is. It is a key and never a
-    seat index, so a creature entering or leaving the encounter moves nobody
-    else (`core/timeline.py`, docs/decisions.md § w0d).
-
-    **The three hit-point numbers are `w1a`'s widening**, and they are one
-    promise rather than three: what `engine/damage.py` spends, in the order it
-    spends it. Without them no `on_hit` handler could ask whether its target is
-    Bloodied — `w0i`'s own rider had to interrogate the damage bag instead and
-    say so in a paragraph — and "half its hit points or fewer" is a condition
-    dozens of the ~630 features are written around. `temp_hp` is here because it
-    is the first thing a hit is spent against, so a handler asking what its
-    damage will actually remove needs it.
-
-    **The two are not added together.** Bloodied is `hp * 2 <= max_hp`, hit
-    points alone: temporary hit points are a buffer in front of hit points and
-    are not hit points (XPHB, Rules Glossary). The sum is the pool a hit comes
-    out of; it is not the creature's hit points, and the reason both are exposed
-    is that features need to ask each question separately.
-
-    **What is still deliberately absent is as load-bearing as what is here.**
-    No Armor Class: what reads a target's AC is a policy decision, and the APL
-    asks the live creature through its namespace rather than through an event's
-    view of it. No `is_alive`: dying is `w1j`'s and a protocol that promised it
-    now would be promising a definition that does not exist yet. The rule this
-    protocol lives by is that it declares only what is already settled elsewhere
-    in the design; `w3e` confirms the shape before ~400 features are written
-    against it, and `w3f` is where a gap the paper pass finds gets filled.
+    `hp` excludes `temp_hp`: Bloodied reads `hp` alone, and `hp + temp_hp` is
+    the pool a hit is spent against (`docs/decisions.md` § w1a).
     """
 
     @property
@@ -205,26 +111,9 @@ class Combatant(Protocol):
 
 
 class Weapon(Protocol):
-    """The weapon an attack is made with, or `None` for one that is not made
-    with a weapon.
-
-    **`w1f`'s widening, and the same rule `Combatant` lives by**: it declares
-    what a handler already has to ask and nothing else. Through W0 this was a
-    name, which left Great Weapon Master unable to ask whether it was holding a
-    Heavy weapon and every one of the eight masteries unable to recognise its
-    own — debt #3 of `ROADMAP.md` § The W0 debt register, and the reason the
-    paper pass (`w3e`) confirms this shape before ~400 features are written
-    against it.
-
-    `has()` rather than the property set itself: a feature asks about one
-    property, and a `frozenset` on the protocol would be a second way to ask
-    that `w2a`'s importer would then have to keep equal to the first.
-
-    Absent on purpose, because nothing can supply it yet: **range**. A ranged
-    attack needs the normal/long pair the Weapon table prints, `w2a` is what
-    imports it, and `engine/attack.py` resolves every attack at the reach below
-    until it does (debt #24).
-    """
+    """The weapon an attack is made with: its damage, mastery, reach, and
+    `has()` for one weapon property. No range yet (debt #24;
+    `docs/decisions.md` § w1f)."""
 
     @property
     def name(self) -> str: ...
@@ -255,14 +144,14 @@ class Spell(Protocol):
 
 
 class Effect(Protocol):
-    """An `Effect` (`creatures/effects.py`, w1c) on its way onto a creature."""
+    """An effect on its way onto a creature."""
 
     @property
     def name(self) -> str: ...
 
 
 class Cell(Protocol):
-    """One 5-foot square of the grid (`core/geometry.py`, w0g2/w1d)."""
+    """One 5-foot square of the grid."""
 
     @property
     def x(self) -> int: ...
@@ -278,21 +167,9 @@ class Cell(Protocol):
 class DamagePart:
     """One contribution to a damage roll, attributed to whoever made it.
 
-    The `dice` / `flat` split is the project's flagship piece of structural
-    prevention (DESIGN.md § Structural prevention over testing): **dice double
-    on a critical hit and flat bonuses never do**, so a feature that adds `2d6`
-    of Sneak Attack and a feature that adds `+2` of Rage damage get the crit
-    rule right without either author knowing there is a crit rule. `on_crit()`
-    is the readable statement of that rule and the method a contract test pins
-    it by; `Dice.doubled()` is the only thing it calls, and it is the only
-    thing the engine calls too — `engine.damage.roll_damage()` inlines the same
-    doubling rather than allocating a doubled part per contribution per crit
-    (w0i), which makes it the one caller with a reason not to go through here.
-
-    `damage_type` of `None` means "the same type as the attack this rides on" —
-    Sneak Attack's d6s are the dagger's piercing — which is a real rule rather
-    than a missing value, and it is why the field is optional instead of
-    defaulted to something.
+    **`dice` double on a critical hit and `flat` never does** (DESIGN.md
+    § Structural prevention over testing). `damage_type=None` means the type of
+    the attack this rides on (`docs/decisions.md` § w0f).
     """
 
     dice: Dice | None
@@ -301,12 +178,7 @@ class DamagePart:
     source: str
 
     def on_crit(self) -> "DamagePart":
-        """This contribution as it lands on a critical hit.
-
-        Constructed rather than `replace()`d: this runs once per contribution
-        on every critical hit, and `dataclasses.replace` reads the field list
-        and rebuilds a keyword dict to do what four positional arguments do.
-        """
+        """This contribution as it lands on a critical hit: dice doubled."""
         dice = self.dice
         if dice is None:
             return self
@@ -319,14 +191,8 @@ class DamagePart:
 @dataclass(frozen=True, slots=True)
 class Modifier:
     """A contribution whose dice do **not** double: a bonus to a D20 Test,
-    healing, temporary hit points, a bump to a save DC or to AC.
-
-    The same dice/flat shape as `DamagePart` and a deliberately different type.
-    Bless adds `1d4` to an attack roll and a critical hit does not double it;
-    Cure Wounds heals `2d8` and a critical hit is not a thing that happens to
-    healing. Folding both into one class with a `doubles: bool` flag would put
-    the crit rule back in the hands of every author who sets it.
-    """
+    healing, temporary hit points, a bump to a save DC or to AC
+    (`docs/decisions.md` § w0f)."""
 
     dice: Dice | None
     flat: int
@@ -348,10 +214,8 @@ def _amount(dice: Dice | None, flat: int) -> str:
 class _Bag:
     """Shared machinery for the append-only collections hung off a context.
 
-    A bag holds the owning context's frame so that every `add()` can answer two
-    questions without the caller supplying anything: is this context still live,
-    and who is acting? That is what makes provenance automatic and what makes a
-    stashed context loud instead of quietly corrupting somebody else's attack.
+    A bag holds its context's frame, from which every mutation reads whether
+    the context is live and which source to attribute it to.
     """
 
     __slots__ = ("_frame",)
@@ -366,10 +230,9 @@ class _Bag:
     def _acting_source(self, action: str) -> str:
         """Who is acting, or a `PhaseError` saying why nobody is.
 
-        The two `add()` methods below inline the happy path of this — a live
-        frame with a source stamped on it — and call here only when one of the
-        three is false, because it runs several times per attack resolution and
-        the answer is a slot read (w0i).
+        The two `add()` methods inline the happy path of this
+        (`docs/decisions.md` § w0i); a change
+        to the checks here belongs there too.
         """
         frame = self._frame
         if frame is None:
@@ -387,10 +250,8 @@ class _Bag:
 class DamageBag(_Bag):
     """The damage an event has accumulated so far. `ctx.damage.add(...)`.
 
-    Append-only by design: a feature contributes a part and can read the whole,
-    but cannot replace what another feature added. Nothing here rolls or
-    totals the dice — `engine/damage.py` (w1e) owns the resolution order, and a
-    bag that could compute a total would be a second place to write it.
+    Append-only: a feature contributes a part and can read the whole. Nothing
+    here rolls or totals the dice.
     """
 
     __slots__ = ("_parts",)
@@ -409,6 +270,7 @@ class DamageBag(_Bag):
         """Contribute damage. `dice` doubles on a crit; `flat` never does.
 
         `damage_type=None` inherits the type of the attack this rides on.
+        Raises `ValueError` when both `dice` and `flat` are empty.
         """
         frame = self._frame
         if frame is None or frame.source is None or not frame.open:
@@ -447,9 +309,7 @@ class DamageBag(_Bag):
 class ModifierBag(_Bag):
     """Contributions whose dice do not double: `ctx.bonus.add(flat=2)`.
 
-    The same append-only shape as `DamageBag` over `Modifier` instead of
-    `DamagePart`, which is what keeps `Dice.doubled()` unreachable from a save
-    bonus or a heal.
+    The same append-only shape as `DamageBag`, over `Modifier`.
     """
 
     __slots__ = ("_parts",)
@@ -502,12 +362,9 @@ class ModifierBag(_Bag):
 class AdvantageLedger(_Bag):
     """Who asked for advantage and who imposed disadvantage, by name.
 
-    **Not a boolean**, which is the second piece of structural prevention
-    (DESIGN.md): D&D's rule — any advantage plus any disadvantage cancels to a
-    flat roll, and multiples never stack — falls out of a derived property over
-    two collections. Two features granting advantage is therefore idempotent and
-    order-independent, so no author has to reason about who ran first, and the
-    log gets the reasons for free.
+    Two collections rather than a boolean; `had_advantage` and
+    `had_disadvantage` derive the result with cancellation applied (DESIGN.md
+    § Structural prevention over testing).
     """
 
     __slots__ = ("_advantage", "_disadvantage")
@@ -557,12 +414,7 @@ class AdvantageLedger(_Bag):
 
 
 def _as_dice(dice: str | Dice | None) -> Dice | None:
-    """Accept `"2d6"` or a shared `Dice`; reject `"1d8+3"` where it is written.
-
-    `Dice.parse` refuses a flat modifier, which is the whole point of taking a
-    string here: `add(dice="1d8+3")` fails at the call site naming where the
-    `+3` belongs rather than smuggling a flat bonus into the field that doubles.
-    """
+    """Accept `"2d6"` or a shared `Dice`; `Dice.parse` rejects `"1d8+3"`."""
     if dice is None or isinstance(dice, Dice):
         return dice
     return Dice.parse(dice)
@@ -572,16 +424,9 @@ def _as_dice(dice: str | Dice | None) -> Dice | None:
 
 
 class _Frame:
-    """The one mutable cell in an otherwise frozen context.
-
-    Everything that changes between handler calls lives here rather than as
-    fields of the context: the ambient provenance stamp, the ordering band the
-    current handler declared, whether the moment is still open, and the veto if
-    one was cast. That keeps the context itself frozen — so `ctx.attacker = x`
-    is a static error as well as a runtime one — while the per-call stamp stays
-    a plain slot store on the hot path, which `object.__setattr__` on a frozen
-    dataclass would not be.
-    """
+    """The one mutable cell in an otherwise frozen context: the provenance
+    stamp, the current handler's band, whether the moment is open, and the
+    veto if one was cast."""
 
     __slots__ = ("open", "owner", "phase", "source", "veto_reason")
 
@@ -600,12 +445,9 @@ class _Frame:
 
 
 def _acting_source(frame: _Frame, action: str) -> str:
-    """The source to attribute `action` to, or `PhaseError` explaining why not.
+    """The source to attribute `action` to, or `PhaseError` when the context is
+    closed or has no source stamped."""
 
-    The two refusals are the two halves of `PhaseError` (see `core/errors.py`),
-    and both are one comparison on a path a handler walks a couple of times per
-    attack.
-    """
     if not frame.open:
         raise PhaseError(
             f"{action} on a {frame.owner} whose moment has passed. A context is "
@@ -641,14 +483,7 @@ def _locked_setattr(self: object, name: str, value: object) -> NoReturn:
 
 def _uncompiled_reopen(self: object, **fields: object) -> NoReturn:
     """The `reopen()` a context class that escaped `@_context` is left holding.
-
-    It exists as a free function because it has to be installed on every
-    subclass *before* the decorator runs (`Context.__init_subclass__`), and
-    because the alternative is worse than an error: a class the decorator never
-    saw would otherwise inherit `Context`'s own compiled `reopen()`, which takes
-    no fields, resets the frame and the pending queue, and leaves every field
-    the subclass declared holding the previous event's values.
-    """
+    Raises `EngineAssemblyError` (`docs/decisions.md` § w0i)."""
     raise EngineAssemblyError(
         f"{type(self).__name__} has no compiled reopen(). Every context "
         "class is built by the @_context decorator, which generates one "
@@ -659,20 +494,9 @@ def _uncompiled_reopen(self: object, **fields: object) -> NoReturn:
 
 @dataclass_transform(frozen_default=True, kw_only_default=True, eq_default=False)
 def _context(cls: type[_T]) -> type[_T]:
-    """Make a context class: frozen, slotted, keyword-only, identity-compared.
-
-    `frozen` is what stops a field assignment statically and gives the generated
-    `__init__` a path that bypasses `__setattr__`; replacing `__setattr__`
-    afterwards is what turns the runtime refusal from dataclasses' "cannot
-    assign to field" into a sentence that names the mutators instead. Both
-    matter: one catches the mistake in review, the other catches it in the batch
-    agent's first test run.
-
-    `kw_only` because a Parameter Object read at the call site is the point, and
-    because it frees base and subclass fields from declaration order. `eq=False`
-    because a context is the event, not a value: two attacks that look alike are
-    not the same attack, and identity hashing keeps a pooled object cheap.
-    """
+    """Make a context class: frozen, slotted, keyword-only, identity-compared,
+    with a locked `__setattr__` and a compiled `reopen()` (`docs/decisions.md`
+    § w0f)."""
     made = dataclass(frozen=True, slots=True, kw_only=True, eq=False)(cls)
     made.__setattr__ = _locked_setattr  # type: ignore[method-assign]
     fields = dataclasses.fields(made)  # type: ignore[arg-type]
@@ -694,7 +518,7 @@ def _context(cls: type[_T]) -> type[_T]:
             bags.append(spec.name)
             required.append(spec.name)
         elif factory is not dataclasses.MISSING:
-            pass  # `_frame` and `_pending`: engine-internal, reset in place.
+            pass  # `_frame` and `_pending`: reset in place by `reopen()`.
         elif spec.default is not dataclasses.MISSING:
             defaults.append((spec.name, spec.default))
         else:
@@ -718,18 +542,8 @@ def _make_reopen(
 ) -> Callable[..., None]:
     """Compile this context class's `reopen()` — see `Context.reopen`.
 
-    **Generated, because the validation and the speed are the same problem.**
-    A hand-written `reopen(**fields)` has to check that every field was named
-    and that no field was invented, and `w0i` measured that checking — a set
-    difference and a comprehension over the field list — costing more per call
-    than constructing the context from scratch, which defeats the pooling lever
-    DESIGN.md § Levers asks for. A generated function with the fields as
-    keyword-only parameters gets both checks from the interpreter's own
-    argument binding, for nothing, and a missing field raises a `TypeError`
-    that names it.
-
-    The same technique `dataclasses` uses for `__init__`, applied for the same
-    reason and in the same place: once, at class creation.
+    The fields are keyword-only parameters, so a missing or unknown field is a
+    `TypeError` from argument binding (`docs/decisions.md` § w0i).
     """
     parameters = list(required)
     namespace: dict[str, object] = {}
@@ -749,9 +563,7 @@ def _make_reopen(
     lines.append("    frame.veto_reason = None")
     lines.append("    self._pending.clear()")
     for name in handed_bags:
-        # A bag this context was handed belongs to the event, not to the
-        # context, so it is rebound to the new frame rather than emptied — the
-        # damage built during `on_hit` is the damage rolled at `on_damage_roll`.
+        # A handed bag is rebound, never cleared: it holds the event's damage.
         lines.append(f"    {name}._bind(frame)")
     for name in owned_bags:
         lines.append(f"    self.{name}.clear()")
@@ -773,20 +585,13 @@ def _make_reopen(
 
 @_context
 class Context:
-    """What every hook hands its handlers, and the three things they all share.
-
-    A context is a **Parameter Object**: one argument carrying the whole of an
-    event, so that adding a field to a hook is not a signature change rippling
-    through ~630 handlers. Beyond that it carries the lifecycle every mutator is
-    checked against, the veto that lets an `EARLY` or `FINAL` handler halt the
-    chain, and the queue of effects to apply once the event is over.
+    """What every hook hands its handlers: the lifecycle every mutator is
+    checked against, the veto, and the queue of effects.
 
     **Effects are queued, not applied.** `ctx.apply_effect(...)` appends; the
-    engine drains the queue after the dispatch. That is the snapshot rule from
-    the authoring skill made structural — the handler list is fixed per event,
-    so an effect applied during a hook must not fire for that same event, which
-    is exactly why Reckless Attack applies its effect *and* separately calls
-    `grant_advantage()` for the attack that triggered it.
+    engine drains the queue after the dispatch, so an effect applied during a
+    hook never runs in that hook — the snapshot rule (`docs/decisions.md`
+    § w0g, § w1c).
     """
 
     _field_names: ClassVar[frozenset[str]] = frozenset()
@@ -799,21 +604,13 @@ class Context:
     _pending: list[tuple[Combatant, Effect]] = field(default_factory=list, repr=False)
 
     def __init_subclass__(cls, **kwargs: object) -> None:
-        """Leave every subclass holding a `reopen()` that must be replaced.
-
-        `reopen()` is compiled per class by `@_context`, so a context class the
-        decorator never saw would otherwise inherit the base's compiled
-        version — which takes no fields and would silently leave the subclass's
-        own fields holding the previous event's values. Installing the raising
-        body here, before the decorator runs, makes that class fail loudly on
-        first use instead. `@_context` overwrites it a moment later; a subclass
-        that declares its own `reopen` keeps it.
-        """
-        # Named rather than zero-argument `super()` — and `noqa`, because UP008
-        # asks for the zero-argument form and it is wrong here: `@_context`
-        # re-creates this class to add slots, so the `__class__` cell a bare
-        # `super()` closes over points at the class the decorator threw away,
-        # and every subclass raises `TypeError` at class-creation time.
+        """Leave every subclass holding a `reopen()` that raises until
+        `@_context` replaces it; a subclass declaring its own `reopen` keeps it
+        (`docs/decisions.md` § w0i)."""
+        # Not zero-argument `super()`, whatever UP008 says: `@_context`
+        # re-creates this class to add slots, so a bare `super()`'s `__class__`
+        # cell points at the discarded class and every subclass raises
+        # `TypeError` at class creation.
         super(Context, cls).__init_subclass__(**kwargs)  # noqa: UP008
         if "reopen" not in cls.__dict__:
             cls.reopen = _uncompiled_reopen  # type: ignore[method-assign]
@@ -823,15 +620,8 @@ class Context:
         self._bind_bags()
 
     def _bind_bags(self) -> None:
-        """Point every bag on this context at this context's frame.
-
-        A bag created by this context's own `default_factory` is bound once and
-        never moves. A bag *handed* to it is the interesting case: the damage
-        built during `on_hit` is the same damage rolled during `on_damage_roll`,
-        so the bag belongs to the attack and outlives every context that sees
-        it. Rebinding is what keeps provenance and the lifecycle with the
-        context currently dispatching rather than with one that has closed.
-        """
+        """Point every bag on this context, owned or handed in, at this
+        context's frame."""
         frame = self._frame
         for name in self._bag_fields:
             bag: _Bag = getattr(self, name)
@@ -842,30 +632,16 @@ class Context:
     def stamp(self, source: str | None, phase: Phase | None) -> None:
         """Name the source about to run, and the band it declared.
 
-        The **Ambient Context** of DESIGN.md § Provenance is automatic, scoped
-        to one handler invocation: every mutation made while this stamp stands
-        is attributed to `source`, which is where the per-feature damage
-        breakdown comes from. `phase` is `None` for the engine's own seeding of
-        a context, which is also why `veto()` refuses when it is.
-
-        A `source` of `None` releases the stamp, and it is how the dispatcher
-        puts back what it found once its last handler has run (`stamped()`).
-        Without that, an engine mutation made after a dispatch would be
-        attributed to whichever feature happened to run last — a wrong number in
-        the damage breakdown rather than the `PhaseError` an unattributed
-        mutation is supposed to be.
+        Every mutation made while the stamp stands is attributed to `source`.
+        `phase=None` is the engine's own seeding, from which `veto()` refuses; a
+        `source` of `None` releases the stamp (`docs/decisions.md` § w0g).
         """
         frame = self._frame
         frame.source = source
         frame.phase = phase
 
     def stamped(self) -> tuple[str | None, Phase | None]:
-        """The stamp currently standing, for a dispatcher to restore afterwards.
-
-        Read once per dispatch rather than once per handler: what it costs is a
-        tuple, and what it buys is that dispatching on a context does not
-        disturb the provenance of whoever was already holding it.
-        """
+        """The stamp currently standing, for a dispatcher to restore afterwards."""
         frame = self._frame
         return frame.source, frame.phase
 
@@ -879,25 +655,15 @@ class Context:
     def reopen(self, **fields: object) -> None:
         """Rebind a pooled context to a new event and clear what it accumulated.
 
-        The reuse primitive behind DESIGN.md § Levers' "contexts reset and
-        reused per attack rather than allocated". It writes through the slot
-        descriptors because the lock is for features, not for the engine that
-        owns the object — and it **demands every field the context does not
-        default**, so a pooled `HitContext` rebound with a new attacker and no
-        new defender is a `TypeError` rather than an attack on the previous
-        target. Nothing of the previous event survives by omission: defaulted
-        fields go back to their defaults, bags this context created are cleared
-        in place, and a bag it was handed is one of the fields that must be
-        named and is rebound rather than cleared — clearing the caller's
-        freshly built damage would be the pool eating the attack.
+        **Demands every field the context does not default** — a missing one
+        is a `TypeError`. Defaulted fields go back to their defaults, bags this
+        context created are cleared in place, and a bag it was handed is
+        required and rebound rather than cleared. Reopens the frame and empties
+        the effect queue.
 
-        **Every context class overrides this with a compiled version of
-        itself** (`_make_reopen`), whose signature is the field list, so the
-        two guarantees above are enforced by Python's argument binding rather
-        than by set arithmetic on the hot path. This declaration is the
-        documented contract those compiled functions satisfy; the body it
-        delegates to only ever runs for a class that escaped `@_context`, and
-        `__init_subclass__` is what makes sure such a class reaches it.
+        Each context class replaces this with a version compiled by
+        `_make_reopen`; this body runs only for a class that escaped
+        `@_context`, and raises (`docs/decisions.md` § w0f, § w0i).
         """
         _uncompiled_reopen(self, **fields)
 
@@ -906,12 +672,8 @@ class Context:
     def veto(self, reason: str) -> None:
         """Halt the chain: this event does not happen.
 
-        The one **Chain of Responsibility** element in a system that is
-        otherwise a pipeline of contributions, and the reason it is restricted
-        to `EARLY` and `FINAL` (DESIGN.md § Ordering): a `NORMAL` handler that
-        could cancel the event would silently delete the contributions of every
-        feature ordered after it, which is the failure mode the phase bands
-        exist to prevent.
+        Raises `PhaseError` from any band but `EARLY` or `FINAL` (DESIGN.md
+        § Ordering).
         """
         frame = self._frame
         source = _acting_source(frame, "ctx.veto()")
@@ -950,16 +712,8 @@ class Context:
 
 @_context
 class D20TestContext(Context):
-    """A context for a roll of the d20: attack, check, save, initiative, death
-    save, concentration.
-
-    2024 calls all of them **D20 Tests**, and they share the two things a
-    feature wants to do to one — swing the odds and add to the total — so they
-    share a base rather than repeating the advantage machinery six times. What
-    they do *not* share is the outcome: a natural 20 crits only on an attack
-    roll, which is why `Outcome` stays the attack's and saves get their own
-    result type in `engine/saves.py` (w1g).
-    """
+    """A context for a D20 Test: attack, check, save, initiative, death save,
+    concentration. Carries advantage and a `bonus` to the total."""
 
     _advantage: AdvantageLedger = field(default_factory=AdvantageLedger, repr=False)
     bonus: ModifierBag = field(default_factory=ModifierBag)
@@ -999,17 +753,9 @@ class D20TestContext(Context):
 class MitigationLedger(_Bag):
     """Everything a victim's handlers did to incoming damage before it landed.
 
-    A ledger rather than an arithmetic result because `engine/damage.py` owns
-    the resolution order — immunity → flat reductions → halvings → resistance →
-    vulnerability → temp HP → HP — and a context that pre-applied any of it
-    would be a second place that order is written.
-
-    The three type collections are **sets**, which is the third piece of
-    structural prevention (DESIGN.md): a damage type cannot be resisted twice,
-    so two features granting fire resistance halve the damage once, and neither
-    author has to know the other exists. `_halvings` is a **list** against them
-    on purpose: the "counts once" clause names Resistance, and a halving is not
-    Resistance, so two of them halve twice.
+    Recorded, never applied. The three type collections are **sets**, so a type
+    is resisted once however many handlers grant it; `_halvings` is a **list**,
+    so two halvings halve twice (`docs/decisions.md` § w0g2, § w1e).
     """
 
     __slots__ = ("_halvings", "_immune", "_reductions", "_resist", "_vulnerable")
@@ -1036,13 +782,7 @@ class MitigationLedger(_Bag):
 
     @property
     def untouched(self) -> bool:
-        """True when no handler recorded anything — the ordinary hit.
-
-        Most damage in a fight meets no resistance, no reduction and no
-        halving, and `engine/damage.py` reads this to skip the resolution order
-        rather than walk five empty collections per hit (w0i). It is a
-        statement about the ledger, not a step of the order.
-        """
+        """True when nothing has been recorded."""
         return not (
             self._resist
             or self._immune
@@ -1094,9 +834,7 @@ class OverrideLedger(_Bag):
     """A yes/no claim handlers can make about an outcome the engine would
     otherwise apply: "this creature stays up", "this save succeeds".
 
-    Reasons accumulate rather than the last writer winning, so Relentless
-    Endurance and Undead Fortitude on the same creature is one survival with two
-    citations in the log instead of a race.
+    Every claim's reason is kept, in order; one claim is enough to hold.
     """
 
     __slots__ = ("_reasons",)
@@ -1125,24 +863,14 @@ class OverrideLedger(_Bag):
 
 @_context
 class EncounterContext(Context):
-    """`on_encounter_start` / `on_encounter_end` — GLOBAL: the fight itself.
-
-    A combat belongs to nobody, so there is no owner to be and no participant
-    field beyond everyone in it.
-    """
+    """`on_encounter_start` / `on_encounter_end` — GLOBAL: the fight itself."""
 
     combatants: tuple[Combatant, ...]
 
 
 @_context
 class InitiativeContext(D20TestContext):
-    """`on_initiative_roll` — SELF: the owner rolls for its seat.
-
-    Feral Instinct grants advantage here, the Alert feat adds to the roll, and
-    Uncanny Metabolism watches it. All three are inside the levels 1–12 martial
-    slice, which is why this hook exists before W4 needs it (DESIGN.md § The
-    closed hook list).
-    """
+    """`on_initiative_roll` — SELF: the owner rolls for its seat."""
 
     creature: Combatant
 
@@ -1158,9 +886,8 @@ class RoundContext(Context):
 class TurnContext(Context):
     """`on_turn_start` / `on_turn_end` — SELF: the owner's turn.
 
-    By the time a handler here runs, `Reset.OWN_TURN` budgets have already been
-    handed back (`core/timeline.py`), so a feature may ask for one without
-    caring whether the ledger has been swept yet.
+    `Reset.OWN_TURN` budgets are already back when `on_turn_start` runs
+    (`core/timeline.py`).
     """
 
     creature: Combatant
@@ -1169,12 +896,8 @@ class TurnContext(Context):
 
 @_context
 class RestContext(Context):
-    """`on_short_rest` / `on_long_rest` — SELF: the owner rests.
-
-    One type for two hooks, with `is_long_rest` telling them apart, because
-    almost everything that attaches here (hit dice, Song of Rest, recharges)
-    reads the same fields and differs only in which boundary it woke on.
-    """
+    """`on_short_rest` / `on_long_rest` — SELF: the owner rests; `is_long_rest`
+    tells the two apart."""
 
     creature: Combatant
     is_long_rest: bool
@@ -1188,12 +911,7 @@ class AttackDeclaredContext(D20TestContext):
     """`on_declare_attack` (SELF) and `on_incoming_attack_declared` (TARGET) —
     one attack, before the roll, seen from each end.
 
-    The scope is the whole difference between the two: Reckless Attack grants
-    itself advantage on the `SELF` side, cover and Dodge work the `TARGET` side,
-    and neither ever writes `if ctx.attacker is self.owner` (DESIGN.md § Hook
-    scope). `bonus` is the attacker's — it is the roll — and `ac_bonus` is the
-    defender's, which is the only lever the target has here that is not
-    disadvantage.
+    `bonus` is added to the attack roll; `ac_bonus` to the defender's AC.
     """
 
     attacker: Combatant
@@ -1207,11 +925,8 @@ class AttackDeclaredContext(D20TestContext):
 class AttackRollContext(Context):
     """`on_attack_rolled` — SELF: the d20 is on the table, AC not yet consulted.
 
-    Read-only about the roll itself. There is deliberately no mutator for the
-    critical threshold: Improved Critical lowers the *character's* threshold, so
-    it is a derived stat on the creature (`Creature.crit_threshold`, w1a) that
-    the engine reads when it builds this context, not something a handler edits
-    per attack.
+    Read-only. `crit_threshold` is the attacker's derived stat and has no
+    mutator (`docs/decisions.md` § w1a).
     """
 
     attacker: Combatant
@@ -1233,11 +948,8 @@ class AttackRollContext(Context):
 class HitContext(Context):
     """`on_hit` (SELF) and `on_hit_taken` (TARGET) — the attack landed.
 
-    The busiest hook in the project: Sneak Attack, Divine Smite and the weapon
-    masteries all attach here, which is why the pessimistic spike puts at least
-    15 handlers on it (ROADMAP w0i). Damage rides on the shared bag, so a rider
-    added here is rolled by `engine/damage.py` with everything else and doubles
-    or not according to whether the author passed `dice` or `flat`.
+    `damage` is the attack's own bag, handed in; a rider added here is rolled
+    with the rest of the attack's damage.
     """
 
     attacker: Combatant
@@ -1248,7 +960,7 @@ class HitContext(Context):
 
     @property
     def is_critical(self) -> bool:
-        """Delegated to `Outcome`, where the crit predicate lives (w0b)."""
+        """`outcome.is_critical`."""
         return self.outcome.is_critical
 
 
@@ -1256,9 +968,8 @@ class HitContext(Context):
 class MissContext(Context):
     """`on_miss` — SELF: the attack did not land.
 
-    It carries a damage bag because a miss is not always nothing: the Graze
-    mastery deals the ability modifier on a miss, and Great Weapon Fighting
-    rerolls attach here too.
+    `damage` is the attack's own bag, handed in, for damage dealt on a miss
+    (`docs/decisions.md` § w1f).
     """
 
     attacker: Combatant
@@ -1270,11 +981,7 @@ class MissContext(Context):
 
 @_context
 class AttackResolvedContext(Context):
-    """`on_attack_resolved` — SELF: the attack is over, hit or miss.
-
-    The place to spend or to count, after the outcome is known and nothing about
-    it can change any more.
-    """
+    """`on_attack_resolved` — SELF: the attack is over, hit or miss."""
 
     attacker: Combatant
     defender: Combatant
@@ -1290,9 +997,8 @@ class AttackResolvedContext(Context):
 class DamageRollContext(Context):
     """`on_damage_roll` — SELF: the attacker builds the damage.
 
-    Rage damage, Savage Attacker and brutal dice attach here. `is_critical` is a
-    field a handler may read but never has to act on: doubling happens in
-    `DamagePart.on_crit()`, over dice only.
+    `is_critical` is for reading only: the engine doubles the dice of every
+    part on a critical hit.
     """
 
     attacker: Combatant
@@ -1306,18 +1012,9 @@ class DamageRollContext(Context):
 class IncomingDamageContext(Context):
     """`on_incoming_damage` — TARGET: the victim's one chance to change it.
 
-    Everything a handler does here is recorded, never applied: `engine/damage.py`
-    runs the single resolution order over the ledger afterwards. Uncanny Dodge
-    halves, Heavy Armor Master reduces, Rage resists — and the order those three
-    interact in is decided once, in one file, which cites where each step comes
-    from (`docs/decisions.md` § w1e).
-
-    The damage arrives here **rolled**, as an amount per type, rather than as
-    the `DamageBag` the attacker built. The dice were thrown at `on_damage_roll`
-    and the resolution order is arithmetic over numbers per type; carrying the
-    bag this far would leave `damage_type=None` — "the type of the attack this
-    rides on" — unresolved at the one step that reads the type, and would offer
-    the victim an `add()` that belongs to the attacker's side of the event.
+    `amounts` is the damage already rolled, per type. Everything a handler does
+    here is recorded in `mitigation`, never applied (`docs/decisions.md` § w0f,
+    § w1e).
     """
 
     defender: Combatant
@@ -1338,28 +1035,22 @@ class IncomingDamageContext(Context):
         self._mitigation.vulnerable(damage_type)
 
     def reduce(self, *, dice: str | Dice | None = None, flat: int = 0) -> Modifier:
-        """Subtract a flat amount from the hit, before resistance and
-        vulnerability (Heavy Armor Master). Untyped: it is spent over every type
-        that survived immunity, in proportion."""
+        """Record a reduction of the whole hit, untyped (`docs/decisions.md`
+        § w1e)."""
         return self._mitigation.reduce(dice, flat)
 
     def halve(self, reason: str) -> None:
-        """Halve what the reductions left, still before resistance and
-        vulnerability (Uncanny Dodge)."""
+        """Record a halving of the whole hit (`docs/decisions.md` § w1e)."""
         self._mitigation.halve(reason)
 
     @property
     def mitigation(self) -> MitigationLedger:
-        """What the handlers recorded, for `engine/damage.py` to apply."""
+        """What the handlers recorded, for the engine to apply."""
         return self._mitigation
 
     @property
     def total(self) -> int:
-        """The damage before any of the above is applied.
-
-        A sum, not a step of the resolution order — it is what a handler reads
-        to decide whether this is the hit worth spending Uncanny Dodge on.
-        """
+        """The sum of `amounts`, before any mitigation."""
         return sum(self.amounts.values())
 
 
@@ -1377,9 +1068,7 @@ class DamageTakenContext(Context):
 class ReducedToZeroContext(Context):
     """`on_reduced_to_zero` — TARGET: the owner drops to 0 hit points.
 
-    `prevent()` is Relentless Endurance and Undead Fortitude: the creature stays
-    up at 1 hit point instead. `overflow` is the damage left over past 0, which
-    is what the instant-death rule reads.
+    `overflow` is the damage left over past 0.
     """
 
     defender: Combatant
@@ -1403,10 +1092,7 @@ class ReducedToZeroContext(Context):
 
 @_context
 class KillContext(Context):
-    """`on_kill` — SELF: the owner dropped a creature to 0.
-
-    Great Weapon Master's extra attack attaches here.
-    """
+    """`on_kill` — SELF: the owner dropped a creature to 0."""
 
     killer: Combatant
     victim: Combatant
@@ -1417,17 +1103,8 @@ class KillContext(Context):
 
 @_context
 class HealContext(Context):
-    """`on_heal` — TARGET: the owner regains hit points.
-
-    The owner is the creature whose hit points go up, matching
-    `on_temp_hp_gained` and keeping the whole group about the recipient. The
-    healer's side — 2024 Cleric's Disciple of Life — has nowhere to attach; that
-    is a known gap for the W3 paper pass to confirm (`w3e`) and `w3f` to fill,
-    not something invented here on speculation (`hooks/definitions.py`).
-
-    `healing.add(dice="2d8")` does not double on anything, which is why healing
-    is a `ModifierBag` and not a `DamageBag`.
-    """
+    """`on_heal` — TARGET: the owner regains hit points; `healing` is what it
+    regains (`docs/decisions.md` § w0e, debt #17)."""
 
     creature: Combatant
     healer: Combatant | None
@@ -1438,11 +1115,8 @@ class HealContext(Context):
 class TempHpContext(Context):
     """`on_temp_hp_gained` — TARGET: the owner gains temporary hit points.
 
-    Observational: temp HP is the one step of the damage resolution order
-    nothing else can see, and this hook exists so that something can
-    (DESIGN.md § The closed hook list). The engine has already decided the
-    amount by the time handlers run — 2024 temp HP does not stack, the larger
-    pool simply wins — so there is nothing here for a handler to add to.
+    Observational: `amount` is already decided, and `replaced` is the pool it
+    displaced.
     """
 
     creature: Combatant
@@ -1484,11 +1158,7 @@ class AbilityCheckContext(D20TestContext):
 @_context
 class ForcedSaveContext(Context):
     """`on_forced_save` — SELF: the owner is making somebody else save.
-
-    The DC's side of the pair; `on_saving_throw` is the roll's. This is where a
-    feature that raises its own save DC attaches, which is why the mutator is a
-    bonus to the DC rather than anything about the roll.
-    """
+    `dc_bonus` is added to the DC."""
 
     creature: Combatant
     targets: tuple[Combatant, ...]
@@ -1499,11 +1169,7 @@ class ForcedSaveContext(Context):
 
 @_context
 class SavingThrowContext(D20TestContext):
-    """`on_saving_throw` — TARGET: the owner rolls the save.
-
-    Danger Sense grants advantage here; Aura of Protection adds to the total
-    through `bonus`.
-    """
+    """`on_saving_throw` — TARGET: the owner rolls the save."""
 
     creature: Combatant
     ability: Ability
@@ -1513,13 +1179,8 @@ class SavingThrowContext(D20TestContext):
 
 @_context
 class SaveResolvedContext(Context):
-    """`on_save_resolved` — TARGET: the save has succeeded or failed.
-
-    `succeed()` is Legendary Resistance: the roll happened and failed, and the
-    creature declares a success anyway. Evasion is not here — turning a failed
-    save into half damage is a damage-side change and belongs to
-    `on_incoming_damage`.
-    """
+    """`on_save_resolved` — TARGET: the save has succeeded or failed;
+    `succeed()` declares a success whatever was rolled."""
 
     creature: Combatant
     ability: Ability
@@ -1558,9 +1219,7 @@ class CastSpellContext(Context):
 class ConcentrationContext(Context):
     """`on_concentration_start` — SELF: the owner begins concentrating.
 
-    `replaced` is whatever it was concentrating on until now, which 2024 drops
-    automatically; carrying it means a handler need not reconstruct what was
-    lost.
+    `replaced` is what it was concentrating on until now, or `None`.
     """
 
     creature: Combatant
@@ -1572,7 +1231,7 @@ class ConcentrationContext(Context):
 class ConcentrationCheckContext(D20TestContext):
     """`on_concentration_check` — SELF: the owner rolls to keep concentrating.
 
-    War Caster grants advantage; `damage_taken` is what set the DC.
+    `damage_taken` is what set the DC.
     """
 
     creature: Combatant
@@ -1587,10 +1246,8 @@ class ConcentrationCheckContext(D20TestContext):
 class ConditionContext(Context):
     """`on_condition_gained` / `on_condition_lost` — SELF: the owner's condition.
 
-    `condition` is `rules.enums.Condition`, the **name** of a condition. The
-    behaviour is a `HookSource` subclass in `conditions/` (w1h) — two different
-    things wearing one word, which is why this annotation is worth reading
-    twice.
+    `condition` is `rules.enums.Condition`, the condition's **name**, not the
+    `HookSource` that implements it.
     """
 
     creature: Combatant
@@ -1599,11 +1256,7 @@ class ConditionContext(Context):
 
 @_context
 class EffectContext(Context):
-    """`on_effect_applied` / `on_effect_expired` — SELF: an effect on the owner.
-
-    Both are `SELF` because an effect ending has no actor to be the other side
-    of. Rage extending rather than stacking is decided here.
-    """
+    """`on_effect_applied` / `on_effect_expired` — SELF: an effect on the owner."""
 
     creature: Combatant
     effect: Effect
@@ -1616,8 +1269,7 @@ class EffectContext(Context):
 class MoveContext(Context):
     """`on_move` — SELF: the owner moves along a route the engine resolved.
 
-    The route is the whole path, not just the destination, because what happens
-    on the way out of somebody's reach is the point (`core/geometry.py`, w1d).
+    `route` is the whole path, not just the destination.
     """
 
     creature: Combatant
@@ -1627,21 +1279,12 @@ class MoveContext(Context):
 
 @_context
 class LeaveReachContext(Context):
-    """`on_leave_reach` — OBSERVER: somebody left the owner's reach.
-
-    The project's one `OBSERVER` hook and the opportunity-attack trigger: the
-    owner neither acted nor was acted upon, it merely has reach where the
-    `mover` used to be.
+    """`on_leave_reach` — OBSERVER: somebody is leaving the owner's reach.
 
     **One five-foot step, not a whole move.** `origin` is the square the mover
-    is standing on *right now* and `destination` the single square it is about
-    to step into — adjacent, always, and the pair the observer was handed
-    because it is the pair that decides the offer. A route of six squares that
-    leaves the owner's reach on its fourth step dispatches this once, with the
-    third and fourth squares in it, and never with the whole route: the mover is
-    still on `origin` while the reaction resolves, which is what lets a
-    five-foot reach find it there at all (`engine/triggers.py`). Compare
-    `MoveContext.route`, which is the mover's own view and does carry the lot.
+    is standing on *now*, and still stands on while the reaction resolves;
+    `destination` is the adjacent square it is about to step into
+    (`docs/decisions.md` § w0g3).
     """
 
     creature: Combatant
@@ -1654,8 +1297,7 @@ class LeaveReachContext(Context):
 class ResourceSpentContext(Context):
     """`on_resource_spent` — SELF: the owner spent a slot, a rage, a die.
 
-    `resource` is the pool's id (`slot:3`, `rage`, `superiority_die`), which is
-    what `creatures/resources.py` (w1b) keys its pools by.
+    `resource` is the pool's id (`slot:3`, `rage`, `superiority_die`).
     """
 
     creature: Combatant

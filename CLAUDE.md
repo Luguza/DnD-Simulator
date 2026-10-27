@@ -5,130 +5,61 @@ code in this repository.
 
 ## Project state
 
-A Monte Carlo D&D 5e (2024 / XPHB) combat simulator — "SimC for D&D". **Almost
-no simulator code exists yet**: the repo holds the design (`DESIGN.md`), the
-dependency-ordered build plan (`ROADMAP.md`), the uv/pre-commit toolchain, CI,
-and five packages — `rules/` (the vocabulary every later package imports),
-`core/` (randomness, dice, the clock, the grid, the error hierarchy), `hooks/`
-(the closed registry of 39 extension points, the 31 contexts they hand out, and
-the decorator, source base class and dispatcher that run them), `creatures/`
-(`Creature`, `StatBlock`, `Armour` and the action economy) and `engine/` (the
-damage resolution order and the movement observer).
+A Monte Carlo D&D 5e (2024 / XPHB) combat simulator — "SimC for D&D". The repo
+holds the design (`DESIGN.md`), the dependency-ordered build plan
+(`ROADMAP.md`), the uv/pre-commit toolchain, CI, and the domain core W0 and W1
+built: `rules/` (the vocabulary), `core/` (randomness, dice, the clock, the
+grid, the event log, the error hierarchy), `hooks/` (the closed registry of 39
+extension points, their contexts, and the dispatcher), `creatures/`
+(`Creature`, `StatBlock`, `Armour`, the action economy, resources and effects),
+`conditions/` (the 15 conditions) and `engine/` (damage, attack, saving throws,
+dying and healing, and the movement observer). There is no turn loop, APL,
+build loader, runner or CLI yet — those are W2.
 
-Work is at wave **W1**; **W0 is complete and M0 was met on measurement**:
-`w0a`–`w0i` are done and the pessimistic performance spike measured **~31.5k
-attack resolutions/sec/core** against a budget of 30k. **That margin is spent
-and the budget is now projected to be missed** — `w1f`'s completed attack
-pipeline cost 5.5% of the rate, which puts the hostile configuration at ~29.8k,
-under the ≥30k floor. It is a projection across machines rather than a
-measurement; `w1k` is the re-measure that settles it, and nothing revises the
-budget on a projection (DESIGN.md § Performance, `docs/decisions.md`
-§ The W1 critical-path review).
-The gate fired on the way — the spike came in at 17k
-against the 50k the design had assumed, a revision pass across the hot path
-took it to ~31.5k, and the budget was revised to 30k because 50k turned out to
-sit at the theoretical floor of this object model in CPython.
-`docs/decisions.md` § w0i has the measurements, what each change bought, and
-the two levers deliberately not taken. **W1 is under way.**
+**W0 and W1 are complete; work is at W2.** The M0 performance budget is **≥30k
+attack resolutions/sec/core** on `w0i`'s hostile configuration, revised down
+from 50k by the W0 spike (`docs/decisions.md` § w0i). **`w1k` re-measured it
+against the real W1 substrate and it is missed by about a quarter** (~22k
+projected), attributed to three costs, debt #53–#55. The budget is **not**
+revised; `w2i` takes the levers before any other W2 row, and whether the
+budget comes down is `docs/questions.md` #10, the human's. Read
+`docs/decisions.md` § w1k before pricing anything against it.
 
-The plans were then re-read against what the wave measured
-(`docs/decisions.md` § The W0 plan review). Two things came out of it that
-matter before writing W1 code: **`ROADMAP.md` § The W0 debt register** lists the
-first cuts and deferred obligations W0 left behind — twenty-three rows open, of
-which fourteen are W0's, one is `w1e`'s, two are `w1f`'s, three are `w1c`'s and
-three were found by the W1 critical-path gate — and the task that
-retires each;
-check it for the file you are about to touch. And **`w1k` is a
-new task**, an M0 re-measure at the end of W1, because the measured ~31.5k had
-5% of headroom and W1 adds the per-round cost the spike does not model.
+**`ROADMAP.md` § The W0 debt register** lists every first cut and deferred
+obligation still open, with the task that retires each. Check it for the file
+you are about to touch: `w1j` was held at the round cap on a defect an open row
+in its own file already described (`docs/decisions.md` § The M0 / W1 milestone
+review).
 
-Two tasks have landed since. `w0g3` cut `engine/triggers.py`, holding
-the **movement observer** — who is offered a reaction to a move, on every
-five-foot step, and in what order. It is the audience for an opportunity attack
-and not the attack itself, which is still `w2b`'s Command and `w2c`'s turn loop.
-Read `docs/decisions.md` § w0g3 before touching movement, reactions or the
-`Gate` path.
+Rulings every later task builds on, each argued in its decision record and not
+here:
 
-And `w1a`, the first task of W1, **completed `Creature` and `StatBlock`** and
-added `creatures/economy.py`. Three things changed that every later task builds
-on: **AC is derived from an `Armour` value object** and `StatBlock.armour_class`
-is gone rather than defaulted, so a build can no longer type a number in; a
-creature **owns an `ActionEconomy` and hands it to its own dispatcher**, so
-`Dispatcher.bind()` is now the gate's alone; and the `Combatant` protocol
-**carries the three hit-point numbers**, so a handler can finally ask whether
-its target is bloodied. Derived stats (`modifiers`, `proficiency_bonus`,
-`crit_threshold`) are settled at construction and `Creature.stats` is read-only
-so they cannot go stale. `docs/decisions.md` § w1a has the reasoning; it retires
-debt-register rows #1, #2, #4 and #10.
+- AC is derived from an `Armour` value object; a creature owns its
+  `ActionEconomy`; derived stats are settled at construction (§ w1a).
+- The damage order is the 2024 text's, and an untyped adjustment is spent across
+  a mixed-type hit in proportion (§ w1e).
+- A Critical Hit below 20 still has to hit; a veto is honoured at the
+  declaration and raises after it; damage on a miss does not fire
+  `on_damage_roll`; `Weapon` has six members (§ w1f).
+- A queued effect lands only on the event's own participants, and an
+  `EffectStore` keeps the clock it was last told (§ w1c).
+- A transaction announces only on the commit; an overdrawn pool raises
+  `EconomyError` (§ w1b).
+- A size is a footprint anchored at its low corner, and a reach is measured
+  between footprints (§ w1d).
+- `resolve_damage()` takes the reason a caller halves, not a halved number; a
+  natural 20 or 1 decides nothing on a save (§ w1g).
+- A condition is an `Effect`; a clause that cannot be written is declared
+  (`NEEDS_HOOK`, `APPROXIMATED`), never approximated into silence (§ w1h).
+- Who rolls death saves is a constructor fact, and `is_alive` is not hit
+  points (§ w1j).
 
-Then `w1e` **completed `engine/damage.py`**, and it moves numbers rather than
-files: the resolution order is now the 2024 text's — immunity → flat reductions
-→ halvings → resistance → vulnerability → temp HP → HP — which overturns
-`w0g2`'s flat-after-resistance ruling, keeps its flat-before-halving one inside
-the quoted adjustment step, and answers the open question about two halvings
-from the "counts once" clause. The reorder's own question is the one to know
-before touching this file: **the untyped steps now run before the typed ones, so
-an untyped adjustment is spent across a mixed-type hit in proportion** — never
-by looking ahead to which types are resisted, never in the order the damage
-parts arrived, and by a method that cannot let a larger reduction land more
-damage. `Mitigated.total` is therefore the sum of `Mitigated.amounts` again,
-where `w0g2` had the two deliberately disagree. `docs/decisions.md` § w1e has
-the arguments; it retires debt-register row #7 and opens #23, and its review is
-the case behind the citation rule in § Working rules.
-
-Then `w1f` **cut `engine/attack.py`**, the second resolution order and the one
-~400 features plug into: declare -> roll -> hit/crit/miss -> damage -> resolved,
-in the file that owns it. `tools/skeleton.py`'s hand-sequenced `attack_once()`
-is gone with it, so the benchmark now measures the sequence the project ships.
-Four things every later task inherits: a **Critical Hit below 20 still has to
-hit**, so the threshold decides only whether a hit is critical; a **veto is
-honoured at the declaration and raises after it**, and a prevented attack has
-`outcome is None` because `Outcome` describes rolls; **damage on a miss is
-rolled and resolved, without firing `on_damage_roll`** (the Graze mastery's own
-sentence); and the **`Weapon` protocol is widened to six members**, which is the
-shape a feature reads a weapon through. It costs 5.5% of the spike's rate,
-measured and attributed — more than all of M0's 5% headroom, in the wave the
-plan review said would spend it. `docs/decisions.md` § w1f has the arguments; it
-retires debt-register rows #3 and #6 and opens #24 and #25.
-
-The W1 critical-path gate then re-read the plans against those three tasks
-(`docs/decisions.md` § The W1 critical-path review). One thing from it changes
-how a W1 task is done: **the margin over the 30k budget is gone**, so `w1b`,
-`w1c`, `w1d`, `w1i` and `w1j` each run the spike paired and record what they cost
-(`ROADMAP.md` § Sequencing principles, 10) and `w1k` totals attributions instead
-of discovering a number. It also corrected `w1c`'s row — the refusal to sweep
-was in `engine/attack.py` as well as `engine/damage.py` — and turned three
-unowned obligations the completed tasks had recorded only in their own decision
-records into debt rows **#26** (a nested attack raises on a shared context pool),
-**#27** (heavy armour never costs its 10 feet of speed) and **#28** (movement is
-never charged against the economy).
-
-Then `w1c` **completed the effect model** — `Effect`, `EffectStore`, `Stacking`,
-charges and the two expiry sweeps — and with it deleted `engine/damage.py`'s
-`refuse_pending()`, so a handler's `ctx.apply_effect(...)` finally lands
-(debt #5). Two things it decided bind every later task: **a queued effect is
-applied to the event's own participants, matched by identity**, because a
-handler names a `Combatant` and only the engine holds the creature behind one —
-a third creature raises rather than being dropped, and the roster that answers it
-is `w2c`'s (debt #30); and **the store keeps the clock it was last told**, since
-no attack context carries a `TimeKey` and Rage's `refresh()` is called from three
-attack hooks — so `expire_before()`/`expire_after()` are the only writers of it
-and nothing advances them until `w2c` (debt #29). It measured at **−0.3%
-of the rate, against pair-to-pair ratios spanning −2.5% to +1.2%**, and that
-number does not include the per-boundary expiry sweep: the spike crosses no turn
-boundary, so nothing calls it.
-It also wired `on_effect_applied` and
-`on_effect_expired`, which had been in the closed registry since `w0e` with no
-possible caller. `docs/decisions.md` § w1c has the arguments and the eight
-ratios behind that median; it retires debt-register row #5 and opens #29,
-#30 and #31.
-
-`DESIGN.md` § APL derivation and § The scorer were added after M0 and are the
-largest change to the project's goal since the founding document: the APL is
-**derived by search per build, not authored**, over a global fitted value model
-shared by every build. That adds wave W8 and milestone M5, three signatures to
-W2, and one authoring declaration to W3 (the `Perturbation` profile on a buff or
-debuff) that must exist before the W4 grind. Nothing in W0's code is affected.
+`DESIGN.md` § APL derivation and § The scorer are the largest change to the
+project's goal since the founding document: the APL is **derived by search per
+build, not authored**, over a global fitted value model shared by every build.
+That adds wave W8 and milestone M5, three signatures to W2, and one authoring
+declaration to W3 (the `Perturbation` profile on a buff or debuff) that must
+exist before the W4 grind.
 
 Both documents are load-bearing: `DESIGN.md` fixes the architecture and the
 vocabulary, `ROADMAP.md` fixes what may be built when and by whom. Read the
@@ -290,14 +221,15 @@ catch. It is not optional.
 **Performance is a design constraint, not a later concern.** Budget is ≥30k
 attack resolutions/sec/core, revised down from 50k by the W0 spike itself,
 which measured ~31.5k on the hostile configuration (`docs/decisions.md` § w0i)
-and has since spent that margin on `w1f`'s completed attack pipeline — so the
+and is now measured missed, at ~22k, with W1's substrate wired in (§ w1k) — so the
 budget is the number to hold, and it is not revised a second time by anyone who
 cannot attribute the shortfall (DESIGN.md § Biggest risks). Contexts are pooled and mutable
 (engine-owned, hot path); everything a feature stores is frozen (author-owned,
 cold path). **The hot path is measured, not guessed** — `tools/spike.py` is the
 harness, and a change to `hooks/dispatch.py`, `hooks/contexts.py`,
-`engine/damage.py`, `engine/attack.py`, `core/geometry.py`, `core/rng.py` or
-`core/dice.py` should be run past it — `ROADMAP.md` § Sequencing principles, 10
+`engine/damage.py`, `engine/attack.py`, `core/geometry.py`, `core/rng.py`,
+`core/dice.py`, `core/timeline.py`, `creatures/effects.py` or
+`creatures/resources.py` should be run past it — `ROADMAP.md` § Sequencing principles, 10
 is the authority on what that costs and who records it. Three
 of those files carry optimisations whose reasons are only in the decision
 record: `reopen()` is generated per context class, `Dice.parse` is memoised, and
@@ -321,15 +253,21 @@ there is local to a module.
 | `hooks/contexts.py`, `core/errors.py` | § w0f |
 | `hooks/decorator.py`, `hooks/source.py`, `hooks/dispatch.py` | § w0g |
 | `creatures/`, `core/geometry.py` | § w0g2 |
+| `core/geometry.py`, size, line of sight, templates | § w1d |
 | `engine/damage.py`, the resolution order | § w0g2, § w1e |
 | `engine/attack.py`, the attack sequence | § w1f |
+| `engine/saves.py`, saving throws, save-for-half | § w1g |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
 | `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c |
+| `conditions/`, a condition, a declared gap | § w1h |
+| `creatures/resources.py`, pools, slots, `transaction()` | § w1b |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
-| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i |
-| `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review |
-| the performance budget, pricing a change | § w0i, § The W1 critical-path review |
+| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k |
+| `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § The M0 / W1 milestone review |
+| the performance budget, pricing a change | § w0i, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § w1k, § The M0 / W1 milestone review |
 | `engine/triggers.py`, `Dispatcher.responsive()` | § w0g3 |
+| `core/log.py`, the event log, its records and levels | § w1i |
+| `engine/dying.py`, `engine/healing.py`, `engine/d20.py`, `is_alive` | § w1j |
 | `.claude/skills/`, `CODING_STANDARDS.md`, the review loop | § The PR, review and retro skills |
 
 Add a section there when a task lands, rather than growing this file.
@@ -360,7 +298,7 @@ turns what the reviews found into checks, standards and plan edits.
 
 ## Sequencing rules
 
-`ROADMAP.md` has 77 tasks across waves W0–W8 with explicit dependency edges.
+`ROADMAP.md` has 79 tasks across waves W0–W8 with explicit dependency edges.
 Three constraints dominate:
 
 - **Nothing in W4 or later may start before M2** (API frozen, authoring skill

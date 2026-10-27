@@ -1,45 +1,12 @@
 """The APL, hand-compiled — the one stand-in the performance spike is allowed.
 
-ROADMAP w0i asks for "an 8-condition APL with `target:` and `move:`
-**hand-compiled to callables over the namespace-proxy shape `w2e` will emit**",
-and is explicit about why that is a budget rather than a stub: `w2e` re-runs
-this benchmark when the real compiler lands and must come in at or under the
-same number. So everything here is written to be the *shape* the compiler emits,
-not a shortcut around it.
+Each `if:`, `target:` and `move:` clause is a callable of one argument, the
+`Namespace`, whose five roots are proxies built once per creature over weak
+references to live state (DESIGN.md § Condition language). The engine binds
+`trigger` and `target` before it asks. A gate id no entry claims is OFF.
+`docs/decisions.md` § w0i.
 
-**What w2e will emit, and what this file therefore is.** DESIGN.md § Condition
-language compiles each `if:`, `target:` and `move:` clause to a **Specification**
-— a reusable predicate over domain objects — after resolving every dotted path
-against a `NamespaceSchema` at load time. The namespace roots (`self`, `target`,
-`trigger`, `enemies`, `allies`) are **Proxy** objects built once per creature
-holding weak references to live state, "so evaluation is attribute access rather
-than object construction". Two consequences are load-bearing for the
-measurement:
-
-- **A compiled clause is a callable of one argument, the namespace.** `self`,
-  `target` and the rest are attributes of it, so `self.raging` compiles to
-  `ns.self.raging` — one attribute chain, no dict lookup, no re-binding per
-  evaluation. `self` is a perfectly ordinary identifier in Python, which is what
-  lets the emitted code read like the YAML it came from.
-- **The proxies hold weak references.** A namespace outlives no creature and
-  keeps none alive; the deref is a call on the hot path and is deliberately in
-  the measurement. It is also why `Creature` carries `__weakref__`.
-
-**`trigger.*` is populated by the engine, never scraped off a context.**
-DESIGN.md § Module layout puts that job in `engine/triggers.py`: "which event
-fires an offer, who is in the audience, in what order… The name matches the
-APL's `trigger.*` namespace root, which this module populates." So the spike's
-attack sequence binds `ns.trigger` before it dispatches a hook with gated
-handlers, and `allows()` evaluates a condition over the namespace rather than
-introspecting the context it was handed. A gate that had to switch on context
-type would be an `isinstance` chain on the hottest path in the project.
-
-**Unmentioned is OFF.** `allows()` on a gate id no entry claims returns `False`
-— the **Null Object** default policy of DESIGN.md § APL, so attaching a gated
-feature never silently changes a build's numbers.
-
-Sources: DESIGN.md § APL and mid-attack decisions, § Condition language,
-§ Module layout; ROADMAP w0i, w2e.
+DESIGN.md § APL and mid-attack decisions.
 """
 
 from collections.abc import Callable, Sequence
@@ -52,6 +19,7 @@ from dndsim.core.geometry import Cell, distance_ft, in_reach
 from dndsim.creatures.creature import Creature
 from dndsim.hooks.contexts import Context
 from dndsim.hooks.source import HookSource
+from dndsim.tools.spike_features import raging
 
 __all__ = [
     "AlliesProxy",
@@ -60,7 +28,6 @@ __all__ = [
     "Entry",
     "Namespace",
     "SelfProxy",
-    "SpikeState",
     "TargetProxy",
     "TriggerProxy",
     "first",
@@ -71,12 +38,8 @@ __all__ = [
 
 
 def _live(reference: "ReferenceType[Creature]") -> Creature:
-    """Deref a proxy's weak reference, or say which namespace outlived its fight.
-
-    The branch is on the hot path and stays there: DESIGN.md § Condition
-    language specifies weak references, and a spike that held strong ones would
-    measure a proxy nobody is going to ship.
-    """
+    """Deref a proxy's weak reference; raises `EngineAssemblyError` if the
+    creature is gone."""
     creature = reference()
     if creature is None:
         raise EngineAssemblyError(
@@ -88,21 +51,12 @@ def _live(reference: "ReferenceType[Creature]") -> Creature:
 
 
 class SelfProxy:
-    """The `self.*` root: the acting creature, and the state features hold.
+    """The `self.*` root: the acting creature, its effects and its pools."""
 
-    `raging` and `slots.highest` are the two paths DESIGN.md's example APL reads
-    that this benchmark still answers from a stand-in (debt #15) — `w1c` landed
-    the `EffectStore` and `w1b` has the resources. The proxy is built over the
-    object that holds them rather than over a flag on the creature, which is
-    where `w2e`'s schema will resolve them to as well: a proxy answers a dotted
-    path out of somebody else's state.
-    """
+    __slots__ = ("_ref",)
 
-    __slots__ = ("_ref", "_state")
-
-    def __init__(self, creature: Creature, state: "SpikeState") -> None:
+    def __init__(self, creature: Creature) -> None:
         self._ref: ReferenceType[Creature] = ref(creature)
-        self._state = state
 
     @property
     def hp(self) -> int:
@@ -123,26 +77,19 @@ class SelfProxy:
 
     @property
     def raging(self) -> bool:
-        return self._state.raging
+        return raging(_live(self._ref))
 
     @property
     def slots_highest(self) -> int:
-        """`self.slots.highest` — one path, one attribute, no sub-proxy.
-
-        The dotted name in the YAML is `self.slots.highest`; what the schema
-        resolves it to is a single lookup, because a `slots` sub-proxy would be
-        an object construction per evaluation on the path § Condition language
-        says is attribute access.
-        """
-        return self._state.slots_highest
+        """`self.slots.highest`, resolved to one attribute rather than a
+        sub-proxy."""
+        return _live(self._ref).resources.spells.highest()
 
 
 class TargetProxy:
     """The `target.*` root: whoever the current offer is against.
 
-    Rebound by the engine per event rather than held weakly, because it *is* the
-    event's subject — the creature that triggered a reaction, or the one an
-    attack was declared against (DESIGN.md § APL, on the default `target:`).
+    Rebound by the engine per event, and held strongly; unbound reads as 0.
     """
 
     __slots__ = ("_creature",)
@@ -165,10 +112,7 @@ class TargetProxy:
 class TriggerProxy:
     """The `trigger.*` root: what the engine is offering, right now.
 
-    Populated by the engine before it dispatches a hook carrying gated handlers
-    (DESIGN.md § Module layout). Two fields, because two of the eight entries
-    read them: Divine Smite reads `trigger.crit` and Uncanny Dodge reads
-    `trigger.damage_estimate`.
+    Bound by the engine before it dispatches a hook carrying gated handlers.
     """
 
     __slots__ = ("crit", "damage_estimate")
@@ -185,11 +129,7 @@ class TriggerProxy:
 class EnemiesProxy:
     """The `enemies.*` root: everything hostile, as a set of live queries.
 
-    `within(ft)` and `in_reach` are the two the example APL uses, and both are
-    real geometry over real positions — ROADMAP w0i asks for "real grid
-    movement… so distance and reach queries are in the measurement rather than
-    optimised away", and a proxy answering from a cached count would optimise
-    away exactly the query being bought.
+    Every query is computed from live positions, never cached (ROADMAP w0i).
     """
 
     __slots__ = ("_ref", "_side")
@@ -203,12 +143,12 @@ class EnemiesProxy:
         return sum(
             1
             for c in self._side
-            if c.is_alive and distance_ft(origin, c.position) <= feet
+            if not c.is_down and distance_ft(origin, c.position) <= feet
         )
 
     @property
     def alive(self) -> tuple[Creature, ...]:
-        return tuple(c for c in self._side if c.is_alive)
+        return tuple(c for c in self._side if not c.is_down)
 
     @property
     def in_reach(self) -> tuple[Creature, ...]:
@@ -216,7 +156,9 @@ class EnemiesProxy:
         origin = owner.position
         reach = owner.reach_ft
         return tuple(
-            c for c in self._side if c.is_alive and in_reach(origin, c.position, reach)
+            c
+            for c in self._side
+            if not c.is_down and in_reach(origin, c.position, reach)
         )
 
 
@@ -230,16 +172,12 @@ class AlliesProxy:
 
     @property
     def down(self) -> tuple[Creature, ...]:
-        return tuple(c for c in self._side if not c.is_alive)
+        return tuple(c for c in self._side if c.is_alive and c.is_down)
 
 
 class Namespace:
-    """The five roots, built once per creature, passed to every compiled clause.
-
-    Slotted and assembled at load time: a namespace built per evaluation would
-    make the "attribute access rather than object construction" sentence in
-    DESIGN.md false at the one place it is measured.
-    """
+    """The five roots, built once per creature, passed to every compiled
+    clause."""
 
     __slots__ = ("allies", "enemies", "self", "target", "trigger")
 
@@ -250,34 +188,12 @@ class Namespace:
         enemies: EnemiesProxy,
         allies: AlliesProxy,
     ) -> None:
-        # `self.self` reads oddly and is exactly right: the attribute is the
-        # namespace root the APL author writes, and naming it anything else
-        # would make the emitted code stop looking like the YAML it came from.
+        # The root the APL author writes as `self`.
         self.self = own
         self.enemies = enemies
         self.allies = allies
         self.target = TargetProxy()
         self.trigger = TriggerProxy()
-
-
-class SpikeState:
-    """The sliver of `w1b` and `w1c` the namespace and the fixtures share.
-
-    `self.raging` is a question about an `Effect` and `self.slots.highest` a
-    question about a `ResourcePool` (w1b), and the benchmark asks neither of the
-    real thing — `w1k` is where it does (debt #15). Rather than
-    scatter stand-in flags across twenty-five fixture classes, both live in one
-    object that the features write and the namespace reads — which is also the
-    shape the real thing has, since a proxy resolves a dotted path to somebody
-    else's state rather than holding its own.
-    """
-
-    __slots__ = ("marked", "raging", "slots_highest")
-
-    def __init__(self) -> None:
-        self.raging = False
-        self.slots_highest = 5
-        self.marked: str | None = None
 
 
 Condition: TypeAlias = Callable[[Namespace], bool]
@@ -287,12 +203,8 @@ Move: TypeAlias = Callable[[Namespace], Cell | None]
 
 @dataclass(frozen=True, slots=True)
 class Entry:
-    """One row of the APL: an action id and up to three compiled clauses.
-
-    Frozen and shared, like every compiled artefact in the project: an APL is
-    compiled once per build and evaluated a few million times (DESIGN.md
-    § Levers).
-    """
+    """One row of the APL: an action id, up to three compiled clauses, and
+    the gate id it answers."""
 
     action: str
     condition: Condition
@@ -326,15 +238,9 @@ def _hp_of(creature: Creature) -> int:
 def toward_until_in_reach(origin: Cell, reach_ft: int, target: Creature) -> Cell | None:
     """`toward <selector> until in_reach` — the destination, not the route.
 
-    "Movement is a **decision, not a pathfinding problem**: the selector picks a
-    destination and the engine walks the shortest legal route to it" (DESIGN.md
-    § APL). So this returns the cell to stand in — the nearest cell to the mover
-    that is within its reach of the target — and `core/geometry.route()` is what
-    gets there. `None` means "already there", which is `hold` by another name.
-
-    It takes the mover's position and reach rather than the mover, because a
-    compiled `move:` clause reads both off the `self` proxy and the proxy does
-    not hand out the creature behind it.
+    Returns the nearest cell to `origin` within `reach_ft` of the target, or
+    `None` when already in reach (DESIGN.md § APL). Computed from anchors, not
+    footprints (debt #34).
     """
     goal = target.position
     if in_reach(origin, goal, reach_ft):
@@ -353,16 +259,8 @@ def _clamp(value: int, limit: int) -> int:
 class Apl:
     """A compiled action priority list: one flat ordered list, asked twice.
 
-    DESIGN.md § APL's unifying idea is that "a turn action, a reaction, and a
-    mid-attack rider are all 'the engine has an offer; does the APL take it?'",
-    so this class answers exactly two questions and the entries do not know
-    which one they were asked:
-
-    - `choose(offered)` — the turn loop's question, filtering the list to the
-      ids currently on the table and taking the first passing entry.
-    - `allows(gate, source, ctx)` — the dispatcher's question, satisfying the
-      `Gate` protocol in `hooks/dispatch.py`, so a gated handler's `if:` clause
-      is evaluated inside the attack it might modify.
+    `choose(offered)` answers the turn loop and `allows(gate, source, ctx)`
+    the dispatcher, as its `Gate` (DESIGN.md § APL).
     """
 
     __slots__ = ("_by_gate", "_entries", "_namespace")

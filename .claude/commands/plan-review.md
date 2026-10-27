@@ -21,8 +21,11 @@ claims those tasks touched — never read it end to end.
    budget from 50k to 30k; that is the shape of finding worth looking for.
 2. **Did a task leave a first cut or a deferred obligation** that no later task
    owns? It belongs in § The W0 debt register with the task that retires it.
+   A hook in the closed registry that nothing fires and no row names is one;
+   so is a method a record hands "to the next task" that no plan text carries.
 3. **Does an upcoming row still say the right thing** given what has landed, or
-   does it restate something now settled elsewhere?
+   does it restate something now settled elsewhere? Read its Produces cell
+   against the files its done-when has to change.
 4. **Did anything land that DESIGN.md contradicts?** One of the two is wrong.
 5. **Is a seam still uncut?** W8's seams are cut in W2 and W3 or they are
    retrofits across every build file.

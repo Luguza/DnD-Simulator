@@ -1,8 +1,4 @@
-"""The scaffold contract: the package imports and reports its version.
-
-Replaced by real contract tests as W0 lands; until then it is what makes
-`pytest` a meaningful signal on an otherwise empty suite.
-"""
+"""The scaffold contract: the package imports and reports its version."""
 
 import dndsim
 

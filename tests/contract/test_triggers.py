@@ -1,31 +1,11 @@
 """The observer contract: who is offered a reaction to a move, when, and how much
 it costs to find that out.
 
-`engine/triggers.py` is the audience half of DESIGN.md § Module layout's split —
-`actions/` holds the opportunity attack itself, this holds "which event fires an
-offer, who is in the audience, in what order". Four things about it are worth
-holding still, and the fourth is the reason the file exists in this shape:
-
-- **The offer is one five-foot step.** A route of six squares that leaves a
-  watcher's reach on the fourth step offers once, with the third and fourth
-  squares in the context, and the mover is still standing on the third while the
-  reaction resolves. Any other ordering puts the attack a square further away
-  than the rules put it, which a five-foot reach notices about half the time.
-- **The decision is the creature's, not the engine's.** Whether a step provokes
-  is arithmetic; whether to spend the reaction on it is the action list's answer
-  through the dispatcher's `gate`, and a declined offer costs nothing — the
-  reaction is still in hand for the next square.
-- **Two watchers left at once are asked in initiative order**, sorted once per
-  move, because a fight that resolves in a different order on a re-run is not
-  reproducible from its seed.
-- **The cost is counted, not timed.** The efficiency claim is that the per-step
-  work is linear in creatures that could actually react rather than in creatures
-  in the room, so the assertions below count dispatches and distance queries. A
-  wall-clock assertion of the same claim on a shared runner fires on noise and
-  gets deleted (DESIGN.md § The benchmark gate).
+The cost assertions count grid queries and dispatches rather than timing them.
 
 Sources: XPHB (2024) "Combat" — Opportunity Attacks; DESIGN.md § Module layout,
-§ Hook scope, § APL, § Determinism; ROADMAP w0g2, w2c, w2e.
+§ Hook scope, § APL, § Determinism; `docs/decisions.md` § w0g3; ROADMAP w0g2,
+w2c, w2e.
 """
 
 from types import MappingProxyType
@@ -34,7 +14,7 @@ from typing import Final
 import pytest
 
 from dndsim.core.errors import EngineAssemblyError
-from dndsim.core.geometry import Cell, distance_ft, in_reach
+from dndsim.core.geometry import Cell, distance_ft, in_reach, route
 from dndsim.core.timeline import InitiativeKey
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.economy import ActionEconomy
@@ -44,24 +24,19 @@ from dndsim.hooks.contexts import Cell as CellRef
 from dndsim.hooks.contexts import Context, LeaveReachContext
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.source import HookSource
-from dndsim.rules.enums import Ability, ActionCost
+from dndsim.rules.enums import Ability, ActionCost, Size
 
 SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 10))
 
 _GATE_ID: Final = "attack.opportunity_attack"
 
 
-# --- the pieces w2b and w2e own, standing in for themselves ------------------
+# --- stand-ins for the policy and the reaction -------------------------------
 
 
 class Policy:
-    """The reaction half of the APL, as the `Gate` protocol sees it (`w2e`).
-
-    An `if:` clause the compiler will emit, standing in as a flag: what matters
-    to this file is that the answer is the *creature's*, that a False answer
-    spends nothing, and that a gate nobody mentions is OFF — the Null Object
-    default of DESIGN.md § APL.
-    """
+    """A stand-in `Gate`: answers `takes` for the gate id it claims and False
+    for every other, recording each id it is asked about."""
 
     __slots__ = ("asked", "claims", "takes")
 
@@ -78,21 +53,13 @@ class Policy:
 
 
 class OpportunityAttack(HookSource):
-    """The reaction, as a feature: costed, gated, and knowing no geometry.
-
-    The whole point of `Scope.OBSERVER` in one class — there is no reach check
-    here, no `if ctx.mover is not self.owner`, and no policy. The engine decided
-    that this creature's reach was left; the action list decided whether that was
-    worth a reaction; this only records the swing.
-    """
+    """The reaction, as a feature: costed, gated, and recording each swing."""
 
     __slots__ = ("swings",)
 
     def __init__(self, owner: Creature) -> None:
         super().__init__(owner)
-        # The protocol `LeaveReachContext` declares, not `core.geometry.Cell`:
-        # a feature reads the squares it was handed and never the concrete
-        # class behind them (`hooks/contexts.py`).
+        # The context's `Cell` protocol, not `core.geometry.Cell`.
         self.swings: list[tuple[CellRef, CellRef]] = []
 
     @hook("on_leave_reach", costs=ActionCost.REACTION, gate=_GATE_ID)
@@ -102,13 +69,7 @@ class OpportunityAttack(HookSource):
 
 
 class Bystander(HookSource):
-    """A movement observer that costs nothing — a tally, not a reaction.
-
-    Here because it is what stops the audience filter from being written as "has
-    a reaction left": a source with no `costs` must be offered the event whether
-    or not its creature has a reaction in hand, and `Dispatcher.responsive()`
-    answering otherwise would silently delete it.
-    """
+    """A movement observer that costs nothing — a tally, not a reaction."""
 
     __slots__ = ("seen",)
 
@@ -128,10 +89,12 @@ def _seat(initiative: int) -> InitiativeKey:
     )
 
 
-def _creature(name: str, at: Cell, *, initiative: int = 10) -> Creature:
+def _creature(
+    name: str, at: Cell, *, initiative: int = 10, size: Size = Size.MEDIUM
+) -> Creature:
     return Creature(
         name=name,
-        stats=StatBlock(abilities=SCORES, max_hp=30, level=5),
+        stats=StatBlock(abilities=SCORES, max_hp=30, level=5, size=size),
         position=at,
         weapon=GREATSWORD,
         initiative=_seat(initiative),
@@ -139,16 +102,15 @@ def _creature(name: str, at: Cell, *, initiative: int = 10) -> Creature:
 
 
 def _threatener(
-    name: str, at: Cell, *, initiative: int = 10, takes: bool = True
+    name: str,
+    at: Cell,
+    *,
+    initiative: int = 10,
+    takes: bool = True,
+    size: Size = Size.MEDIUM,
 ) -> tuple[Creature, OpportunityAttack, ActionEconomy, Policy]:
-    """A creature that owns an opportunity attack, its economy and its policy.
-
-    The economy is the creature's own (`w1a`): a `Creature` builds an
-    `ActionEconomy` and hands it to its dispatcher, so what a reaction is paid
-    for out of here is what it would be paid for out of in a real encounter.
-    Only the policy is still a stand-in, because `w2e` owns the compiler.
-    """
-    creature = _creature(name, at, initiative=initiative)
+    """A creature that owns an opportunity attack, its economy and its policy."""
+    creature = _creature(name, at, initiative=initiative, size=size)
     policy = Policy(takes=takes)
     creature.dispatcher.bind(gate=policy)
     reaction = OpportunityAttack(creature)
@@ -166,8 +128,8 @@ def _east(start: Cell, squares: int) -> tuple[Cell, ...]:
 
 
 def test_the_offer_is_made_from_the_square_the_mover_is_still_standing_on() -> None:
-    """The ordering the whole file exists to hold: the reaction resolves before
-    the step, so a five-foot reach can still find the mover."""
+    """The reaction resolves before the step, so a five-foot reach can still find
+    the mover."""
     mover = _creature("Runner", Cell(0, 0))
     guard, reaction, _, _ = _threatener("Guard", Cell(-1, 0))
 
@@ -198,9 +160,7 @@ def test_reach_is_re_read_each_step_and_one_reaction_is_all_there_is() -> None:
     reaction: reach is recomputed per square rather than latched at the top of
     the move, and the creature is out of the audience the moment it has spent.
 
-    The second offer is never made at all — not made and declined. Once the
-    reaction is gone the watcher stops being someone who could answer, which is
-    the same filter `watch_movement()` applies before the move starts."""
+    The second offer is never made at all — not made and declined."""
     mover = _creature("Runner", Cell(0, 0))
     guard, reaction, economy, policy = _threatener("Guard", Cell(0, -1))
 
@@ -225,8 +185,7 @@ def test_a_move_that_never_leaves_reach_provokes_nothing() -> None:
 
 
 def test_a_declined_offer_spends_nothing_and_comes_again() -> None:
-    """ "Nothing is spent by a handler that declined" (`hooks/dispatch.py`), which
-    is what makes holding a reaction for a better target expressible at all."""
+    """A declined offer spends nothing, so the next leaving step offers again."""
     mover = _creature("Runner", Cell(0, 0))
     guard, reaction, economy, policy = _threatener("Guard", Cell(0, -1), takes=False)
 
@@ -240,15 +199,8 @@ def test_a_declined_offer_spends_nothing_and_comes_again() -> None:
 
 
 def test_a_reaction_no_action_list_mentions_is_off() -> None:
-    """The Null Object default policy: attaching an opportunity attack to a build
-    whose APL never claims it does not silently change that build's numbers.
-
-    `Policy` answers True only for the gate id it was built to claim, which is
-    what a compiled action list does — `allows()` on an id no entry carries
-    returns False (`tools/spike_apl.py`). So the same feature, the same move and
-    the same geometry produce a swing or no swing purely on the strength of one
-    line of YAML, which is the property that makes two builds comparable.
-    """
+    """An opportunity attack whose gate id the policy does not claim is never
+    taken (`docs/decisions.md` § w0g3)."""
     mover = _creature("Runner", Cell(0, 0))
     guard = _creature("Guard", Cell(0, -1))
     # The one difference from `_threatener`: this build's list claims a
@@ -266,7 +218,7 @@ def test_a_reaction_no_action_list_mentions_is_off() -> None:
 
 
 def test_two_watchers_left_at_once_are_asked_in_initiative_order() -> None:
-    """Any order is legal D&D; only a stated one reproduces from a seed."""
+    """Higher initiative first (`docs/decisions.md` § w0g3)."""
     mover = _creature("Runner", Cell(0, 0))
     slow, slow_swing, _, _ = _threatener("Slow", Cell(0, -1), initiative=2)
     quick, quick_swing, _, _ = _threatener("Quick", Cell(0, 1), initiative=20)
@@ -303,14 +255,10 @@ def test_the_per_step_cost_is_linear_in_watchers_not_in_the_room(
     the handler-table filter — one bounding-box question and one reach question —
     and one per square for that same creature afterwards. The other nineteen
     never reach the geometry at all, because "has anything attached to
-    `on_leave_reach`" is a dict lookup and it is asked first, in the same
-    ascending-cost order the dispatcher asks its own three valves in.
+    `on_leave_reach`" is asked first.
 
-    Both names are counted because the file asks the grid through both:
-    `in_reach()` for every reach question, per `core/geometry.py`'s claim to be
-    the one place reach is decided, and `distance_ft()` only for the broad-phase
-    bound, which is a question about the size of the route rather than about
-    reach.
+    Both `in_reach()` and `distance_ft()` are counted, because the module asks
+    the grid through both.
     """
     mover = _creature("Runner", Cell(0, 0))
     watcher = _creature("Watcher", Cell(0, -1))
@@ -320,15 +268,39 @@ def test_the_per_step_cost_is_linear_in_watchers_not_in_the_room(
 
     queries = 0
 
-    def counting_distance(origin: Cell, destination: Cell) -> int:
+    def counting_distance(
+        origin: Cell,
+        destination: Cell,
+        *,
+        origin_size: Size = Size.MEDIUM,
+        destination_size: Size = Size.MEDIUM,
+    ) -> int:
         nonlocal queries
         queries += 1
-        return distance_ft(origin, destination)
+        return distance_ft(
+            origin,
+            destination,
+            origin_size=origin_size,
+            destination_size=destination_size,
+        )
 
-    def counting_reach(origin: Cell, destination: Cell, reach_ft: int) -> bool:
+    def counting_reach(
+        origin: Cell,
+        destination: Cell,
+        reach_ft: int,
+        *,
+        origin_size: Size = Size.MEDIUM,
+        destination_size: Size = Size.MEDIUM,
+    ) -> bool:
         nonlocal queries
         queries += 1
-        return in_reach(origin, destination, reach_ft)
+        return in_reach(
+            origin,
+            destination,
+            reach_ft,
+            origin_size=origin_size,
+            destination_size=destination_size,
+        )
 
     monkeypatch.setattr("dndsim.engine.triggers.distance_ft", counting_distance)
     monkeypatch.setattr("dndsim.engine.triggers.in_reach", counting_reach)
@@ -338,9 +310,9 @@ def test_the_per_step_cost_is_linear_in_watchers_not_in_the_room(
 
 
 def test_a_watcher_out_of_range_of_the_whole_route_is_never_asked() -> None:
-    """The broad phase, which is the filter that keeps a large fight cheap: a
-    creature further away than its reach plus the length of the move can never
-    have the mover inside its reach, so it can never be left."""
+    """The broad phase: a creature further away than its reach plus the length
+    of the move can never have the mover inside its reach, so it can never be
+    left."""
     mover = _creature("Runner", Cell(0, 0))
     near, _, _, _ = _threatener("Near", Cell(0, -1))
     far, _, _, _ = _threatener("Far", Cell(40, 0))
@@ -365,9 +337,8 @@ def test_a_watcher_that_has_spent_its_reaction_drops_out_of_the_audience() -> No
 
 
 def test_a_costless_observer_is_offered_the_move_with_no_reaction_in_hand() -> None:
-    """`Dispatcher.responsive()` filters on what the handler *costs*, never on
-    the hook it is attached to — an `on_leave_reach` handler that spends nothing
-    is offered every step it is owed whatever the economy says."""
+    """An `on_leave_reach` handler that spends nothing is offered every step it
+    is owed whatever the economy says."""
     mover = _creature("Runner", Cell(0, 0))
     watcher = _creature("Watcher", Cell(0, -1))
     watcher.economy.spend(ActionCost.REACTION)
@@ -403,8 +374,7 @@ def test_the_dead_and_the_mover_itself_are_never_in_the_audience() -> None:
 
 
 def test_disengaging_provokes_nobody() -> None:
-    """Disengage, forced movement and teleportation share one valve rather than
-    a check in every Command that moves a creature."""
+    """`provokes=False` walks the route and offers nothing."""
     mover = _creature("Runner", Cell(0, 0))
     guard, reaction, economy, _ = _threatener("Guard", Cell(0, -1))
 
@@ -446,10 +416,8 @@ def test_a_mover_dropped_on_the_way_stops_where_it_fell() -> None:
 
 
 def test_an_effect_queued_by_a_reaction_is_refused_rather_than_dropped() -> None:
-    """`hooks/dispatch.py` deliberately does not drain `ctx.pending_effects`; the
-    engine that owns the event must, and for this one that is `w2c`. Until then
-    the debt is loud, because a silently dropped Sentinel is a wrong number
-    nobody would chase to this file."""
+    """A reaction that queues an effect raises rather than dropping it
+    (`docs/decisions.md` § w0g3)."""
     mover = _creature("Runner", Cell(0, 0))
     guard, _, _, _ = _threatener("Guard", Cell(0, -1))
 
@@ -486,3 +454,27 @@ def test_an_empty_route_moves_nobody() -> None:
 
     assert walk_provoking(mover, (), []) == ()
     assert mover.position == Cell(2, 2)
+
+
+def test_a_large_watcher_gets_the_opportunity_attack_its_anchor_would_miss() -> None:
+    """The route and the offer, end to end on the case debt 9 named
+    (`docs/decisions.md` § w1d).
+
+    Both guards are anchored at (-2, 0) with a 5-foot reach, and the runner
+    starts at (0, 0) and is sent to (3, 0). The Large guard fills
+    (-2, 0)-(-1, 1), so its nearest square is one step from the runner and the
+    first step of the route leaves its reach: one swing, from (0, 0) to (1, 0).
+    The Medium guard stands only on (-2, 0), which is 10 feet from the runner,
+    so it never had the runner in reach and is never offered anything."""
+    walked = route(Cell(0, 0), Cell(3, 0))
+    assert walked == (Cell(1, 0), Cell(2, 0), Cell(3, 0))
+
+    runner = _creature("Runner", Cell(0, 0))
+    ogre, swings, _, _ = _threatener("Ogre", Cell(-2, 0), size=Size.LARGE)
+    walk_provoking(runner, walked, [ogre])
+    assert swings.swings == [(Cell(0, 0), Cell(1, 0))]
+
+    runner = _creature("Runner", Cell(0, 0))
+    goblin, missed, _, _ = _threatener("Goblin", Cell(-2, 0))
+    walk_provoking(runner, walked, [goblin])
+    assert missed.swings == []

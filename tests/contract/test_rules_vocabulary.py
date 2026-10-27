@@ -1,12 +1,6 @@
 """The w0b contract: the rules vocabulary is closed, complete and hard to misuse.
 
-These are membership and shape assertions, not behaviour tests. They exist
-because every later wave imports this vocabulary: if a damage type goes missing
-or a slot table row shifts, ~630 downstream implementations are wrong together,
-and this is the cheapest place to notice.
-
-The counts are quoted from XPHB and were cross-checked against the XPHB entries
-in the 5etools dataset (38 weapons, 391 spells, the class tables).
+Membership and shape assertions; the counts are quoted from the XPHB.
 """
 
 import pytest
@@ -19,6 +13,8 @@ from dndsim.rules.enums import (
     DamageType,
     Mastery,
     Outcome,
+    SaveOutcome,
+    SaveRepeat,
     School,
     Size,
     WeaponProperty,
@@ -31,6 +27,8 @@ ALL_ENUMS = (
     DamageType,
     Mastery,
     Outcome,
+    SaveOutcome,
+    SaveRepeat,
     School,
     Size,
     WeaponProperty,

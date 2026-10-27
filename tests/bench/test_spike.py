@@ -1,41 +1,30 @@
 """The w0i contract: the spike is as hostile as ROADMAP w0i says it is.
 
-**A performance number is only as trustworthy as the configuration it was taken
-on**, and the failure mode this file exists to prevent is the one DESIGN.md
-§ The spike must be pessimistic names outright: a benchmark that quietly
-measures a stub, clears the budget, and spends M0 — the one cheap moment to
-revise the dispatch design — on nothing. Every assertion below is one clause of
-that specification turned into something that breaks when it stops being true:
+Each assertion below pins one clause of that specification:
 
 - 25 attached `HookSource`s, 15 of them on `on_hit`
 - an 8-condition APL with a `target:` selector and a `move:` clause
 - real movement on a real grid, and both directions of the attack
 - the dispatcher's three escape valves — `once_per`, `costs`, `gate` — actually
-  reached, rather than declared and never asked, and reached by a handler that
-  *applies*: a gate that always answers no buys the question and none of what
-  it guards
-- a run that reproduces exactly from its seed, which is what makes two
-  measurements comparable at all
+  reached, and reached by a handler that *applies*
+- a run that reproduces exactly from its seed
 
-**The throughput assertion itself is marked `bench` and deselected by default**
-(see `pyproject.toml`). A wall-clock assertion on a shared CI runner fires on
-noise, and "a gate that fires on noise gets disabled within a month, at which
-point performance decays exactly as predicted" (DESIGN.md § The benchmark
-gate). `w3i` is the task that turns it into a CI gate the right way — median of
-N against a same-run microbenchmark baseline. Until then the M0 question is
-asked deliberately:
+The throughput assertion itself is marked `bench` and deselected by default
+(see `pyproject.toml`), so the M0 question is asked deliberately:
 
     uv run pytest -m bench            # or: python -m dndsim.tools.spike
 
 Sources: ROADMAP w0i; DESIGN.md § Performance, § The spike must be pessimistic,
-§ The benchmark gate.
+§ The benchmark gate; `docs/decisions.md` § w0i.
 """
 
 from unittest.mock import patch
 
 import pytest
 
+from dndsim.core.log import LogLevel
 from dndsim.core.timeline import Reset
+from dndsim.engine.attack import ATTACK, ATTACK_ROLL
 from dndsim.hooks.contexts import Context, RoundContext
 from dndsim.hooks.definitions import ON_HIT
 from dndsim.hooks.source import HookSource
@@ -46,6 +35,10 @@ from dndsim.tools.spike import (
     ENEMIES,
     ROUNDS_PER_ENCOUNTER,
     Spike,
+    _boundaries,
+    _enemy_turns,
+    _expire_after,
+    _expire_before,
     _hero_turn,
     build_spike,
     measure,
@@ -53,7 +46,13 @@ from dndsim.tools.spike import (
     run_encounter,
 )
 from dndsim.tools.spike_apl import Apl
-from dndsim.tools.spike_features import ON_HIT_SOURCES, SOURCES
+from dndsim.tools.spike_features import (
+    ON_HIT_SOURCES,
+    RAGE,
+    SOURCES,
+    SpikeRage,
+    raging,
+)
 
 _RESOLUTIONS_PER_ENCOUNTER = ROUNDS_PER_ENCOUNTER * (ATTACKS_PER_TURN + ENEMIES)
 """Five rounds of three hero swings and one swing from each of three enemies."""
@@ -85,9 +84,6 @@ def test_the_hostile_creature_carries_twenty_five_sources() -> None:
 
 
 def test_fifteen_of_them_are_on_the_busiest_hook() -> None:
-    """`on_hit` is where Sneak Attack, Divine Smite and the masteries live, and
-    w0i puts at least fifteen there because that is what a level-12 Barbarian
-    actually looks like."""
     spike, _ = build_spike(0)
 
     assert len(ON_HIT_SOURCES) == 15
@@ -114,8 +110,6 @@ def test_the_apl_has_eight_conditions_a_target_and_a_move() -> None:
 
 
 def test_three_entries_are_answered_inside_an_attack() -> None:
-    """A `gate:` is policy evaluated on the hot path rather than once a turn,
-    which is the half of APL cost an inner-loop benchmark would miss."""
     spike, _ = build_spike(0)
 
     assert {e.gate for e in spike.apl.entries if e.gate is not None} == {
@@ -126,9 +120,8 @@ def test_three_entries_are_answered_inside_an_attack() -> None:
 
 
 def test_all_three_escape_valves_are_declared_and_reached() -> None:
-    """`once_per`, `costs` and `gate` are the three questions the dispatcher
-    asks before a handler runs; a spike declaring none of them would measure
-    the cheap path only."""
+    """`once_per`, `costs` and `gate` are each declared, and reached in a
+    fight."""
     spike = _fought()
     bound = [
         handler
@@ -144,8 +137,7 @@ def test_all_three_escape_valves_are_declared_and_reached() -> None:
 
 def test_the_riders_that_should_land_do_land() -> None:
     """The applies-versus-skips mix, checked through the no-op detector's own
-    counter. A benchmark where nothing applied would never build a damage bag,
-    never roll more than the weapon's dice, and never spend a budget."""
+    counter."""
     spike = _fought()
     applied = {
         f"{handler.source_id}.{handler.handler.name}": handler.applied
@@ -171,9 +163,7 @@ def test_the_riders_that_should_land_do_land() -> None:
 
 
 def test_the_observational_riders_never_apply_and_that_is_the_point() -> None:
-    """Most of a martial's `on_hit` list does not fire on any given swing.
-    These are the ones that never do, and they are in the measurement because
-    a handler that skips still costs a call."""
+    """The observational handlers are dispatched and never apply."""
     spike = _fought()
     applied = {
         f"{handler.source_id}.{handler.handler.name}": handler.applied
@@ -203,17 +193,26 @@ def test_an_encounter_resolves_attacks_in_both_directions() -> None:
     assert spike.hero.hp < spike.hero.max_hp, "the hero was never hit back"
 
 
+def test_a_reset_brings_a_dead_hero_and_its_enemies_back() -> None:
+    """A hero that died in one encounter fights the next: the reset puts back
+    what dying took, not only the hit points."""
+    spike, _ = build_spike(0)
+    spike.hero.hp = 0
+    spike.hero.die()
+    spike.enemies[0].hp = 0
+    spike.enemies[0].die()
+
+    spike.reset()
+
+    assert spike.hero.is_alive and not spike.hero.is_down
+    assert spike.enemies[0].is_alive and not spike.enemies[0].is_down
+
+
 def test_every_encounter_resolves_the_same_number_of_attacks() -> None:
     """The count above is a property of the *shape* of the encounter — five
     rounds, three swings, three enemies — and it has to hold on every seed, not
-    on the one the assertion was written against.
-
-    What can break it is an entry above `attack` in the list taking the hero's
-    Action, since nothing in the spike heals and a policy that stops swinging
-    stays stopped: the encounter then quietly resolves three fewer attacks per
-    remaining round, and the exact-integer assertions elsewhere in this file
-    become a fact about seed 0. `_TURN_COSTS` is what prevents it, by charging
-    the three Bonus Action entries a Bonus Action.
+    on the one the assertion was written against (`docs/decisions.md` § w0i,
+    `_TURN_COSTS`).
     """
     for seed in range(6):
         spike, rng = build_spike(seed)
@@ -229,15 +228,12 @@ def test_a_wounded_hero_takes_second_wind_and_still_swings() -> None:
     """The same invariant from the other side, without waiting on the dice.
 
     `second_wind` sits above `attack` in the list and its `if:` is
-    `self.hp_pct < 0.5`, so a hero under half is supposed to take it *and*
-    attack: Second Wind is a Bonus Action in the 2024 rules and the Attack
-    action is an Action. Rage is set here because it is the other Bonus Action
-    entry and it outranks this one — from round two on it has already fired,
-    which is when the hero is wounded enough for this entry to be reachable.
+    `self.hp_pct < 0.5`, so a hero under half takes it *and* attacks. Rage, the
+    other Bonus Action entry, is set so that it does not outrank this one.
     """
     spike, rng = build_spike(0)
     spike.reset()
-    spike.state.raging = True
+    spike.hero.effects.apply(SpikeRage(spike.hero))
     spike.hero.hp = spike.hero.max_hp // 4
 
     resolutions = _hero_turn(spike, rng, 1)
@@ -274,24 +270,18 @@ def test_rage_is_taken_on_the_first_turn_and_not_again() -> None:
     per action rather than once: `not self.raging` stops being true after it
     fires, and the loop falls through to the attack."""
     spike, rng = build_spike(0)
-    assert not spike.state.raging
+    assert not raging(spike.hero)
 
     run_encounter(spike, rng)
 
-    assert spike.state.raging
+    assert raging(spike.hero)
 
 
 def test_the_victims_gate_is_asked_about_the_swing_that_is_landing() -> None:
-    """`trigger.*` is what the engine is offering *right now*, and the only
-    gate on the victim's side of an attack is the hero's Uncanny Dodge.
-
-    Its `if:` reads `trigger.damage_estimate`, which is bound inside
-    `resolve_attack()` — so an enemy turn that dispatched without a trigger would
-    hand the gate the estimate left over from the hero's own last swing, which
-    is a different number by an order of magnitude and never changes during the
-    enemy's round. What separates the two is the size: an enemy can put at most
-    a critical maul on the table, while the hero's bag carries Sneak Attack and
-    the smite on top of a greatsword.
+    """The hero's Uncanny Dodge gate reads `trigger.damage_estimate`, and on an
+    enemy swing that is the enemy's estimate: at most a critical maul, never the
+    hero's own last swing, whose bag carries Sneak Attack and the smite on top of
+    a greatsword.
     """
     spike, rng = build_spike(0)
     offered: list[int] = []
@@ -318,13 +308,12 @@ def test_an_unmentioned_gate_is_off() -> None:
     spike, _ = build_spike(0)
     source = spike.sources[0]
 
-    # `allows()` ignores the context it is handed: `trigger.*` is populated by
-    # the engine before the offer, never scraped off the event (`spike_apl.py`).
+    # `allows()` ignores the context it is handed.
     assert not spike.apl.allows("nobody.asked.for.this", source, RoundContext(round=1))
 
 
 def test_a_run_reproduces_exactly_from_its_seed() -> None:
-    """The property every comparison of two measurements rests on."""
+    """Two spikes built from one seed fight identically."""
     first, first_rng = build_spike(7)
     second, second_rng = build_spike(7)
 
@@ -338,8 +327,8 @@ def test_a_run_reproduces_exactly_from_its_seed() -> None:
 
 
 def test_pooling_contexts_does_not_change_the_fight() -> None:
-    """The `w0i` lever is supposed to be invisible: reusing a context rather
-    than allocating one changes what it costs and nothing else."""
+    """Reusing a context rather than allocating one changes nothing in the
+    fight."""
     pooled, pooled_rng = build_spike(3, pooled=True)
     fresh, fresh_rng = build_spike(3, pooled=False)
 
@@ -351,14 +340,157 @@ def test_pooling_contexts_does_not_change_the_fight() -> None:
     assert [e.hp for e in pooled.enemies] == [e.hp for e in fresh.enemies]
 
 
+def test_every_attack_writes_its_records_to_the_log() -> None:
+    """The log is inside the measurement (ROADMAP w1i): one `ATTACK` record per
+    resolution at both levels, and one `ATTACK_ROLL` under each at `full`."""
+    for level, rolls in ((LogLevel.FULL, True), (LogLevel.SUMMARY, False)):
+        spike, rng = build_spike(0, log_level=level)
+
+        resolutions = run_encounter(spike, rng)
+
+        kinds = [record[0] for record in spike.log]
+        assert kinds.count(ATTACK) == resolutions
+        assert kinds.count(ATTACK_ROLL) == (resolutions if rolls else 0)
+
+
+def test_the_log_holds_one_encounter_at_a_time() -> None:
+    """Cleared by `reset()`, like the hit points, so a thousand-encounter run
+    does not measure a list growing to a hundred thousand records."""
+    spike, rng = build_spike(0, log_level=LogLevel.SUMMARY)
+
+    run_encounter(spike, rng)
+    resolutions = run_encounter(spike, rng)
+
+    assert len(spike.log) == resolutions
+
+
+def test_the_same_seed_writes_the_same_log() -> None:
+    """Seed reproduces the event log record for record."""
+    first, first_rng = build_spike(7)
+    second, second_rng = build_spike(7)
+
+    for _ in range(3):
+        run_encounter(first, first_rng)
+        run_encounter(second, second_rng)
+
+        assert first.log.records == second.log.records
+
+
 def test_the_measurement_returns_a_rate_and_a_resolution_count() -> None:
-    """The harness runs, whatever the number is. Kept out of the `bench` mark
-    so that a broken harness fails the ordinary suite rather than waiting for
-    somebody to ask the M0 question."""
+    """The harness runs, whatever the number is. Not marked `bench`, so a broken
+    harness fails the ordinary suite."""
     rate, resolutions = measure(encounters=5, repeats=1)
 
     assert resolutions == 5 * _RESOLUTIONS_PER_ENCOUNTER
     assert rate > 0
+
+
+# --- the W1 substrate in place of the stand-ins -----------------------------
+
+
+def _smites(spike: Spike) -> int:
+    return next(
+        handler.applied
+        for source in spike.hero.dispatcher.sources()
+        for handler in spike.hero.dispatcher._bound[source]
+        if f"{handler.source_id}.{handler.handler.name}" == "divine_smite.smite"
+    )
+
+
+def test_a_rage_that_is_not_kept_up_ends_with_the_heros_next_turn() -> None:
+    """The sweeps are wired: a Rage taken on turn one and not refreshed since —
+    the enemies' swings are not the hero's — is still up through the hero's
+    next turn and gone once it ends (`Duration.until_end_of_next_turn_of`)."""
+    spike, rng = build_spike(0)
+    spike.reset()
+    _hero_turn(spike, rng, 1)
+    _enemy_turns(spike, rng, 1)
+    start, end = _boundaries(2)[0]
+
+    _expire_before(spike, start)
+    assert raging(spike.hero), "the Rage ended before the turn it lasts through"
+
+    _expire_after(spike, end)
+    assert not raging(spike.hero), "the sweep at the end of the turn missed it"
+
+
+def test_a_rage_kept_up_by_swinging_lasts_the_whole_encounter() -> None:
+    """One Rage, applied once and refreshed by every round's swings, so its
+    deadline after the last round is the end of the hero's turn after it."""
+    spike, rng = build_spike(0)
+    spike.reset()
+
+    for number in range(1, ROUNDS_PER_ENCOUNTER + 1):
+        _hero_turn(spike, rng, number)
+        _enemy_turns(spike, rng, number)
+        assert raging(spike.hero), f"the Rage was gone after round {number}"
+
+    (rage,) = spike.hero.effects
+    assert isinstance(rage, SpikeRage)
+    assert rage.expiry is not None
+    assert rage.expiry.end == _boundaries(ROUNDS_PER_ENCOUNTER + 1)[0][1]
+
+
+def test_rage_spends_one_use_an_encounter_and_the_reset_gives_it_back() -> None:
+    spike, rng = build_spike(0)
+    pool = spike.hero.resources[RAGE.key]
+
+    for _ in range(3):
+        run_encounter(spike, rng)
+        assert pool.current == pool.maximum - 1
+
+    spike.reset()
+    assert pool.current == pool.maximum
+
+
+def test_a_reset_leaves_no_effect_on_any_creature() -> None:
+    spike, rng = build_spike(0)
+    run_encounter(spike, rng)
+    spike.enemies[0].effects.apply(SpikeRage(spike.enemies[0]))
+
+    spike.reset()
+
+    assert [len(c.effects) for c in spike.combatants] == [0] * (ENEMIES + 1)
+
+
+def test_divine_smite_spends_a_real_slot_each_time_it_lands() -> None:
+    """One slot per smite applied, and the reset puts every one of them back."""
+    spike, rng = build_spike(0)
+    slots = spike.hero.resources.spells
+    spike.reset()
+    full, highest = slots.total_above(1), slots.highest()
+
+    run_encounter(spike, rng)
+
+    assert _smites(spike) > 0, "the smite never landed, so nothing was spent"
+    assert slots.total_above(1) == full - _smites(spike)
+
+    spike.reset()
+    assert (slots.total_above(1), slots.highest()) == (full, highest)
+
+
+def test_the_smites_slot_gate_never_runs_dry_within_an_encounter() -> None:
+    """`self.slots.highest >= 3` must answer yes to the last swing, as the
+    stand-in it replaced always did (`docs/decisions.md` § w1k)."""
+    for seed in range(6):
+        spike, rng = build_spike(seed)
+        for _ in range(10):
+            run_encounter(spike, rng)
+
+            assert spike.hero.resources.spells.highest() >= 3, (
+                f"seed {seed} ran its highest slot down to "
+                f"{spike.hero.resources.spells.highest()} in one encounter"
+            )
+
+
+def test_the_sweeps_move_every_stores_clock() -> None:
+    """The last boundary swept is the end of the last seat's last turn."""
+    spike, rng = build_spike(0)
+
+    run_encounter(spike, rng)
+
+    last = _boundaries(ROUNDS_PER_ENCOUNTER)[-1][1]
+    assert [c.effects.now for c in spike.combatants] == [last] * (ENEMIES + 1)
 
 
 # --- the M0 gate itself ------------------------------------------------------
@@ -366,14 +498,8 @@ def test_the_measurement_returns_a_rate_and_a_resolution_count() -> None:
 
 @pytest.mark.bench
 def test_the_spike_meets_the_m0_budget() -> None:
-    """The budget, on the configuration ROADMAP w0i specifies.
-
-    30,000 after M0 revised it down from the unmeasured 50,000 — the story is in
-    `docs/decisions.md` § w0i, and `BUDGET_PER_SECOND` carries the warning about
-    revising it a second time. Deselected by default for the reason in this
-    module's docstring; `w3i` turns it into a CI gate against a same-run
-    baseline, which is the form that survives a shared runner.
-    """
+    """The budget, on the configuration ROADMAP w0i specifies
+    (`docs/decisions.md` § w0i)."""
     rate, _ = measure(encounters=1000, repeats=5)
 
     assert rate >= BUDGET_PER_SECOND, (
@@ -385,12 +511,11 @@ def test_the_spike_meets_the_m0_budget() -> None:
 
 @pytest.mark.bench
 def test_worker_startup_is_measured_apart_from_the_rate() -> None:
-    """Windows `spawn`s: every worker re-imports the package and rebuilds every
-    character, and `compare --sweep dummy.ac=10:22` pays it thirteen times.
+    """Worker start-up, measured apart from the rate (`docs/decisions.md`
+    § w0i).
 
-    No budget attached — this is a number to know, not a gate. What is asserted
-    is only that it is a plausible interpreter start rather than a pool that
-    silently did nothing.
+    No budget is attached. What is asserted is only that it is a plausible
+    interpreter start rather than a pool that silently did nothing.
     """
     seconds = measure_startup(workers=2)
 

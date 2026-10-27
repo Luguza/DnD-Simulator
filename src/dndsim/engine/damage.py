@@ -1,27 +1,22 @@
-"""The damage resolution order, in the one file it is ever written in.
+"""The damage resolution order.
 
 **immunity -> flat reductions -> halvings -> resistance -> vulnerability ->
 temporary hit points -> hit points.** Features contribute to a
 `MitigationLedger`; this module is the only code that acts on it.
 
-Where each step comes from:
+Sources:
 
 - immunity, resistance, vulnerability, temporary hit points, rounding down —
   XPHB Rules Glossary, under each of those names
-- adjustments, then Resistance, then Vulnerability — XPHB, "Damage and Healing",
-  quoted in `DESIGN.md` § Structural prevention with the book's worked example
-- two halvings stacking where two resistances do not — the "counts once" clause,
-  XPHB Rules Glossary, "Resistance", read in `docs/decisions.md` § w1e
-- immunity first — argued there from "the damage you take"
-- flat reductions before halvings, and the proportional spend of an untyped
-  adjustment across a mixed-type hit — the project's own rulings, the only two
-  here, argued in `docs/decisions.md` § w1e
+- adjustments, then Resistance, then Vulnerability — XPHB, "Damage and Healing"
+  (`DESIGN.md` § Structural prevention)
+- two halvings stacking — XPHB Rules Glossary, "Resistance", the "counts once"
+  clause (`docs/decisions.md` § w1e)
+- immunity first, flat reductions before halvings, and the proportional spend
+  of an untyped adjustment across a mixed-type hit — `docs/decisions.md` § w1e
 
-Not here: rolling the attack (`engine/attack.py`, w1f), dying (`w1j`, debt #8),
-the event log (`w1i`). What a handler queued is applied by
-`creatures/effects.py`'s drain after each of the two dispatches. `ctx.reduce()`
-takes no damage type, so a reduction is spent across every surviving type —
-debt #23, `w3f` via `w3e`.
+A reduction carries no damage type and is spent across every surviving type:
+debt #23.
 """
 
 from collections.abc import Iterable, Mapping
@@ -31,6 +26,7 @@ from typing import Final, Protocol
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.effects import apply_pending
+from dndsim.engine.dying import damaged_at_zero, dropped_to_zero
 from dndsim.hooks.contexts import (
     DamagePart,
     DamageTakenContext,
@@ -51,11 +47,8 @@ __all__ = [
 
 
 class DamageContexts(Protocol):
-    """Where the two contexts of a damage event come from.
-
-    The same **Strategy** the attack sequence uses for its six (`docs/decisions.md`
-    § w0i).
-    """
+    """Where the two contexts of a damage event come from (`docs/decisions.md`
+    § w0i)."""
 
     def incoming(
         self,
@@ -76,7 +69,7 @@ class DamageContexts(Protocol):
 
 
 class FreshDamageContexts:
-    """Allocate both, every hit. The default, and what `w0h` uses."""
+    """Allocate both, every hit. The default."""
 
     __slots__ = ()
 
@@ -122,10 +115,8 @@ def roll_damage(
 
     Applies the crit dice/flat split (DESIGN.md § Structural prevention) and
     resolves `damage_type=None` to the attack's type (`docs/decisions.md`
-    § w0f). The doubling is inlined
-    rather than routed through `DamagePart.on_crit()`, which would allocate a
-    part per contribution per crit; that method stays as the statement of the
-    rule and the one a test pins it by.
+    § w0f). The doubling is inlined rather than routed through
+    `DamagePart.on_crit()` (`docs/decisions.md` § w0i).
     """
     amounts: dict[DamageType, int] = {}
     get = amounts.get
@@ -167,9 +158,7 @@ def _apportion(amounts: Mapping[DamageType, int], target: int) -> dict[DamageTyp
     """Spread `target` over the types in proportion, by Jefferson's method.
 
     Each point goes to the type maximising `amount / (points held + 1)`, ties by
-    the larger component then the type's name. House-monotone, which is why it
-    is not largest remainder: `docs/decisions.md` § w1e, and
-    `test_more_mitigation_never_means_more_damage`.
+    the larger component then the type's name (`docs/decisions.md` § w1e).
     """
     if target <= 0:
         return dict.fromkeys(amounts, 0)
@@ -198,13 +187,12 @@ def mitigate(
 
     Pure: it reads a ledger and returns numbers, touching no creature.
 
-    **A reduction's dice come from the `rng` passed here**, after the attacker's
-    damage dice, so `w1f` must hand this the generator the attack is using — a
-    second stream reproduces a different fight from the same archived seed.
+    **A reduction's dice are drawn from `rng`**, which must be the generator
+    the damage itself was rolled from.
     """
     if ledger.untouched:
-        # The clamp is the one step of the order that is not the identity on an
-        # empty ledger, so the shortcut past the rest keeps it (DESIGN.md).
+        # The clamp is not the identity on an empty ledger, so the shortcut
+        # keeps it (`docs/decisions.md` § w0i).
         total = sum(amounts.values())
         return Mitigated(amounts=amounts, total=total if total > 0 else 0)
 
@@ -244,6 +232,8 @@ def resolve_damage(
     rng: Rng,
     attacker: Creature | None = None,
     contexts: DamageContexts = FRESH_DAMAGE,
+    halved_by: str | None = None,
+    critical: bool = False,
 ) -> int:
     """Deal damage to `defender` and return what it took.
 
@@ -251,8 +241,21 @@ def resolve_damage(
     spent and the return is zero. `on_damage_taken` does not fire when nothing
     landed, but does fire for a hit temporary hit points absorbed whole
     (`docs/decisions.md` § w0g2).
+
+    `halved_by` is a halving the caller supplies, as the reason it is halved;
+    it runs in the halvings step with every other halving (`docs/decisions.md`
+    § w1g).
+
+    `critical` is whether the damage is a Critical Hit's (XPHB, "Dropping to 0
+    Hit Points" -> Damage at 0 Hit Points; `docs/decisions.md` § w1j).
     """
     incoming = contexts.incoming(defender=defender, attacker=attacker, amounts=amounts)
+    if halved_by is not None:
+        # Stamped, because a ledger mutator refuses an unattributed change;
+        # seeded before the dispatch, so handlers read the ledger that is applied.
+        incoming.stamp("engine.damage", None)
+        incoming.halve(halved_by)
+        incoming.stamp(None, None)
     defender.dispatch(ON_INCOMING_DAMAGE, incoming)
     apply_pending(incoming, defender, attacker)
     if incoming.vetoed:
@@ -265,7 +268,18 @@ def resolve_damage(
         return 0
     absorbed = min(defender.temp_hp, mitigated.total)
     defender.temp_hp -= absorbed
-    defender.hp = max(defender.hp - (mitigated.total - absorbed), 0)
+    landed = mitigated.total - absorbed
+    hp = defender.hp
+    if not hp:
+        if landed:
+            damaged_at_zero(defender, landed, critical=critical)
+    elif landed:
+        hp -= landed
+        if hp > 0:
+            defender.hp = hp
+        else:
+            defender.hp = 0
+            dropped_to_zero(defender, attacker=attacker, overflow=-hp)
 
     taken = contexts.taken(
         defender=defender,

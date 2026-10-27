@@ -1,31 +1,21 @@
-"""The attack resolution order, in the one file it is ever written in.
+"""The attack resolution order.
 
-**declare -> roll -> advantage -> hit/crit/miss -> damage -> resolved**, with
-the three damage hooks of `engine/damage.py` riding inside the hit branch and
-the nine dispatches falling exactly where `hooks/definitions.py` describes them.
-`w0h` hand-sequenced this in `tools/skeleton.py` so that `w0i` had something
-integrated to measure; that copy is retired here (debt #6), because a second
-attack order is a benchmark defending a sequence the project does not ship.
+**declare -> roll -> advantage -> hit/crit/miss -> damage -> resolved**, the
+damage resolved through `engine/damage.py`.
 
-Where each step comes from:
+Sources:
 
 - a natural 20 hits and is a Critical Hit, a natural 1 misses — XPHB, "D20
   Tests" -> Attack Rolls, "Rolling 20 or 1" (`rules/constants.py`)
-- a Critical Hit below 20 still has to hit, which is what a Champion's lowered
-  threshold does and does not buy — argued in `docs/decisions.md` § w1f
-- Finesse chooses the ability, and the pipeline chooses the better modifier —
-  XPHB, "Equipment" -> Weapon Properties, Finesse; the choice is argued there
-- damage on a miss is rolled without `on_damage_roll` — argued there too, from
-  the Graze mastery's own sentence
+- a Critical Hit below 20 still has to hit — `docs/decisions.md` § w1f
+- Finesse — XPHB, "Equipment" -> Weapon Properties, Finesse; taking the better
+  modifier is `docs/decisions.md` § w1f
+- damage on a miss is rolled without `on_damage_roll` — `docs/decisions.md`
+  § w1f
 
-Not here: whether the attack is legal or affordable (`w2b`'s Command and the
-action economy), who is offered a reaction to it (`w2c`), the damage steps
-(`engine/damage.py`), the event log (`w1i`). Two first cuts live here and are
-named so that nobody has to rediscover them: every attack resolves at the
-weapon's reach with no ranged branch, because no weapon carries a range until
-`w2a` imports one (debt #24), and the proficiency bonus is added to every
-attack, because nothing can yet say a creature is not proficient with what it
-holds (debt #25).
+Two first cuts: every attack resolves at the weapon's reach with no ranged
+branch (debt #24), and the proficiency bonus is added to every attack (debt
+#25).
 """
 
 from collections.abc import Mapping
@@ -33,10 +23,12 @@ from typing import Final, NamedTuple, Protocol
 
 from dndsim.core.errors import EngineAssemblyError, FeatureContractError
 from dndsim.core.geometry import in_reach
+from dndsim.core.log import EventLog
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.effects import apply_pending
 from dndsim.creatures.stats import Weapon
+from dndsim.engine.d20 import modifier_total
 from dndsim.engine.damage import (
     FreshDamageContexts,
     resolve_damage,
@@ -53,7 +45,6 @@ from dndsim.hooks.contexts import (
     HitContext,
     IncomingDamageContext,
     MissContext,
-    ModifierBag,
 )
 from dndsim.hooks.definitions import (
     ON_ATTACK_RESOLVED,
@@ -69,6 +60,9 @@ from dndsim.rules.constants import NATURAL_ONE, NATURAL_TWENTY
 from dndsim.rules.enums import Ability, DamageType, Outcome, WeaponProperty
 
 __all__ = [
+    "ATTACK",
+    "ATTACK_ROLL",
+    "DAMAGE_ROLL",
     "FRESH",
     "PREVENTED",
     "AttackContexts",
@@ -86,16 +80,8 @@ class AttackResult(NamedTuple):
     """What one attack did: how it resolved, and what the defender lost.
 
     `outcome` is `None` for an attack an `EARLY` handler vetoed before the roll
-    — no d20 was thrown, so there is no `Outcome` that describes it, and
-    `Outcome` is scoped to attack rolls precisely so that no member has to mean
-    two things (`rules/enums.py`). `damage_dealt` is what `engine/damage.py`
-    reports it actually took, which is 0 on a miss the Graze mastery did not
-    turn into damage, and 0 on a hit that landed on an immunity.
-
-    A `NamedTuple` rather than a frozen dataclass: this is allocated on every
-    resolution, and a two-field tuple is built by the interpreter where a frozen
-    dataclass runs `object.__setattr__` twice (`docs/decisions.md` § w0i on what
-    a per-resolution allocation is worth).
+    (`docs/decisions.md` § w1f). `damage_dealt` is what the defender took: 0 on
+    a miss that dealt no damage, and 0 on a hit that landed on an immunity.
     """
 
     outcome: Outcome | None
@@ -105,29 +91,30 @@ class AttackResult(NamedTuple):
 PREVENTED: Final = AttackResult(None, 0)
 """The result of an attack a handler vetoed. Shared, because it is a constant."""
 
+ATTACK: Final = "attack"
+"""`(ATTACK, attacker, defender, weapon, outcome, damage_dealt)`, at every level.
+
+Names rather than objects; `outcome` is `None` for an attack that was vetoed."""
+
+ATTACK_ROLL: Final = "attack_roll"
+"""`(ATTACK_ROLL, attacker, defender, natural, total, advantage, disadvantage)`,
+at `LogLevel.FULL` only."""
+
+DAMAGE_ROLL: Final = "damage_roll"
+"""`(DAMAGE_ROLL, attacker, defender, critical, ((type, amount), ...))`, at
+`LogLevel.FULL` only: what `roll_damage()` rolled, before any defence."""
+
 
 class Trigger(Protocol):
-    """The `trigger.*` namespace root, as the engine sees it.
-
-    A `Protocol` rather than an import because `apl/namespace.py` (w2e) is what
-    defines it and does not exist: the attack sequence's whole knowledge of the
-    APL is that something wants to be told what it is being offered before a
-    dispatch that carries gated handlers. `None` is the ordinary case — nobody
-    is asking.
-    """
+    """The `trigger.*` namespace root, as the engine sees it: told what is being
+    offered before a dispatch that carries gated handlers."""
 
     def bind(self, *, crit: bool = False, damage_estimate: int = 0) -> None: ...
 
 
 class AttackContexts(Protocol):
-    """Where the attack's contexts come from.
-
-    DESIGN.md § Levers asks for "contexts reset and reused per attack rather
-    than allocated, which matters at 4M resolutions", and `w0i` measured that it
-    does. Making the source a **Strategy** rather than an `if pool is None` at
-    eight call sites keeps the sequence below readable as one thing, and keeps
-    the two answers — allocate, or rebind — honest about what each costs.
-    """
+    """Where the attack's contexts come from: allocated (`FRESH`) or rebound
+    (`PooledContexts`) — DESIGN.md § Levers, `docs/decisions.md` § w0i."""
 
     def declared(
         self,
@@ -213,8 +200,7 @@ class AttackContexts(Protocol):
 
 
 class FreshContexts(FreshDamageContexts):
-    """Allocate every context, every attack. The obvious answer, and the
-    baseline `w0i` measures the pooled one against."""
+    """Allocate every context, every attack."""
 
     __slots__ = ()
 
@@ -330,18 +316,12 @@ class FreshContexts(FreshDamageContexts):
 class PooledContexts:
     """One context of each kind, rebound per attack (DESIGN.md § Levers).
 
-    Built against whichever pair of creatures is convenient and rebound to the
-    real ones on every attack, because `reopen()` demands every field a context
-    does not default — nothing of the previous attack survives by omission
-    (`hooks/contexts.py`).
+    The constructor's creatures and weapon are placeholders: every attack
+    rebinds every field.
 
-    **One pool resolves one attack at a time, and it says so out loud.** Every
-    context in it is live while a hook is dispatching, so an attack begun from
-    inside a handler of another attack would hand the inner one the outer one's
-    contexts and overwrite the event in flight. `w2c` is the wave that can
-    produce that — a reaction is an attack made during someone else's — and its
-    answer is a second pool, not a deeper one: `declared()` refuses re-entry
-    until `release()` says the attack is over.
+    **One pool resolves one attack at a time**: `declared()` raises
+    `EngineAssemblyError` on re-entry until `release()` (debt #26,
+    `docs/decisions.md` § w1f).
     """
 
     __slots__ = (
@@ -536,9 +516,7 @@ class PooledContexts:
         return ctx
 
     def bag(self) -> DamageBag:
-        """The one bag, emptied. It is handed to the three contexts that carry
-        one — the hit, the miss and the damage roll — which is why `reopen()`
-        rebinds a handed bag rather than clearing it."""
+        """The one bag, emptied; the hit, the miss and the damage roll share it."""
         bag = self._bag
         bag.clear()
         return bag
@@ -574,10 +552,8 @@ class PooledContexts:
     def release(self) -> None:
         """The attack is over; the pool may be entered again.
 
-        Called by `resolve_attack()` on every path it returns by. An exception
-        escaping the sequence deliberately does not release it: the contexts are
-        then in whatever state the failure left them, and a pool that reopened
-        over that would turn one loud failure into a quiet wrong fight.
+        `resolve_attack()` calls it on every path it returns by, and not when an
+        exception escapes (`docs/decisions.md` § w1f).
         """
         self._live = False
 
@@ -590,15 +566,8 @@ def attack_ability(attacker: Creature, weapon: Weapon) -> Ability:
     """Which ability score this attack is made with.
 
     Strength, or Dexterity for a Finesse weapon when Dexterity is the better of
-    the two (XPHB, "Equipment" -> Weapon Properties, Finesse). Taking the better
-    modifier is a choice the rules leave to the wielder and `docs/decisions.md`
-    § w1f argues; `resolve_attack()` takes an explicit `ability` for a caller
-    that has a reason to make the other one.
-
-    **Incomplete, and loudly so**: a ranged weapon attacks with Dexterity and
-    there is no branch for one here, because no weapon carries a range to
-    recognise it by. `w2a` widens this function and the `Weapon` protocol
-    together — debt #24, not weapon data alone.
+    the two (XPHB, "Equipment" -> Weapon Properties, Finesse; `docs/decisions.md`
+    § w1f). There is no ranged branch: debt #24.
     """
     if weapon.has(WeaponProperty.FINESSE) and attacker.modifier(
         Ability.DEXTERITY
@@ -611,53 +580,25 @@ def within_reach(attacker: Creature, defender: Creature, weapon: Weapon) -> bool
     """Whether `defender` can be hit by `attacker` swinging `weapon`.
 
     The reach is the weapon being swung's, which is not always the one the
-    attacker has equipped, and it is measured from the attacker's square through
-    `in_reach()` — the one query `core/geometry.py` owns, so that the pipeline,
-    the opportunity-attack trigger and the APL's `enemies.in_reach` selector
-    cannot come to different answers (`docs/decisions.md` § w0g3). `w1d` is where
-    a Large creature's square stops being one cell, and nothing here changes when
-    it does.
+    attacker has equipped, measured between the two footprints through
+    `in_reach()` (`docs/decisions.md` § w0g3, § w1d).
     """
-    return in_reach(attacker.position, defender.position, weapon.reach_ft)
-
-
-def _modifier_total(bag: ModifierBag, rng: Rng) -> int:
-    """A bag of modifiers as one number, Bless's `1d4` included.
-
-    The dice come from the attack's own generator, which is the requirement
-    `mitigate()` states for a reduction's dice and the same argument: a second
-    stream reproduces a different fight from the same archived seed with no
-    error anywhere (`engine/damage.py`).
-    """
-    total = 0
-    for modifier in bag:
-        total += modifier.flat
-        if modifier.dice is not None:
-            total += modifier.dice.roll(rng)
-    return total
+    return in_reach(
+        attacker.position,
+        defender.position,
+        weapon.reach_ft,
+        origin_size=attacker.size,
+        destination_size=defender.size,
+    )
 
 
 def _seal(ctx: Context, stage: str, attacker: Creature, defender: Creature) -> None:
-    """End the moment, after applying what the dispatch queued and refusing what
-    it cannot honour.
+    """Apply what the dispatch queued, raise `FeatureContractError` on a veto,
+    and close `ctx` (`docs/decisions.md` § w1f).
 
-    A veto is refused everywhere but the declaration: by every later stage the
-    attack has been made, `Outcome` has no member for one that was withdrawn
-    (`rules/enums.py`), and continuing past `ctx.veto()` would make the design's
-    one Chain of Responsibility element a silent no-op at five of the seven
-    attack hooks.
-
-    `attacker` and `defender` are passed down because a queued effect names a
-    `Combatant`, and only the creatures the sequence is resolving between can
-    answer to one (`creatures/effects.py`).
-
-    Both the queue and the veto are read off the context's private state rather
-    than through `pending_effects`, which builds a tuple, and `vetoed`, which is
-    a property call over the same slot — the two reasons `hooks/dispatch.py`
-    gives for reaching into the frame itself. That, and closing here rather than
-    at the call site, is what keeps a dispatch that queued nothing free: this is
-    the `ctx.close()` the sequence made anyway, with two slot reads in front of
-    it.
+    `attacker` and `defender` are the participants a queued effect is matched
+    against. The queue and the veto are read off private slots, for the hot
+    path (`docs/decisions.md` § w1j).
     """
     if ctx._pending:
         apply_pending(ctx, attacker, defender)
@@ -680,6 +621,7 @@ def resolve_attack(
     ability: Ability | None = None,
     contexts: AttackContexts = FRESH,
     trigger: Trigger | None = None,
+    log: EventLog | None = None,
 ) -> AttackResult:
     """Resolve one attack by `attacker` against `defender`.
 
@@ -687,11 +629,11 @@ def resolve_attack(
     `attack_ability()` derives from it. `contexts` decides where the contexts
     come from; `trigger` is the APL's `trigger.*` root, told what is being
     offered immediately before each dispatch that can carry gated handlers.
+    `log`, when given, is written the `ATTACK`, `ATTACK_ROLL` and `DAMAGE_ROLL`
+    records above.
 
-    Legality is not asked here — whether this creature may attack at all, and
-    what it costs, is `w2b`'s Command and the action economy. What is refused is
-    an attack that cannot be described: no weapon, or a target out of the
-    weapon's reach.
+    Raises `ValueError` when there is no weapon or the target is out of its
+    reach. Legality and cost are not asked.
     """
     if weapon is None:
         weapon = attacker.weapon
@@ -704,10 +646,8 @@ def resolve_attack(
         )
     if ability is None:
         ability = attack_ability(attacker, weapon)
-    # Both dispatch tables, once. `Creature.dispatch()` is the API every other
-    # caller uses; the attack sequence runs it nine times per resolution and
-    # would otherwise walk the attribute chain to it every time, which `w0i`
-    # measured at about a twentieth of the per-attack budget.
+    # Hoisted past `Creature.dispatch()`: nine dispatches per resolution
+    # (`docs/decisions.md` § w0i).
     strike = attacker.dispatcher.dispatch
     parry = defender.dispatcher.dispatch
 
@@ -723,14 +663,16 @@ def resolve_attack(
     if declared.vetoed:
         declared.close()
         contexts.release()
+        if log is not None:
+            log.write((ATTACK, attacker.name, defender.name, weapon.name, None, 0))
         return PREVENTED
     had_advantage = declared.had_advantage
     had_disadvantage = declared.had_disadvantage
-    attack_bonus = _modifier_total(declared.bonus, rng)
+    attack_bonus = modifier_total(declared.bonus, rng)
     # Rolled here rather than at the comparison below, which a natural 1 or 20
     # never reaches: a die drawn on some paths and not others would make the
     # stream depend on the outcome it is deciding.
-    ac_bonus = _modifier_total(declared.ac_bonus, rng)
+    ac_bonus = modifier_total(declared.ac_bonus, rng)
     declared.close()
 
     if had_advantage:
@@ -752,6 +694,18 @@ def resolve_attack(
         had_advantage=had_advantage,
         had_disadvantage=had_disadvantage,
     )
+    if log is not None and log.full:
+        log.write(
+            (
+                ATTACK_ROLL,
+                attacker.name,
+                defender.name,
+                natural,
+                total,
+                had_advantage,
+                had_disadvantage,
+            )
+        )
     strike(ON_ATTACK_ROLLED, rolled)
     met_crit_threshold = rolled.is_critical
     _seal(rolled, "on_attack_rolled", attacker, defender)
@@ -779,9 +733,8 @@ def resolve_attack(
             damage=bag,
         )
         hit.stamp("engine.attack", None)
-        # Two contributions rather than one number: `dice` doubles on a critical
-        # hit and `flat` never does, so the ability modifier has to arrive as
-        # `flat` (DESIGN.md § Structural prevention).
+        # The ability modifier goes in `flat`, which a crit never doubles
+        # (DESIGN.md § Structural prevention).
         bag.add(
             dice=weapon.damage,
             flat=attacker.modifier(ability),
@@ -804,16 +757,27 @@ def resolve_attack(
         amounts = roll_damage(
             bag.parts, rng=rng, base_type=weapon.damage_type, critical=critical
         )
+        if log is not None and log.full:
+            log.write(
+                (
+                    DAMAGE_ROLL,
+                    attacker.name,
+                    defender.name,
+                    critical,
+                    tuple(amounts.items()),
+                )
+            )
         if trigger is not None:
-            # What the victim's reactions are being offered: how much is on the
-            # table if nobody does anything about it (DESIGN.md § APL,
-            # `trigger.damage_estimate`). `crit` is re-bound with it because
-            # `bind()` replaces the offer and both facts are true of this one
-            # attack — a reaction asked about a critical hit's damage must not
-            # be told the hit was ordinary.
+            # `bind()` replaces the offer, so `crit` is re-bound with the
+            # estimate (`docs/decisions.md` § w1f).
             trigger.bind(crit=critical, damage_estimate=sum(amounts.values()))
         damage_dealt = resolve_damage(
-            defender, amounts, rng=rng, attacker=attacker, contexts=contexts
+            defender,
+            amounts,
+            rng=rng,
+            attacker=attacker,
+            contexts=contexts,
+            critical=critical,
         )
     else:
         miss = contexts.missed(
@@ -825,15 +789,23 @@ def resolve_attack(
         )
         strike(ON_MISS, miss)
         _seal(miss, "on_miss", attacker, defender)
-        # A miss is not always nothing: the Graze mastery deals the ability
-        # modifier on one, and it is resolved through the same defences a hit
-        # meets. `on_damage_roll` does not fire for it (`docs/decisions.md`
-        # § w1f).
+        # Damage added on a miss is resolved like a hit's, without
+        # `on_damage_roll` (`docs/decisions.md` § w1f).
         parts = miss.damage.parts
         if parts:
             amounts = roll_damage(
                 parts, rng=rng, base_type=weapon.damage_type, critical=False
             )
+            if log is not None and log.full:
+                log.write(
+                    (
+                        DAMAGE_ROLL,
+                        attacker.name,
+                        defender.name,
+                        False,
+                        tuple(amounts.items()),
+                    )
+                )
             if trigger is not None:
                 trigger.bind(damage_estimate=sum(amounts.values()))
             damage_dealt = resolve_damage(
@@ -850,5 +822,9 @@ def resolve_attack(
     strike(ON_ATTACK_RESOLVED, resolved)
     _seal(resolved, "on_attack_resolved", attacker, defender)
     contexts.release()
+    if log is not None:
+        log.write(
+            (ATTACK, attacker.name, defender.name, weapon.name, outcome, damage_dealt)
+        )
 
     return AttackResult(outcome, damage_dealt)

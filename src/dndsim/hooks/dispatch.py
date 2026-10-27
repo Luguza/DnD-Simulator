@@ -1,51 +1,13 @@
 """The dispatcher: a per-creature table of handlers, run in order over one context.
 
-This is the **Intercepting Filter** of DESIGN.md § Hook system — a pipeline of
-handlers over one shared mutable context — with the **Chain of Responsibility**
-element restricted to a veto. It is also the hottest code in the project: a
-level-12 barbarian carries ~25 sources, at least 15 of them on `on_hit`, and the
-budget is 30k attack resolutions per second per core (ROADMAP w0i, revised there
-from 50k by the spike that measured this loop). Almost every decision below is
-one of those two facts.
+The table is sorted at `attach()` and `dispatch()` walks a tuple; `attach()` and
+`detach()` build new tuples, so an effect applied mid-hook never joins the
+dispatch that applied it. Nothing is spent by a handler that declined:
+`once_per` and `costs` are paid only on `APPLIED`. The dispatcher stamps
+provenance before each handler and restores the stamp it found afterwards.
 
-**The table is per creature and precomputed.** `attach()` sorts once; `dispatch()`
-is a dict lookup and a walk over a tuple. A global bus scanned per event would
-put every feature in the encounter on every creature's hot path, which is the
-second reason DESIGN.md rejects pub-sub. A hook nobody listens to is one failed
-lookup and a return — the **Null Object** ending of that same sentence.
-
-**The tuple is the snapshot.** `attach()` and `detach()` build new tuples rather
-than mutating the ones in the table, so a handler that applies an effect mid-hook
-cannot extend the event it is running in. That is the snapshot rule from the
-feature-authoring skill made structural: Reckless Attack has to apply its effect
-*and* call `ctx.grant_advantage()` for the triggering attack, because the effect
-it just applied is not in the list being walked. An author who forgets the second
-half gets a wrong number in a golden; an author whose effect *did* join the
-running event would get a different wrong number depending on attachment order.
-
-**Nothing is spent by a handler that declined.** `once_per`, `costs` and `gate`
-are three questions asked in ascending order of cost — a ledger lookup, an
-economy query, then the APL — and the first two are *also* asked again after the
-handler returns, because DESIGN.md § The uniform handler shape puts the budget on
-the return value: `APPLIED` spends, `SKIPPED` does not. A skipped opportunity
-attack leaves the reaction in hand and a Sneak Attack that could not apply is
-still available on the next attack in the same turn.
-
-**Provenance is stamped, never passed.** One `ctx.stamp(source.ID, phase)` before
-each call is what makes `ctx.damage.add(...)` attributable with no author effort
-(DESIGN.md § Provenance is automatic), and the stamp standing on the way in is
-put back on the way out, so a dispatch leaves the context's provenance exactly as
-it found it.
-
-**What this module deliberately does not do.** It does not drain
-`ctx.pending_effects` — one context is dispatched to two creatures for the paired
-hooks (`on_hit` then `on_hit_taken`), and effects queued by either must be
-applied once, after both, by the engine that owns the event. It does not
-`close()` the context either, for the same reason. And it does not check that the
-context it was handed is the one the hook names: that pairing is fixed at import
-by `source.py` and pinned by w0f's contract test, and re-deriving it per dispatch
-would be paying, on every attack of every iteration, for a mistake that cannot
-survive a single test run.
+It does not drain `ctx.pending_effects` or `close()` the context; the engine
+that owns the event does both, once (`docs/decisions.md` § w0g).
 """
 
 from collections.abc import Callable
@@ -67,15 +29,8 @@ _VETO_PHASES: Final = frozenset({Phase.EARLY, Phase.FINAL})
 
 
 class Economy(Protocol):
-    """As much of the action economy as the dispatcher needs to see.
-
-    A `Protocol` rather than an import for the reason `hooks/contexts.py` gives
-    for `Combatant`: `creatures/economy.py` sits above this package and imports
-    it, so the dependency can only point one way. `ActionEconomy` (w1a) satisfies
-    it by having the methods, and `tests/contract/test_economy.py` is the
-    contract test that says so — without which the protocol and the class drift
-    and `costs=` quietly stops being paid.
-    """
+    """As much of the action economy as the dispatcher needs to see
+    (`docs/decisions.md` § w0g)."""
 
     def can_spend(self, cost: ActionCost) -> bool: ...
 
@@ -83,13 +38,7 @@ class Economy(Protocol):
 
 
 class Gate(Protocol):
-    """The APL, asked whether a gated handler may act (w2f).
-
-    `gate="rogue.uncanny_dodge"` is how a feature hands the decision of *whether*
-    to react to the creature's policy without containing a line of policy itself
-    — which is what makes two builds differing only in their action list a
-    comparison of action lists.
-    """
+    """The action list, asked whether a gated handler may act."""
 
     def allows(self, gate_id: str, source: HookSource, ctx: Context) -> bool: ...
 
@@ -97,13 +46,10 @@ class Gate(Protocol):
 class BoundHandler:
     """One declaration, bound to the source that will receive it.
 
-    Everything the dispatch loop reads is a slot on this object, flattened out
-    of the `Handler` and the `HookSource` at attach time, because the loop runs
-    tens of times per attack and an attribute chain is not free. It is also the
-    key its own `once_per` budget is filed under in the creature's ledger: bound
-    handlers are created once per (source, declaration) and survive every table
-    rebuild, so attaching a second source mid-turn cannot hand a spent budget
-    back.
+    Everything the dispatch loop reads is flattened onto a slot here at attach
+    time. It is also the key its `once_per` budget is filed under, so it is
+    created once per (source, declaration) and survives table rebuilds
+    (`docs/decisions.md` § w0g).
     """
 
     __slots__ = (
@@ -127,11 +73,8 @@ class BoundHandler:
         self.source = source
         self.handler = handler
         self.spec = handler.spec
-        # Typed as returning `object` deliberately: the dispatcher is the one
-        # caller that may not assume a handler honours its own annotation, and
-        # `Callable[..., HookResult]` would have the type checker prove the
-        # return-value check below unreachable — against the code whose whole
-        # job is that it is not.
+        # `object`, not `HookResult`: with the annotation trusted, mypy would
+        # prove the return-value check in `dispatch()` unreachable.
         self.fn: Callable[..., object] = handler.fn
         self.source_id = type(source).ID
         self.phase = handler.phase
@@ -141,27 +84,17 @@ class BoundHandler:
         self.costs = handler.costs
         self.gate = handler.gate
         self.can_veto = handler.phase in _VETO_PHASES
-        # Whether this handler has anything to be asked before it runs. Most
-        # do not, and the dispatch loop tests this one flag instead of the
-        # three fields above (`Dispatcher.dispatch`).
+        # Must stay equal to "any of the three fields above is set".
         self.guarded = (
             handler.once_per is not None
             or handler.costs is not None
             or handler.gate is not None
         )
-        # What the no-op detector reports on (DESIGN.md § No-op detector): a
-        # feature whose handlers never once applied is the commonest agent bug
-        # in the project — a condition that cannot be true — and counting is
-        # cheaper than any test that would find it.
+        # `APPLIED` returns, for DESIGN.md § No-op detector.
         self.applied = 0
 
     def sort_key(self) -> tuple[int, int, int]:
-        """Phase band, then declared order, then attachment sequence.
-
-        The last of the three is the build YAML's feature order, which is what
-        makes a run with two equally-ordered handlers deterministic rather than
-        dependent on a dict's history.
-        """
+        """Phase band, then declared order, then attachment sequence."""
         return (self.phase.value, self.order, self.sequence)
 
     def __repr__(self) -> str:
@@ -171,10 +104,8 @@ class BoundHandler:
 class Dispatcher:
     """One creature's handlers, and the only thing that calls them.
 
-    Built by the creature (w0g2) with its own reset ledger and, once those
-    exist, its action economy (w1a) and action list (w2f). Sources are attached
-    in build order; the sequence they were attached in is the last tiebreak in
-    the dispatch order, so the YAML is the tiebreak an author can actually see.
+    Takes a reset ledger, an action economy and an action list; attachment
+    sequence is the last tiebreak in the dispatch order.
     """
 
     __slots__ = ("_bound", "_economy", "_gate", "_resets", "_sequence", "_table")
@@ -195,33 +126,14 @@ class Dispatcher:
 
     @property
     def resets(self) -> ResetManager:
-        """The ledger this dispatcher spends `once_per` budgets against.
-
-        The turn loop (w2c) sweeps it at boundaries; it is exposed here because
-        the dispatcher is the only thing that writes to it.
-        """
+        """The ledger this dispatcher spends `once_per` budgets against."""
         return self._resets
 
     def bind(self, *, economy: Economy | None = None, gate: Gate | None = None) -> None:
-        """Wire in the economy and the action list once the build is assembled.
+        """Wire in the economy and the action list after construction.
 
-        Both are constructor arguments as well, and the **gate** needs this
-        because of a cycle the constructor cannot break: the APL's namespace is
-        built over the creature (DESIGN.md § Condition language — proxies
-        holding weak references to live state), and the creature owns the
-        dispatcher, so the gate does not exist yet when the dispatcher is made.
-        The build loader (w2f) calls this once; `w0i` is what found it.
-
-        The economy has no such cycle and in practice does not arrive here at
-        all: a `Creature` builds its own `ActionEconomy` and hands it to this
-        constructor (w1a), so that a creature cannot end up spending out of
-        another one's. The parameter stays because a bare `Dispatcher` — every
-        contract test in `tests/contract/test_dispatch.py` — is assembled
-        without a creature around it.
-
-        Rebinding raises rather than replacing. A dispatcher that swapped action
-        lists mid-run would make two attacks in the same fight answer to
-        different policies, which is not a thing a build can mean.
+        Raises `EngineAssemblyError` if either is already set
+        (`docs/decisions.md` § w0i, § w1a).
         """
         if economy is not None:
             if self._economy is not None:
@@ -264,39 +176,18 @@ class Dispatcher:
         return tuple(self._bound)
 
     def handlers(self, spec: HookSpec) -> tuple[BoundHandler, ...]:
-        """What `dispatch(spec, ...)` would run, in the order it would run them.
-
-        This is what `dndsim inspect` (w2h) prints and what a test asserts
-        ordering against, and it is the same tuple the hot path walks rather
-        than a reconstruction of it.
-        """
+        """What `dispatch(spec, ...)` would run, in the order it would run them:
+        the same tuple the dispatch walks."""
         return self._table.get(spec, ())
 
     def responsive(self, spec: HookSpec) -> bool:
         """Whether dispatching `spec` could run anything at all on this creature.
 
-        The audience filter behind `engine/triggers.py`. An observer hook is
-        offered to bystanders rather than to one actor, so the engine has to ask
-        *who could possibly answer* before it starts asking them one at a time —
-        and in a room of twenty combatants the honest answer is usually nobody,
-        because an opportunity attack needs both a feature that declares
-        `on_leave_reach` and a reaction still in hand.
-
-        **Conservative in one direction only, and that direction is the safe
-        one.** It answers on the two questions that need no event to ask — is
-        the table empty, and can the economy still pay for at least one of the
-        handlers on it — and deliberately not on `once_per` or `gate`. A gate is
-        the policy question, which needs the context that does not exist yet and
-        is the expensive one of the three; a spent `once_per` budget would be
-        exact but buys a ledger lookup per handler for a case the reaction cost
-        already covers. So this may answer True where a dispatch would in fact
-        run nothing — one wasted dispatch — and never False where it would run
-        something, which would be a silently skipped reaction.
-
-        A dispatcher with no economy answers True for a costed handler on
-        purpose: `_permits()` raises `EngineAssemblyError` for that assembly, and
-        a filter that quietly dropped the creature from the audience would turn
-        that loud error into a feature that never fires.
+        False only when no handler is attached or the economy can pay for none
+        of them; `once_per` and `gate` are not asked, so True may still run
+        nothing (`docs/decisions.md` § w0g3). With no economy, a costed handler
+        answers True, so that `dispatch()` raises `EngineAssemblyError` rather
+        than the creature being silently left out.
         """
         handlers = self._table.get(spec)
         if handlers is None:
@@ -312,39 +203,22 @@ class Dispatcher:
         """Run every handler for `spec` over `ctx`, in order, until one vetoes.
 
         The context carries the result: what handlers contributed is in its
-        bags, and `ctx.vetoed` says whether the event happens at all.
+        bags, and `ctx.vetoed` says whether the event happens at all. Raises
+        `FeatureContractError` for a handler that returns anything but `R`.
 
-        **The loop below is the single hottest piece of code in the project**,
-        and `w0i` measured it at nine dispatches and twenty-odd handler calls per
-        attack resolution. Three shapes here are performance decisions rather
-        than expressions of the design, and each is written so it cannot change
-        behaviour:
-
-        - **`bound.guarded` collapses three questions into one.** `once_per`,
-          `costs` and `gate` are still asked in ascending order of cost, in
-          `_permits()`; what changed is that a handler carrying none of the
-          three — which is most of them — pays one attribute test instead of
-          three. The flag is computed once, at attach time, from exactly those
-          three fields.
-        - **The provenance stamp is written into the frame directly** rather
-          than through `ctx.stamp()`. Twenty-one method calls an attack buy
-          nothing over two slot stores, and the frame is engine-owned state that
-          this module and `hooks/contexts.py` are the two halves of.
-        - **The entry veto is read off the frame**, for the same reason. The
-          in-loop one is not: mypy narrows the frame's field to `None` across
-          the handler calls and would then read the `break` as dead code, and a
-          type checker that has proved the veto unreachable is worse than the
-          property call it saves — which only runs for an `EARLY` or `FINAL`
-          handler anyway.
+        Hot path (`docs/decisions.md` § w0i): `bound.guarded` stands in for the
+        three questions `_permits()` asks, and the stamp and the entry veto
+        are read off the frame directly rather than through `ctx.stamp()` and
+        `ctx.vetoed`. The in-loop veto goes through `ctx.vetoed` on purpose:
+        mypy narrows the frame's field to `None` across the handler calls and
+        would read the `break` as dead code.
         """
         handlers = self._table.get(spec)
         if handlers is None:
             return
         frame = ctx._frame
         if frame.veto_reason is not None:
-            # A veto is a decision about the event, not about one creature's
-            # view of it, so the second half of a paired dispatch (`on_hit` then
-            # `on_hit_taken`) does not run either.
+            # The second half of a paired dispatch does not run either.
             return
         was_source = frame.source
         was_phase = frame.phase
@@ -374,11 +248,9 @@ class Dispatcher:
             frame.phase = was_phase
 
     def _permits(self, bound: BoundHandler, ctx: Context) -> bool:
-        """The three escape valves, asked in ascending order of cost.
-
-        Off the hot path for the majority of handlers: only a `bound` that
-        declared `once_per`, `costs` or `gate` reaches here (`bound.guarded`).
-        """
+        """Whether a guarded handler may run: `once_per`, then `costs`, then
+        `gate`. Raises `EngineAssemblyError` when the economy or the action
+        list it needs is not wired in."""
         once_per = bound.once_per
         if once_per is not None and self._resets.is_spent(bound):
             return False
@@ -406,19 +278,14 @@ class Dispatcher:
         return True
 
     def _spend(self, bound: BoundHandler) -> None:
-        """Pay for a guarded handler that returned `APPLIED`, and only then.
-
-        The budget is on the return value (DESIGN.md § The uniform handler
-        shape), which is why this is a second call rather than something
-        `_permits()` could have done on the way past.
-        """
+        """Pay for a guarded handler that returned `APPLIED`, and only then."""
         once_per = bound.once_per
         if once_per is not None:
             self._resets.spend(bound, once_per)
         cost = bound.costs
         if cost is not None and self._economy is not None:
-            # The pair is set together: a cost was checked against an economy
-            # in `_permits()`, or there was no cost to check.
+            # `_permits()` already refused a cost with no economy; the second
+            # test is for the type checker.
             self._economy.spend(cost)
 
     def _rebuild(self) -> None:

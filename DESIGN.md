@@ -55,7 +55,7 @@ settled decisions and not implementation detail.
 |---|---|
 | Language | Python 3.11+, OOP, library-first with a CLI adapter |
 | Ruleset | XPHB (2024), **levels 1–12** |
-| Positioning | Square grid, 5 ft cells, real distance, opportunity attacks, true AoE templates |
+| Positioning | Square grid, 5 ft cells, real distance, opportunity attacks, true AoE templates. **An open field**: no terrain, walls or cover in v1, so line of sight is implemented and nothing blocks it (`docs/decisions.md` § The M0 / W1 milestone review) |
 | Movement | **An APL decision, not an engine heuristic** — a `move:` clause, same grammar as `if:` |
 | Targeting | **An APL decision** — a `target:` selector expression per entry |
 | Policy | SimC-style Action Priority List — the *language*; see the next row for where the list comes from |
@@ -390,7 +390,7 @@ That one flag covers all three hard cases:
 |---|---|
 | **Rage** | `until_end_of_next_turn_of(self)`, plus `refresh()` from `on_declare_attack` / `on_damage_taken` / `on_forced_save` — recomputes against the current clock, so "next turn" slides forward |
 | **Reckless Attack** | `until_start_of_next_turn_of(self)` |
-| **Vex** | `until_end_of_next_turn_of(self)` **plus `charges=1`** keyed to a target id — whichever runs out first removes it |
+| **Vex** | `until_end_of_next_turn_of(self)` **plus `charges=1`** keyed to a target id — whichever runs out first removes it. **The key is the feature's state, not a field on `Effect`**: `Effect.charges` is a count, and which target a charge may be spent against is something only the feature knows (`docs/decisions.md` § w1c). A W4 author needs no engine change for it, and reaching into `creatures/` for one would be a content batch editing the engine |
 
 ### Initiative is a key, not an index
 
@@ -1167,9 +1167,13 @@ DEBUFF_PROFILE = Perturbation(
     action_denied=True, speed=0,        # Hypnotic Pattern
     targets="enemies.in(template)",     # a 30-foot cube; one save each
     save=Save(Ability.WIS),             # no repeat save — it just holds
-                                        # a repeating one declares repeat="turn_end"
-                                        # or "turn_start"; the two differ by a
-                                        # whole round of value, see above
+                                        # a repeating one declares repeat=, whose
+                                        # members are the enum `w1g` adds to
+                                        # rules/enums.py and never string
+                                        # literals (ROADMAP debt #35): the engine
+                                        # that rolls the repeat save reads the
+                                        # same member. The two differ by a whole
+                                        # round of value, see above
     ends_on_damage=True,                # so nobody in the party may hit them
     duration=Duration.minutes(1),
     concentration=True,
@@ -1191,8 +1195,11 @@ fixed set every profile may set, and not perturbations at all: `targets=` and
 `duration=`, which § The horizon reads as `duration_or_E[rounds]`;
 `concentration=`, which is what prices the effect through `c[concentration]`;
 and the three that say how it ends — `save=`, its optional `repeat=`
-(`"turn_end"` or `"turn_start"`, which select between the two `E[N]` formulas
-above), and `ends_on_damage=`.
+(end-of-turn or start-of-turn, which select between the two `E[N]` formulas
+above; its members are the enum `w1g` adds to `rules/enums.py`, read by the
+engine that rolls the repeat save as well as by the scorer, and never two sets
+of string literals that can disagree — `ROADMAP.md` § The W0 debt register #35),
+and `ends_on_damage=`.
 
 Keeping them apart is what makes the closed list closable: the perturbation keys
 are a claim about attack mathematics and each one costs a branch in the
@@ -2097,11 +2104,13 @@ seconds across eight.
 > per-step measurements and the two levers taken (a compiled `reopen()`, and
 > MT19937 words in place of PCG32) are in `docs/decisions.md` § w0i.
 >
-> **The margin that revision bought is spent.** `w1f`'s completed attack
-> pipeline cost 5.5% of the rate against a 5% margin, so the budget is now the
-> number to hold rather than the number being cleared. It is not revised again
-> here and, per § Biggest risks, is not to be revised by anyone who cannot
-> attribute the shortfall.
+> **It is missed at the end of W1, and not revised.** `w1k` wired the real
+> effects, pools and sweeps into the spike and measured it about a quarter under
+> the budget, attributed to three costs with a lever each (`docs/decisions.md`
+> § w1k). The budget is the number to hold, not the number being cleared: per
+> § Biggest risks it is not revised by anyone who cannot attribute the
+> shortfall, and with the shortfall attributed, whether it comes down is the
+> human's (`docs/questions.md` #10). `w2i` takes the levers first.
 
 ### The spike must be pessimistic, or M0 proves nothing
 
@@ -2191,8 +2200,9 @@ change is 26k against 20k). A later reader who simplifies the generated
 `reopen()` back into a general one will re-take a lever that does not work;
 immutable specs (`ResourceSpec`, `Duration`,
 weapon definitions) shared across every creature; APL compiled once per build;
-structured tuple logging with string formatting deferred to the reporter — worth
-~2–3× on its own (`--log-level=summary`); multiprocessing across iterations;
+structured tuple logging with string formatting deferred to the reporter, which
+leaves `--log-level=summary` saving memory and no measurable time
+(`docs/decisions.md` § w1i); multiprocessing across iterations;
 **adaptive stopping** on confidence-interval width rather than a fixed count.
 
 **Seeding is per iteration, never per worker.** `rng = MersenneRng(mix(master_seed,
@@ -2545,7 +2555,7 @@ Great Weapon Master stops being worth it, exactly as a WoW sim would.
 ## Build order
 
 Nine waves, `W0`–`W8`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
-77 tasks, their dependency edges, delegation modes and the task-packet template.
+79 tasks, their dependency edges, delegation modes and the task-packet template.
 Its § The W0 debt register is the ledger of what W0 left for later waves to
 retire, and which task retires each.
 
@@ -2638,7 +2648,9 @@ more dangerous failure than a check that fails.
    arithmetic across machines and not a measurement, which is `w1k`'s to take,
    but the plan no longer describes a margin it does not have. The risk is no
    longer that the headroom erodes unwatched; it is that `w1k` is reached with a
-   shortfall and five candidate causes.
+   shortfall and five candidate causes. **`w1k` measured it**: about a quarter
+   under, attributed to three costs with an owner each, and the budget not
+   revised (`docs/decisions.md` § w1k).
    *Mitigated by:* `w1k`, the M0 re-measure at the end of W1 against the real
    `EffectStore` and `ResourcePool`; each W1 task that touches the hot path
    pricing itself so that `w1k` totals attributions rather than discovering a
@@ -2709,7 +2721,7 @@ more dangerous failure than a check that fails.
    with a confidence column, human triage of the low-confidence and gap rows
    only, and the additive-vs-structural split that makes the hook-gap budget
    honest.
-6. **Review capacity, not agent throughput, is the constraint.** Roughly 175
+6. **Review capacity, not agent throughput, is the constraint.** Roughly 176
    nominal agent-days funnel through one person; every parallelism gain lands on
    the same desk. *Mitigated by:* designing artefacts to be reviewable in minutes
    — disposition tables, quoted citations, arithmetic in goldens, the file-size

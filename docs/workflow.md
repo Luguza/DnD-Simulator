@@ -126,6 +126,13 @@ otherwise. A milestone review lists the open rows in the milestone PR's body.
 The human answers them when they review the finished product; an answer that
 overturns a choice becomes ordinary work for the queue.
 
+Not every choice is a question. One that the documents, the rules text or a
+convention the project already has settles, or where one option is plainly the
+lesser error, is recorded in the task's `docs/decisions.md` section and not
+here. A row is for a choice a careful reader of the same documents could make
+the other way. `w1d`'s three rows were the other kind, and the human closed them
+as trivial (`docs/decisions.md` § w1d).
+
 A question is never a reason to skip a check, widen a task, or merge something a
 review has not passed. If no reading is safe to proceed on, the row is `held`.
 

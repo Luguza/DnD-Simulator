@@ -1,22 +1,8 @@
 """The universal rules tables — XPHB (2024).
 
-What belongs here is rules data that is **not per class**: the proficiency bonus
-table, the ability modifier formula, the four spell-slot progressions, and the
-handful of fixed numbers the rules state once and every subsystem then quotes.
-
-What does *not* belong here is per-class scaling — Rage Damage, Sneak Attack
-dice, Second Wind uses. Those are columns of a class table, they arrive through
-`content/` (w2a) and features read them via `table_value()`. Standing rule 3
-("never hardcode a scaling number") is about exactly that data, not about this
-module.
-
-**The slot tables are the one overlap, and it is deliberate.** 5etools ships the
-same numbers per class as `classTableGroups.rowsSpellProgression`, so w2a will
-import them. It should then *check the import against these tables* rather than
-prefer one source or the other: the tables below are the rules, the import is a
-third-party artefact that changes without notice, and a mismatch between them is
-the earliest possible warning that the dataset moved under us. Deriving them at
-runtime instead would make every W1 test depend on a fetch of gitignored data.
+Rules data that is **not per class**: the proficiency bonus table, the ability
+modifier formula, the four spell-slot progressions, and the fixed numbers the
+rules state once. Per-class scaling is never here (`docs/decisions.md` § w0b).
 
 Sources: XPHB (2024) "Playing the Game" (ability modifiers, the 5-foot grid),
 "Character Creation" (the Proficiency Bonus table), "Equipment" (the Armor table
@@ -50,6 +36,8 @@ __all__ = [
     "PROFICIENCY_BONUS",
     "SHIELD_AC_BONUS",
     "SIZE_ORDER",
+    "SIZE_WIDTH_CELLS",
+    "SPELL_SAVE_DC_BASE",
     "THIRD_CASTER_SLOTS",
     "ability_modifier",
     "proficiency_bonus",
@@ -57,50 +45,38 @@ __all__ = [
 ]
 
 MAX_CHARACTER_LEVEL: Final = 20
-"""The rules cap. v1 simulates levels 1-12; that narrower cap is a build-schema
-concern (w2f), not a fact about the rules, so the tables here run to 20."""
+"""The rules cap; the tables here run to 20."""
 
 MAX_SPELL_LEVEL: Final = 9
 
 CELL_SIZE_FT: Final = 5
-"""One grid square. Distances are measured in feet everywhere; this is the only
-place the grid's resolution is written down."""
+"""One grid square, in feet."""
 
 BASE_ARMOUR_CLASS: Final = 10
-"""The 10 every Armor Class starts from — a creature wearing no armour has an AC
-of 10 plus its Dexterity modifier (XPHB, "Armor Class"). Every Unarmored Defense
-variant is that same 10 with one more modifier added, which is why
-`creatures/stats.py` builds all of them from this one number."""
+"""The 10 an unarmoured Armor Class starts from (XPHB, "Armor Class")."""
 
 MEDIUM_ARMOUR_DEX_CAP: Final = 2
-"""How much of a Dexterity modifier medium armour lets through: every medium row
-of the XPHB Armor table caps the Dexterity it adds at +2. Light armour caps
-nothing and heavy armour adds no Dexterity at all, so this is the only cap the
-rules state and therefore the only one written down."""
+"""How much of a Dexterity modifier medium armour lets through (XPHB Armor
+table)."""
 
 SHIELD_AC_BONUS: Final = 2
-"""What a Shield adds: +2, in every shield row of the XPHB Armor table. It is
-here rather than on an imported item because v1 has no magic items (DESIGN.md
-§ Settled decisions), so the number the rules state once is the number every
-shield gives; `w2a`'s import checks its entry against this the way the slot
-tables check theirs."""
+"""What a Shield adds (XPHB Armor table; `docs/decisions.md` § w1a)."""
 
 CRITICAL_HIT_THRESHOLD: Final = 20
-"""The natural roll a Critical Hit starts at (XPHB, "Attack Rolls": a natural 20
-hits and is a Critical Hit). It is where a *character's* threshold starts rather
-than a fact about one attack — Improved Critical lowers the character's to 19 —
-which is why it is a derived stat on the creature and never something a handler
-edits per attack (`hooks/contexts.py`)."""
+"""The natural roll a Critical Hit starts at (XPHB, "Attack Rolls"): the default
+of a creature's derived `crit_threshold` (`docs/decisions.md` § w1a)."""
 
 NATURAL_TWENTY: Final = 20
 NATURAL_ONE: Final = 1
 """The two rolls an attack resolves on their own, whatever the modifiers or the
 target's AC (XPHB, "D20 Tests" -> Attack Rolls, "Rolling 20 or 1").
 
-Distinct from `CRITICAL_HIT_THRESHOLD` above, which a Champion lowers: a 19 is a
-Critical Hit for that character and is still not an automatic one, so the two
-numbers stop being equal the moment Improved Critical exists and
-`engine/attack.py` reads each for its own question."""
+Distinct from `CRITICAL_HIT_THRESHOLD`, which a feature may lower: a lowered
+threshold never makes a roll hit (`docs/decisions.md` § w1f)."""
+
+SPELL_SAVE_DC_BASE: Final = 8
+"""The 8 of "8 + your spellcasting ability modifier + your Proficiency Bonus"
+(XPHB, "Spells" -> Spell Save DC; `docs/decisions.md` § w1g)."""
 
 DEATH_SAVE_DC: Final = 10
 DEATH_SAVE_SUCCESSES_TO_STABILIZE: Final = 3
@@ -109,14 +85,27 @@ DEATH_SAVE_FAILURES_TO_DIE: Final = 3
 PHYSICAL_DAMAGE_TYPES: Final[frozenset[DamageType]] = frozenset(
     {DamageType.BLUDGEONING, DamageType.PIERCING, DamageType.SLASHING}
 )
-"""The grouping Rage and comparable features resist: "Bludgeoning, Piercing, and
-Slashing damage"."""
+"""Bludgeoning, Piercing, and Slashing."""
 
 SIZE_ORDER: Final[Mapping[Size, int]] = MappingProxyType(
     {size: rank for rank, size in enumerate(Size)}
 )
-"""Sizes ranked smallest to largest, so that "one size larger than you" is a
-comparison of two ints rather than a hand-written ordering per rule."""
+"""Sizes ranked smallest to largest."""
+
+SIZE_WIDTH_CELLS: Final[Mapping[Size, int]] = MappingProxyType(
+    {
+        # The XPHB "Creature Size" table in squares: Tiny's 2.5 feet is one
+        # square, and Gargantuan's "20 feet or more" is floored at 20.
+        Size.TINY: 1,
+        Size.SMALL: 1,
+        Size.MEDIUM: 1,
+        Size.LARGE: 2,
+        Size.HUGE: 3,
+        Size.GARGANTUAN: 4,
+    }
+)
+"""How many squares on a side a creature of each size occupies
+(`docs/decisions.md` § w1d)."""
 
 PROFICIENCY_BONUS: Final[Mapping[int, int]] = MappingProxyType(
     {
@@ -144,7 +133,7 @@ PROFICIENCY_BONUS: Final[Mapping[int, int]] = MappingProxyType(
     }
 )
 """Proficiency bonus by character level. Read it through `proficiency_bonus()`,
-which fails loudly on a level outside the table."""
+which raises on a level outside the table."""
 
 FULL_CASTER_SLOTS: Final[tuple[tuple[int, ...], ...]] = (
     # 1st  2nd  3rd  4th  5th  6th  7th  8th  9th
@@ -195,8 +184,7 @@ HALF_CASTER_SLOTS: Final[tuple[tuple[int, ...], ...]] = (
     (4, 3, 3, 3, 2),  # level 19
     (4, 3, 3, 3, 2),  # level 20
 )
-"""Paladin and Ranger. In 2024 both are casters from level 1, which is why the
-first row is not empty."""
+"""Paladin and Ranger, casters from level 1 in 2024."""
 
 THIRD_CASTER_SLOTS: Final[tuple[tuple[int, ...], ...]] = (
     # 1st  2nd  3rd  4th
@@ -247,7 +235,7 @@ PACT_MAGIC_SLOTS: Final[tuple[tuple[int, int], ...]] = (
     (4, 5),  # level 20
 )
 """Warlock Pact Magic as `(slots, slot_level)` per level: every slot is of the
-same level, and they return on a Short Rest rather than a Long Rest."""
+same level, and they return on a Short Rest."""
 
 _SLOT_TABLES: Final[Mapping[CasterProgression, tuple[tuple[int, ...], ...]]] = (
     MappingProxyType(
@@ -271,7 +259,7 @@ def _check_level(level: int) -> None:
 
 
 def proficiency_bonus(level: int) -> int:
-    """The proficiency bonus at a character level."""
+    """The proficiency bonus at a character level; `ValueError` outside 1-20."""
     _check_level(level)
     return PROFICIENCY_BONUS[level]
 
@@ -285,9 +273,9 @@ def spell_slots(progression: CasterProgression, level: int) -> Mapping[int, int]
     """Slot level -> number of slots, for one progression at one class level.
 
     Empty levels are omitted, so a level-1 Eldritch Knight returns `{}` and a
-    level-5 Warlock returns `{3: 2}`. Pact Magic comes back in the same shape as
-    the other three even though its table is stored differently, so callers —
-    `SpellSlots` above all — never branch on the progression.
+    level-5 Warlock returns `{3: 2}`. Pact Magic comes back in the same shape,
+    so callers never branch on the progression. Raises `ValueError` outside
+    levels 1-20.
     """
     _check_level(level)
     if progression is CasterProgression.PACT:

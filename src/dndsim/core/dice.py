@@ -1,19 +1,7 @@
-"""Dice notation — `2d6` in, a value object out.
+"""Dice notation — `2d6` in, a `Dice` value object out.
 
-A hand-rolled tokeniser rather than a library (DESIGN.md § Libraries before
-reimplementing): the grammar is one production, it sits on the hottest path in
-the simulator, and the *rejections* below are the point as much as the parse is.
-
-**A dice expression carries no flat modifier, and `+3` is an error rather than a
-term.** `DamagePart` splits `dice` from `flat` precisely so that a crit doubles
-the first and never the second (DESIGN.md § Structural prevention over testing);
-if `Dice.parse` accepted `"1d8+3"` the split would be bypassable by a string, and
-the single most-cited invariant in the project would become a convention. So the
-parser refuses, and says where the `+3` belongs.
-
-Sources: XPHB (2024) "Playing the Game" — "dice notation ... The number of dice
-comes first, then the die's letter", and the crit rule "roll the attack's damage
-dice twice".
+A dice expression carries no flat modifier: `"1d8+3"` raises
+(`docs/decisions.md` § w0c). XPHB "Playing the Game", dice notation.
 """
 
 import re
@@ -27,23 +15,19 @@ __all__ = ["Dice"]
 _PARSED: "dict[str, Dice]" = {}
 """Notation already parsed, keyed by the exact string the caller passed.
 
-Keyed before `strip()` so that a hit costs one dict lookup and nothing else;
-`"2d6 "` and `"2d6"` are two entries holding the same value, which is a
-rounding error against re-running the regular expression.
+Keyed before `strip()`, so `"2d6 "` and `"2d6"` are two entries for one value.
 """
 
 _NOTATION: Final = re.compile(r"(?P<count>\d*)[dD](?P<sides>\d+)")
 """`[count]d<sides>`, count defaulting to 1 so that both `d20` and `1d20` parse.
-Deliberately not anchored with `\\s`-tolerance or sign handling: the caller's
-string is stripped first, and anything left over is a rejection, not a term."""
+Matched against the stripped string; anything left over is a rejection."""
 
 
 @dataclass(frozen=True, slots=True)
 class Dice:
     """A pool of identical dice: `count` of them, each with `sides` faces.
 
-    Frozen and shareable — one `Dice` per weapon or spell definition is read by
-    every creature that uses it, on every attack, for the life of the run.
+    Frozen, so one instance may be shared by every reader.
     """
 
     count: int
@@ -59,24 +43,8 @@ class Dice:
     def parse(cls, notation: str) -> "Dice":
         """Parse `2d6`, `d20`, `1D8`. Anything else raises `ValueError`.
 
-        Failing here is failing at the earliest moment the information exists
-        (DESIGN.md § Fail at the earliest moment): weapon and spell notation is
-        read once at content load, so a typo in the dataset stops the run before
-        the first iteration rather than mis-scoring every one of them.
-
-        **Memoised, because the load-time story above is only half true.** A
-        feature writes `ctx.damage.add(dice="6d6")` in its handler body, so the
-        string is re-parsed on every attack that rider lands on — `w0i` measured
-        2.5 parses per attack resolution against the pessimistic spike, which is
-        a regular expression on the hottest path in the project. The cache makes
-        the repeat a dict lookup, and the alternative — a rule telling ~630
-        authors to hoist a module constant — is the kind of rule that is
-        obeyed for a fortnight.
-
-        Sound because a `Dice` is a frozen **Value Object**: two calls with the
-        same notation may safely be the same object, and nothing can mutate the
-        one they share. The cache is bounded by the number of distinct dice
-        expressions in the content set, which is a few hundred.
+        Memoised: repeated notation returns the same frozen instance
+        (`docs/decisions.md` § w0i).
         """
         cached = _PARSED.get(notation)
         if cached is not None:
@@ -90,20 +58,17 @@ class Dice:
         return parsed
 
     def doubled(self) -> "Dice":
-        """Twice the dice — a critical hit (XPHB: "roll the damage dice twice").
+        """Twice the dice — a Critical Hit's pool (XPHB "Damage and Healing").
 
-        Doubling the *pool* rather than the rolled total is what makes a crit
-        re-roll dice instead of multiplying a number, and it is only ever reached
-        through `DamagePart.dice`, so a feature's `flat` bonus cannot arrive here.
+        `docs/decisions.md` § w0c.
         """
         return Dice(count=self.count * 2, sides=self.sides)
 
     def roll(self, rng: Rng) -> int:
         """Roll the pool and return the total.
 
-        A loop rather than `sum(... for _ in ...)`: the generator's frame costs
-        more than the addition it saves at the two or three dice a typical pool
-        holds, and this runs several times per attack resolution (w0i).
+        A loop, not `sum(...)` over a generator: the generator's frame costs more
+        than it saves at typical pool sizes, on the hot path.
         """
         roll = rng.roll
         sides = self.sides

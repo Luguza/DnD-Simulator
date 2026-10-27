@@ -1,24 +1,10 @@
-"""The w1c effect contract: what is attached to a creature, and how it ends.
+"""The effect contract: what is attached to a creature, and how it ends.
 
-The three cases DESIGN.md § Durations names are the three shapes of ending, and
-each of them is a test below:
+Rage, Vex and Reckless Attack are the three endings DESIGN.md § Durations names:
+a deadline its handlers slide forward, a deadline and a charge, and an ending
+before the owner's next turn begins.
 
-- **Rage** ends on a deadline that its own handlers slide forward, so a
-  re-application must not become a second Rage and a refresh must recompute
-  against the clock rather than add a round.
-- **Vex** carries a deadline *and* a charge, and ends on whichever runs out
-  first — which is only a property if neither can end it while the other still
-  has something left to give.
-- **Reckless Attack** ends "until the start of your next turn", the half of
-  `Expiry.through_phase` that is gone *before* the boundary's own handlers run.
-  It is the hard stop: nothing on the owner's turn may see it.
-
-Around them, the two things the store owns that an effect must not: attachment,
-because `hooks/dispatch.py` rebuilds a dispatch table on every attach and
-detach, and the clock, because a `Duration` is relative and only the store is
-told what the moment is.
-
-Sources: DESIGN.md § Durations; `core/timeline.py`; ROADMAP w1c.
+Sources: DESIGN.md § Durations; `core/timeline.py`; `docs/decisions.md` § w1c.
 """
 
 from types import MappingProxyType
@@ -140,8 +126,7 @@ class Reckless(Effect):
 def test_rage_is_extended_rather_than_stacked() -> None:
     """Rage is applied on the barbarian's first turn, ending at the end of its
     next one — round 2. Saying it again on round 2 slides the deadline to round
-    3 and leaves one Rage attached, which is what `Stacking.REFRESH` buys and
-    why no feature writes "am I already raging".
+    3 and leaves one Rage attached.
     """
     barbarian = creature()
     barbarian.effects.expire_after(at(1, BARBARIAN, TurnPhase.END))
@@ -160,10 +145,8 @@ def test_rage_is_extended_rather_than_stacked() -> None:
 
 
 def test_refresh_recomputes_against_the_clock_rather_than_adding_a_round() -> None:
-    """DESIGN.md's Rage row calls `refresh()` from three hooks, all of which can
-    fire more than once on one turn. Refreshing twice inside the same turn must
-    therefore be the same deadline as refreshing once, which addition would
-    not be."""
+    """Refreshing twice inside the same turn gives the same deadline as
+    refreshing once."""
     barbarian = creature()
     barbarian.effects.expire_after(at(1, BARBARIAN, TurnPhase.END))
     rage = barbarian.effects.apply(
@@ -237,9 +220,8 @@ def test_reckless_attack_is_gone_before_its_owners_turn_starts() -> None:
 
 
 def test_an_effect_lasting_through_its_boundary_still_answers_on_it() -> None:
-    """Rage's half of the same flag, and the reason the sweep is two calls
-    rather than a boolean: an effect ending at the end of a turn is attached
-    while that turn's handlers run and gone once they have."""
+    """An effect ending at the end of a turn is still attached after
+    `expire_before()` at that boundary and gone after `expire_after()`."""
     barbarian = creature()
     barbarian.effects.expire_after(at(1, BARBARIAN, TurnPhase.END))
     barbarian.effects.apply(
@@ -268,10 +250,7 @@ def test_a_stacking_effect_is_held_twice() -> None:
 
 
 def test_a_rejected_effect_lands_nothing_and_says_so() -> None:
-    """`REJECT` is the policy whose whole content is the return value: the
-    incumbent is untouched and the caller is told nothing happened, which is
-    what lets a scorer price a re-application at zero without a condition
-    written anywhere."""
+    """Under `REJECT` the incumbent is untouched and `apply()` returns None."""
     cleric = creature(name="cleric")
     first = cleric.effects.apply(Blessing(cleric))
 
@@ -293,9 +272,7 @@ def test_unique_per_source_separates_two_casters_and_merges_one() -> None:
 
 
 def test_unique_per_source_without_a_source_is_refused_at_construction() -> None:
-    """The one declaration that cannot be honoured: a policy keyed on the caster
-    with no caster to key on. Refused where it is written rather than at the
-    second application, which might be a different fight."""
+    """A `UNIQUE_PER_SOURCE` effect with no caster raises when it is built."""
     quarry = creature(name="quarry")
     with pytest.raises(ValueError, match="unique per"):
         Mark(quarry)
@@ -305,9 +282,7 @@ def test_unique_per_source_without_a_source_is_refused_at_construction() -> None
 
 
 def test_an_applied_effect_is_attached_and_an_expired_one_is_detached() -> None:
-    """The store owns both halves. An effect that attached itself would put a
-    second hand on the dispatch table `hooks/dispatch.py` rebuilds on every
-    attach and detach."""
+    """The store attaches what it applies and detaches what it expires."""
     barbarian = creature()
     barbarian.effects.expire_after(at(1, BARBARIAN, TurnPhase.END))
     watcher = barbarian.effects.apply(Reckless(barbarian))
@@ -319,10 +294,8 @@ def test_an_applied_effect_is_attached_and_an_expired_one_is_detached() -> None:
 
 
 def test_an_effect_owned_by_somebody_else_is_refused() -> None:
-    """Going through `Creature.attach()` rather than the dispatcher is what
-    makes the ownership check cover an effect: `self.owner` inside its handlers
-    being the wrong creature is the one mistake hook `Scope` exists to prevent.
-    Nothing is held when it is refused."""
+    """Applying an effect owned by another creature raises, and nothing is
+    held afterwards."""
     barbarian, ogre = creature(), creature(name="ogre", initiative=OGRE)
 
     with pytest.raises(ValueError, match="cannot be attached"):
@@ -331,9 +304,7 @@ def test_an_effect_owned_by_somebody_else_is_refused() -> None:
 
 
 def test_consuming_more_charges_than_remain_raises() -> None:
-    """`charges` is readable, so reaching this means a caller decided not to
-    ask — the bargain `ActionEconomy` makes about spending what is not
-    there."""
+    """Overdrawing charges raises and leaves the count unchanged."""
     fighter = creature(name="fighter")
     effect = fighter.effects.apply(Vex(fighter, charges=2))
     assert effect is not None
@@ -344,9 +315,7 @@ def test_consuming_more_charges_than_remain_raises() -> None:
 
 
 def test_consuming_an_effect_that_counts_no_charges_raises() -> None:
-    """An effect with no charges ends on its deadline or when something removes
-    it; consuming one is a feature that thinks it declared `charges=` and did
-    not."""
+    """Consuming an effect built with `charges=None` raises."""
     barbarian = creature()
     rage = barbarian.effects.apply(Rage(barbarian))
     assert rage is not None
@@ -356,16 +325,14 @@ def test_consuming_an_effect_that_counts_no_charges_raises() -> None:
 
 
 def test_zero_charges_is_refused_where_it_is_written() -> None:
-    """An effect that is over before it starts is a mistake in the feature, and
-    `charges=None` is how "does not count them" is said."""
+    """`charges=0` raises at construction."""
     barbarian = creature()
     with pytest.raises(ValueError, match="0 charges"):
         Rage(barbarian, charges=0)
 
 
 def test_an_unattached_effect_can_be_neither_refreshed_nor_consumed() -> None:
-    """The store holds the clock a refresh reads and the creature a spent
-    effect detaches from, so neither means anything before one has it."""
+    """Refreshing or consuming an effect no store holds raises."""
     barbarian = creature()
     loose = Rage(barbarian, duration=Duration.until_end_of_next_turn_of(BARBARIAN))
 
@@ -379,10 +346,9 @@ def test_an_unattached_effect_can_be_neither_refreshed_nor_consumed() -> None:
 
 
 def test_a_duration_resolves_against_the_clock_the_store_was_last_told() -> None:
-    """No attack context carries a `TimeKey` and `resolve_attack()` is handed
-    none, so an effect applied from inside an attack resolves against the
-    boundary the turn loop last swept. The two anchors below are the same
-    duration applied at the same moment, and they differ by a round because one
+    """An effect resolves against the boundary the store was last swept to
+    (`docs/decisions.md` § w1c). The two anchors below are the same duration
+    applied at the same moment, and they differ by a round because one
     creature's turn has been and the other's has not.
     """
     ogre = creature(name="ogre", initiative=OGRE)
@@ -401,16 +367,8 @@ def test_a_duration_resolves_against_the_clock_the_store_was_last_told() -> None
 
 
 def test_a_store_starts_at_one_arbitrary_point_in_an_undecided_order() -> None:
-    """Nothing advances the clock until w2c's turn loop (debt #29), so a
-    creature that has never been swept reads round 1 at `UNSEATED`.
-
-    `UNSEATED` is a seat rather than a position ahead of the order — it is
-    `initiative=0` — so what a duration resolves to against it depends on which
-    side of that seat its anchor sorts: at or above, `Duration.resolve()` reads
-    the anchor's turn as already begun and the effect ends in round 2; below,
-    it ends in round 1. That is what the debt costs, and it is pinned here
-    rather than described, because "round 1 for everyone" is the plausible
-    wrong model of it.
+    """A store never swept reads round 1 at `UNSEATED` (debt #29): an anchor at
+    or above `initiative=0` ends in round 2, one below it in round 1.
     """
     assert creature().effects.now == TimeKey(1, UNSEATED, TurnPhase.START)
 
@@ -510,10 +468,7 @@ class Clings(HookSource):
 
 
 def test_applying_an_effect_fires_the_hook_only_it_can_fire() -> None:
-    """`hooks/definitions.py` closes the registry at 39 and two of them —
-    `on_effect_applied` and `on_effect_expired` — have no possible caller but
-    this store. A hook nothing fires is a feature that runs nothing and says
-    nothing, which is what the closed registry exists to prevent."""
+    """Applying an effect fires `on_effect_applied` on its creature."""
     barbarian = creature()
     watcher = Watcher(barbarian)
     barbarian.attach(watcher)
@@ -524,9 +479,8 @@ def test_applying_an_effect_fires_the_hook_only_it_can_fire() -> None:
 
 
 def test_an_extension_is_an_application_too() -> None:
-    """`on_effect_applied`'s own summary names it — "Rage extending rather than
-    stacking" — so a second application that the incumbent absorbs fires the
-    hook as the first did."""
+    """A second application the incumbent absorbs fires `on_effect_applied` as
+    the first did."""
     barbarian = creature()
     watcher = Watcher(barbarian)
     barbarian.attach(watcher)
@@ -539,8 +493,7 @@ def test_an_extension_is_an_application_too() -> None:
 
 
 def test_a_rejected_application_fires_nothing() -> None:
-    """`REJECT` means nothing happened, and a hook that fired anyway would be a
-    handler told about an event that did not take place."""
+    """A `REJECT`ed second application fires no hook."""
     cleric = creature(name="cleric")
     watcher = Watcher(cleric)
     cleric.attach(watcher)
@@ -552,9 +505,8 @@ def test_a_rejected_application_fires_nothing() -> None:
 
 
 def test_a_veto_on_the_application_keeps_the_effect_off() -> None:
-    """An effect is "on its way onto a creature" (`hooks/contexts.py`) until
-    this hook has run, so refusing one here is what a feature immune to it
-    does — and nothing is attached afterwards."""
+    """A veto at `on_effect_applied` makes `apply()` return None and attach
+    nothing."""
     barbarian = creature()
     barbarian.attach(Immune(barbarian))
 
@@ -563,7 +515,8 @@ def test_a_veto_on_the_application_keeps_the_effect_off() -> None:
 
 
 def test_both_ways_an_effect_ends_fire_the_expiry_hook() -> None:
-    """The summary names the two: "reaches its expiry or runs out of charges"."""
+    """Running out of charges and reaching the expiry both fire
+    `on_effect_expired`."""
     fighter = creature(name="fighter")
     watcher = Watcher(fighter)
     fighter.attach(watcher)
@@ -587,10 +540,9 @@ def test_both_ways_an_effect_ends_fire_the_expiry_hook() -> None:
 
 
 def test_an_effect_answers_its_own_ending_and_not_its_own_arrival() -> None:
-    """The span an effect's handlers run for is exactly the span it is
-    attached. `on_effect_applied` fires before the attach, which is the
-    snapshot rule; `on_effect_expired` fires before the detach, which is the
-    only moment an ending effect has left to act in."""
+    """`on_effect_applied` fires before the attach and `on_effect_expired`
+    before the detach, so an effect hears its own ending and not its own
+    arrival (`docs/decisions.md` § w1c)."""
     barbarian = creature()
     watcher = ReportingEffect(barbarian)
 
@@ -601,8 +553,7 @@ def test_an_effect_answers_its_own_ending_and_not_its_own_arrival() -> None:
 
 
 def test_a_veto_on_an_ending_is_refused() -> None:
-    """The other half of the split `engine/attack.py` makes: a veto where it has
-    no meaning and never will be given one raises rather than being ignored."""
+    """A veto at `on_effect_expired` raises rather than being ignored."""
     barbarian = creature()
     barbarian.attach(Clings(barbarian))
     rage = barbarian.effects.apply(Rage(barbarian))
@@ -719,7 +670,7 @@ def test_an_incumbent_dispelled_during_the_announce_is_not_refreshed() -> None:
     """`apply()` asks what is held on both sides of the dispatch. A handler that
     dispels the incumbent leaves the remembered one attached to nothing, and
     refreshing it would raise out of a re-application that is perfectly
-    legitimate — the second Rage simply attaches instead."""
+    legitimate. The second Rage attaches instead."""
     barbarian = creature()
     first = barbarian.effects.apply(Rage(barbarian))
     assert first is not None
@@ -734,8 +685,7 @@ def test_an_incumbent_dispelled_during_the_announce_is_not_refreshed() -> None:
 def test_an_incumbent_applied_during_the_announce_absorbs_the_application() -> None:
     """The mirror: a handler that applies a same-key effect during the announce
     leaves a remembered `None`, and attaching on it would put two
-    `Stacking.REFRESH` effects of one class on the creature — the state that
-    policy exists to make impossible."""
+    `Stacking.REFRESH` effects of one class on the creature."""
     barbarian = creature()
     barbarian.attach(AppliesOnArrival(barbarian))
 

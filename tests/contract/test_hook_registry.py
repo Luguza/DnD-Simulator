@@ -1,18 +1,8 @@
 """The w0e contract: the hook list is closed, complete, and refuses a typo.
 
-Three properties are worth more than the rest of this file put together, and
-each is a bug that would never announce itself:
-
-- **A typo raises.** The whole reason the registry exists rather than a pub-sub
-  bus is that `@hook("on_hitt")` must fail loudly instead of registering a
-  handler nothing will ever call (DESIGN.md § Hook system).
-- **The list matches DESIGN.md.** 39 hooks in eight groups, with the counts the
-  design table states. `docs/hooks.md` is generated from this registry (w3c), so
-  a hook silently renamed here is a hook silently renamed in the documentation
-  every feature author reads.
-- **Importing the registry is enough.** `hook_named()` has to work for whoever
-  imports it first, so the population of the registry may not depend on some
-  other module having been imported earlier.
+- An unknown hook name raises (DESIGN.md § Hook system).
+- The list matches DESIGN.md § The closed hook list: 39 hooks in eight groups.
+- Importing the registry alone populates it.
 """
 
 import subprocess
@@ -42,9 +32,7 @@ from dndsim.hooks.registry import (
     hook_named,
 )
 
-# The table in DESIGN.md § The closed hook list — 39 points, transcribed. If a
-# change to `definitions.py` disagrees with this, one of the two is wrong and
-# the design document is not automatically the one that loses.
+# The table in DESIGN.md § The closed hook list — 39 points, transcribed.
 GROUP_SIZES = {
     HookGroup.TIMELINE: 9,
     HookGroup.ATTACK: 7,
@@ -85,8 +73,7 @@ class TestTheClosedList:
     def test_the_hooks_w6_and_w4_will_need_exist_before_they_do(
         self, name: str
     ) -> None:
-        """ROADMAP w0e names these five: the healing group and the initiative
-        hook are cheap now and impossible after the W3 freeze."""
+        """The healing hooks and the initiative hook exist (ROADMAP.md w0e)."""
         assert hook_named(name).name == name
 
 
@@ -201,8 +188,8 @@ class TestDefineHookRefusesBadDefinitions:
 
 
 class TestSpecsAreSingletons:
-    """Identity is equality: the dispatch table (w0g) keys on the spec object,
-    and a `HookSpec` built by hand is not a hook the registry has heard of."""
+    """Identity is equality: a `HookSpec` built by hand is not the registered
+    hook."""
 
     def test_a_look_alike_spec_is_not_the_hook(self) -> None:
         counterfeit = HookSpec(

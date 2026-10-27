@@ -1,9 +1,6 @@
 """The w0c contract: dice notation parses, and refuses what it must refuse.
 
-The rejections carry as much weight as the parses. `Dice` is the type the crit
-rule is expressed in — dice double, flat bonuses do not — so a dice expression
-that could smuggle a `+3` past `DamagePart` would turn the project's most-cited
-invariant back into a convention (DESIGN.md § Structural prevention over
+The rejections include any flat modifier (DESIGN.md § Structural prevention over
 testing).
 """
 
@@ -78,7 +75,7 @@ class TestConstruction:
 
 class TestRolling:
     def test_it_rolls_one_die_per_die_in_the_pool(self) -> None:
-        # 3d6 showing 4, 5, 6 — the Sneak Attack line from DESIGN.md's golden.
+        # 3d6 showing 4, 5, 6.
         rng = ScriptedRng([4, 5, 6])
         assert Dice(3, 6).roll(rng) == 15
         assert rng.exhausted
