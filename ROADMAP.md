@@ -284,8 +284,8 @@ exists — and `w1i` has opened one; the late-wave gate then found a second
 hook with no caller and no owner (#51) and left one row at its round cap (#52),
 and `w1j` has retired two (#8, #51) and narrowed a third (#44), and `w1k` has
 retired one (#15) and opened three (#53–#55); the M0 / W1 milestone review
-then retired two (#33, #52) and re-owned five, so the table stands at
-forty-one.
+then retired two (#33, #52), re-owned five and left one at its round cap
+(#56), so the table stands at forty-two.
 Every one of them was the right thing to write — a hostile spike needs real
 machinery now, not finished machinery later — and every one of them is invisible
 six months from now, when the file around it has grown and the paragraph
@@ -347,6 +347,7 @@ M0 / W1 milestone review).
 | 53 | `SpellSlots` walks every pool on every question | `creatures/resources.py`, `tools/spike_features.py` | `w2i` (the slot table); the M1 / W2 milestone review (the configuration) | ~6.5 µs of a ~49 µs resolution in the spike (`docs/decisions.md` § w1k): `Resources.spells` builds a facade per access and `highest()`/`spend()` walk all pools through a generator. A slot table built once in `add()` is the engine lever; the fixture smiting up to three times a turn, where XPHB Divine Smite is a Bonus Action, is the configuration one and needs its own pricing. The configuration half is a revision of the hostile measurement, so it is decided with `w2i`'s re-measure in hand and recorded in `docs/questions.md`, not taken by a task |
 | 54 | Rage as an `Effect` costs ~7 µs a resolution | `creatures/effects.py`, `core/timeline.py`, `tools/spike_features.py` | `w2i` (the refresh and the apply/remove); the M1 / W2 milestone review (the `raging()` scan) | an apply and a remove at ~26 µs an encounter, a `refresh()` per swing building a `TimeKey` and an `Expiry`, and the spike's `raging()` store scan — the last an artifact of the stand-in it replaced, the first two what every duration-carrying W4 feature pays (§ w1k). The scan is configuration, split off the way #53's is |
 | 55 | Every store is swept at every turn boundary | `tools/spike.py`, `engine/turn.py` when it exists | `w2c`; the `TimeKey` comparison is `w2i`'s | ~4.1 µs a resolution at 32 sweep calls a round, the naive correct count; `w2c` owns the multiplier and can sweep only stores that hold something. `TimeKey` comparison reads `Enum.value`, a Python-level property, on every non-empty sweep (§ w1k) |
+| 56 | Three places say `w2i` takes "the levers" where it takes the engine-side ones | DESIGN.md § Performance, CLAUDE.md § Project state, the M0 blockquote in `ROADMAP.md` | **the M1 / W2 milestone review** | left at PR #55's round cap (`docs/workflow.md` § The review loop) and not contested: the sweep count, the main part of #55, stays `w2c`'s, and the configuration halves of #53 and #54 are the M1 / W2 milestone review's, so each of the three sentences wants "the engine-side levers". Harmless to `w2i` meanwhile: its row names its scope exactly, and a row outranks the summaries that cite it |
 
 ### What the W1 critical-path gate changed
 
