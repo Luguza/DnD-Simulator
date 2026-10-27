@@ -4206,8 +4206,8 @@ or from the seven debt rows the earlier gates filed against it.
 against this review (#53–#55). What it left open is whether W2 waits. It does
 not wait on a number; it waits on one task. **`w2i` runs first** and takes the
 engine-side levers § w1k names — the slot table, the `refresh()` that rebuilds
-what it holds, and `TimeKey` comparison through `Enum.value` — in the three
-files W1 owned and no W2 row touches. Every W2 row that prices itself would
+what it holds, the ~26 µs apply and remove, and `TimeKey` comparison through
+`Enum.value` — which depend on nothing W2 builds. Every W2 row that prices itself would
 otherwise price against a baseline already known to be under budget, and the
 levers are cheap and come with a measured upper bound.
 
@@ -4217,8 +4217,12 @@ only shrink two of them, so a hold on the number might never clear, and only the
 human can lift it. Changing the spike's configuration — one smite a turn, as
 XPHB Divine Smite's Bonus Action allows, or dropping the `raging()` scan — was
 rejected for `w2i` too: it makes the hostile configuration do less work, which
-revises the measurement rather than the engine, and that is `docs/questions.md`
-#10's to decide. `docs/questions.md` #11 records the choice.
+revises the measurement rather than the engine. So #53 and #54 are split the
+way #55 is: `w2i` retires their engine halves, and their configuration halves
+are owned by the M1 / W2 milestone review, which decides them with `w2i`'s
+re-measure in hand and records the choice in `docs/questions.md`. `w2i`
+measures against the same W0 commit `w1k` did, `d71e619`, because `main` stops
+being W0 when this milestone merges. `docs/questions.md` #11 records the choice.
 
 **`w2c` and `w2e` no longer compare against "`w0i`'s number".** Both rows asked
 the benchmark to come in at or under it, which was a regression test while the
