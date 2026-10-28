@@ -4333,8 +4333,9 @@ source. With nothing in `effects.py` left to run, a cycle would still cost
 ~23 µs. So `w2i`'s row now names `hooks/dispatch.py`'s `attach()` and
 `detach()` as well, and only those. The table may be maintained
 incrementally, under the two invariants that do not move: DESIGN.md
-§ Ordering's dispatch order, and § w0g's rule that a tuple a dispatch is
-walking is never mutated. `dispatch()` itself stays out of scope.
+§ Ordering's dispatch order, and § w0g's rule that the table's tuples are
+the snapshot: `attach()`/`detach()` build new ones and never change one
+already in the table. `dispatch()` itself stays out of scope.
 
 This is a profile of the operation in isolation, which § w1k showed
 underprices the same operation in the encounter. The 73% says where the lever
