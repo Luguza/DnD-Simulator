@@ -4310,3 +4310,35 @@ Sources: § w1j, § w1l, § w1k, § The W1 late-wave review; `ROADMAP.md`
 § Sequencing principles 10, § The W0 debt register rows #31, #33, #43, #49,
 #52–#55, W2, M1; DESIGN.md § Settled decisions, § Performance;
 `docs/questions.md` #10–#14; PRs #52, #53, #54.
+
+## The `w2i` spec correction — the apply and remove are the dispatcher's
+
+§ w1k priced an effect's apply and remove at ~26 µs and § The M0 / W1 milestone
+review gave that lever to `w2i` within `creatures/effects.py`,
+`core/timeline.py` and `creatures/resources.py`. Profiled on the spike's hero,
+it is not there. Over 20,000 cycles of building, applying and removing a
+`SpikeRage` against the hero's twenty-five sources (cProfile, one container,
+seed 0):
+
+| | |
+|---|---|
+| one apply and one remove, `timeit` | 31.3 µs |
+| `Dispatcher._rebuild()`, cumulative | 2.15 s of 2.93 s — 73% |
+| `BoundHandler.sort_key()`, through `Enum.value` | 1,020,000 calls, 0.91 s |
+| `creatures/effects.py`'s own frames | under 0.3 s |
+
+Each attach and each detach re-sorts every hook's table over every attached
+source. With nothing in `effects.py` left to run, a cycle would still cost
+~23 µs. So `w2i`'s row now names `hooks/dispatch.py`'s `attach()` and
+`detach()` as well, and only those. The table may be maintained
+incrementally, under the two invariants that do not move: DESIGN.md
+§ Ordering's dispatch order, and § w0g's rule that a tuple a dispatch is
+walking is never mutated. `dispatch()` itself stays out of scope.
+
+This is a profile of the operation in isolation, which § w1k showed
+underprices the same operation in the encounter. The 73% says where the lever
+is. What it is worth in the encounter is still for `w2i`'s ablation to
+measure (`ROADMAP.md` § Sequencing principles, 10).
+
+Sources: § w1k, § The M0 / W1 milestone review, § w0g; DESIGN.md § Ordering;
+`ROADMAP.md` `w2i`, § The W0 debt register #54.
