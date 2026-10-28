@@ -4206,7 +4206,8 @@ or from the seven debt rows the earlier gates filed against it.
 against this review (#53–#55). What it left open is whether W2 waits. It does
 not wait on a number; it waits on one task. **`w2i` runs first** and takes the
 engine-side levers § w1k names — the slot table, the `refresh()` that rebuilds
-what it holds, the ~26 µs apply and remove, and `TimeKey` comparison through
+what it holds, the ~26 µs apply and remove (whose lever turned out to be in
+`hooks/dispatch.py`, § The `w2i` spec correction), and `TimeKey` comparison through
 `Enum.value` — which depend on nothing W2 builds. Every W2 row that prices itself would
 otherwise price against a baseline already known to be under budget, and the
 levers are cheap and come with a measured upper bound.
