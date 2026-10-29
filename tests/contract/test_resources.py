@@ -296,6 +296,19 @@ def test_a_creature_with_both_progressions_keeps_two_pools_at_one_level() -> Non
     assert hybrid.resources[slot_key(FULL, 3)].current == 1
 
 
+def test_the_slot_table_sees_pools_added_after_it_was_first_asked() -> None:
+    """The table is filled by `add()`, so a facade taken early is not stale, and
+    of two pools at one level the one added first is spent first."""
+    hybrid = creature("hybrid", level=5)
+    slots = hybrid.resources.spells
+    assert slots.highest() == 0
+    hybrid.resources.add(*spell_slot_specs(PACT), *spell_slot_specs(FULL))
+    assert slots is hybrid.resources.spells
+    assert slots.highest() == 3
+    assert slots.total_above(3) == 4
+    assert slots.select(3).key == slot_key(PACT, 3)
+
+
 def test_a_slot_is_spent_at_the_level_asked_for() -> None:
     wizard = creature("wizard", level=5)
     wizard.resources.add(*spell_slot_specs(FULL))

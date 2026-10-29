@@ -163,6 +163,30 @@ def test_refresh_recomputes_against_the_clock_rather_than_adding_a_round() -> No
     assert once == Expiry(TimeKey(3, BARBARIAN, TurnPhase.END), through_phase=True)
 
 
+def test_a_refresh_resolves_again_only_when_the_clock_or_the_duration_moved() -> None:
+    """Inside one turn a refresh keeps the deadline it holds; a new duration on
+    the same clock, or a sweep, resolves it again."""
+    barbarian = creature()
+    barbarian.effects.expire_after(at(1, BARBARIAN, TurnPhase.END))
+    rage = barbarian.effects.apply(
+        Rage(barbarian, duration=Duration.until_end_of_next_turn_of(BARBARIAN))
+    )
+    assert rage is not None
+    held = rage.expiry
+    rage.refresh()
+    assert rage.expiry is held
+
+    rage.duration = Duration.until_end_of_current_turn()
+    rage.refresh()
+    assert rage.expiry == Expiry(TimeKey(1, BARBARIAN, TurnPhase.END), True)
+
+    rage.duration = Duration.until_end_of_next_turn_of(BARBARIAN)
+    rage.refresh()
+    barbarian.effects.expire_before(at(2, BARBARIAN, TurnPhase.START))
+    rage.refresh()
+    assert rage.expiry == Expiry(TimeKey(3, BARBARIAN, TurnPhase.END), True)
+
+
 def test_vex_ends_on_its_charge_while_its_deadline_still_stands() -> None:
     """Both halves are live and the charge runs out first: consuming it removes
     the effect on the turn it was applied, long before the deadline it also

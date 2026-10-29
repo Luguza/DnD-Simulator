@@ -75,7 +75,15 @@ class Effect(HookSource):
     its clock.
     """
 
-    __slots__ = ("_store", "caster", "charges", "duration", "expiry")
+    __slots__ = (
+        "_resolved_at",
+        "_resolved_for",
+        "_store",
+        "caster",
+        "charges",
+        "duration",
+        "expiry",
+    )
 
     STACKING: ClassVar[Stacking] = Stacking.REFRESH
     """What a second application does. Declared per class (`Stacking`)."""
@@ -105,6 +113,9 @@ class Effect(HookSource):
         self.caster = caster
         self.expiry: Expiry | None = None
         self._store: EffectStore | None = None
+        # What `expiry` was last resolved from; see `refresh()`.
+        self._resolved_at: TimeKey | None = None
+        self._resolved_for: Duration | None = None
 
     @property
     def name(self) -> str:
@@ -127,7 +138,14 @@ class Effect(HookSource):
         Raises `EngineAssemblyError` if the effect is not attached."""
         store = self._require_store("refreshed")
         duration = self.duration
-        self.expiry = None if duration is None else duration.resolve(store.now)
+        now = store.now
+        # The same duration against the same clock resolves to the same expiry,
+        # and a store's clock moves only by a sweep replacing it.
+        if now is self._resolved_at and duration is self._resolved_for:
+            return
+        self._resolved_at = now
+        self._resolved_for = duration
+        self.expiry = None if duration is None else duration.resolve(now)
 
     def consume(self, charges: int = 1) -> int:
         """Spend charges, ending the effect when the last one goes.
