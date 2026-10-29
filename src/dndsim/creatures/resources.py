@@ -154,13 +154,25 @@ class Resources:
     Each pool's maximum is read off `stats` once, when the pool is added.
     """
 
-    __slots__ = ("_holder", "_in_transaction", "_pools", "_stats")
+    __slots__ = (
+        "_holder",
+        "_in_transaction",
+        "_pools",
+        "_slots",
+        "_spells",
+        "_stats",
+    )
 
     def __init__(self, holder: Holder, stats: StatBlock) -> None:
         self._holder = holder
         self._stats = stats
         self._pools: dict[str, ResourcePool] = {}
         self._in_transaction = False
+        # The slot pools by level, index 0 unused, each in the order added.
+        self._slots: tuple[list[ResourcePool], ...] = tuple(
+            [] for _ in range(MAX_SLOT_LEVEL + 1)
+        )
+        self._spells = SpellSlots(self)
 
     def add(self, *specs: ResourceSpec) -> None:
         """Give the creature these resources, full."""
@@ -170,7 +182,10 @@ class Resources:
                     f"{spec.key} is already a pool on this creature; two pools "
                     "under one key is two places its count could be written"
                 )
-            self._pools[spec.key] = ResourcePool(spec, self._stats)
+            pool = ResourcePool(spec, self._stats)
+            self._pools[spec.key] = pool
+            if spec.slot_level is not None:
+                self._slots[spec.slot_level].append(pool)
 
     def __contains__(self, key: str) -> bool:
         return key in self._pools
@@ -228,7 +243,7 @@ class Resources:
     @property
     def spells(self) -> "SpellSlots":
         """The facade over whichever of these pools are spell slots."""
-        return SpellSlots(self)
+        return self._spells
 
     def _announce(self, key: str, amount: int) -> None:
         holder = self._holder
@@ -314,22 +329,35 @@ class SpellSlots:
     included.
     """
 
-    __slots__ = ("_resources",)
+    __slots__ = ("_by_level", "_resources")
 
     def __init__(self, resources: Resources) -> None:
         self._resources = resources
+        self._by_level = resources._slots
 
     def highest(self) -> int:
         """The highest level with a slot left, or 0 for a caster out of them."""
-        return max((lvl for pool, lvl in self._slots() if pool.current), default=0)
+        by_level = self._by_level
+        for level in range(MAX_SLOT_LEVEL, 0, -1):
+            for pool in by_level[level]:
+                if pool._current:
+                    return level
+        return 0
 
     def count(self, level: int) -> int:
         """Slots left at exactly that level, summed over every pool at it."""
-        return sum(pool.current for pool, lvl in self._slots() if lvl == level)
+        if not 1 <= level <= MAX_SLOT_LEVEL:
+            return 0
+        return sum(pool._current for pool in self._by_level[level])
 
     def total_above(self, level: int) -> int:
         """Slots left at that level or higher — what "can I still upcast" asks."""
-        return sum(pool.current for pool, lvl in self._slots() if lvl >= level)
+        by_level = self._by_level
+        return sum(
+            pool._current
+            for lvl in range(max(level, 1), MAX_SLOT_LEVEL + 1)
+            for pool in by_level[lvl]
+        )
 
     def select(self, level: int, *, allow_upcast: bool = False) -> ResourcePool:
         """Which pool a spell of `level` would come out of, without spending it
@@ -352,24 +380,20 @@ class SpellSlots:
                 f"there is no level-{level} spell slot to spend (1-{MAX_SLOT_LEVEL})"
             )
         top = MAX_SLOT_LEVEL if allow_upcast else level
+        by_level = self._by_level
         for candidate in range(level, top + 1):
-            for pool, lvl in self._slots():
-                if lvl == candidate and pool.current:
-                    return pool, lvl
+            for pool in by_level[candidate]:
+                if pool._current:
+                    return pool, candidate
         raise EconomyError(
             f"this creature has no level-{level} spell slot left"
             + ("" if allow_upcast else " and was not asked to upcast")
             + ". Asking is free: `count()` and `total_above()` answer first."
         )
 
-    def _slots(self) -> Iterator[tuple[ResourcePool, int]]:
-        for pool in self._resources:
-            level = pool.spec.slot_level
-            if level is not None:
-                yield pool, level
-
     def __repr__(self) -> str:
-        return f"<slots {' '.join(repr(pool) for pool, _ in self._slots())}>"
+        pools = (pool for pool in self._resources if pool.spec.slot_level is not None)
+        return f"<slots {' '.join(repr(pool) for pool in pools)}>"
 
 
 def slot_key(progression: CasterProgression, level: int) -> str:
