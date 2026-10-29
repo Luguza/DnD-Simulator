@@ -20,10 +20,11 @@ build loader, runner or CLI yet — those are W2.
 attack resolutions/sec/core** on `w0i`'s hostile configuration, revised down
 from 50k by the W0 spike (`docs/decisions.md` § w0i). **`w1k` re-measured it
 against the real W1 substrate and it is missed by about a quarter** (~22k
-projected), attributed to three costs, debt #53–#55. The budget is **not**
-revised; `w2i` takes the levers before any other W2 row, and whether the
-budget comes down is `docs/questions.md` #10, the human's. Read
-`docs/decisions.md` § w1k before pricing anything against it.
+projected), attributed to three costs, debt #53–#55. `w2i` took their engine
+halves and brought it back to ~23.5k; what is left is the spike's configuration
+and `w2c`'s sweep count. The budget is **not** revised, and whether it comes
+down is `docs/questions.md` #10, the human's. Read `docs/decisions.md` § w1k
+and § w2i before pricing anything against it.
 
 **`ROADMAP.md` § The W0 debt register** lists every first cut and deferred
 obligation still open, with the task that retires each. Check it for the file
@@ -221,7 +222,7 @@ catch. It is not optional.
 **Performance is a design constraint, not a later concern.** Budget is ≥30k
 attack resolutions/sec/core, revised down from 50k by the W0 spike itself,
 which measured ~31.5k on the hostile configuration (`docs/decisions.md` § w0i)
-and is now measured missed, at ~22k, with W1's substrate wired in (§ w1k) — so the
+and is now measured missed, at ~23.5k after `w2i`'s levers (§ w1k, § w2i) — so the
 budget is the number to hold, and it is not revised a second time by anyone who
 cannot attribute the shortfall (DESIGN.md § Biggest risks). Contexts are pooled and mutable
 (engine-owned, hot path); everything a feature stores is frozen (author-owned,
@@ -248,23 +249,23 @@ there is local to a module.
 | `pyproject.toml`, CI, tooling | § w0a |
 | `rules/` | § w0b |
 | `core/rng.py`, `core/dice.py` | § w0c |
-| `core/timeline.py` | § w0d |
+| `core/timeline.py` | § w0d, § w2i |
 | `hooks/registry.py`, `hooks/definitions.py` | § w0e |
 | `hooks/contexts.py`, `core/errors.py` | § w0f |
-| `hooks/decorator.py`, `hooks/source.py`, `hooks/dispatch.py` | § w0g |
+| `hooks/decorator.py`, `hooks/source.py`, `hooks/dispatch.py` | § w0g, § w2i |
 | `creatures/`, `core/geometry.py` | § w0g2 |
 | `core/geometry.py`, size, line of sight, templates | § w1d |
 | `engine/damage.py`, the resolution order | § w0g2, § w1e |
 | `engine/attack.py`, the attack sequence | § w1f |
 | `engine/saves.py`, saving throws, save-for-half | § w1g |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
-| `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c |
+| `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c, § w2i |
 | `conditions/`, a condition, a declared gap | § w1h |
-| `creatures/resources.py`, pools, slots, `transaction()` | § w1b |
+| `creatures/resources.py`, pools, slots, `transaction()` | § w1b, § w2i |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
-| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k |
+| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k, § w2i |
 | `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § The M0 / W1 milestone review |
-| the performance budget, pricing a change | § w0i, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § w1k, § The M0 / W1 milestone review |
+| the performance budget, pricing a change | § w0i, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § w1k, § The M0 / W1 milestone review, § w2i |
 | `engine/triggers.py`, `Dispatcher.responsive()` | § w0g3 |
 | `core/log.py`, the event log, its records and levels | § w1i |
 | `engine/dying.py`, `engine/healing.py`, `engine/d20.py`, `is_alive` | § w1j |

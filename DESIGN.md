@@ -2110,7 +2110,8 @@ seconds across eight.
 > § w1k). The budget is the number to hold, not the number being cleared: per
 > § Biggest risks it is not revised by anyone who cannot attribute the
 > shortfall, and with the shortfall attributed, whether it comes down is the
-> human's (`docs/questions.md` #10). `w2i` takes the levers first.
+> human's (`docs/questions.md` #10). `w2i` took the engine-side levers and
+> brought it back to about 23.5k (`docs/decisions.md` § w2i).
 
 ### The spike must be pessimistic, or M0 proves nothing
 
