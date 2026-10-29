@@ -4376,6 +4376,13 @@ below with an owner for each part.
   through `Enum.value` per comparison. The insertion is right of equal keys
   because one source may declare two handlers on one hook at the same phase and
   order, and the sort it replaces was stable over declared order.
+  **An apply and a remove now cost ~12.0 µs against ~31.5 µs before**: building,
+  applying and removing a `SpikeRage` on the spike's hero, its twenty-five
+  sources attached, both hooks' dispatches and the store's bookkeeping
+  included. That is the operation § w1k priced at 26.2 µs and § The `w2i` spec
+  correction at 31.3 µs, on the same container as the latter. Median of seven
+  `timeit` runs of 20,000, three rotated pairs, the two arms in sibling
+  worktrees.
 - **`TimeKey`'s comparison form is precomputed** (`core/timeline.py`, #55's
   `TimeKey` half), as `InitiativeKey`'s already was (§ w0d).
 
