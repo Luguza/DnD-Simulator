@@ -4206,7 +4206,8 @@ or from the seven debt rows the earlier gates filed against it.
 against this review (#53–#55). What it left open is whether W2 waits. It does
 not wait on a number; it waits on one task. **`w2i` runs first** and takes the
 engine-side levers § w1k names — the slot table, the `refresh()` that rebuilds
-what it holds, the ~26 µs apply and remove, and `TimeKey` comparison through
+what it holds, the ~26 µs apply and remove (whose lever turned out to be in
+`hooks/dispatch.py`, § The `w2i` spec correction), and `TimeKey` comparison through
 `Enum.value` — which depend on nothing W2 builds. Every W2 row that prices itself would
 otherwise price against a baseline already known to be under budget, and the
 levers are cheap and come with a measured upper bound.
@@ -4310,3 +4311,192 @@ Sources: § w1j, § w1l, § w1k, § The W1 late-wave review; `ROADMAP.md`
 § Sequencing principles 10, § The W0 debt register rows #31, #33, #43, #49,
 #52–#55, W2, M1; DESIGN.md § Settled decisions, § Performance;
 `docs/questions.md` #10–#14; PRs #52, #53, #54.
+
+## The `w2i` spec correction — the apply and remove are the dispatcher's
+
+§ w1k priced an effect's apply and remove at ~26 µs and § The M0 / W1 milestone
+review gave that lever to `w2i` within `creatures/effects.py`,
+`core/timeline.py` and `creatures/resources.py`. Profiled on the spike's hero,
+it is not there. Over 20,000 cycles of building, applying and removing a
+`SpikeRage` against the hero's twenty-five sources (cProfile, one container,
+seed 0):
+
+| | |
+|---|---|
+| one apply and one remove, `timeit` | 31.3 µs |
+| `Dispatcher._rebuild()`, cumulative | 2.15 s of 2.93 s — 73% |
+| `BoundHandler.sort_key()`, through `Enum.value` | 1,020,000 calls, 0.91 s |
+| `creatures/effects.py`'s own frames | under 0.3 s |
+
+Each attach and each detach re-sorts every hook's table over every attached
+source. With nothing in `effects.py` left to run, a cycle would still cost
+~23 µs. So `w2i`'s row now names `hooks/dispatch.py`'s `attach()` and
+`detach()` as well, and only those. The table may be maintained
+incrementally, under the two invariants that do not move: DESIGN.md
+§ Ordering's dispatch order, and § w0g's rule that the table's tuples are
+the snapshot: `attach()`/`detach()` build new ones and never change one
+already in the table. `dispatch()` itself stays out of scope.
+
+This is a profile of the operation in isolation, which § w1k showed
+underprices the same operation in the encounter. The 73% says where the lever
+is. What it is worth in the encounter is still for `w2i`'s ablation to
+measure (`ROADMAP.md` § Sequencing principles, 10).
+
+Sources: § w1k, § The M0 / W1 milestone review, § w0g; DESIGN.md § Ordering;
+`ROADMAP.md` `w2i`, § The W0 debt register #54.
+
+## w2i — the M0 levers
+
+**The four engine-side levers § w1k named are taken, and the rate comes back by
+about a tenth: 0.745 of W0's against `w1k`'s 0.703, which carried onto `w0i`'s
+~31.5k is ~23.5k against a 30k budget.** The budget is still missed; it is not
+revised here (`docs/questions.md` #10). What is left of the gap is restated
+below with an owner for each part.
+
+### The four levers
+
+- **The slot table** (`creatures/resources.py`, #53's engine half). `Resources`
+  files each slot pool by level as `add()` creates it and keeps one
+  `SpellSlots` facade, so `highest()` walks levels down and stops, and
+  `_select()` reads one level's list instead of every pool through a generator.
+  Within a level the pools stay in the order added, which is the order the walk
+  over the ledger gave, so `select()` picks the pool it picked before.
+- **A `refresh()` that resolves only when something moved**
+  (`creatures/effects.py`, #54). An effect remembers the clock and the duration
+  its `expiry` was resolved from, by identity. A store's clock moves only by a
+  sweep replacing it and a `Duration` is frozen, so the same pair resolves to
+  the same deadline and the refresh returns. The spike's 3,200 refreshes
+  resolve 1,000 times.
+- **The incremental table** (`hooks/dispatch.py`'s `attach()` and `detach()`,
+  #54). `attach()` merges the new source's handlers into the tuples of the hooks
+  it has handlers on, with `bisect.insort` right of equal keys; `detach()`
+  filters the source out of its own hooks' tuples and drops a hook left empty.
+  Both build new tuples, so § w0g's snapshot rule holds, and the key is
+  DESIGN.md § Ordering's, computed once per `BoundHandler` instead of read
+  through `Enum.value` per comparison. The insertion is right of equal keys
+  because one source may declare two handlers on one hook at the same phase and
+  order, and the sort it replaces was stable over declared order.
+  **An apply and a remove now cost ~12.0 µs against ~31.5 µs before**: building,
+  applying and removing a `SpikeRage` on the spike's hero, its twenty-five
+  sources attached, both hooks' dispatches and the store's bookkeeping
+  included. That is the operation § w1k priced at 26.2 µs and § The `w2i` spec
+  correction at 31.3 µs, on the same container as the latter. Median of seven
+  `timeit` runs of 20,000, three rotated pairs, the two arms in sibling
+  worktrees.
+- **`TimeKey`'s comparison form is precomputed** (`core/timeline.py`, #55's
+  `TimeKey` half), as `InitiativeKey`'s already was (§ w0d).
+
+### What it cost the benchmark
+
+Priced as sequencing principle 10 asks, the witness first.
+
+**The witness: the same fights, 272k fewer calls.** Over the fixed 200-encounter
+profiled run at seed 0, every arm below closes every encounter on the same hit
+points, resolves 6,000 attacks and leaves the generator on the same next draw.
+The whole run's call count:
+
+| Arm | Calls |
+|---|---|
+| W0, `d71e619` | 1,501,711 |
+| the milestone branch before this task | 2,036,286 |
+| this task | **1,764,093** |
+| this task without the slot table | 1,931,299 |
+| without the incremental table | 1,817,760 |
+| without the precomputed `TimeKey` | 1,808,813 |
+| without the cached refresh | 1,775,093 |
+
+By function, before → after: `SpellSlots._slots` 83,580 calls → gone, with
+`highest()` 37 → 5 ms and `_select()` 45 → 5 ms cumulative; `_rebuild()` 25 ms
+and 10,175 `sort_key()` calls → gone, `Dispatcher.attach()` 14 → 3 ms and
+`detach()` 13 → 1 ms; `TimeKey._ordinal` 15,600 calls → gone, the sweeps 56 →
+32 ms; `Duration.resolve()` 3,200 → 1,000 calls.
+
+**The rate.** Twelve rounds of seven arms, the order rotated each round, every
+arm in a sibling worktree on one container, `measure(1000, 3)` each:
+
+| Arm | Median | Ratio to W0, median (span) | `w1k`'s |
+|---|---|---|---|
+| W0, `d71e619` | 23,369 | — | — |
+| the branch before this task | 16,023 | 0.696 (0.623–0.746) | 0.703 |
+| this task | 17,435 | **0.745** (0.701–0.847) | — |
+
+This task against the branch before it is **1.117** (0.981–1.197), 6.8 µs a
+resolution. The container ran slower than `w1k`'s throughout — W0 at 23.4k
+against 29.1k — which is why only the ratios travel. The ablation, as µs per
+resolution given back by putting each lever back:
+
+| Lever taken out | µs/resolution (span) |
+|---|---|
+| the slot table | **1.9** (−0.3–6.8) |
+| the cached refresh | **1.7** (−4.4–5.1) |
+| the precomputed `TimeKey` | **1.4** (−3.4–11.7) |
+| the incremental table | **0.8** (−2.5–4.8) |
+
+They sum to 5.7 of the 6.8 measured together, inside the spans. The table is
+the smallest because the spike attaches once an encounter, 200 times in 6,000
+attacks; the 73% that § The `w2i` spec correction profiled is 73% of an
+operation the spike seldom does. It is what every W4 feature with a duration
+pays per application, which is why it was worth taking anyway.
+
+### The shortfall, restated
+
+At ~23.5k the rate needs about another 1.28× to reach 30k. What is left of the
+three costs § w1k attributed is now none of the engine's but the sweep count:
+
+- **#53's configuration**: the fixture smiting on every hit the gate allows,
+  each smite a `Resources.spend()` that announces `on_resource_spent`;
+- **#54's configuration**: the `raging()` scan four fixtures make;
+- **#55's sweep count**, `w2c`'s.
+
+The two configuration halves are the M1 / W2 milestone review's, decided with
+this re-measure in hand (§ The M0 / W1 milestone review); the budget is the
+human's (`docs/questions.md` #10).
+
+Sources: ROADMAP `w2i`, § Sequencing principles 10, § The W0 debt register
+#53–#55; § w0d, § w0g, § w1k, § The M0 / W1 milestone review, § The `w2i` spec
+correction; DESIGN.md § Ordering.
+
+## The `w2b` spec correction — the two debts are not in `actions/`
+
+`w2b`'s done-when gives it debts #42 and #48, and its Produces cell gave it
+`actions/` alone. Neither debt can be retired from there, and each row already
+says where it lives.
+
+- **#42** is an announcement `EffectStore` has to make, beside the
+  `on_effect_applied` it already makes, and the row says the store cannot tell
+  a condition from an effect without a field `Effect` does not have. The field
+  is a `CONDITION` class attribute, `None` on `Effect`, which `Condition`
+  already declares. An `isinstance` against `Condition` is the other way and is
+  refused: `conditions/` imports `creatures/effects.py`, so the store would
+  import upward. `on_condition_gained` fires after the condition is held and
+  `on_condition_lost` after it is gone, because neither is vetoable — the veto
+  is `on_effect_applied`'s, and announcing a gain the veto then refuses would
+  announce something that did not happen.
+- **#48** wants Unconscious to drop what its owner holds. Its handler's owner
+  is a `Combatant`, which is read-only on purpose (§ w1a, "Widening
+  `Combatant`"): a `drop()` on the protocol would hand every handler on every
+  context a way to disarm any participant it is shown. So the drop is one
+  queued mutator on
+  `ConditionContext`, drained by the store against its own creature, the shape
+  `apply_effect()` and `apply_pending()` already have. The weapon goes to a
+  field on `Creature`, and a pick-up action in `actions/` takes it back; a
+  drop with no pick-up is the "worse than not modelling the clause" the row
+  warns about.
+
+No action `w2b` builds applies a condition. The task owns #42 because its own
+#48 handler is the first thing that needs the hook called, not because it is
+the first to apply one; `w1j`'s Unconscious, and the Prone its
+`remain_prone` leaves when it ends, are the only applications today, and the
+wiring announces both.
+Shove and Grapple, the actions #42's row named as applying conditions, are in
+no row of the plan. That gap is debt #57, owned by the plan review after
+`w2c`, rather than a widening of this task.
+
+`hooks/contexts.py` is the package content batches may never touch, so that
+sub-item is solo within the task, as `w1a`'s `Combatant` and `w1f`'s `Weapon`
+widenings were. `creatures/effects.py` and
+`hooks/contexts.py` are both on the hot path, so the change is priced
+(`ROADMAP.md` § Sequencing principles, 10).
+
+Sources: `ROADMAP.md` `w2b`, § The W0 debt register #42, #48; § w1a, § w1c,
+§ w1g, § w1h.
