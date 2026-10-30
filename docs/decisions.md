@@ -4485,13 +4485,16 @@ says where it lives.
 
 No action `w2b` builds applies a condition. The task owns #42 because its own
 #48 handler is the first thing that needs the hook called, not because it is
-the first to apply one; `w1j`'s Unconscious is the only application today.
+the first to apply one; `w1j`'s Unconscious, and the Prone its
+`remain_prone` leaves when it ends, are the only applications today, and the
+wiring announces both.
 Shove and Grapple, the actions #42's row named as applying conditions, are in
 no row of the plan. That gap is debt #57, owned by the plan review after
 `w2c`, rather than a widening of this task.
 
 `hooks/contexts.py` is the package content batches may never touch, so that
-sub-item is solo within the task, as `w1g`'s was. `creatures/effects.py` and
+sub-item is solo within the task, as `w1a`'s `Combatant` and `w1f`'s `Weapon`
+widenings were. `creatures/effects.py` and
 `hooks/contexts.py` are both on the hot path, so the change is priced
 (`ROADMAP.md` § Sequencing principles, 10).
 
