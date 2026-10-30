@@ -285,8 +285,8 @@ hook with no caller and no owner (#51) and left one row at its round cap (#52),
 and `w1j` has retired two (#8, #51) and narrowed a third (#44), and `w1k` has
 retired one (#15) and opened three (#53–#55); the M0 / W1 milestone review
 then retired two (#33, #52), re-owned five and left one at its round cap
-(#56), and `w2i` has narrowed three (#53–#55) to what it did not own, so the
-table stands at forty-two.
+(#56), `w2i` has narrowed three (#53–#55) to what it did not own, and the
+`w2b` spec correction opened one (#57), so the table stands at forty-three.
 Every one of them was the right thing to write — a hostile spike needs real
 machinery now, not finished machinery later — and every one of them is invisible
 six months from now, when the file around it has grown and the paragraph
