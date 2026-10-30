@@ -4455,3 +4455,38 @@ human's (`docs/questions.md` #10).
 Sources: ROADMAP `w2i`, § Sequencing principles 10, § The W0 debt register
 #53–#55; § w0d, § w0g, § w1k, § The M0 / W1 milestone review, § The `w2i` spec
 correction; DESIGN.md § Ordering.
+
+## The `w2b` spec correction — the two debts are not in `actions/`
+
+`w2b`'s done-when gives it debts #42 and #48, and its Produces cell gave it
+`actions/` alone. Neither debt can be retired from there, and each row already
+says where it lives.
+
+- **#42** is an announcement `EffectStore` has to make, beside the
+  `on_effect_applied` it already makes, and the row says the store cannot tell
+  a condition from an effect without a field `Effect` does not have. The field
+  is a `CONDITION` class attribute, `None` on `Effect`, which `Condition`
+  already declares. An `isinstance` against `Condition` is the other way and is
+  refused: `conditions/` imports `creatures/effects.py`, so the store would
+  import upward. `on_condition_gained` fires after the condition is held and
+  `on_condition_lost` after it is gone, because neither is vetoable — the veto
+  is `on_effect_applied`'s, and announcing a gain the veto then refuses would
+  announce something that did not happen.
+- **#48** wants Unconscious to drop what its owner holds. Its handler's owner
+  is a `Combatant`, which is read-only on purpose (§ w1a, "Widening
+  `Combatant`"): a `drop()` on the protocol would hand every handler on every
+  context a way to disarm any participant it is shown. So the drop is one
+  queued mutator on
+  `ConditionContext`, drained by the store against its own creature, the shape
+  `apply_effect()` and `apply_pending()` already have. The weapon goes to a
+  field on `Creature`, and a pick-up action in `actions/` takes it back; a
+  drop with no pick-up is the "worse than not modelling the clause" the row
+  warns about.
+
+`hooks/contexts.py` is the package content batches may never touch, so that
+sub-item is solo within the task, as `w1g`'s was. `creatures/effects.py` and
+`hooks/contexts.py` are both on the hot path, so the change is priced
+(`ROADMAP.md` § Sequencing principles, 10).
+
+Sources: `ROADMAP.md` `w2b`, § The W0 debt register #42, #48; § w1a, § w1c,
+§ w1g, § w1h.
