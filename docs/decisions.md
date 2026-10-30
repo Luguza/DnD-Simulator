@@ -4483,6 +4483,13 @@ says where it lives.
   drop with no pick-up is the "worse than not modelling the clause" the row
   warns about.
 
+No action `w2b` builds applies a condition. The task owns #42 because its own
+#48 handler is the first thing that needs the hook called, not because it is
+the first to apply one; `w1j`'s Unconscious is the only application today.
+Shove and Grapple, the actions #42's row named as applying conditions, are in
+no row of the plan, and that gap is left to the plan review after `w2c` rather
+than widening this task.
+
 `hooks/contexts.py` is the package content batches may never touch, so that
 sub-item is solo within the task, as `w1g`'s was. `creatures/effects.py` and
 `hooks/contexts.py` are both on the hot path, so the change is priced
