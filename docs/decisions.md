@@ -4539,7 +4539,10 @@ answers it for every Command at once.
   yet (`docs/questions.md` #13 made the M1 Fighter featureless); the Command
   that makes two attacks per action is W4's. Illegal without a weapon, out of
   the weapon's reach (`within_reach()`, the reach `resolve_attack()` itself
-  checks), against the actor itself, or against a dead creature. A creature at
+  checks), against the actor itself, or against a dead creature. A named
+  `weapon=` stands for one equipped as part of the attack, which XPHB's
+  Attack action allows, and is refused when it is the one the actor dropped:
+  that one is on the floor, and `PickUpWeapon` is how it comes back. A creature at
   0 hit points is a legal target: finishing a dying one is a death save failed.
 - **Dash is not offered at Speed 0.** The rules allow it, and it buys nothing;
   `ActionEconomy.grant_movement()` refuses a grant of 0, and a Command that is
@@ -4554,7 +4557,9 @@ answers it for every Command at once.
 - **Disengage has no handler.** The opportunity attack it suppresses is
   `w2c`'s Command, and `disengaged()` is what that Command's legality asks.
   An `on_leave_reach` veto would be the watcher's dispatch reading the mover's
-  effect, which is the wrong owner for `Scope.OBSERVER`.
+  effect, which is the wrong owner for `Scope.OBSERVER`. The walk is `w2c`'s too,
+  and `engine/triggers.py`'s `provokes=` valve is where it answers
+  `disengaged()` — debt #20, narrowed to `w2c`.
 - **Stabilize wraps `engine/dying.py`'s `stabilize()`** and duplicates only its
   `_dying()` predicate, so that legality never calls the function that raises;
   its tests refuse the four targets `_dying()` refuses — standing, Stable, dead, and a monster at 0. The helper must be within 5 feet of the dying

@@ -23,7 +23,8 @@ __all__ = ["Attack"]
 class Attack(Action[AttackResult]):
     """`actor` attacks `target` with `weapon`, or with what it wields.
 
-    One attack per action; Extra Attack is not modelled (`docs/decisions.md`
+    One attack per action; Extra Attack is not modelled. A named weapon is
+    refused while it lies where the actor dropped it (`docs/decisions.md`
     § w2b). `contexts`, `trigger` and `log` are handed to `resolve_attack()`.
     """
 
@@ -54,6 +55,7 @@ class Attack(Action[AttackResult]):
         weapon = actor.weapon if self.weapon is None else self.weapon
         return (
             weapon is not None
+            and weapon is not actor.dropped_weapon
             and target is not actor
             and not target.dead
             and within_reach(actor, target, weapon)

@@ -303,6 +303,41 @@ def test_a_dead_target_is_not_attacked_and_a_dying_one_is() -> None:
     assert Attack(actor, downed()).is_legal()
 
 
+def test_the_weapon_on_the_floor_cannot_be_swung_by_naming_it() -> None:
+    """Dropped to 0, the hero lets the greatsword fall at (0, 0); healed for 5,
+    it is empty-handed. Naming the dropped greatsword is refused, standing
+    over it or 5 feet away from it, until `PickUpWeapon` puts it back in hand.
+    Nothing is rolled and no Action is spent while it is refused."""
+    hero, target = fighter("hero", pc=True), goblin(NORTHEAST)
+    resolve_damage(hero, {SLASHING: HP}, rng=no_dice())
+    healing.heal(hero, rng=no_dice(), flat=5)
+    ready(hero)
+    assert (hero.weapon, hero.dropped_weapon) == (None, GREATSWORD)
+
+    named = Attack(hero, target, weapon=GREATSWORD)
+    assert not named.is_legal()
+    with pytest.raises(ValueError):
+        named.execute(rng=no_dice())
+    assert hero.economy.actions == 1
+    assert target.hp == HP
+
+    hero.position = EAST
+    assert not Attack(hero, target, weapon=GREATSWORD).is_legal()
+
+    hero.position = ORIGIN
+    PickUpWeapon(hero).execute(rng=no_dice())
+    assert Attack(hero, target, weapon=GREATSWORD).is_legal()
+    assert Attack(hero, target).is_legal()
+
+
+def test_another_weapon_may_be_named_while_one_lies_dropped() -> None:
+    """The Attack action lets a weapon be equipped as part of the attack: with
+    the greatsword on the floor, a named pike is still legal."""
+    actor = ready(fighter())
+    actor.drop_held()
+    assert Attack(actor, goblin(), weapon=PIKE).is_legal()
+
+
 # --- Dash --------------------------------------------------------------------
 
 
@@ -643,6 +678,16 @@ SCENARIOS: Final[dict[type[Action[Any]], tuple[tuple[str, Build, bool], ...]]] =
             "reach-weapon",
             lambda: Attack(ready(fighter()), goblin(TWO_EAST), weapon=PIKE),
             True,
+        ),
+        (
+            "other-weapon-while-dropped",
+            lambda: Attack(_dropped(ready(fighter())), goblin(), weapon=PIKE),
+            True,
+        ),
+        (
+            "dropped-weapon-named",
+            lambda: Attack(_dropped(ready(fighter())), goblin(), weapon=GREATSWORD),
+            False,
         ),
         ("no-action", lambda: Attack(fighter(), goblin()), False),
         ("no-weapon", lambda: Attack(ready(fighter(weapon=None)), goblin()), False),
