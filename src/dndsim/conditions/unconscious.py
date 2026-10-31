@@ -2,7 +2,11 @@
 
 from dndsim.conditions.incapacitated import Incapacitated
 from dndsim.conditions.prone import Prone
-from dndsim.hooks.contexts import AttackDeclaredContext, EffectContext
+from dndsim.hooks.contexts import (
+    AttackDeclaredContext,
+    ConditionContext,
+    EffectContext,
+)
 from dndsim.hooks.decorator import R, hook
 from dndsim.rules import enums
 
@@ -28,10 +32,6 @@ class Unconscious(Incapacitated, Prone):
         'distance is not on the context: "Any attack roll that hits you is a '
         'Critical Hit if the attacker is within 5 feet of you." '
         "(ROADMAP.md § The W0 debt register #40)",
-        "a creature's weapon is not on the `Combatant` view a handler is "
-        "given, and nothing picks a dropped one back up: "
-        '"you drop whatever you\'re holding." '
-        "(ROADMAP.md § The W0 debt register #48)",
     )
 
     @hook("on_incoming_attack_declared")
@@ -42,6 +42,15 @@ class Unconscious(Incapacitated, Prone):
         conditional where this one is not (`docs/decisions.md` § w1h).
         """
         ctx.grant_advantage(self.name)
+        return R.APPLIED
+
+    @hook("on_condition_gained")
+    def drop_what_is_held(self, ctx: ConditionContext) -> R:
+        """Queues "you drop whatever you're holding" when this condition is
+        gained (`docs/decisions.md` § w2b)."""
+        if ctx.condition is not self.CONDITION:
+            return R.SKIPPED
+        ctx.drop_held("you drop whatever you're holding")
         return R.APPLIED
 
     @hook("on_effect_expired")

@@ -61,6 +61,8 @@ class Creature:
         "_death_save_successes",
         "_stable",
         "dispatcher",
+        "dropped_at",
+        "dropped_weapon",
         "economy",
         "effects",
         "hp",
@@ -88,6 +90,10 @@ class Creature:
         self.name = name
         self._stats = stats
         self.weapon = weapon
+        # What `drop_held()` let go of and the square it fell in, until
+        # `pick_up_weapon()` takes it back (`docs/decisions.md` § w2b).
+        self.dropped_weapon: Weapon | None = None
+        self.dropped_at: Cell | None = None
         self._armour = armour
         self._shield = shield
         self.position = position
@@ -194,6 +200,34 @@ class Creature:
         (`docs/decisions.md` § w1d).
         """
         return 5 if self.weapon is None else self.weapon.reach_ft
+
+    def drop_held(self) -> None:
+        """Drop the wielded weapon where this creature stands. Holding nothing
+        drops nothing; a Shield is worn, not held (`docs/decisions.md` § w2b).
+        """
+        weapon = self.weapon
+        if weapon is None:
+            return
+        self.dropped_weapon = weapon
+        self.dropped_at = self.position
+        self.weapon = None
+
+    def pick_up_weapon(self) -> None:
+        """Wield the weapon this creature dropped again.
+
+        Raises `ValueError` when it dropped nothing or is wielding another.
+        """
+        weapon = self.dropped_weapon
+        if weapon is None:
+            raise ValueError(f"{self.name} has dropped nothing to pick up")
+        if self.weapon is not None:
+            raise ValueError(
+                f"{self.name} is wielding {self.weapon.name} and cannot pick up "
+                f"{weapon.name} as well"
+            )
+        self.weapon = weapon
+        self.dropped_weapon = None
+        self.dropped_at = None
 
     @property
     def is_alive(self) -> bool:

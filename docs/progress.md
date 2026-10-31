@@ -40,8 +40,8 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 12 | w1k — M0 re-measure 🔒 | done | |
 | — | ⏸ **M0 / W1 milestone review** — before any W2 task | done | |
 | 13 | w2i — the M0 levers 🔒 | done | |
-| 14 | w2b — `Action` Commands and the stabilise | next | |
-| 15 | w2c — turn loop, initiative, opportunity attacks 🔒 | queued | |
+| 14 | w2b — `Action` Commands and the stabilise | done | |
+| 15 | w2c — turn loop, initiative, opportunity attacks 🔒 | next | |
 | — | ⏸ plan review | queued | |
 | 16 | w2e — the APL compiler 🔒 | queued | |
 | 17 | w2a — content ACL | queued | |

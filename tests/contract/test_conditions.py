@@ -182,10 +182,13 @@ def test_the_afflicted_creatures_own_attack_rolls_have_disadvantage(
     what says two d20s were drawn rather than one.
     """
     swinger, target = combatant("swinger"), combatant("target", cell=EAST)
+    # Unconscious drops the weapon (`docs/decisions.md` § w2b); the roll is
+    # what is under test.
+    weapon = swinger.weapon
     impose(swinger, condition(swinger))
     rng = ScriptedRng([HIGH, LOW])
 
-    outcome, damage = resolve_attack(swinger, target, rng=rng)
+    outcome, damage = resolve_attack(swinger, target, rng=rng, weapon=weapon)
 
     assert outcome is Outcome.MISS
     assert damage == 0
@@ -612,6 +615,7 @@ def test_unconscious_leaves_prone_attached_when_it_ends() -> None:
     worn = impose(sleeper, Unconscious(sleeper))
 
     sleeper.effects.remove(worn)
+    sleeper.pick_up_weapon()
 
     assert attached(sleeper) == ["prone"]
     rng = ScriptedRng([HIGH, LOW])
