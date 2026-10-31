@@ -4500,3 +4500,150 @@ widenings were. `creatures/effects.py` and
 
 Sources: `ROADMAP.md` `w2b`, § The W0 debt register #42, #48; § w1a, § w1c,
 § w1g, § w1h.
+
+## w2b — the Commands, and a condition's gain and loss announced
+
+**`actions/` holds six Commands, and `EffectStore` now announces a condition
+being gained and lost.** The Commands are Attack, Dash, Dodge, Disengage, the
+Medicine-check Stabilize and PickUpWeapon. Debt #42 is retired by the
+announcement and #48 by Unconscious dropping what its owner holds on
+`on_condition_gained`, which is the first handler that needed it.
+
+### A Command is bound to its arguments
+
+`Action(actor, ...)` carries its target and weapon, so `is_legal()` and
+`execute(rng=...)` take nothing the loop has to thread through twice, and an
+APL entry compiled by `w2e` can build one per offer. `is_legal()` is defined
+once on the base: the actor is alive and above 0 hit points, can pay `COST`
+(`ActionEconomy.can_spend()`), and the subclass's `_permits()` agrees.
+`execute()` asks `is_legal()` again, raises `ValueError` on a no — the error
+`resolve_attack()` and `death_save()` already raise for a request that cannot
+be described — spends `COST`, and calls `_perform()`. The cost is spent before
+the action is carried out, so a handler inside it reads the economy already
+charged. `COST` is `None` for what costs no slot, the convention the
+dispatcher's `costs=None` already uses.
+
+**Why legality provably cannot spend.** `is_legal()` reads only
+`can_spend()`, positions and creature facts; no subclass's `_permits()` calls a
+mutator, and the contract test runs every `Action` subclass's `is_legal()`
+with every spending and attaching method made to raise. A new subclass is
+picked up by that test without being named in it.
+
+Incapacitation is not a legality question here: an Incapacitated creature's
+emptied economy is `w2c`'s call (debt #41), and once it is made `can_spend()`
+answers it for every Command at once.
+
+### The six, and the readings each took
+
+- **Attack is one attack.** Extra Attack is a feature, and no feature exists
+  yet (`docs/questions.md` #13 made the M1 Fighter featureless); the Command
+  that makes two attacks per action is W4's. Illegal without a weapon, out of
+  the weapon's reach (`within_reach()`, the reach `resolve_attack()` itself
+  checks), against the actor itself, or against a dead creature. A named
+  `weapon=` stands for one equipped as part of the attack, which XPHB's
+  Attack action allows, and is refused when it is the one the actor dropped:
+  that one is on the floor, and `PickUpWeapon` is how it comes back. A creature at
+  0 hit points is a legal target: finishing a dying one is a death save failed.
+- **Dash is not offered at Speed 0.** The rules allow it, and it buys nothing;
+  `ActionEconomy.grant_movement()` refuses a grant of 0, and a Command that is
+  legal and does nothing is one an APL can starve on (DESIGN.md § The APL, the
+  M0 self-buff).
+- **Dodging takes every attacker as seen**, the reading Invisible already makes
+  of the same clause, declared as `APPROXIMATED` and filed under debt #39, and lapses while its owner holds any
+  `Incapacitated` — the five conditions that carry it inherit the class — or
+  stands at Speed 0, read off the stat block until debt #47 gives Speed an
+  answer; that gap is declared `APPROXIMATED` too. It lapses by skipping, not by ending: the rules say the
+  benefits are lost, and the effect still ends at the start of the owner's
+  next turn.
+- **Disengage has no handler, and nothing calls `disengaged()` yet**: until
+  `w2c`'s walk passes it to the `provokes=` valve, a Disengaged creature's
+  movement still provokes. The opportunity attack it suppresses is `w2c`'s.
+  An `on_leave_reach` veto would be the watcher's dispatch reading the mover's
+  effect, which is the wrong owner for `Scope.OBSERVER`. The walk is `w2c`'s too,
+  and `engine/triggers.py`'s `provokes=` valve is where it answers
+  `disengaged()` — debt #20, narrowed to `w2c`.
+- **Stabilize wraps `engine/dying.py`'s `stabilize()`** and duplicates only its
+  `_dying()` predicate, so that legality never calls the function that raises;
+  its tests refuse the four targets `_dying()` refuses — standing, Stable, dead, and a monster at 0. The helper must be within 5 feet of the dying
+  creature. XPHB's "Stabilizing a Character" names the Help action and no
+  range; 5 feet is Help's own range for its other two uses, and the
+  conservative reading.
+- **PickUpWeapon is free**, the object interaction XPHB's "Your Turn" gives
+  every turn, and legal from within 5 feet of the square the weapon fell in.
+  The once-a-turn limit is not counted: nothing else spends the interaction
+  yet, and a creature can drop only one weapon, so it cannot be spent twice.
+  The first Command to draw, stow or hand over an object is the one that adds
+  the count.
+
+### The condition hooks: of the name, after the fact, not vetoable
+
+`Effect.CONDITION` is `None`, and `Condition` overrides it with the member it
+implements; the store reads it rather than asking `isinstance` against a
+package that imports `creatures/` (§ The `w2b` spec correction).
+
+**A gain or a loss is of the condition, not of one effect carrying it.** Two
+effects can carry one condition at once — `w1j`'s `Downed` is an Unconscious
+held apart from a spell's (§ w1j) — so `on_condition_gained` fires only when
+the first effect carrying the condition attaches, and `on_condition_lost` only
+when the last one is removed. A re-application absorbed by the incumbent is
+a refresh, not a gain. Unconscious and the Prone it leaves behind when it ends
+are two names: the Prone is announced as gained, though the creature lay prone
+throughout, because `Unconscious` carries `UNCONSCIOUS` and not the two
+conditions it includes.
+
+The gain fires after the effect is attached and held, so the condition's own
+`on_condition_gained` handler runs — which is how Unconscious hears it. The
+loss fires after the detach, so a condition never hears its own loss. A veto
+of either raises `FeatureContractError`, as `on_effect_expired`'s does: the
+veto that refuses a condition is `on_effect_applied`'s, and announcing a gain
+the veto then took back would announce something that did not happen.
+
+### The drop
+
+`ConditionContext.drop_held()` is an `OverrideLedger` claim, the shape
+`prevent()` and `succeed()` have, so it is cleared by the compiled `reopen()`
+like every owned bag. The store drains it after the dispatch by calling
+`Holder.drop_held()`, which `Creature` implements; `Combatant` stays read-only
+(§ w1a). `dropped_weapon` and `dropped_at` are a pair, read-only, moved only
+by `drop_held()` and `pick_up_weapon()` (§ w1a's rule for a field with a
+ledger behind it). `Creature.drop_held()` moves the wielded weapon to `dropped_weapon`
+and records the square in `dropped_at`. A Shield is not dropped: XPHB's armour
+table has it donned and doffed with the Utilize action, which reads as worn
+rather than held, so AC does not move when a creature falls unconscious. That
+is a reading (`docs/questions.md` #15).
+
+### What it cost
+
+Priced as sequencing principle 10 asks, the branch before this task against
+this one, each in a sibling worktree on one container.
+
+- **The witness**: the fixed 200-encounter run at seed 0 closes on the same
+  hit points, 6,000 resolutions and the same next draw on both arms, in
+  **1,740,754 calls on both**. (cProfile's total also counts `<string>`
+  frames, the dataclass-generated `__init__`s, whose keys collide between
+  runs and move the total by ~22k with the code unchanged; they are left
+  out.) The spike applies no condition, and an effect that is not one pays
+  one class-attribute read.
+- **The rate**: eight rounds, the order alternated, `measure(1000, 3)` each:
+  18,869 before and 18,915 after, paired ratio **0.982** (0.927–1.073) —
+  noise.
+- **What it costs where it is paid**: applying and removing a `Prone` on the
+  spike's hero, its twenty-five sources attached, is **~18 µs against
+  ~12 µs** (median of seven `timeit` runs of 20,000, three rotated pairs): two
+  more dispatches, two contexts and two scans of the held list. No feature
+  listens to either hook before W4. A cheaper announcement — asking the
+  dispatcher whether anything listens before building the context — is a
+  lever for when a configuration applies conditions per attack.
+
+### What this task deliberately did not do
+
+- **No turn loop and no offer.** Who is asked, when, and the filter to what
+  the economy can pay are `w2c`'s; the opportunity attack Command is too.
+- **No Shove, Grapple, Help, Hide, Ready, Search, Utilize or Magic**:
+  Shove and Grapple are debt #57; the others are in no row.
+- **No unarmed strike.** A creature that has dropped its weapon cannot Attack
+  until it picks it up.
+
+Sources: `ROADMAP.md` `w2b`, § Sequencing principles 10; § The `w2b` spec
+correction; § w1a, § w1c, § w1h, § w1j, § w2i; DESIGN.md § The APL; XPHB
+"Actions", "Combat", "Dropping to 0 Hit Points", Rules Glossary "Unconscious".

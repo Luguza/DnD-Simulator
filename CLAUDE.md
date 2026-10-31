@@ -13,7 +13,8 @@ grid, the event log, the error hierarchy), `hooks/` (the closed registry of 39
 extension points, their contexts, and the dispatcher), `creatures/`
 (`Creature`, `StatBlock`, `Armour`, the action economy, resources and effects),
 `conditions/` (the 15 conditions) and `engine/` (damage, attack, saving throws,
-dying and healing, and the movement observer). There is no turn loop, APL,
+dying and healing, and the movement observer), and `w2b` has added `actions/`
+(the Commands a turn is made of). There is no turn loop, APL,
 build loader, runner or CLI yet — those are W2.
 
 **W0 and W1 are complete; work is at W2.** The M0 performance budget is **≥30k
@@ -259,8 +260,9 @@ there is local to a module.
 | `engine/attack.py`, the attack sequence | § w1f |
 | `engine/saves.py`, saving throws, save-for-half | § w1g |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
-| `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c, § w2i |
-| `conditions/`, a condition, a declared gap | § w1h |
+| `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c, § w2i, § w2b |
+| `conditions/`, a condition, a declared gap | § w1h, § w2b |
+| `actions/`, a Command, legality, dropping and picking up a weapon | § w2b |
 | `creatures/resources.py`, pools, slots, `transaction()` | § w1b, § w2i |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k, § w2i |

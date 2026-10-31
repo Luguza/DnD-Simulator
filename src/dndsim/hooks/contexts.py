@@ -1247,11 +1247,26 @@ class ConditionContext(Context):
     """`on_condition_gained` / `on_condition_lost` — SELF: the owner's condition.
 
     `condition` is `rules.enums.Condition`, the condition's **name**, not the
-    `HookSource` that implements it.
+    `HookSource` that implements it. Neither hook is vetoable.
     """
 
     creature: Combatant
     condition: Condition
+    _drop: OverrideLedger = field(default_factory=OverrideLedger, repr=False)
+
+    def drop_held(self, reason: str) -> None:
+        """Queue the owner dropping whatever it is holding, once this event is
+        over (`docs/decisions.md` § w2b)."""
+        self._drop.claim("ctx.drop_held()", reason)
+
+    @property
+    def drops_held(self) -> bool:
+        """True once a handler has queued the drop."""
+        return self._drop.claimed
+
+    @property
+    def dropped_by(self) -> tuple[str, ...]:
+        return self._drop.reasons
 
 
 @_context

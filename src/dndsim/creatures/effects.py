@@ -4,7 +4,8 @@ An `Effect` is a `HookSource` that ends, on a deadline or on its last charge;
 what a second application does is its declared `Stacking`. The store attaches
 and detaches through the creature and keeps the clock it was last told by a
 sweep; `apply_pending()` drains a context's queued effects onto the event's
-participants. `docs/decisions.md` § w1c; debts #29, #30.
+participants. A condition's gain and loss are announced as well
+(`docs/decisions.md` § w1c, § w2b; debts #29, #30).
 
 DESIGN.md § Durations.
 """
@@ -15,10 +16,21 @@ from typing import ClassVar, Protocol
 
 from dndsim.core.errors import EngineAssemblyError, FeatureContractError
 from dndsim.core.timeline import Duration, Expiry, TimeKey
-from dndsim.hooks.contexts import Combatant, Context, EffectContext
-from dndsim.hooks.definitions import ON_EFFECT_APPLIED, ON_EFFECT_EXPIRED
+from dndsim.hooks.contexts import (
+    Combatant,
+    ConditionContext,
+    Context,
+    EffectContext,
+)
+from dndsim.hooks.definitions import (
+    ON_CONDITION_GAINED,
+    ON_CONDITION_LOST,
+    ON_EFFECT_APPLIED,
+    ON_EFFECT_EXPIRED,
+)
 from dndsim.hooks.registry import HookSpec
 from dndsim.hooks.source import HookSource
+from dndsim.rules.enums import Condition
 
 __all__ = ["Effect", "EffectStore", "Holder", "Stacking", "apply_pending"]
 
@@ -63,6 +75,8 @@ class Holder(Combatant, Protocol):
 
     def dispatch(self, spec: HookSpec, ctx: Context) -> None: ...
 
+    def drop_held(self) -> None: ...
+
 
 class Effect(HookSource):
     """Something attached to a creature that ends.
@@ -87,6 +101,10 @@ class Effect(HookSource):
 
     STACKING: ClassVar[Stacking] = Stacking.REFRESH
     """What a second application does. Declared per class (`Stacking`)."""
+
+    CONDITION: ClassVar[Condition | None] = None
+    """The condition this effect is the behaviour of, or `None` for an effect
+    that is not one; `conditions/` declares it (`docs/decisions.md` § w2b)."""
 
     def __init__(
         self,
@@ -227,6 +245,9 @@ class EffectStore:
             effect._store = self
             effect.refresh()
             self._held.append(effect)
+            condition = effect.CONDITION
+            if condition is not None and not self._holds(condition, besides=effect):
+                self._announce_condition(ON_CONDITION_GAINED, condition)
             return effect
         if effect.STACKING is Stacking.REJECT:
             return None
@@ -240,8 +261,9 @@ class EffectStore:
 
         Ordering: the store lets go before `on_effect_expired` fires and the
         creature detaches after it, so a handler sees the effect no longer held
-        but its own handlers still attached (`docs/decisions.md` § w1c). Raises
-        `ValueError` for an effect this store does not hold.
+        but its own handlers still attached (`docs/decisions.md` § w1c). A
+        condition's loss is announced after the detach. Raises `ValueError` for
+        an effect this store does not hold.
         """
         if effect._store is not self:
             raise ValueError(
@@ -253,6 +275,9 @@ class EffectStore:
         effect._store = None
         self._announce(ON_EFFECT_EXPIRED, effect, vetoable=False)
         self._holder.detach(effect)
+        condition = effect.CONDITION
+        if condition is not None and not self._holds(condition, besides=None):
+            self._announce_condition(ON_CONDITION_LOST, condition)
 
     def expire_before(self, now: TimeKey) -> None:
         """Drop everything due to end *before* `now`'s handlers run, and set
@@ -299,6 +324,41 @@ class EffectStore:
                 "refreshes it."
             )
         return reason is None
+
+    def _holds(self, condition: Condition, *, besides: Effect | None) -> bool:
+        """Whether an effect other than `besides` already carries `condition`.
+
+        A gain or a loss is of the condition, not of one effect carrying it
+        (`docs/decisions.md` § w2b).
+        """
+        return any(
+            held.CONDITION is condition and held is not besides for held in self._held
+        )
+
+    def _announce_condition(self, spec: HookSpec, condition: Condition) -> None:
+        """Dispatch `on_condition_gained` or `on_condition_lost`, then apply
+        what it queued and drop what it said to drop.
+
+        Neither hook is vetoable: a veto raises `FeatureContractError`
+        (`docs/decisions.md` § w2b).
+        """
+        holder = self._holder
+        ctx = ConditionContext(creature=holder, condition=condition)
+        holder.dispatch(spec, ctx)
+        reason = ctx.veto_reason
+        drops = ctx.drops_held
+        if reason is not None:
+            ctx.close()
+            raise FeatureContractError(
+                f"{reason} vetoed {spec.name} for {condition.value}, which "
+                "reports a condition already held or already gone. A feature "
+                "that means to stop a condition landing vetoes "
+                "on_effect_applied."
+            )
+        apply_pending(ctx, holder)
+        ctx.close()
+        if drops:
+            holder.drop_held()
 
     def _incumbent(self, effect: Effect) -> Effect | None:
         if effect.STACKING is Stacking.STACK:
