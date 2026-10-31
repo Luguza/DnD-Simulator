@@ -4557,7 +4557,7 @@ answers it for every Command at once.
   effect, which is the wrong owner for `Scope.OBSERVER`.
 - **Stabilize wraps `engine/dying.py`'s `stabilize()`** and duplicates only its
   `_dying()` predicate, so that legality never calls the function that raises;
-  a test binds the two. The helper must be within 5 feet of the dying
+  its tests refuse the four targets `_dying()` refuses — standing, Stable, dead, and a monster at 0. The helper must be within 5 feet of the dying
   creature. XPHB's "Stabilizing a Character" names the Help action and no
   range; 5 feet is Help's own range for its other two uses, and the
   conservative reading.
