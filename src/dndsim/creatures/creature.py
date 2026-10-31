@@ -57,12 +57,12 @@ class Creature:
         "_stats",
         "crit_threshold",
         "_dead",
+        "_dropped_at",
+        "_dropped_weapon",
         "_death_save_failures",
         "_death_save_successes",
         "_stable",
         "dispatcher",
-        "dropped_at",
-        "dropped_weapon",
         "economy",
         "effects",
         "hp",
@@ -90,10 +90,9 @@ class Creature:
         self.name = name
         self._stats = stats
         self.weapon = weapon
-        # What `drop_held()` let go of and the square it fell in, until
-        # `pick_up_weapon()` takes it back (`docs/decisions.md` § w2b).
-        self.dropped_weapon: Weapon | None = None
-        self.dropped_at: Cell | None = None
+        # Moved together, and only by `drop_held()` and `pick_up_weapon()`.
+        self._dropped_weapon: Weapon | None = None
+        self._dropped_at: Cell | None = None
         self._armour = armour
         self._shield = shield
         self.position = position
@@ -201,6 +200,17 @@ class Creature:
         """
         return 5 if self.weapon is None else self.weapon.reach_ft
 
+    @property
+    def dropped_weapon(self) -> Weapon | None:
+        """What `drop_held()` let go of, until `pick_up_weapon()` takes it
+        back."""
+        return self._dropped_weapon
+
+    @property
+    def dropped_at(self) -> Cell | None:
+        """The square `dropped_weapon` fell in."""
+        return self._dropped_at
+
     def drop_held(self) -> None:
         """Drop the wielded weapon where this creature stands. Holding nothing
         drops nothing; a Shield is worn, not held (`docs/decisions.md` § w2b).
@@ -208,8 +218,8 @@ class Creature:
         weapon = self.weapon
         if weapon is None:
             return
-        self.dropped_weapon = weapon
-        self.dropped_at = self.position
+        self._dropped_weapon = weapon
+        self._dropped_at = self.position
         self.weapon = None
 
     def pick_up_weapon(self) -> None:
@@ -217,7 +227,7 @@ class Creature:
 
         Raises `ValueError` when it dropped nothing or is wielding another.
         """
-        weapon = self.dropped_weapon
+        weapon = self._dropped_weapon
         if weapon is None:
             raise ValueError(f"{self.name} has dropped nothing to pick up")
         if self.weapon is not None:
@@ -226,8 +236,8 @@ class Creature:
                 f"{weapon.name} as well"
             )
         self.weapon = weapon
-        self.dropped_weapon = None
-        self.dropped_at = None
+        self._dropped_weapon = None
+        self._dropped_at = None
 
     @property
     def is_alive(self) -> bool:

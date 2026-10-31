@@ -4551,7 +4551,8 @@ answers it for every Command at once.
 - **Dodging takes every attacker as seen**, the reading Invisible already makes
   of the same clause, declared as `APPROXIMATED` and filed under debt #39, and lapses while its owner holds any
   `Incapacitated` — the five conditions that carry it inherit the class — or
-  stands at Speed 0. It lapses by skipping, not by ending: the rules say the
+  stands at Speed 0, read off the stat block until debt #47 gives Speed an
+  answer; that gap is declared `APPROXIMATED` too. It lapses by skipping, not by ending: the rules say the
   benefits are lost, and the effect still ends at the start of the owner's
   next turn.
 - **Disengage has no handler, and nothing calls `disengaged()` yet**: until
@@ -4603,7 +4604,9 @@ the veto then took back would announce something that did not happen.
 `prevent()` and `succeed()` have, so it is cleared by the compiled `reopen()`
 like every owned bag. The store drains it after the dispatch by calling
 `Holder.drop_held()`, which `Creature` implements; `Combatant` stays read-only
-(§ w1a). `Creature.drop_held()` moves the wielded weapon to `dropped_weapon`
+(§ w1a). `dropped_weapon` and `dropped_at` are a pair, read-only, moved only
+by `drop_held()` and `pick_up_weapon()` (§ w1a's rule for a field with a
+ledger behind it). `Creature.drop_held()` moves the wielded weapon to `dropped_weapon`
 and records the square in `dropped_at`. A Shield is not dropped: XPHB's armour
 table has it donned and doffed with the Utilize action, which reads as worn
 rather than held, so AC does not move when a creature falls unconscious. That

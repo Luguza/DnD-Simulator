@@ -29,6 +29,9 @@ class Dodging(Effect):
         "the Disadvantage is imposed against every attacker, where the rule "
         'says "if you can see the attacker" — so a Blinded dodger still '
         "imposes it (ROADMAP.md § The W0 debt register #39)",
+        '"You lose these benefits … if your Speed is 0" reads the stat '
+        "block's Speed, which no condition can lower — so a Grappled or "
+        "Restrained dodger keeps them (ROADMAP.md § The W0 debt register #47)",
     )
 
     def __init__(self, owner: Creature, *, duration: Duration) -> None:
