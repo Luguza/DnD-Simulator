@@ -4549,13 +4549,14 @@ answers it for every Command at once.
   legal and does nothing is one an APL can starve on (DESIGN.md § The APL, the
   M0 self-buff).
 - **Dodging takes every attacker as seen**, the reading Invisible already makes
-  of the same clause (debt #39), and lapses while its owner holds any
+  of the same clause, declared as `APPROXIMATED` and filed under debt #39, and lapses while its owner holds any
   `Incapacitated` — the five conditions that carry it inherit the class — or
   stands at Speed 0. It lapses by skipping, not by ending: the rules say the
   benefits are lost, and the effect still ends at the start of the owner's
   next turn.
-- **Disengage has no handler.** The opportunity attack it suppresses is
-  `w2c`'s Command, and `disengaged()` is what that Command's legality asks.
+- **Disengage has no handler, and nothing calls `disengaged()` yet**: until
+  `w2c`'s walk passes it to the `provokes=` valve, a Disengaged creature's
+  movement still provokes. The opportunity attack it suppresses is `w2c`'s.
   An `on_leave_reach` veto would be the watcher's dispatch reading the mover's
   effect, which is the wrong owner for `Scope.OBSERVER`. The walk is `w2c`'s too,
   and `engine/triggers.py`'s `provokes=` valve is where it answers

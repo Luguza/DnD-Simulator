@@ -14,7 +14,7 @@ __all__ = ["Disengage", "Disengaged", "disengaged"]
 
 class Disengaged(Effect):
     """ "your movement doesn't provoke Opportunity Attacks for the rest of the
-    current turn." No handler: the opportunity attack asks `disengaged()`
+    current turn." No handler; `disengaged()` says whether it is held
     (`docs/decisions.md` § w2b)."""
 
     __slots__ = ()

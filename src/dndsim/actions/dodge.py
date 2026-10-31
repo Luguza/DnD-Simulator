@@ -21,10 +21,15 @@ class Dodging(Effect):
     these benefits if you have the Incapacitated condition or if your Speed
     is 0."
 
-    Every attacker is taken as seen (`docs/decisions.md` § w2b).
     """
 
     __slots__ = ("_creature",)
+
+    APPROXIMATED: ClassVar[tuple[str, ...]] = (
+        "the Disadvantage is imposed against every attacker, where the rule "
+        'says "if you can see the attacker" — so a Blinded dodger still '
+        "imposes it (ROADMAP.md § The W0 debt register #39)",
+    )
 
     def __init__(self, owner: Creature, *, duration: Duration) -> None:
         super().__init__(owner, duration=duration)
