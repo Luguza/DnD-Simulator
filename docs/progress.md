@@ -60,7 +60,7 @@ last: every row that prices itself has to have landed before the totalling.
 
 Order within W2 is `w2i` first — the levers `w1k`'s shortfall names, so no W2
 row prices itself against a baseline already known to be under budget — then
-the critical path (`w2b → w2c → w2e`, the turn loop and the APL everything
+the critical path (`w2b → w2c → w2c2 → w2e`, the turn loop and the APL everything
 after them runs on), then the leaves, with `w2g` and `w2h` last because they
 depend on nearly everything else. `w2g` carries the M1 golden
 (`docs/decisions.md` § The M0 / W1 milestone review).

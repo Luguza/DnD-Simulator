@@ -4671,7 +4671,7 @@ checked against the register rather than the row:
   advances a store's clock) and #30 (a queued effect naming a third creature)
   to `w2c`, and the done-when carried neither. Both are the loop's: #29 is the
   sweeps it calls, #30 the roster it holds.
-- **The size.** Thirteen debt rows, about fifteen files, two paired benchmark
+- **The size.** Twelve named debt rows plus the two above, about fifteen files, two paired benchmark
   runs, all solo. `w1j`, with fewer, went to the round cap. The row splits along
   the seam it already had: **`w2c`** is the encounter, the roster and
   initiative, the turn and round loop and every turn-boundary obligation (#29,
