@@ -41,15 +41,16 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | — | ⏸ **M0 / W1 milestone review** — before any W2 task | done | |
 | 13 | w2i — the M0 levers 🔒 | done | |
 | 14 | w2b — `Action` Commands and the stabilise | done | |
-| 15 | w2c — turn loop, initiative, opportunity attacks 🔒 | next | |
+| 15 | w2c — turn loop, initiative, the turn-boundary debts 🔒 | next | |
+| 16 | w2c2 — opportunity attacks and the walk 🔒 | queued | |
 | — | ⏸ plan review | queued | |
-| 16 | w2e — the APL compiler 🔒 | queued | |
-| 17 | w2a — content ACL | queued | |
-| 18 | w2d — `TargetDummy` | queued | |
+| 17 | w2e — the APL compiler 🔒 | queued | |
+| 18 | w2a — content ACL | queued | |
+| 19 | w2d — `TargetDummy` | queued | |
 | — | ⏸ plan review | queued | |
-| 19 | w2f — build schema and `Character` | queued | |
-| 20 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |
-| 21 | w2h — the CLI | queued | |
+| 20 | w2f — build schema and `Character` | queued | |
+| 21 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |
+| 22 | w2h — the CLI | queued | |
 | — | ⏸ **M1 / W2 milestone review** | queued | |
 
 Order within W1 is the critical path first (`w1e → w1f`, the two 🔒 tasks
@@ -59,7 +60,7 @@ last: every row that prices itself has to have landed before the totalling.
 
 Order within W2 is `w2i` first — the levers `w1k`'s shortfall names, so no W2
 row prices itself against a baseline already known to be under budget — then
-the critical path (`w2b → w2c → w2e`, the turn loop and the APL everything
+the critical path (`w2b → w2c → w2c2 → w2e`, the turn loop and the APL everything
 after them runs on), then the leaves, with `w2g` and `w2h` last because they
 depend on nearly everything else. `w2g` carries the M1 golden
 (`docs/decisions.md` § The M0 / W1 milestone review).

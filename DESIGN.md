@@ -2556,7 +2556,7 @@ Great Weapon Master stops being worth it, exactly as a WoW sim would.
 ## Build order
 
 Nine waves, `W0`–`W8`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
-79 tasks, their dependency edges, delegation modes and the task-packet template.
+80 tasks, their dependency edges, delegation modes and the task-packet template.
 Its § The W0 debt register is the ledger of what W0 left for later waves to
 retire, and which task retires each.
 
