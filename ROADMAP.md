@@ -288,7 +288,8 @@ retired one (#15) and opened three (#53–#55); the M0 / W1 milestone review
 then retired two (#33, #52), re-owned five and left one at its round cap
 (#56), `w2i` has narrowed three (#53–#55) to what it did not own, and the
 `w2b` spec correction opened one (#57), and `w2b` has retired two (#42,
-#48), so the table stands at forty-one.
+#48), and the `w2c` spec correction left one at its round cap (#58), so the
+table stands at forty-two.
 Every one of them was the right thing to write — a hostile spike needs real
 machinery now, not finished machinery later — and every one of them is invisible
 six months from now, when the file around it has grown and the paragraph
@@ -350,6 +351,7 @@ M0 / W1 milestone review).
 | 55 | Every store is swept at every turn boundary | `tools/spike.py`, `engine/turn.py` when it exists | `w2c` | ~4.1 µs a resolution at 32 sweep calls a round, the naive correct count; `w2c` owns the multiplier and can sweep only stores that hold something. **The `TimeKey` half is retired by `w2i`**, which precomputes the comparison form (`docs/decisions.md` § w2i) |
 | 56 | Wording left at PR #55's round cap: `w2i`'s scope and reason overstated in summaries, and one question row's alternative | DESIGN.md § Performance, CLAUDE.md § Project state, `ROADMAP.md`'s M0 blockquote and W2 intro, `docs/progress.md`, `docs/decisions.md` § The M0 / W1 milestone review, `docs/questions.md` #13 | **the M1 / W2 milestone review** | left at PR #55's round cap (`docs/workflow.md` § The review loop), none of it contested. (1) Four places say `w2i` takes "the levers" — DESIGN.md § Performance, CLAUDE.md § Project state, the M0 blockquote and `docs/progress.md`'s order paragraph — where it takes the engine-side ones; the sweep count stays `w2c`'s and #53/#54's configuration halves are the M1 / W2 milestone review's. (2) The W2 intro, `docs/progress.md` and § The M0 / W1 milestone review give `w2i`'s reason as not pricing "against a baseline already known to be under budget", but `w2i` only shrinks the deficit — removing all three costs projects to ~30.2k — and the same intro says the rate is under 30k before `w2c` starts; the reason is a smaller deficit, not a baseline at budget. (3) `docs/questions.md` #13's third alternative, "M1 keeps its place and its golden counts one attack per Action knowingly", is the choice the row took. Harmless meanwhile: `w2i`'s row names its scope and done-when exactly, and a row outranks the summaries that cite it |
 | 57 | Shove and Grapple are in no row | `actions/` when a row owns them | **the plan review after `w2c2`** | XPHB "Unarmed Strike" makes Grapple and Shove options of an attack, and they are the actions that apply Grappled and Prone; #42 named them as `w2b`'s and `w2b`'s row does not hold them (`docs/decisions.md` § The `w2b` spec correction). The plan review places them in a row or says why none is owed; until then #49 stays exact: no action applies Grappled or Prone, and Prone is applied only as Unconscious's aftermath (`conditions/unconscious.py`'s `remain_prone`) |
+| 58 | Wording left at PR #61's round cap: "the six Speed-0 conditions" | `ROADMAP.md`'s `w2c` row, `docs/decisions.md` § The `w2c` spec correction | the next milestone review | five of #47's six conditions set Speed to 0; Exhaustion lowers it by 5 feet a level, so the phrase should read "the six Speed-changing conditions". Nothing is mis-scoped by it: the six files are the ones #47 names |
 
 ### What the W1 critical-path gate changed
 
