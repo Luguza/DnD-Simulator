@@ -55,8 +55,12 @@ def stats(*, level: int = 1, max_hp: int = 20, **scores: int) -> StatBlock:
     )
 
 
-def creature(name: str = "fighter", *, max_hp: int = 20) -> Creature:
-    return Creature(name=name, stats=stats(max_hp=max_hp), position=Cell(0, 0))
+def creature(
+    name: str = "fighter", *, max_hp: int = 20, weapon: Weapon | None = None
+) -> Creature:
+    return Creature(
+        name=name, stats=stats(max_hp=max_hp), position=Cell(0, 0), weapon=weapon
+    )
 
 
 def protocol_members(protocol: type) -> frozenset[str]:
@@ -519,6 +523,91 @@ def test_a_creature_does_not_know_how_to_take_damage() -> None:
     """`Creature` has no `take_damage()` (`docs/decisions.md` § w0g2)."""
     assert not hasattr(Creature, "take_damage")
     assert not hasattr(Creature, "heal")
+
+
+# --- Dropping and picking up what is held (debt #48) --------------------------
+
+
+def test_a_creature_starts_with_nothing_dropped() -> None:
+    subject = creature()
+    assert (subject.dropped_weapon, subject.dropped_at) == (None, None)
+
+
+def test_dropping_leaves_the_weapon_where_the_creature_stands() -> None:
+    subject = creature(weapon=GREATSWORD)
+    subject.position = Cell(3, 4)
+    subject.drop_held()
+    assert subject.weapon is None
+    assert subject.dropped_weapon is GREATSWORD
+    assert subject.dropped_at == Cell(3, 4)
+
+
+def test_the_dropped_weapon_stays_where_it_fell() -> None:
+    subject = creature()
+    subject.weapon = GREATSWORD
+    subject.drop_held()
+    subject.position = Cell(1, 1)
+    assert subject.dropped_at == Cell(0, 0)
+
+
+def test_dropping_with_empty_hands_drops_nothing() -> None:
+    subject = creature()
+    subject.drop_held()
+    assert (subject.weapon, subject.dropped_weapon, subject.dropped_at) == (
+        None,
+        None,
+        None,
+    )
+
+
+def test_a_shield_is_not_dropped() -> None:
+    """Unarmoured, Dexterity 10: 10 + 0 + 2 (Shield) = 12, before and after."""
+    subject = Creature(
+        name="guard",
+        stats=stats(),
+        position=Cell(0, 0),
+        weapon=GREATSWORD,
+        shield=True,
+    )
+    assert subject.armour_class == 12
+    subject.drop_held()
+    assert subject.shield
+    assert subject.armour_class == 12
+    assert subject.weapon is None
+
+
+def test_picking_up_undoes_the_drop() -> None:
+    subject = creature()
+    subject.weapon = PIKE
+    subject.drop_held()
+    subject.pick_up_weapon()
+    assert subject.weapon is PIKE
+    assert (subject.dropped_weapon, subject.dropped_at) == (None, None)
+    assert subject.reach_ft == 10
+
+
+def test_picking_up_with_nothing_dropped_is_refused() -> None:
+    subject = creature()
+    with pytest.raises(ValueError):
+        subject.pick_up_weapon()
+    subject.weapon = GREATSWORD
+    with pytest.raises(ValueError):
+        subject.pick_up_weapon()
+    assert subject.weapon is GREATSWORD
+
+
+def test_picking_up_while_wielding_another_is_refused_and_changes_nothing() -> None:
+    subject = creature()
+    subject.weapon = GREATSWORD
+    subject.drop_held()
+    subject.weapon = PIKE
+    with pytest.raises(ValueError):
+        subject.pick_up_weapon()
+    assert (subject.weapon, subject.dropped_weapon, subject.dropped_at) == (
+        PIKE,
+        GREATSWORD,
+        Cell(0, 0),
+    )
 
 
 def test_a_creature_is_slotted_so_a_typo_is_not_a_new_field() -> None:

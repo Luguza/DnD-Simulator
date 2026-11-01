@@ -2110,7 +2110,8 @@ seconds across eight.
 > § w1k). The budget is the number to hold, not the number being cleared: per
 > § Biggest risks it is not revised by anyone who cannot attribute the
 > shortfall, and with the shortfall attributed, whether it comes down is the
-> human's (`docs/questions.md` #10). `w2i` takes the levers first.
+> human's (`docs/questions.md` #10). `w2i` took the engine-side levers and
+> brought it back to about 23.5k (`docs/decisions.md` § w2i).
 
 ### The spike must be pessimistic, or M0 proves nothing
 
@@ -2555,7 +2556,7 @@ Great Weapon Master stops being worth it, exactly as a WoW sim would.
 ## Build order
 
 Nine waves, `W0`–`W8`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
-79 tasks, their dependency edges, delegation modes and the task-packet template.
+80 tasks, their dependency edges, delegation modes and the task-packet template.
 Its § The W0 debt register is the ledger of what W0 left for later waves to
 retire, and which task retires each.
 

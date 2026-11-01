@@ -47,22 +47,27 @@ from dndsim.creatures.creature import Creature
 from dndsim.creatures.effects import Effect
 from dndsim.creatures.stats import GREATSWORD, Armour, StatBlock
 from dndsim.engine.attack import PREVENTED, resolve_attack
+from dndsim.engine.damage import resolve_damage
+from dndsim.engine.healing import heal
 from dndsim.engine.saves import saving_throw
 from dndsim.hooks import contexts
 from dndsim.hooks.contexts import (
     AbilityCheckContext,
+    ConditionContext,
     D20TestContext,
     InitiativeContext,
     RestContext,
 )
+from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.definitions import (
     ON_ABILITY_CHECK,
     ON_INITIATIVE_ROLL,
     ON_LONG_REST,
 )
 from dndsim.hooks.registry import all_hooks
+from dndsim.hooks.source import HookSource
 from dndsim.rules import enums
-from dndsim.rules.enums import Ability, Outcome, SaveOutcome
+from dndsim.rules.enums import Ability, DamageType, Outcome, SaveOutcome
 
 SCORES: Final = MappingProxyType(
     {
@@ -182,10 +187,13 @@ def test_the_afflicted_creatures_own_attack_rolls_have_disadvantage(
     what says two d20s were drawn rather than one.
     """
     swinger, target = combatant("swinger"), combatant("target", cell=EAST)
+    # Unconscious drops the weapon (`docs/decisions.md` § w2b); the roll is
+    # what is under test.
+    weapon = swinger.weapon
     impose(swinger, condition(swinger))
     rng = ScriptedRng([HIGH, LOW])
 
-    outcome, damage = resolve_attack(swinger, target, rng=rng)
+    outcome, damage = resolve_attack(swinger, target, rng=rng, weapon=weapon)
 
     assert outcome is Outcome.MISS
     assert damage == 0
@@ -612,10 +620,87 @@ def test_unconscious_leaves_prone_attached_when_it_ends() -> None:
     worn = impose(sleeper, Unconscious(sleeper))
 
     sleeper.effects.remove(worn)
+    sleeper.pick_up_weapon()
 
     assert attached(sleeper) == ["prone"]
     rng = ScriptedRng([HIGH, LOW])
     assert resolve_attack(sleeper, target, rng=rng) == (Outcome.MISS, 0)
+    assert rng.exhausted
+
+
+# --- Unconscious: "you drop whatever you're holding" (debt #48) ---------------
+
+
+def test_unconscious_drops_whatever_is_held_where_it_falls() -> None:
+    sleeper = combatant("sleeper", cell=NORTH)
+    impose(sleeper, Unconscious(sleeper))
+    assert sleeper.weapon is None
+    assert (sleeper.dropped_weapon, sleeper.dropped_at) == (GREATSWORD, NORTH)
+
+
+def test_unconscious_with_empty_hands_drops_nothing() -> None:
+    sleeper = combatant("sleeper")
+    sleeper.weapon = None
+    impose(sleeper, Unconscious(sleeper))
+    assert (sleeper.weapon, sleeper.dropped_weapon, sleeper.dropped_at) == (
+        None,
+        None,
+        None,
+    )
+
+
+def test_the_drop_clause_is_no_longer_declared_a_gap() -> None:
+    assert not any("#48" in entry for entry in Unconscious.NEEDS_HOOK)
+    assert not any("drop whatever" in entry for entry in Unconscious.NEEDS_HOOK)
+
+
+def test_a_player_character_dropped_to_zero_drops_its_weapon() -> None:
+    """40 damage on 40 hit points: 0 left over, short of the maximum, so
+    Unconscious rather than dead — and the greatsword is on the floor."""
+    hero = player_character("hero")
+    resolve_damage(hero, {DamageType.SLASHING: HP}, rng=no_dice())
+    assert hero.hp == 0 and not hero.dead
+    assert (hero.weapon, hero.dropped_weapon, hero.dropped_at) == (
+        None,
+        GREATSWORD,
+        ORIGIN,
+    )
+
+
+def test_unconscious_is_gained_and_lost_by_name_across_two_sources() -> None:
+    """A spell's Unconscious, then the drop's `Downed`: one gain. The spell
+    ending leaves Prone and the drop's Unconscious, so Prone is gained and
+    Unconscious is not lost. Healing ends the last one: Unconscious is lost,
+    and Prone, already held, is not gained again."""
+    hero = player_character("hero")
+    watcher = ConditionWatcher(hero)
+    hero.attach(watcher)
+
+    spell = impose(hero, Unconscious(hero))
+    resolve_damage(hero, {DamageType.SLASHING: HP}, rng=no_dice())
+    assert watcher.seen == ["gained:unconscious"]
+
+    hero.effects.remove(spell)
+    assert watcher.seen == ["gained:unconscious", "gained:prone"]
+
+    heal(hero, rng=no_dice(), flat=5)
+    assert watcher.seen == ["gained:unconscious", "gained:prone", "lost:unconscious"]
+    assert attached(hero) == ["prone"]
+
+
+def test_a_healed_character_picks_its_weapon_up_and_swings_it() -> None:
+    """Healed to 5 and Prone, it picks the greatsword up from where it fell
+    and attacks at Disadvantage: scripted 17 then 3 resolves on the 3, 3 + 7 =
+    10 against AC 15, a miss — with the greatsword, not a refusal."""
+    hero, target = player_character("hero"), combatant("target", cell=EAST)
+    resolve_damage(hero, {DamageType.SLASHING: HP}, rng=no_dice())
+    heal(hero, rng=no_dice(), flat=5)
+    assert hero.weapon is None
+
+    hero.pick_up_weapon()
+
+    rng = ScriptedRng([HIGH, LOW])
+    assert resolve_attack(hero, target, rng=rng) == (Outcome.MISS, 0)
     assert rng.exhausted
 
 
@@ -749,3 +834,37 @@ def test_no_condition_is_named_anywhere_in_the_engine() -> None:
     } - UNCONSCIOUS_EXEMPTION
 
     assert named == set()
+
+
+def player_character(name: str) -> Creature:
+    """`combatant()`, but one who makes death saving throws at 0 hit points."""
+    return Creature(
+        name=name,
+        stats=StatBlock(abilities=SCORES, max_hp=HP, level=5),
+        position=ORIGIN,
+        weapon=GREATSWORD,
+        armour=Armour.natural(AC),
+        player_character=True,
+    )
+
+
+class ConditionWatcher(HookSource):
+    """Records each condition gained and lost, by name, in order."""
+
+    __slots__ = ("seen",)
+
+    ID = "test.condition_watcher"
+
+    def __init__(self, owner: Creature) -> None:
+        super().__init__(owner)
+        self.seen: list[str] = []
+
+    @hook("on_condition_gained")
+    def gained(self, ctx: ConditionContext) -> R:
+        self.seen.append(f"gained:{ctx.condition.value}")
+        return R.APPLIED
+
+    @hook("on_condition_lost")
+    def lost(self, ctx: ConditionContext) -> R:
+        self.seen.append(f"lost:{ctx.condition.value}")
+        return R.APPLIED

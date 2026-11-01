@@ -4206,7 +4206,8 @@ or from the seven debt rows the earlier gates filed against it.
 against this review (#53–#55). What it left open is whether W2 waits. It does
 not wait on a number; it waits on one task. **`w2i` runs first** and takes the
 engine-side levers § w1k names — the slot table, the `refresh()` that rebuilds
-what it holds, the ~26 µs apply and remove, and `TimeKey` comparison through
+what it holds, the ~26 µs apply and remove (whose lever turned out to be in
+`hooks/dispatch.py`, § The `w2i` spec correction), and `TimeKey` comparison through
 `Enum.value` — which depend on nothing W2 builds. Every W2 row that prices itself would
 otherwise price against a baseline already known to be under budget, and the
 levers are cheap and come with a measured upper bound.
@@ -4310,3 +4311,380 @@ Sources: § w1j, § w1l, § w1k, § The W1 late-wave review; `ROADMAP.md`
 § Sequencing principles 10, § The W0 debt register rows #31, #33, #43, #49,
 #52–#55, W2, M1; DESIGN.md § Settled decisions, § Performance;
 `docs/questions.md` #10–#14; PRs #52, #53, #54.
+
+## The `w2i` spec correction — the apply and remove are the dispatcher's
+
+§ w1k priced an effect's apply and remove at ~26 µs and § The M0 / W1 milestone
+review gave that lever to `w2i` within `creatures/effects.py`,
+`core/timeline.py` and `creatures/resources.py`. Profiled on the spike's hero,
+it is not there. Over 20,000 cycles of building, applying and removing a
+`SpikeRage` against the hero's twenty-five sources (cProfile, one container,
+seed 0):
+
+| | |
+|---|---|
+| one apply and one remove, `timeit` | 31.3 µs |
+| `Dispatcher._rebuild()`, cumulative | 2.15 s of 2.93 s — 73% |
+| `BoundHandler.sort_key()`, through `Enum.value` | 1,020,000 calls, 0.91 s |
+| `creatures/effects.py`'s own frames | under 0.3 s |
+
+Each attach and each detach re-sorts every hook's table over every attached
+source. With nothing in `effects.py` left to run, a cycle would still cost
+~23 µs. So `w2i`'s row now names `hooks/dispatch.py`'s `attach()` and
+`detach()` as well, and only those. The table may be maintained
+incrementally, under the two invariants that do not move: DESIGN.md
+§ Ordering's dispatch order, and § w0g's rule that the table's tuples are
+the snapshot: `attach()`/`detach()` build new ones and never change one
+already in the table. `dispatch()` itself stays out of scope.
+
+This is a profile of the operation in isolation, which § w1k showed
+underprices the same operation in the encounter. The 73% says where the lever
+is. What it is worth in the encounter is still for `w2i`'s ablation to
+measure (`ROADMAP.md` § Sequencing principles, 10).
+
+Sources: § w1k, § The M0 / W1 milestone review, § w0g; DESIGN.md § Ordering;
+`ROADMAP.md` `w2i`, § The W0 debt register #54.
+
+## w2i — the M0 levers
+
+**The four engine-side levers § w1k named are taken, and the rate comes back by
+about a tenth: 0.745 of W0's against `w1k`'s 0.703, which carried onto `w0i`'s
+~31.5k is ~23.5k against a 30k budget.** The budget is still missed; it is not
+revised here (`docs/questions.md` #10). What is left of the gap is restated
+below with an owner for each part.
+
+### The four levers
+
+- **The slot table** (`creatures/resources.py`, #53's engine half). `Resources`
+  files each slot pool by level as `add()` creates it and keeps one
+  `SpellSlots` facade, so `highest()` walks levels down and stops, and
+  `_select()` reads one level's list instead of every pool through a generator.
+  Within a level the pools stay in the order added, which is the order the walk
+  over the ledger gave, so `select()` picks the pool it picked before.
+- **A `refresh()` that resolves only when something moved**
+  (`creatures/effects.py`, #54). An effect remembers the clock and the duration
+  its `expiry` was resolved from, by identity. A store's clock moves only by a
+  sweep replacing it and a `Duration` is frozen, so the same pair resolves to
+  the same deadline and the refresh returns. The spike's 3,200 refreshes
+  resolve 1,000 times.
+- **The incremental table** (`hooks/dispatch.py`'s `attach()` and `detach()`,
+  #54). `attach()` merges the new source's handlers into the tuples of the hooks
+  it has handlers on, with `bisect.insort` right of equal keys; `detach()`
+  filters the source out of its own hooks' tuples and drops a hook left empty.
+  Both build new tuples, so § w0g's snapshot rule holds, and the key is
+  DESIGN.md § Ordering's, computed once per `BoundHandler` instead of read
+  through `Enum.value` per comparison. The insertion is right of equal keys
+  because one source may declare two handlers on one hook at the same phase and
+  order, and the sort it replaces was stable over declared order.
+  **An apply and a remove now cost ~12.0 µs against ~31.5 µs before**: building,
+  applying and removing a `SpikeRage` on the spike's hero, its twenty-five
+  sources attached, both hooks' dispatches and the store's bookkeeping
+  included. That is the operation § w1k priced at 26.2 µs and § The `w2i` spec
+  correction at 31.3 µs, on the same container as the latter. Median of seven
+  `timeit` runs of 20,000, three rotated pairs, the two arms in sibling
+  worktrees.
+- **`TimeKey`'s comparison form is precomputed** (`core/timeline.py`, #55's
+  `TimeKey` half), as `InitiativeKey`'s already was (§ w0d).
+
+### What it cost the benchmark
+
+Priced as sequencing principle 10 asks, the witness first.
+
+**The witness: the same fights, 272k fewer calls.** Over the fixed 200-encounter
+profiled run at seed 0, every arm below closes every encounter on the same hit
+points, resolves 6,000 attacks and leaves the generator on the same next draw.
+The whole run's call count:
+
+| Arm | Calls |
+|---|---|
+| W0, `d71e619` | 1,501,711 |
+| the milestone branch before this task | 2,036,286 |
+| this task | **1,764,093** |
+| this task without the slot table | 1,931,299 |
+| without the incremental table | 1,817,760 |
+| without the precomputed `TimeKey` | 1,808,813 |
+| without the cached refresh | 1,775,093 |
+
+By function, before → after: `SpellSlots._slots` 83,580 calls → gone, with
+`highest()` 37 → 5 ms and `_select()` 45 → 5 ms cumulative; `_rebuild()` 25 ms
+and 10,175 `sort_key()` calls → gone, `Dispatcher.attach()` 14 → 3 ms and
+`detach()` 13 → 1 ms; `TimeKey._ordinal` 15,600 calls → gone, the sweeps 56 →
+32 ms; `Duration.resolve()` 3,200 → 1,000 calls.
+
+**The rate.** Twelve rounds of seven arms, the order rotated each round, every
+arm in a sibling worktree on one container, `measure(1000, 3)` each:
+
+| Arm | Median | Ratio to W0, median (span) | `w1k`'s |
+|---|---|---|---|
+| W0, `d71e619` | 23,369 | — | — |
+| the branch before this task | 16,023 | 0.696 (0.623–0.746) | 0.703 |
+| this task | 17,435 | **0.745** (0.701–0.847) | — |
+
+This task against the branch before it is **1.117** (0.981–1.197), 6.8 µs a
+resolution. The container ran slower than `w1k`'s throughout — W0 at 23.4k
+against 29.1k — which is why only the ratios travel. The ablation, as µs per
+resolution given back by putting each lever back:
+
+| Lever taken out | µs/resolution (span) |
+|---|---|
+| the slot table | **1.9** (−0.3–6.8) |
+| the cached refresh | **1.7** (−4.4–5.1) |
+| the precomputed `TimeKey` | **1.4** (−3.4–11.7) |
+| the incremental table | **0.8** (−2.5–4.8) |
+
+They sum to 5.7 of the 6.8 measured together, inside the spans. The table is
+the smallest because the spike attaches once an encounter, 200 times in 6,000
+attacks; the 73% that § The `w2i` spec correction profiled is 73% of an
+operation the spike seldom does. It is what every W4 feature with a duration
+pays per application, which is why it was worth taking anyway.
+
+### The shortfall, restated
+
+At ~23.5k the rate needs about another 1.28× to reach 30k. What is left of the
+three costs § w1k attributed is now none of the engine's but the sweep count:
+
+- **#53's configuration**: the fixture smiting on every hit the gate allows,
+  each smite a `Resources.spend()` that announces `on_resource_spent`;
+- **#54's configuration**: the `raging()` scan four fixtures make;
+- **#55's sweep count**, `w2c`'s.
+
+The two configuration halves are the M1 / W2 milestone review's, decided with
+this re-measure in hand (§ The M0 / W1 milestone review); the budget is the
+human's (`docs/questions.md` #10).
+
+Sources: ROADMAP `w2i`, § Sequencing principles 10, § The W0 debt register
+#53–#55; § w0d, § w0g, § w1k, § The M0 / W1 milestone review, § The `w2i` spec
+correction; DESIGN.md § Ordering.
+
+## The `w2b` spec correction — the two debts are not in `actions/`
+
+`w2b`'s done-when gives it debts #42 and #48, and its Produces cell gave it
+`actions/` alone. Neither debt can be retired from there, and each row already
+says where it lives.
+
+- **#42** is an announcement `EffectStore` has to make, beside the
+  `on_effect_applied` it already makes, and the row says the store cannot tell
+  a condition from an effect without a field `Effect` does not have. The field
+  is a `CONDITION` class attribute, `None` on `Effect`, which `Condition`
+  already declares. An `isinstance` against `Condition` is the other way and is
+  refused: `conditions/` imports `creatures/effects.py`, so the store would
+  import upward. `on_condition_gained` fires after the condition is held and
+  `on_condition_lost` after it is gone, because neither is vetoable — the veto
+  is `on_effect_applied`'s, and announcing a gain the veto then refuses would
+  announce something that did not happen.
+- **#48** wants Unconscious to drop what its owner holds. Its handler's owner
+  is a `Combatant`, which is read-only on purpose (§ w1a, "Widening
+  `Combatant`"): a `drop()` on the protocol would hand every handler on every
+  context a way to disarm any participant it is shown. So the drop is one
+  queued mutator on
+  `ConditionContext`, drained by the store against its own creature, the shape
+  `apply_effect()` and `apply_pending()` already have. The weapon goes to a
+  field on `Creature`, and a pick-up action in `actions/` takes it back; a
+  drop with no pick-up is the "worse than not modelling the clause" the row
+  warns about.
+
+No action `w2b` builds applies a condition. The task owns #42 because its own
+#48 handler is the first thing that needs the hook called, not because it is
+the first to apply one; `w1j`'s Unconscious, and the Prone its
+`remain_prone` leaves when it ends, are the only applications today, and the
+wiring announces both.
+Shove and Grapple, the actions #42's row named as applying conditions, are in
+no row of the plan. That gap is debt #57, owned by the plan review after
+`w2c`, rather than a widening of this task.
+
+`hooks/contexts.py` is the package content batches may never touch, so that
+sub-item is solo within the task, as `w1a`'s `Combatant` and `w1f`'s `Weapon`
+widenings were. `creatures/effects.py` and
+`hooks/contexts.py` are both on the hot path, so the change is priced
+(`ROADMAP.md` § Sequencing principles, 10).
+
+Sources: `ROADMAP.md` `w2b`, § The W0 debt register #42, #48; § w1a, § w1c,
+§ w1g, § w1h.
+
+## w2b — the Commands, and a condition's gain and loss announced
+
+**`actions/` holds six Commands, and `EffectStore` now announces a condition
+being gained and lost.** The Commands are Attack, Dash, Dodge, Disengage, the
+Medicine-check Stabilize and PickUpWeapon. Debt #42 is retired by the
+announcement and #48 by Unconscious dropping what its owner holds on
+`on_condition_gained`, which is the first handler that needed it.
+
+### A Command is bound to its arguments
+
+`Action(actor, ...)` carries its target and weapon, so `is_legal()` and
+`execute(rng=...)` take nothing the loop has to thread through twice, and an
+APL entry compiled by `w2e` can build one per offer. `is_legal()` is defined
+once on the base: the actor is alive and above 0 hit points, can pay `COST`
+(`ActionEconomy.can_spend()`), and the subclass's `_permits()` agrees.
+`execute()` asks `is_legal()` again, raises `ValueError` on a no — the error
+`resolve_attack()` and `death_save()` already raise for a request that cannot
+be described — spends `COST`, and calls `_perform()`. The cost is spent before
+the action is carried out, so a handler inside it reads the economy already
+charged. `COST` is `None` for what costs no slot, the convention the
+dispatcher's `costs=None` already uses.
+
+**Why legality provably cannot spend.** `is_legal()` reads only
+`can_spend()`, positions and creature facts; no subclass's `_permits()` calls a
+mutator, and the contract test runs every `Action` subclass's `is_legal()`
+with every spending and attaching method made to raise. A new subclass is
+picked up by that test without being named in it.
+
+Incapacitation is not a legality question here: an Incapacitated creature's
+emptied economy is `w2c`'s call (debt #41), and once it is made `can_spend()`
+answers it for every Command at once.
+
+### The six, and the readings each took
+
+- **Attack is one attack.** Extra Attack is a feature, and no feature exists
+  yet (`docs/questions.md` #13 made the M1 Fighter featureless); the Command
+  that makes two attacks per action is W4's. Illegal without a weapon, out of
+  the weapon's reach (`within_reach()`, the reach `resolve_attack()` itself
+  checks), against the actor itself, or against a dead creature. A named
+  `weapon=` stands for one equipped as part of the attack, which XPHB's
+  Attack action allows, and is refused when it is the one the actor dropped:
+  that one is on the floor, and `PickUpWeapon` is how it comes back. A creature at
+  0 hit points is a legal target: finishing a dying one is a death save failed.
+- **Dash is not offered at Speed 0.** The rules allow it, and it buys nothing;
+  `ActionEconomy.grant_movement()` refuses a grant of 0, and a Command that is
+  legal and does nothing is one an APL can starve on (DESIGN.md § The APL, the
+  M0 self-buff).
+- **Dodging takes every attacker as seen**, the reading Invisible already makes
+  of the same clause, declared as `APPROXIMATED` and filed under debt #39, and lapses while its owner holds any
+  `Incapacitated` — the five conditions that carry it inherit the class — or
+  stands at Speed 0, read off the stat block until debt #47 gives Speed an
+  answer; that gap is declared `APPROXIMATED` too. It lapses by skipping, not by ending: the rules say the
+  benefits are lost, and the effect still ends at the start of the owner's
+  next turn.
+- **Disengage has no handler, and nothing calls `disengaged()` yet**: until
+  `w2c`'s walk passes it to the `provokes=` valve, a Disengaged creature's
+  movement still provokes. The opportunity attack it suppresses is `w2c`'s.
+  An `on_leave_reach` veto would be the watcher's dispatch reading the mover's
+  effect, which is the wrong owner for `Scope.OBSERVER`. The walk is `w2c`'s too,
+  and `engine/triggers.py`'s `provokes=` valve is where it answers
+  `disengaged()` — debt #20, narrowed to `w2c`.
+- **Stabilize wraps `engine/dying.py`'s `stabilize()`** and duplicates only its
+  `_dying()` predicate, so that legality never calls the function that raises;
+  its tests refuse the four targets `_dying()` refuses — standing, Stable, dead, and a monster at 0. The helper must be within 5 feet of the dying
+  creature. XPHB's "Stabilizing a Character" names the Help action and no
+  range; 5 feet is Help's own range for its other two uses, and the
+  conservative reading.
+- **PickUpWeapon is free**, the object interaction XPHB's "Your Turn" gives
+  every turn, and legal from within 5 feet of the square the weapon fell in.
+  The once-a-turn limit is not counted: nothing else spends the interaction
+  yet, and a creature can drop only one weapon, so it cannot be spent twice.
+  The first Command to draw, stow or hand over an object is the one that adds
+  the count.
+
+### The condition hooks: of the name, after the fact, not vetoable
+
+`Effect.CONDITION` is `None`, and `Condition` overrides it with the member it
+implements; the store reads it rather than asking `isinstance` against a
+package that imports `creatures/` (§ The `w2b` spec correction).
+
+**A gain or a loss is of the condition, not of one effect carrying it.** Two
+effects can carry one condition at once — `w1j`'s `Downed` is an Unconscious
+held apart from a spell's (§ w1j) — so `on_condition_gained` fires only when
+the first effect carrying the condition attaches, and `on_condition_lost` only
+when the last one is removed. A re-application absorbed by the incumbent is
+a refresh, not a gain. Unconscious and the Prone it leaves behind when it ends
+are two names: the Prone is announced as gained, though the creature lay prone
+throughout, because `Unconscious` carries `UNCONSCIOUS` and not the two
+conditions it includes.
+
+The gain fires after the effect is attached and held, so the condition's own
+`on_condition_gained` handler runs — which is how Unconscious hears it. The
+loss fires after the detach, so a condition never hears its own loss. A veto
+of either raises `FeatureContractError`, as `on_effect_expired`'s does: the
+veto that refuses a condition is `on_effect_applied`'s, and announcing a gain
+the veto then took back would announce something that did not happen.
+
+### The drop
+
+`ConditionContext.drop_held()` is an `OverrideLedger` claim, the shape
+`prevent()` and `succeed()` have, so it is cleared by the compiled `reopen()`
+like every owned bag. The store drains it after the dispatch by calling
+`Holder.drop_held()`, which `Creature` implements; `Combatant` stays read-only
+(§ w1a). `dropped_weapon` and `dropped_at` are a pair, read-only, moved only
+by `drop_held()` and `pick_up_weapon()` (§ w1a's rule for a field with a
+ledger behind it). `Creature.drop_held()` moves the wielded weapon to `dropped_weapon`
+and records the square in `dropped_at`. A Shield is not dropped: XPHB's armour
+table has it donned and doffed with the Utilize action, which reads as worn
+rather than held, so AC does not move when a creature falls unconscious. That
+is a reading (`docs/questions.md` #15).
+
+### What it cost
+
+Priced as sequencing principle 10 asks, the branch before this task against
+this one, each in a sibling worktree on one container.
+
+- **The witness**: the fixed 200-encounter run at seed 0 closes on the same
+  hit points, 6,000 resolutions and the same next draw on both arms, in
+  **1,740,754 calls on both**. (cProfile's total also counts `<string>`
+  frames, the dataclass-generated `__init__`s, whose keys collide between
+  runs and move the total by ~22k with the code unchanged; they are left
+  out.) The spike applies no condition, and an effect that is not one pays
+  one class-attribute read.
+- **The rate**: eight rounds, the order alternated, `measure(1000, 3)` each:
+  18,869 before and 18,915 after, paired ratio **0.982** (0.927–1.073) —
+  noise.
+- **What it costs where it is paid**: applying and removing a `Prone` on the
+  spike's hero, its twenty-five sources attached, is **~18 µs against
+  ~12 µs** (median of seven `timeit` runs of 20,000, three rotated pairs): two
+  more dispatches, two contexts and two scans of the held list. No feature
+  listens to either hook before W4. A cheaper announcement — asking the
+  dispatcher whether anything listens before building the context — is a
+  lever for when a configuration applies conditions per attack.
+
+### What this task deliberately did not do
+
+- **No turn loop and no offer.** Who is asked, when, and the filter to what
+  the economy can pay are `w2c`'s; the opportunity attack Command is too.
+- **No Shove, Grapple, Help, Hide, Ready, Search, Utilize or Magic**:
+  Shove and Grapple are debt #57; the others are in no row.
+- **No unarmed strike.** A creature that has dropped its weapon cannot Attack
+  until it picks it up.
+
+Sources: `ROADMAP.md` `w2b`, § Sequencing principles 10; § The `w2b` spec
+correction; § w1a, § w1c, § w1h, § w1j, § w2i; DESIGN.md § The APL; XPHB
+"Actions", "Combat", "Dropping to 0 Hit Points", Rules Glossary "Unconscious".
+
+## The `w2c` spec correction — the row split in two, and the files it needs
+
+`w2c`'s Produces cell named six files under `engine/` and `actions/`, and its
+done-when gave it seven debt rows that live at least partly in files the cell
+did not name (#22, #26, #28, #41, #47, #50, #55). Four findings, each checked
+against the register rather than the row:
+
+- **Files the done-when needs and the cell omitted.** #26 is in
+  `engine/attack.py`; #41 in `creatures/economy.py`; #47 in
+  `creatures/creature.py`, with the six Speed-0 conditions and `Dodging` as its
+  readers; #29 and #30 in `creatures/effects.py`, which #55's sweep of held stores
+  also reads; #50's writers in
+  `creatures/resources.py`, `engine/saves.py` and `engine/damage.py`; #28, #55
+  and the re-run in `tools/spike.py`. Each corrected row names them. Most are on
+  the hot path, so each half is priced (`ROADMAP.md` § Sequencing principles,
+  10).
+- **Two debts it could not retire.** "Debts 18-22" included #22, already owned
+  by `w3f` via `w3e` (the registry is closed), and #21, which the register
+  itself says needs #39 first — and #39 is `w3f`'s. A row that names a debt its
+  task cannot reach is the `w1j` shape (§ The M0 / W1 milestone review). #21
+  moves to `w3f` beside #39; #22 stays where it was.
+- **Two debts it owned and did not name.** The register gives #29 (nothing
+  advances a store's clock) and #30 (a queued effect naming a third creature)
+  to `w2c`, and the done-when carried neither. Both are the loop's: #29 is the
+  sweeps it calls, #30 the roster it holds.
+- **The size.** Twelve named debt rows plus the two above, about fifteen files, two paired benchmark
+  runs, all solo. `w1j`, with fewer, went to the round cap. The row splits along
+  the seam it already had: **`w2c`** is the encounter, the roster and
+  initiative, the turn and round loop and every turn-boundary obligation (#29,
+  #30, #35, #41, #47, #50, #55); **`w2c2`** is the opportunity attack and the
+  walk (#18, #19, #20, #26, #28) and the re-run with the offers firing. The
+  boundary debts come first because #18 drains against the roster #30 builds
+  and #19 stops on the Speed #47 makes answerable. `w2e` and `w2g` now depend
+  on `w2c2`, and the plan review that owns #57 sits after it.
+
+Nothing in the corrected rows is new scope: every sentence is from the old
+done-when or the register row it cites.
+
+Sources: `ROADMAP.md` `w2c`, `w2c2`, § The W0 debt register #18–#22, #26,
+#28–#30, #35, #39, #41, #47, #50, #55, #57; `docs/questions.md` #16.

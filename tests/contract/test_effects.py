@@ -17,13 +17,18 @@ from dndsim.core.geometry import Cell
 from dndsim.core.timeline import Duration, Expiry, InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import UNSEATED, Creature
 from dndsim.creatures.effects import Effect, EffectStore, Stacking
-from dndsim.creatures.stats import StatBlock
-from dndsim.hooks.contexts import Combatant, EffectContext, TurnContext
+from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
+from dndsim.hooks.contexts import (
+    Combatant,
+    ConditionContext,
+    EffectContext,
+    TurnContext,
+)
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.definitions import ON_TURN_START
 from dndsim.hooks.registry import Phase
 from dndsim.hooks.source import HookSource
-from dndsim.rules.enums import Ability
+from dndsim.rules.enums import Ability, Condition
 
 SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 10))
 
@@ -43,13 +48,17 @@ depending on which is acting."""
 
 
 def creature(
-    name: str = "barbarian", *, initiative: InitiativeKey = BARBARIAN
+    name: str = "barbarian",
+    *,
+    initiative: InitiativeKey = BARBARIAN,
+    weapon: Weapon | None = None,
 ) -> Creature:
     return Creature(
         name=name,
         stats=StatBlock(abilities=SCORES, max_hp=20, level=1),
         position=Cell(0, 0),
         initiative=initiative,
+        weapon=weapon,
     )
 
 
@@ -161,6 +170,30 @@ def test_refresh_recomputes_against_the_clock_rather_than_adding_a_round() -> No
 
     assert rage.expiry == once
     assert once == Expiry(TimeKey(3, BARBARIAN, TurnPhase.END), through_phase=True)
+
+
+def test_a_refresh_resolves_again_only_when_the_clock_or_the_duration_moved() -> None:
+    """Inside one turn a refresh keeps the deadline it holds; a new duration on
+    the same clock, or a sweep, resolves it again."""
+    barbarian = creature()
+    barbarian.effects.expire_after(at(1, BARBARIAN, TurnPhase.END))
+    rage = barbarian.effects.apply(
+        Rage(barbarian, duration=Duration.until_end_of_next_turn_of(BARBARIAN))
+    )
+    assert rage is not None
+    held = rage.expiry
+    rage.refresh()
+    assert rage.expiry is held
+
+    rage.duration = Duration.until_end_of_current_turn()
+    rage.refresh()
+    assert rage.expiry == Expiry(TimeKey(1, BARBARIAN, TurnPhase.END), True)
+
+    rage.duration = Duration.until_end_of_next_turn_of(BARBARIAN)
+    rage.refresh()
+    barbarian.effects.expire_before(at(2, BARBARIAN, TurnPhase.START))
+    rage.refresh()
+    assert rage.expiry == Expiry(TimeKey(3, BARBARIAN, TurnPhase.END), True)
 
 
 def test_vex_ends_on_its_charge_while_its_deadline_still_stands() -> None:
@@ -694,3 +727,328 @@ def test_an_incumbent_applied_during_the_announce_absorbs_the_application() -> N
     assert landed is not None
     assert len(barbarian.effects) == 1
     assert list(barbarian.effects) == [landed]
+
+
+# --- A condition's gain and loss --------------------------------------------
+
+
+class Held(Effect):
+    """An effect that is the Grappled condition, without `conditions/`: the
+    store reads only `CONDITION`."""
+
+    __slots__ = ()
+
+    ID = "test.held"
+    CONDITION = Condition.GRAPPLED
+
+
+class AlsoHeld(Effect):
+    """A second, separately held effect carrying the same condition."""
+
+    __slots__ = ()
+
+    ID = "test.also_held"
+    CONDITION = Condition.GRAPPLED
+
+
+class Marker(Effect):
+    """A plain effect a condition handler queues."""
+
+    __slots__ = ()
+
+    ID = "test.marker"
+
+
+class ConditionWatcher(HookSource):
+    """Records the effect and condition hooks in the order they fire, and
+    whether the effect is held and attached when the condition hook runs."""
+
+    __slots__ = ("_creature", "seen", "states")
+
+    ID = "test.condition_watcher"
+
+    def __init__(self, owner: Creature) -> None:
+        super().__init__(owner)
+        self._creature = owner
+        self.seen: list[str] = []
+        self.states: list[tuple[str, int, int]] = []
+
+    @hook("on_effect_applied")
+    def applied(self, ctx: EffectContext) -> R:
+        self.seen.append(f"applied:{ctx.effect.name}")
+        return R.APPLIED
+
+    @hook("on_effect_expired")
+    def expired(self, ctx: EffectContext) -> R:
+        self.seen.append(f"expired:{ctx.effect.name}")
+        return R.APPLIED
+
+    @hook("on_condition_gained")
+    def gained(self, ctx: ConditionContext) -> R:
+        self.seen.append(f"gained:{ctx.condition.value}")
+        self._note("gained")
+        return R.APPLIED
+
+    @hook("on_condition_lost")
+    def lost(self, ctx: ConditionContext) -> R:
+        self.seen.append(f"lost:{ctx.condition.value}")
+        self._note("lost")
+        return R.APPLIED
+
+    def _note(self, event: str) -> None:
+        """How many effects the store holds and how many sources are attached
+        to the creature beyond this watcher, at the moment of the hook."""
+        creature = self._creature
+        self.states.append(
+            (event, len(creature.effects), len(creature.dispatcher.sources()) - 1)
+        )
+
+
+def watched(name: str = "barbarian") -> tuple[Creature, ConditionWatcher]:
+    subject = creature(name)
+    watcher = ConditionWatcher(subject)
+    subject.attach(watcher)
+    return subject, watcher
+
+
+def gains_and_losses(watcher: ConditionWatcher) -> list[str]:
+    return [seen for seen in watcher.seen if seen.startswith(("gained", "lost"))]
+
+
+def test_a_condition_is_announced_gained_once_it_is_held() -> None:
+    """`on_effect_applied` first; `on_condition_gained` after the attach, with
+    the one effect held and its source attached."""
+    subject, watcher = watched()
+    subject.effects.apply(Held(subject))
+    assert watcher.seen == ["applied:test.held", "gained:grappled"]
+    assert watcher.states == [("gained", 1, 1)]
+
+
+def test_a_condition_is_announced_lost_once_it_is_detached() -> None:
+    """`on_effect_expired` first; `on_condition_lost` after the detach, with
+    nothing held and nothing attached but the watcher."""
+    subject, watcher = watched()
+    held = subject.effects.apply(Held(subject))
+    assert held is not None
+    subject.effects.remove(held)
+    assert watcher.seen == [
+        "applied:test.held",
+        "gained:grappled",
+        "expired:test.held",
+        "lost:grappled",
+    ]
+    assert watcher.states == [("gained", 1, 1), ("lost", 0, 0)]
+
+
+def test_every_way_a_condition_ends_announces_the_loss() -> None:
+    """A last charge consumed, and a deadline swept past."""
+    subject, watcher = watched()
+    subject.effects.expire_after(at(1, BARBARIAN, TurnPhase.END))
+    charged = subject.effects.apply(Held(subject, charges=1))
+    assert charged is not None
+    charged.consume()
+    subject.effects.apply(
+        Held(subject, duration=Duration.until_end_of_next_turn_of(BARBARIAN))
+    )
+    subject.effects.expire_after(at(2, BARBARIAN, TurnPhase.END))
+    assert gains_and_losses(watcher) == [
+        "gained:grappled",
+        "lost:grappled",
+        "gained:grappled",
+        "lost:grappled",
+    ]
+
+
+def test_a_plain_effect_is_announced_as_neither() -> None:
+    subject, watcher = watched()
+    rage = subject.effects.apply(Rage(subject))
+    assert rage is not None
+    subject.effects.remove(rage)
+    assert Effect.CONDITION is None
+    assert gains_and_losses(watcher) == []
+
+
+def test_refreshing_a_held_condition_is_not_a_second_gain() -> None:
+    subject, watcher = watched()
+    first = subject.effects.apply(Held(subject))
+    again = subject.effects.apply(Held(subject))
+    assert again is first
+    assert gains_and_losses(watcher) == ["gained:grappled"]
+
+
+def test_a_condition_already_held_by_another_effect_is_not_gained_again() -> None:
+    """Two effects carrying Grappled: the second lands silently, losing the
+    first loses nothing, and losing the last loses the condition."""
+    subject, watcher = watched()
+    first = subject.effects.apply(Held(subject))
+    second = subject.effects.apply(AlsoHeld(subject))
+    assert first is not None and second is not None
+    assert len(subject.effects) == 2
+    assert gains_and_losses(watcher) == ["gained:grappled"]
+
+    subject.effects.remove(first)
+    assert gains_and_losses(watcher) == ["gained:grappled"]
+
+    subject.effects.remove(second)
+    assert gains_and_losses(watcher) == ["gained:grappled", "lost:grappled"]
+
+
+def test_a_condition_held_twice_by_a_stacking_effect_is_gained_once() -> None:
+    subject, watcher = watched()
+    first = subject.effects.apply(Dose(subject))
+    second = subject.effects.apply(Dose(subject))
+    assert first is not None and second is not None and first is not second
+    assert gains_and_losses(watcher) == ["gained:poisoned"]
+    subject.effects.remove(second)
+    assert gains_and_losses(watcher) == ["gained:poisoned"]
+    subject.effects.remove(first)
+    assert gains_and_losses(watcher) == ["gained:poisoned", "lost:poisoned"]
+
+
+def test_a_vetoed_application_gains_nothing() -> None:
+    subject, watcher = watched()
+    subject.attach(Immune(subject))
+    assert subject.effects.apply(Held(subject)) is None
+    assert gains_and_losses(watcher) == []
+
+
+@pytest.mark.parametrize("which", ["gained", "lost"])
+def test_a_veto_of_a_condition_announcement_is_refused(which: str) -> None:
+    """Neither hook is vetoable: the condition is already held, or already
+    gone."""
+    subject = creature()
+    if which == "gained":
+        subject.attach(ConditionVetoer(subject))
+        with pytest.raises(FeatureContractError):
+            subject.effects.apply(Held(subject))
+        return
+    held = subject.effects.apply(Held(subject))
+    assert held is not None
+    subject.attach(ConditionVetoer(subject))
+    with pytest.raises(FeatureContractError):
+        subject.effects.remove(held)
+
+
+def test_an_effect_queued_by_a_condition_handler_lands_on_its_holder() -> None:
+    subject = creature()
+    subject.attach(MarksOnGain(subject))
+    subject.effects.apply(Held(subject))
+    assert [type(effect) for effect in subject.effects] == [Held, Marker]
+
+
+def test_a_queued_drop_is_carried_out_after_the_dispatch() -> None:
+    """The handler queues the drop and still sees the greatsword in hand; the
+    store drops it once the dispatch is over."""
+    subject = creature(weapon=GREATSWORD)
+    dropper = DropsOn(subject, Condition.GRAPPLED)
+    subject.attach(dropper)
+
+    subject.effects.apply(Held(subject))
+
+    assert dropper.saw == [(False, True, True)]
+    assert len(dropper.reasons) == 1
+    assert dropper.reasons[0].endswith("let go")
+    assert (subject.weapon, subject.dropped_weapon, subject.dropped_at) == (
+        None,
+        GREATSWORD,
+        Cell(0, 0),
+    )
+
+
+def test_a_drop_queued_on_a_loss_is_carried_out_too() -> None:
+    subject = creature(weapon=GREATSWORD)
+    held = subject.effects.apply(Held(subject))
+    assert held is not None
+    subject.attach(DropsOn(subject, Condition.GRAPPLED, on_loss=True))
+
+    subject.effects.remove(held)
+
+    assert (subject.weapon, subject.dropped_weapon) == (None, GREATSWORD)
+
+
+def test_a_queued_drop_with_nothing_held_drops_nothing() -> None:
+    subject = creature()
+    subject.attach(DropsOn(subject, Condition.GRAPPLED))
+    subject.effects.apply(Held(subject))
+    assert (subject.weapon, subject.dropped_weapon, subject.dropped_at) == (
+        None,
+        None,
+        None,
+    )
+
+
+class Dose(Effect):
+    """A stacking effect carrying the Poisoned condition."""
+
+    __slots__ = ()
+
+    ID = "test.dose"
+    STACKING = Stacking.STACK
+    CONDITION = Condition.POISONED
+
+
+class ConditionVetoer(HookSource):
+    """Vetoes both condition announcements."""
+
+    __slots__ = ()
+
+    ID = "test.condition_vetoer"
+
+    @hook("on_condition_gained", phase=Phase.EARLY)
+    def no_gain(self, ctx: ConditionContext) -> R:
+        ctx.veto("no")
+        return R.APPLIED
+
+    @hook("on_condition_lost", phase=Phase.EARLY)
+    def no_loss(self, ctx: ConditionContext) -> R:
+        ctx.veto("no")
+        return R.APPLIED
+
+
+class MarksOnGain(HookSource):
+    """Queues a `Marker` onto the creature that gained a condition."""
+
+    __slots__ = ()
+
+    ID = "test.marks_on_gain"
+
+    @hook("on_condition_gained")
+    def mark(self, ctx: ConditionContext) -> R:
+        ctx.apply_effect(ctx.creature, Marker(ctx.creature))
+        return R.APPLIED
+
+
+class DropsOn(HookSource):
+    """Queues the drop when `condition` is gained, or lost with `on_loss`, and
+    records what the context and the creature said around the call."""
+
+    __slots__ = ("_condition", "_creature", "_on_loss", "reasons", "saw")
+
+    ID = "test.drops_on"
+
+    def __init__(
+        self, owner: Creature, condition: Condition, *, on_loss: bool = False
+    ) -> None:
+        super().__init__(owner)
+        self._creature = owner
+        self._condition = condition
+        self._on_loss = on_loss
+        self.saw: list[tuple[bool, bool, bool]] = []
+        self.reasons: tuple[str, ...] = ()
+
+    @hook("on_condition_gained")
+    def on_gain(self, ctx: ConditionContext) -> R:
+        return R.SKIPPED if self._on_loss else self._drop(ctx)
+
+    @hook("on_condition_lost")
+    def on_lose(self, ctx: ConditionContext) -> R:
+        return self._drop(ctx) if self._on_loss else R.SKIPPED
+
+    def _drop(self, ctx: ConditionContext) -> R:
+        if ctx.condition is not self._condition:
+            return R.SKIPPED
+        before = ctx.drops_held
+        ctx.drop_held("let go")
+        self.saw.append((before, ctx.drops_held, self._creature.weapon is not None))
+        self.reasons = ctx.dropped_by
+        return R.APPLIED
