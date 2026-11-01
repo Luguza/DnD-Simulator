@@ -4647,3 +4647,42 @@ this one, each in a sibling worktree on one container.
 Sources: `ROADMAP.md` `w2b`, § Sequencing principles 10; § The `w2b` spec
 correction; § w1a, § w1c, § w1h, § w1j, § w2i; DESIGN.md § The APL; XPHB
 "Actions", "Combat", "Dropping to 0 Hit Points", Rules Glossary "Unconscious".
+
+## The `w2c` spec correction — the row split in two, and the files it needs
+
+`w2c`'s Produces cell named six files under `engine/` and `actions/`, and its
+done-when gave it nine debt rows whose files are elsewhere. Four findings, each
+checked against the register rather than the row:
+
+- **Files the done-when needs and the cell omitted.** #26 is in
+  `engine/attack.py`; #41 in `creatures/economy.py`; #47 in
+  `creatures/creature.py`, with the six Speed-0 conditions and `Dodging` as its
+  readers; #29, #30 and #55 in `creatures/effects.py`; #50's writers in
+  `creatures/resources.py`, `engine/saves.py` and `engine/damage.py`; #28, #55
+  and the re-run in `tools/spike.py`. Each corrected row names them. Most are on
+  the hot path, so each half is priced (`ROADMAP.md` § Sequencing principles,
+  10).
+- **Two debts it could not retire.** "Debts 18-22" included #22, already owned
+  by `w3f` via `w3e` (the registry is closed), and #21, which the register
+  itself says needs #39 first — and #39 is `w3f`'s. A row that names a debt its
+  task cannot reach is the `w1j` shape (§ The M0 / W1 milestone review). #21
+  moves to `w3f` beside #39; #22 stays where it was.
+- **Two debts it owned and did not name.** The register gives #29 (nothing
+  advances a store's clock) and #30 (a queued effect naming a third creature)
+  to `w2c`, and the done-when carried neither. Both are the loop's: #29 is the
+  sweeps it calls, #30 the roster it holds.
+- **The size.** Thirteen debt rows, about fifteen files, two paired benchmark
+  runs, all solo. `w1j`, with fewer, went to the round cap. The row splits along
+  the seam it already had: **`w2c`** is the encounter, the roster and
+  initiative, the turn and round loop and every turn-boundary obligation (#29,
+  #30, #35, #41, #47, #50, #55); **`w2c2`** is the opportunity attack and the
+  walk (#18, #19, #20, #26, #28) and the re-run with the offers firing. The
+  boundary debts come first because #18 drains against the roster #30 builds
+  and #19 stops on the Speed #47 makes answerable. `w2e` and `w2g` now depend
+  on `w2c2`, and the plan review that owns #57 sits after it.
+
+Nothing in the corrected rows is new scope: every sentence is from the old
+done-when or the register row it cites.
+
+Sources: `ROADMAP.md` `w2c`, `w2c2`, § The W0 debt register #18–#22, #26,
+#28–#30, #35, #39, #41, #47, #50, #55, #57; `docs/questions.md` #16.

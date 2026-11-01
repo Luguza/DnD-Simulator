@@ -41,15 +41,16 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | — | ⏸ **M0 / W1 milestone review** — before any W2 task | done | |
 | 13 | w2i — the M0 levers 🔒 | done | |
 | 14 | w2b — `Action` Commands and the stabilise | done | |
-| 15 | w2c — turn loop, initiative, opportunity attacks 🔒 | next | |
+| 15 | w2c — turn loop, initiative, the turn-boundary debts 🔒 | next | |
+| 16 | w2c2 — opportunity attacks and the walk 🔒 | queued | |
 | — | ⏸ plan review | queued | |
-| 16 | w2e — the APL compiler 🔒 | queued | |
-| 17 | w2a — content ACL | queued | |
-| 18 | w2d — `TargetDummy` | queued | |
+| 17 | w2e — the APL compiler 🔒 | queued | |
+| 18 | w2a — content ACL | queued | |
+| 19 | w2d — `TargetDummy` | queued | |
 | — | ⏸ plan review | queued | |
-| 19 | w2f — build schema and `Character` | queued | |
-| 20 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |
-| 21 | w2h — the CLI | queued | |
+| 20 | w2f — build schema and `Character` | queued | |
+| 21 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |
+| 22 | w2h — the CLI | queued | |
 | — | ⏸ **M1 / W2 milestone review** | queued | |
 
 Order within W1 is the critical path first (`w1e → w1f`, the two 🔒 tasks
