@@ -4651,13 +4651,15 @@ correction; § w1a, § w1c, § w1h, § w1j, § w2i; DESIGN.md § The APL; XPHB
 ## The `w2c` spec correction — the row split in two, and the files it needs
 
 `w2c`'s Produces cell named six files under `engine/` and `actions/`, and its
-done-when gave it nine debt rows whose files are elsewhere. Four findings, each
-checked against the register rather than the row:
+done-when gave it seven debt rows that live at least partly in files the cell
+did not name (#22, #26, #28, #41, #47, #50, #55). Four findings, each checked
+against the register rather than the row:
 
 - **Files the done-when needs and the cell omitted.** #26 is in
   `engine/attack.py`; #41 in `creatures/economy.py`; #47 in
   `creatures/creature.py`, with the six Speed-0 conditions and `Dodging` as its
-  readers; #29, #30 and #55 in `creatures/effects.py`; #50's writers in
+  readers; #29 and #30 in `creatures/effects.py`, which #55's sweep of held stores
+  also reads; #50's writers in
   `creatures/resources.py`, `engine/saves.py` and `engine/damage.py`; #28, #55
   and the re-run in `tools/spike.py`. Each corrected row names them. Most are on
   the hot path, so each half is priced (`ROADMAP.md` § Sequencing principles,
