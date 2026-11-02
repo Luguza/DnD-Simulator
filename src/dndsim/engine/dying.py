@@ -42,6 +42,7 @@ __all__ = [
     "damaged_at_zero",
     "death_save",
     "dropped_to_zero",
+    "dying",
     "stabilize",
 ]
 
@@ -134,7 +135,7 @@ def death_save(creature: Creature, *, rng: Rng) -> DeathSaveResult:
     Raises `ValueError` for a creature that is not dying: one with hit points,
     one that is Stable or dead, or one that does not make death saving throws.
     """
-    if not _dying(creature):
+    if not dying(creature):
         raise ValueError(f"{creature!r} is not dying and makes no death saving throw")
     rolling = DeathSaveContext(creature=creature)
     creature.dispatch(ON_DEATH_SAVE, rolling)
@@ -177,7 +178,7 @@ def stabilize(helper: Creature, creature: Creature, *, rng: Rng) -> bool:
 
     Raises `ValueError` when `creature` is not dying, as `death_save()` does.
     """
-    if not _dying(creature):
+    if not dying(creature):
         raise ValueError(f"{creature!r} is not dying and cannot be stabilised")
     check = AbilityCheckContext(
         creature=helper, ability=Ability.WISDOM, skill=MEDICINE, dc=STABILIZE_DC
@@ -206,7 +207,7 @@ def stabilize(helper: Creature, creature: Creature, *, rng: Rng) -> bool:
     return True
 
 
-def _dying(creature: Creature) -> bool:
+def dying(creature: Creature) -> bool:
     """At 0 hit points, neither Stable nor dead, and making death saves."""
     return (
         creature.hp <= 0

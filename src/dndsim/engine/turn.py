@@ -2,7 +2,7 @@
 
 A turn is its two boundaries and the offers between them. Each boundary sweeps
 the encounter's clock before its hooks and after them; the start hands back
-the creature's economy and its once-per budgets, rolls a dying creature's death
+the creature's once-per budgets and its economy, rolls a dying creature's death
 save, and both roll the repeat saves of the effects whose `RepeatSave` names
 them. Between the two the loop offers every Command the creature can still pay
 for, asks the policy, carries out what it chose and asks again, until it
@@ -24,7 +24,7 @@ from dndsim.core.rng import Rng
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import Creature
 from dndsim.engine.d20 import modifier_total, roll_d20, settle
-from dndsim.engine.dying import death_save
+from dndsim.engine.dying import death_save, dying
 from dndsim.engine.query import allies_of, enemies_of
 from dndsim.engine.saves import saving_throw
 from dndsim.engine.world import World
@@ -144,16 +144,13 @@ def take_turn(
     clock.expire_before(start)
     if log is not None:
         log.write((TURN_START, round_number, creature.name))
-    # Before the economy, which reads Speed: a Speed-0 condition saved off
-    # here leaves the turn its full movement.
-    _repeat_saves(world, creature, SaveRepeat.TURN_START, rng)
     for other in world:
         other.dispatcher.resets.turn_started(own=other is creature)
-    creature.economy.turn_started(creature.speed_ft)
-    _announce(ON_TURN_START, creature, start)
-    clock.expire_after(start)
-
-    if _dying(creature):
+    # Both saves before the economy, which reads Speed: a Speed-0 condition
+    # saved off, or a death save that wakes the creature, leaves the turn its
+    # full movement.
+    _repeat_saves(world, creature, SaveRepeat.TURN_START, rng)
+    if dying(creature):
         result = death_save(creature, rng=rng)
         if log is not None:
             log.write(
@@ -165,6 +162,9 @@ def take_turn(
                     result.failures,
                 )
             )
+    creature.economy.turn_started(creature.speed_ft)
+    _announce(ON_TURN_START, creature, start)
+    clock.expire_after(start)
 
     taken = 0
     while True:
@@ -195,16 +195,6 @@ def take_turn(
         log.write((TURN_END, round_number, creature.name))
     clock.expire_after(end)
     return taken
-
-
-def _dying(creature: Creature) -> bool:
-    """`engine/dying.py`'s `_dying()`, which `death_save()` raises on."""
-    return (
-        creature.hp <= 0
-        and not creature.dead
-        and not creature.stable
-        and creature.player_character
-    )
 
 
 def _announce(spec: HookSpec, creature: Creature, time: TimeKey) -> None:

@@ -4736,15 +4736,18 @@ know is absent.
 
 ### The turn's order of business
 
-At the start: the sweep before; the repeat saves named `TURN_START`; every
-creature's once-per ledger told a turn began, `own` for the actor only —
-`Reset.TURN` is any turn boundary, so the loop is what tells the other
-ledgers; the actor's economy handed back at its current Speed, which is where
-the reaction comes back; `on_turn_start`; the sweep after; then a dying
-creature's death save. The repeat saves come before the economy because it
-reads Speed: a Paralyzed creature that saves at the start of its turn moves
-its full Speed on that turn, which the independent test pass found the first
-order denying it. At the end: the sweep before, the repeat saves named `TURN_END`,
+At the start: the sweep before; every creature's once-per ledger told a turn
+began, `own` for the actor only — `Reset.TURN` is any turn boundary, so the
+loop is what tells the other ledgers, and it tells them before anything rolls
+so a handler on a start-of-turn save sees the budgets this boundary hands
+back; the repeat saves named `TURN_START`; a dying creature's death save; the
+actor's economy handed back at its current Speed, which is where the reaction
+comes back; `on_turn_start`; the sweep after. Both saves come before the
+economy because it reads Speed: a Paralyzed creature that saves, or a dying
+one whose natural 20 wakes it, moves its full Speed on that turn. The
+independent test pass found the first case and the review the second.
+`engine/dying.py`'s predicate is public as `dying()`, read by the loop and by
+`Stabilize`, so the rule for who rolls is written once. At the end: the sweep before, the repeat saves named `TURN_END`,
 `on_turn_end`, the sweep after. The repeat save sits beside the sweep rather
 than beside the hooks — `docs/questions.md` #17 — and is read off
 `SaveRepeat`, never decided here, because `w3f`'s `Perturbation.repeat`
