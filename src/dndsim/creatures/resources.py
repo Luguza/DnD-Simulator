@@ -158,7 +158,7 @@ class Resources:
     """A creature's pools, and the only thing that announces a spend.
 
     Each pool's maximum is read off `stats` once, when the pool is added.
-    `log` is `None` until an encounter seats the creature.
+    `log`, when set, is written a `RESOURCE_SPENT` record per spend.
     """
 
     __slots__ = (

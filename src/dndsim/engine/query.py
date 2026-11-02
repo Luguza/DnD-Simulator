@@ -1,4 +1,4 @@
-"""What the turn loop asks of the roster: who is still fighting, and on whose
+"""Questions of a `World`'s roster: who is still fighting, and on whose
 side."""
 
 from dndsim.creatures.creature import Creature

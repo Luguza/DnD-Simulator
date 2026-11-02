@@ -119,8 +119,8 @@ class MovementWatch:
                 f"{creature.name} queued an effect from an opportunity-attack "
                 "offer and nothing here applies it. Draining "
                 "`ctx.pending_effects` belongs to the engine that owns the "
-                "event (hooks/dispatch.py), and for this one that is w2c's turn "
-                "loop — see the module docstring."
+                "event (hooks/dispatch.py), and for this one that drain is "
+                "debt #18, owned by w2c2 — see the module docstring."
             )
         context.close()
         # Asked once per offer rather than per step: the answer only changes

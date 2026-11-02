@@ -51,8 +51,8 @@ __all__ = [
 DAMAGE: Final = "damage"
 """`(DAMAGE, attacker, defender, taken)`, at every level: what an instance of
 damage came to after every defence, `attacker` `None` when nothing dealt it.
-Not written for an attack's damage, which its own `ATTACK` record carries
-(`docs/decisions.md` § w2c)."""
+Written only when `resolve_damage()` is handed a log (`docs/decisions.md`
+§ w2c)."""
 
 
 class DamageContexts(Protocol):

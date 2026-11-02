@@ -5,8 +5,7 @@ what a second application does is its declared `Stacking`. The store attaches
 and detaches through the creature and keeps the clock it was last told by a
 sweep; `apply_pending()` drains a context's queued effects onto the event's
 participants, or onto any creature the store's roster holds. A condition's
-gain and loss are announced as well, and the stores of one encounter share a
-`Clock` (`docs/decisions.md` § w1c, § w2b, § w2c).
+gain and loss are announced as well, and stores can share one `Clock` (`docs/decisions.md` § w1c, § w2b, § w2c).
 
 DESIGN.md § Durations.
 """
@@ -147,7 +146,7 @@ class Effect(HookSource):
     """Whether holding it denies every Action, Bonus Action and Reaction."""
 
     SPEED_ZERO: ClassVar[bool] = False
-    """Whether holding it sets Speed to 0, which nothing raises."""
+    """Whether holding it sets Speed to 0, ahead of every adjustment."""
 
     def __init__(
         self,
@@ -252,9 +251,8 @@ class Effect(HookSource):
 class Clock:
     """The time a set of stores reads, and which of them hold anything.
 
-    One per encounter; a creature outside one has its own. The turn loop moves
-    it with `expire_before()` and `expire_after()`, which sweep only the stores
-    holding an effect (debt #55; `docs/decisions.md` § w2c).
+    `expire_before()` and `expire_after()` set the time and sweep only the
+    stores holding an effect (`docs/decisions.md` § w2c).
     """
 
     __slots__ = ("_holding", "now")
@@ -285,7 +283,8 @@ class EffectStore:
 
     One per creature. Attaching and detaching go through the holder, so its
     ownership check applies to an effect too (`docs/decisions.md` § w1c).
-    `log` and `roster` are `None` until an encounter seats the creature.
+    `log` and `roster` are `None` unless set: what it writes to, and where it
+    finds a creature an event does not carry.
     """
 
     __slots__ = ("_clock", "_held", "_holder", "log", "roster")
