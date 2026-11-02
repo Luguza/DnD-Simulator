@@ -4727,7 +4727,12 @@ only those. A store nobody visits still reads the right time, which is what a
 per-store clock could not offer: skipping an empty store left its time stale
 for the first effect applied to it. `EffectStore.expire_before()` and
 `expire_after()` keep their meaning, setting the clock they read and sweeping
-themselves, for a store outside an encounter.
+themselves, for a store outside an encounter. Such a store starts at
+`TimeKey(1, UNSEATED, START)`, and `UNSEATED` is a seat (`initiative=0`), not a
+position ahead of the order: a duration anchored at or above it reads its turn
+as begun and ends in round 2, one anchored below it in round 1. That is the
+trap `Creature`'s constructor comments, and the reason every store in a fight
+reads the encounter's clock rather than its own.
 
 Each boundary is swept twice, before its hooks and after them, so all four of
 `Expiry`'s cases are honoured: an effect ending at a start through that phase,

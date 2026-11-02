@@ -400,8 +400,9 @@ def test_a_duration_resolves_against_the_clock_the_store_was_last_told() -> None
 
 
 def test_a_store_starts_at_one_arbitrary_point_in_an_undecided_order() -> None:
-    """A store never swept reads round 1 at `UNSEATED` (debt #29): an anchor at
-    or above `initiative=0` ends in round 2, one below it in round 1.
+    """A store never swept reads round 1 at `UNSEATED` (`docs/decisions.md`
+    § w2c): an anchor at or above `initiative=0` ends in round 2, one below it in
+    round 1.
     """
     assert creature().effects.now == TimeKey(1, UNSEATED, TurnPhase.START)
 
@@ -1054,7 +1055,7 @@ class DropsOn(HookSource):
         return R.APPLIED
 
 
-# --- One clock for many stores (debts #29, #55) --------------------------------
+# --- One clock for many stores (`docs/decisions.md` § w2c) ----------------------------
 
 
 def test_stores_joined_to_one_clock_read_the_time_it_was_last_moved_to() -> None:

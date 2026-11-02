@@ -9,8 +9,8 @@ the tiebreak; face 1 draws a tiebreak of 0.0 and face 2**31 + 1 draws 0.5.
 Creatures roll in the order they were seated.
 
 Sources: XPHB (2024) "Combat" -> Initiative, Combat Step by Step; ROADMAP
-`w2c`; DESIGN.md § Initiative is a key, not an index; debts #29, #30, #50,
-#55.
+`w2c`; DESIGN.md § Initiative is a key, not an index; `docs/decisions.md`
+§ w2c.
 """
 
 from collections.abc import Sequence
@@ -470,7 +470,7 @@ def test_the_last_enemy_leaving_ends_the_fight() -> None:
     assert turns(log) == [(1, "a")]
 
 
-# --- Durations driven by the loop (debt #29) ------------------------------------
+# --- Durations driven by the loop (`docs/decisions.md` § w2c) -------------------------
 
 
 class Mark(Effect):
@@ -542,7 +542,7 @@ def test_a_dodge_lasts_until_the_start_of_the_dodgers_next_turn() -> None:
     assert seen == [("a", False), ("b", True), ("a", False), ("b", False)]
 
 
-# --- The roster answers a third creature (debt #30) --------------------------------
+# --- The roster answers a third creature (`docs/decisions.md` § w2c) ------------------
 
 
 class QueuesOnto(HookSource):
@@ -596,7 +596,7 @@ def test_a_creature_that_has_left_is_off_the_roster() -> None:
     assert list(gone.effects) == []
 
 
-# --- The world: seating, the shared clock, the sweep (debts #29, #55) --------------
+# --- The world: seating, the shared clock, the sweep (`docs/decisions.md` § w2c) ------
 
 
 def test_a_creature_is_seated_once() -> None:
@@ -729,7 +729,7 @@ def test_holder_finds_a_seated_creature_by_identity_only() -> None:
     assert world.holder(creature("a")) is None
 
 
-# --- The log reaches every writer (debt #50) --------------------------------------
+# --- The log reaches every writer (`docs/decisions.md` § w2c) -------------------------
 
 POOL: Final = ResourceSpec(
     key="test.pool",

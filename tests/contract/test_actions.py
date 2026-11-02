@@ -924,7 +924,7 @@ class Probe(HookSource):
         return R.APPLIED
 
 
-# --- Speed 0 from a condition (debt #47) --------------------------------------
+# --- Speed 0 from a condition (`docs/decisions.md` § w2c) -----------------------------
 
 
 @pytest.mark.parametrize("condition", ["grappled", "restrained"])

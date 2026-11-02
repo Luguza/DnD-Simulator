@@ -4,8 +4,8 @@ A ledger of an Action, a Bonus Action, a Reaction and a number of feet, with no
 rules about what they buy or when a turn begins. Spending what is not there
 raises `EconomyError`; `can_spend()` and `can_move()` ask for free. The reaction
 comes back only in `turn_started()`. While `denied()` answers true no Action,
-Bonus Action or Reaction can be spent, whatever is in hand (debt #41 retired;
-`docs/decisions.md` § w2c).
+Bonus Action or Reaction can be spent, whatever is in hand
+(`docs/decisions.md` § w2c).
 
 XPHB (2024) "Combat" (Your Turn, Reactions, Movement); `docs/decisions.md`
 § w1a.

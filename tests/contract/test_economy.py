@@ -248,7 +248,7 @@ def test_movement_does_not_come_out_of_an_action() -> None:
     assert economy.can_spend(REACTION)
 
 
-# --- denied: Incapacitated (debt #41) -----------------------------------------
+# --- denied: Incapacitated (`docs/decisions.md` § w2c) --------------------------------
 
 
 @pytest.mark.parametrize("cost", [ACTION, BONUS, REACTION])

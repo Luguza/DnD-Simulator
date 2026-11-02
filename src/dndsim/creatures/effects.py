@@ -99,8 +99,8 @@ class Holder(Combatant, Protocol):
 
 
 class Roster(Protocol):
-    """Whoever can find the store of a creature an event does not carry: the
-    encounter's world (debt #30)."""
+    """Whoever can find the store of a creature an event does not carry
+    (`docs/decisions.md` § w2c)."""
 
     def holder(self, combatant: Combatant) -> Holder | None: ...
 

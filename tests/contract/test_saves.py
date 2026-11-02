@@ -493,7 +493,8 @@ def test_an_effect_queued_by_a_save_hook_lands_on_the_saver() -> None:
 
 
 def test_the_repeat_save_timing_is_an_enum_and_not_a_string_literal() -> None:
-    """`SaveRepeat` has exactly the two repeat-save timings (debt #35)."""
+    """`SaveRepeat` has exactly the two repeat-save timings (`docs/decisions.md`
+    § w2c)."""
     assert {timing.value for timing in SaveRepeat} == {"turn_end", "turn_start"}
     assert len(SaveRepeat) == 2
 

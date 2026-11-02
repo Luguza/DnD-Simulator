@@ -870,7 +870,7 @@ class ConditionWatcher(HookSource):
         return R.APPLIED
 
 
-# --- Speed and incapacitation (debts #41, #47) ----------------------------------
+# --- Speed and incapacitation (`docs/decisions.md` § w2c) -----------------------------
 
 
 @pytest.mark.parametrize(
@@ -953,7 +953,8 @@ def test_incapacitated_and_the_four_that_include_it_incapacitate(
 
 
 def test_the_speed_and_incapacitation_gaps_are_no_longer_declared() -> None:
-    """Debts #41 and #47 are retired: no condition names either as a gap."""
+    """No condition names the Speed or incapacitation gaps `docs/decisions.md`
+    § w2c closed."""
     for condition in CONDITIONS.values():
         for entry in condition.NEEDS_HOOK + condition.APPROXIMATED:
             assert "#41" not in entry and "#47" not in entry, (condition, entry)

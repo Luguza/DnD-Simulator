@@ -367,7 +367,7 @@ def _boundaries(number: int) -> tuple[tuple[TimeKey, TimeKey], ...]:
 
 
 def _expire_before(spike: Spike, now: TimeKey) -> None:
-    """Sweep the stores holding an effect before `now`'s hooks (debt #55;
+    """Sweep the stores holding an effect before `now`'s hooks (
     `docs/decisions.md` § w2c)."""
     spike.clock.expire_before(now)
 

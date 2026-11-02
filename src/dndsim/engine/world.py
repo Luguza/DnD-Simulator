@@ -2,8 +2,7 @@
 their stores share, and the log the fight is written to.
 
 Seating a creature is what hands its effect store and its resources the
-encounter's clock, log and roster (debts #29, #30, #50; `docs/decisions.md`
-§ w2c).
+encounter's clock, log and roster (`docs/decisions.md` § w2c).
 """
 
 from collections.abc import Iterator

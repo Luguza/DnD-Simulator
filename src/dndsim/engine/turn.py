@@ -58,9 +58,7 @@ DEATH_SAVE: Final = "death_save"
 """`(DEATH_SAVE, creature, natural, successes, failures)`, at every level."""
 
 MAX_COMMANDS_PER_TURN: Final = 32
-"""How many Commands one turn may carry out before the loop calls the policy
-broken. Every Command but a free one spends a slot, so only a free Command
-that stays legal can reach it."""
+"""How many Commands one turn may carry out before `take_turn()` raises."""
 
 _TIEBREAK_FACES: Final = 2**32
 

@@ -10,7 +10,7 @@ adds +2. An initiative roll is a d20 + 2 and then one tiebreak face of a
 
 Sources: XPHB (2024) "Combat" -> Initiative, Your Turn, Reactions; Rules
 Glossary "Incapacitated"; "Dropping to 0 Hit Points" -> Death Saving Throws;
-ROADMAP `w2c`; debts #35, #41, #47, #50.
+ROADMAP `w2c`; `docs/decisions.md` § w2c.
 """
 
 from collections.abc import Callable, Sequence
@@ -583,7 +583,7 @@ def test_a_turn_ends_when_the_policy_declines() -> None:
     assert fighter.economy.actions == 1
 
 
-# --- Repeat saves (debt #35) --------------------------------------------------
+# --- Repeat saves (`docs/decisions.md` § w2c) -----------------------------------------
 
 DC: Final = 13
 SAVED: Final = 11
