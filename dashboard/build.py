@@ -497,7 +497,8 @@ def render_questions(
         return (
             f'<div class="opts">{buttons}</div>'
             f'<form class="free" action="{other}" target="_blank">'
-            f'<textarea name="answer" rows="2" aria-label="Your own answer to #{q.number}" '
+            '<textarea name="answer" rows="2" '
+            f'aria-label="Your own answer to #{q.number}" '
             'placeholder="Or write your own answer…"></textarea>'
             '<button type="submit">Send</button></form>'
         )
