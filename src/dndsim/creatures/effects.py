@@ -5,7 +5,8 @@ what a second application does is its declared `Stacking`. The store attaches
 and detaches through the creature and keeps the clock it was last told by a
 sweep; `apply_pending()` drains a context's queued effects onto the event's
 participants, or onto any creature the store's roster holds. A condition's
-gain and loss are announced as well, and stores can share one `Clock` (`docs/decisions.md` § w1c, § w2b, § w2c).
+gain and loss are announced as well, and stores can share one `Clock`
+(`docs/decisions.md` § w1c, § w2b, § w2c).
 
 DESIGN.md § Durations.
 """
