@@ -133,6 +133,14 @@ here. A row is for a choice a careful reader of the same documents could make
 the other way. `w1d`'s three rows were the other kind, and the human closed them
 as trivial (`docs/decisions.md` § w1d).
 
+A row is written for a D&D expert who knows nothing of the code or of the
+queue's progress: the table situation in game terms, the readings on offer and
+what each changes in play, and the one taken. No file, task id, debt number or
+engine term is needed to answer it. A choice about the process, the tooling or
+the code's shape is never a row: the loop takes it and records it in
+`docs/decisions.md`. The human returned four rows of that kind unanswered
+(`docs/decisions.md` § The human's answers, 2026-11-02).
+
 A question is never a reason to skip a check, widen a task, or merge something a
 review has not passed. If no reading is safe to proceed on, the row is `held`.
 
@@ -144,6 +152,11 @@ A session that finds a real gap in the task spec does not guess. It opens a
 starts a fresh `/next-task` session, which re-reads the corrected row. The W0 debt
 register is what this project gets when specs are read critically; an
 implementer that can only ever implement is worse than one that can stop.
+
+A row that misstates what the rules text settles (a count, a name, a number)
+is not a gap. What the plan says is irrelevant if the features are correct: the
+implementing PR builds what the quoted rules say and corrects the row in the
+same diff (`docs/questions.md` #5, answered).
 
 ## Plan reviews
 

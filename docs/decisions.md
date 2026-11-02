@@ -4688,3 +4688,30 @@ done-when or the register row it cites.
 
 Sources: `ROADMAP.md` `w2c`, `w2c2`, § The W0 debt register #18–#22, #26,
 #28–#30, #35, #39, #41, #47, #50, #55, #57; `docs/questions.md` #16.
+
+## The human's answers, 2026-11-02
+
+The open rows of `docs/questions.md` were restated in plain D&D terms and the
+human answered them; the answers stand in that file's § Answered.
+
+- **Confirmed**: an open field (#12), the featureless M1 Fighter (#13), two
+  failures for a Critical Hit at 0 HP (#7), and the wait for Exhaustion 6's
+  route to death (#9).
+- **Conditions never stack** (#8). Re-applying a condition a creature already
+  has changes nothing it does. `Downed` is consistent with that: it adds nothing
+  while a spell's Unconscious holds, and it is a separate instance only so that
+  the creature stays Unconscious until both the spell and the 0 HP have ended
+  (§ w1j).
+- **The rules text outranks the plan** (#5). A row that miscounts what the
+  quoted rules settle is corrected in the implementing PR, now written into
+  `docs/workflow.md` § When the spec is wrong.
+- **The budget comes down** (#10). The human accepts the measured rate, put to
+  them as about 3 minutes a build comparison on one core, ~25 seconds on eight
+  (DESIGN.md § Performance's 4M resolutions at ~22k a second). The next `⏸` gate
+  revises it to a figure `w2i`'s re-measure justifies, no lower than that, in
+  the places `w0i` revised it; #11 is moot.
+- **Returned unanswered**: #4, #6, #14 and #16 are process choices, which the
+  human does not decide. Their choices stand, and `docs/workflow.md` § Questions
+  for the human now keeps such choices out of the file.
+
+#15 was still open and was put to the human with the rest.
