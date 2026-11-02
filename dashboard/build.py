@@ -89,6 +89,13 @@ class Question:
     otherwise: str
 
 
+@dataclass
+class Answer:
+    number: str
+    question: str
+    answer: str
+
+
 def git_show(ref: str, path: str) -> str:
     return subprocess.run(
         ["git", "show", f"{ref}:{path}"], check=True, capture_output=True, text=True
@@ -177,10 +184,21 @@ def parse_debt(roadmap: str) -> list[Debt]:
 
 
 def parse_questions(questions: str) -> list[Question]:
+    open_rows = questions.split("\n## Answered", 1)[0]
     return [
         Question(*row[:5])
-        for row in table_rows(questions)
+        for row in table_rows(open_rows)
         if row[0].isdigit() and len(row) >= 5
+    ]
+
+
+def parse_answers(questions: str) -> list[Answer]:
+    if "\n## Answered" not in questions:
+        return []
+    return [
+        Answer(row[0], row[2], row[3])
+        for row in table_rows(section(questions, "Answered"))
+        if row[0].isdigit() and len(row) >= 4
     ]
 
 
@@ -436,11 +454,27 @@ def render_questions(questions: list[Question]) -> str:
     )
 
 
+def render_answers(answers: list[Answer]) -> str:
+    if not answers:
+        return ""
+    items = "".join(
+        f'<details class="entry"><summary><span class="num">#{a.number}</span>'
+        f'<span class="t">{inline(a.question)}</span></summary>'
+        f"<dl><dt>Answer</dt><dd>{inline(a.answer)}</dd></dl></details>"
+        for a in sorted(answers, key=lambda a: int(a.number))
+    )
+    return (
+        f'<details class="answered"><summary>Answered · {len(answers)}</summary>'
+        f"{items}</details>"
+    )
+
+
 def render(
     milestone: str,
     waves: list[Wave],
     debts: list[Debt],
     questions: list[Question],
+    answers: list[Answer],
     prs: list[dict[str, Any]],
     pace: float,
     now: datetime,
@@ -526,6 +560,7 @@ def render(
         debt=debt_items,
         question_count=len(questions),
         questions=render_questions(questions),
+        answers=render_answers(answers),
         open_prs="".join(pr_item(p, "created_at") for p in open_prs) or empty,
         merged_prs="".join(pr_item(p, "merged_at") for p in merged) or empty,
     )
@@ -545,6 +580,7 @@ def main() -> None:
     milestone = found.group(1) if found else "main"
     ref = f"{args.remote}/{milestone}"
     roadmap = git_show(ref, "ROADMAP.md")
+    questions = git_show(ref, "docs/questions.md")
 
     waves = parse_waves(roadmap)
     arrange(waves, parse_queue(git_show(ref, "docs/progress.md")))
@@ -557,7 +593,8 @@ def main() -> None:
         milestone,
         waves,
         parse_debt(roadmap),
-        parse_questions(git_show(ref, "docs/questions.md")),
+        parse_questions(questions),
+        parse_answers(questions),
         prs,
         pace,
         now,

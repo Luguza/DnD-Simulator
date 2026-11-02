@@ -87,6 +87,9 @@ details.entry > summary { cursor:pointer; list-style:none; display:grid; grid-te
   gap:8px; padding:8px 0; align-items:start; font-size:13.5px; }
 details.entry > summary::-webkit-details-marker { display:none; }
 details.entry[open] > summary { font-weight:600; }
+details.answered { margin-top:12px; }
+details.answered > summary { cursor:pointer; color:var(--muted); font-size:.9em; padding:6px 0; }
+details.answered details.entry > summary { grid-template-columns:36px minmax(0,1fr); }
 .num { color:var(--muted); font-variant-numeric:tabular-nums; }
 .owner { font-size:12px; color:var(--muted); max-width:120px; text-align:right; overflow-wrap:anywhere; }
 dl { margin:0 0 12px 44px; font-size:13.5px; }
@@ -156,6 +159,7 @@ footer { margin-top:24px; color:var(--muted); font-size:12.5px; }
 <section class="card" id="decisions">
 <div class="head"><h2>Open decisions · $question_count</h2><a class="meta" href="$questions_url">questions.md</a></div>
 $questions
+$answers
 </section>
 <section class="card"><h2>Open pull requests</h2><ul class="prs">$open_prs</ul></section>
 <section class="card"><h2>Recently merged</h2><ul class="prs">$merged_prs</ul></section>

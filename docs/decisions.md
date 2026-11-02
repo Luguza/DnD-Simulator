@@ -4692,7 +4692,8 @@ Sources: `ROADMAP.md` `w2c`, `w2c2`, § The W0 debt register #18–#22, #26,
 ## The human's answers, 2026-11-02
 
 The open rows of `docs/questions.md` were restated in plain D&D terms and the
-human answered them; the answers stand in that file's § Answered.
+human answered them; the answers stand in that file's § Answered, which
+keeps the questions in their plain wording and the old wording to its history.
 
 - **Confirmed**: an open field (#12), the featureless M1 Fighter (#13), two
   failures for a Critical Hit at 0 HP (#7), and the wait for Exhaustion 6's
