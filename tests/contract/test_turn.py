@@ -37,7 +37,7 @@ from dndsim.creatures.creature import UNSEATED, Creature
 from dndsim.creatures.effects import Effect, RepeatSave
 from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
 from dndsim.engine.damage import resolve_damage
-from dndsim.engine.saves import SAVE
+from dndsim.engine.saves import SAVE, saving_throw
 from dndsim.engine.turn import (
     DEATH_SAVE,
     INITIATIVE,
@@ -52,6 +52,7 @@ from dndsim.hooks.contexts import (
     DamageBag,
     HitContext,
     InitiativeContext,
+    SavingThrowContext,
     TurnContext,
 )
 from dndsim.hooks.decorator import R, hook
@@ -742,3 +743,74 @@ def test_a_speed_zero_condition_saved_off_at_the_turns_start_leaves_full_speed()
     assert not fighter.incapacitated
     assert fighter.speed_ft == 30
     assert fighter.economy.movement_ft == 30
+
+
+# --- The order of the start's obligations (review findings) ----------------------
+
+
+def test_a_natural_20_death_save_leaves_the_turn_its_full_speed() -> None:
+    """A natural 20 on the death save: the pc regains 1 hit point and the
+    Downed condition, which set its Speed to 0, ends. The save is rolled before
+    the economy reads Speed, so the turn has all 30 feet and the policy is
+    asked (XPHB "Death Saving Throws": "you regain 1 Hit Point")."""
+    seated, pc, log = downed()
+    policy = Recorder()
+    rng = ScriptedRng([20])
+
+    take_turn(seated, pc, 1, policy=policy, rng=rng)
+
+    assert pc.hp == 1
+    assert not pc.incapacitated
+    assert pc.speed_ft == 30
+    assert pc.economy.movement_ft == 30
+    assert [actor for actor, _ in policy.calls] == ["pc"]
+    assert kinds(log, DEATH_SAVE) == [(DEATH_SAVE, "pc", 20, 0, 0)]
+    assert rng.exhausted
+
+
+class Steady(HookSource):
+    """+5 to one saving throw a turn — any creature's turn (`Reset.TURN`)."""
+
+    __slots__ = ("fired",)
+
+    ID = "test.steady"
+
+    def __init__(self, owner: Creature) -> None:
+        super().__init__(owner)
+        self.fired = 0
+
+    @hook("on_saving_throw", once_per=Reset.TURN)
+    def steady(self, ctx: SavingThrowContext) -> R:
+        self.fired += 1
+        ctx.bonus.add(flat=5)
+        return R.APPLIED
+
+
+def test_once_per_turn_budgets_are_back_before_the_starts_repeat_save() -> None:
+    """The goblin spends its once-per-turn +5 on a save during the fighter's
+    turn: 10 + 2 + 5 = 17. Its own turn begins with a DC 13 Wisdom repeat save
+    against a Stun; the budget has come back with the turn, so 6 + 2 + 5 = 13,
+    saved — without the +5 it would be 8, failed."""
+    seated, fighter, goblin = duel()
+    steady = Steady(goblin)
+    goblin.attach(steady)
+    stun_with_a_save(goblin, SaveRepeat.TURN_START)
+
+    def goblin_saves(
+        actor: Creature, offered: Sequence[Action[Any]]
+    ) -> Action[Any] | None:
+        result = saving_throw(
+            goblin, ability=Ability.WISDOM, dc=DC, rng=ScriptedRng([10])
+        )
+        assert result.total == 17
+        return None
+
+    take_turn(seated, fighter, 1, policy=Recorder(goblin_saves), rng=no_dice())
+    assert steady.fired == 1
+
+    rng = ScriptedRng([6])
+    take_turn(seated, goblin, 1, policy=Recorder(), rng=rng)
+
+    assert steady.fired == 2
+    assert not goblin.incapacitated
+    assert rng.exhausted
