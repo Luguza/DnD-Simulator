@@ -313,12 +313,6 @@ def test_an_incapacitated_creature_is_offered_nothing(
     assert offers(seated, fighter) == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PickUpWeapon is free, and Action.is_legal() asks incapacitation "
-    "only through the economy's cost, so a free Command is still offered to "
-    "an Unconscious or Paralyzed creature",
-)
 @pytest.mark.parametrize("condition", [Unconscious, Paralyzed])
 def test_an_incapacitated_creature_is_not_offered_its_dropped_weapon(
     condition: type[Effect],
@@ -731,12 +725,6 @@ def test_a_turn_is_bracketed_by_its_start_and_end_records() -> None:
     assert log.records[-1] == (TURN_END, 3, "fighter")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="take_turn() refills the economy with the Speed read before the "
-    "TURN_START repeat saves are rolled, so a creature that shakes off a "
-    "Speed-0 condition at the start of its turn moves 0 feet on that turn",
-)
 def test_a_speed_zero_condition_saved_off_at_the_turns_start_leaves_full_speed() -> (
     None
 ):

@@ -4708,7 +4708,10 @@ found again, and nobody else's key moves for either. It costs a scan of the
 roster per turn, which at encounter sizes is cheaper than keeping a sorted list
 honest across arrivals. `join()` after the start rolls the joiner's own
 initiative, one independent tiebreak draw, or takes a key it is handed — a
-summon's `sharing_turn()`. A dead creature takes no turns and stays seated, so
+summon's `sharing_turn()`. A key another seated creature holds is refused,
+since "the least key greater than the last" has a place for only one of two
+equal keys; a second summon sharing a turn takes `sharing_turn(1)`. A key
+handed to `join()` before the start is kept, not re-rolled. A dead creature takes no turns and stays seated, so
 a revival needs no re-seat; `leave()` is for a creature the fight no longer
 holds at all, and gives its store a clock of its own again.
 
@@ -4733,12 +4736,15 @@ know is absent.
 
 ### The turn's order of business
 
-At the start: the sweep before; every creature's once-per ledger told a turn
-began, `own` for the actor only — `Reset.TURN` is any turn boundary, so the
-loop is what tells the other ledgers; the actor's economy handed back at its
-current Speed, which is where the reaction comes back; the repeat saves named
-`TURN_START`; `on_turn_start`; the sweep after; then a dying creature's death
-save. At the end: the sweep before, the repeat saves named `TURN_END`,
+At the start: the sweep before; the repeat saves named `TURN_START`; every
+creature's once-per ledger told a turn began, `own` for the actor only —
+`Reset.TURN` is any turn boundary, so the loop is what tells the other
+ledgers; the actor's economy handed back at its current Speed, which is where
+the reaction comes back; `on_turn_start`; the sweep after; then a dying
+creature's death save. The repeat saves come before the economy because it
+reads Speed: a Paralyzed creature that saves at the start of its turn moves
+its full Speed on that turn, which the independent test pass found the first
+order denying it. At the end: the sweep before, the repeat saves named `TURN_END`,
 `on_turn_end`, the sweep after. The repeat save sits beside the sweep rather
 than beside the hooks — `docs/questions.md` #17 — and is read off
 `SaveRepeat`, never decided here, because `w3f`'s `Perturbation.repeat`
@@ -4771,7 +4777,10 @@ the monk's next turn regains its reaction at the start of its own turn while
 still Stunned, and may use it once the stun ends; zeroing it would lose it for
 the rest of the round. Because the dispatcher's costed handlers ask the same
 `can_spend()`, a reaction feature is denied by the same filter as the turn's
-offers, with no second check. Movement is not denied: Incapacitated does not
+offers, with no second check. A free Command spends nothing, so
+`Action.is_legal()` also refuses an Incapacitated actor itself: "You can't
+take any action" covers the object interaction, and an Unconscious creature
+above 0 hit points was otherwise offered the weapon it had just dropped. Movement is not denied: Incapacitated does not
 say so, and the conditions that stop movement say Speed 0.
 
 `Effect.INCAPACITATES` and `Effect.SPEED_ZERO` are class attributes rather than

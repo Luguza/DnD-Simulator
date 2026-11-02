@@ -27,12 +27,12 @@ def allies_of(world: World, creature: Creature) -> tuple[Creature, ...]:
     return tuple(
         other
         for other in world
-        if other is not creature
-        and not other.dead
-        and world.side_of(other) == side
+        if other is not creature and not other.dead and world.side_of(other) == side
     )
 
 
 def standing_sides(world: World) -> frozenset[str]:
     """The sides with at least one creature standing."""
-    return frozenset(world.side_of(creature) for creature in world if standing(creature))
+    return frozenset(
+        world.side_of(creature) for creature in world if standing(creature)
+    )

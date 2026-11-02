@@ -37,11 +37,12 @@ class Action(ABC, Generic[_Result]):
     def is_legal(self) -> bool:
         """Whether `execute()` would go ahead now. Changes nothing.
 
-        Asks that the actor is up and alive and can pay `COST`, then the
-        action's own `_permits()`. Incapacitation is not asked here (debt #41).
+        Asks that the actor is up, alive and not Incapacitated — a free
+        Command included — and can pay `COST`, then the action's own
+        `_permits()`.
         """
         actor = self.actor
-        if actor.dead or actor.is_down:
+        if actor.dead or actor.is_down or actor.incapacitated:
             return False
         cost = self.COST
         if cost is not None and not actor.economy.can_spend(cost):

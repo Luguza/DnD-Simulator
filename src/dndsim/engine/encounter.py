@@ -54,7 +54,7 @@ class EncounterResult(NamedTuple):
 class Encounter:
     """One fight over `world`'s roster, each turn decided by `policy`."""
 
-    __slots__ = ("_started", "max_rounds", "policy", "rng", "world")
+    __slots__ = ("_placed", "_started", "max_rounds", "policy", "rng", "world")
 
     def __init__(
         self,
@@ -71,16 +71,28 @@ class Encounter:
         self.rng = rng
         self.max_rounds = max_rounds
         self._started = False
+        self._placed: set[Creature] = set()
 
     def join(
         self, creature: Creature, side: str, *, initiative: InitiativeKey | None = None
     ) -> None:
-        """Seat `creature` on `side`. Once the fight has begun it rolls its own
-        initiative, unless `initiative` places it — a summon's
-        `sharing_turn()` — and no other creature's key moves."""
+        """Seat `creature` on `side`. It rolls its own initiative — at once
+        when the fight has begun, with everyone else otherwise — unless
+        `initiative` places it, a summon's `sharing_turn()`; no other
+        creature's key moves. Raises `ValueError` for a key another seated
+        creature holds: the order would have no place for one of the two."""
+        if initiative is not None and any(
+            other.initiative == initiative for other in self.world
+        ):
+            raise ValueError(
+                f"{creature.name} was placed at {initiative}, which another "
+                "creature holds; a second creature sharing a turn takes "
+                "sharing_turn(order) with the next order"
+            )
         self.world.seat(creature, side)
         if initiative is not None:
             creature.initiative = initiative
+            self._placed.add(creature)
         elif self._started:
             creature.initiative = roll_initiative(creature, rng=self.rng)
 
@@ -97,11 +109,10 @@ class Encounter:
         world = self.world
         rng = self.rng
         log = world.log
-        self._everyone(
-            ON_ENCOUNTER_START, EncounterContext(combatants=tuple(world))
-        )
+        self._everyone(ON_ENCOUNTER_START, EncounterContext(combatants=tuple(world)))
         for creature in tuple(world):
-            creature.initiative = roll_initiative(creature, rng=rng)
+            if creature not in self._placed:
+                creature.initiative = roll_initiative(creature, rng=rng)
 
         number = 0
         while number < self.max_rounds and len(standing_sides(world)) > 1:
@@ -120,9 +131,7 @@ class Encounter:
             if log is not None:
                 log.write((ROUND_END, number))
 
-        self._everyone(
-            ON_ENCOUNTER_END, EncounterContext(combatants=tuple(world))
-        )
+        self._everyone(ON_ENCOUNTER_END, EncounterContext(combatants=tuple(world)))
         sides = standing_sides(world)
         winner = next(iter(sides)) if len(sides) == 1 else None
         return EncounterResult(number, winner)

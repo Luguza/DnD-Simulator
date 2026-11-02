@@ -142,12 +142,14 @@ def take_turn(
     log = world.log
 
     clock.expire_before(start)
+    if log is not None:
+        log.write((TURN_START, round_number, creature.name))
+    # Before the economy, which reads Speed: a Speed-0 condition saved off
+    # here leaves the turn its full movement.
+    _repeat_saves(world, creature, SaveRepeat.TURN_START, rng)
     for other in world:
         other.dispatcher.resets.turn_started(own=other is creature)
     creature.economy.turn_started(creature.speed_ft)
-    if log is not None:
-        log.write((TURN_START, round_number, creature.name))
-    _repeat_saves(world, creature, SaveRepeat.TURN_START, rng)
     _announce(ON_TURN_START, creature, start)
     clock.expire_after(start)
 
@@ -217,9 +219,7 @@ def _announce(spec: HookSpec, creature: Creature, time: TimeKey) -> None:
     turn.close()
 
 
-def _repeat_saves(
-    world: World, creature: Creature, when: SaveRepeat, rng: Rng
-) -> None:
+def _repeat_saves(world: World, creature: Creature, when: SaveRepeat, rng: Rng) -> None:
     """Roll the repeat save of every effect on `creature` that asks for one at
     `when`, ending each that is saved against."""
     effects = creature.effects

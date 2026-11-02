@@ -793,12 +793,6 @@ def test_a_save_and_an_instance_of_damage_write_when_handed_the_log() -> None:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Encounter's _next() hands the turn to the least key strictly "
-    "greater than the last to act, so of two creatures holding equal keys "
-    "only one ever acts, and join() accepts the second without a word",
-)
 def test_two_creatures_placed_on_one_key_both_act_or_are_refused() -> None:
     """Two summons both placed with `a.initiative.sharing_turn()` — the same
     order, 0, so the same key. Either the second placement is refused, or
