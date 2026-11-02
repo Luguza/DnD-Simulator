@@ -495,8 +495,11 @@ def render_questions(
         )
         other = answer_url(repo_url, q, "other", "")
         return (
-            f'<div class="opts">{buttons}<a class="opt other" href="{other}" '
-            'target="_blank" rel="noopener">Other…</a></div>'
+            f'<div class="opts">{buttons}</div>'
+            f'<form class="free" action="{other}" target="_blank">'
+            f'<textarea name="answer" rows="2" aria-label="Your own answer to #{q.number}" '
+            'placeholder="Or write your own answer…"></textarea>'
+            '<button type="submit">Send</button></form>'
         )
 
     return (

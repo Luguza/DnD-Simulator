@@ -148,8 +148,9 @@ review has not passed. If no reading is safe to proceed on, the row is `held`.
 ### Answers from the dashboard
 
 The dashboard renders each open row's options as buttons. A button opens a new
-issue titled `Answer #<n>: <letter>` (or `Answer #<n>: other`, with the answer
-written in the body); the human submits it. Every `/next-task` and
+issue titled `Answer #<n>: <letter>`; the text box under the buttons opens one
+titled `Answer #<n>: other`, with the human's own answer in the body. The human
+submits it. Every `/next-task` and
 `/plan-review` run starts by listing the open issues with that title and
 records each one in the run's own PR:
 

@@ -92,7 +92,11 @@ details.entry[open] > summary { font-weight:600; }
   text-decoration:none; background:var(--bg); }
 .opt:hover { border-color:var(--muted); }
 .opt b { margin-right:4px; }
-.opt.other { color:var(--muted); }
+.free { display:flex; gap:6px; margin:6px 0 4px 44px; align-items:flex-end; }
+.free textarea { flex:1; min-width:0; font:inherit; font-size:13px; padding:5px 8px; border-radius:6px;
+  border:1px solid var(--line); background:var(--bg); color:var(--ink); resize:vertical; }
+.free button { font:inherit; font-size:13px; padding:5px 12px; border-radius:6px; border:1px solid var(--line);
+  background:var(--bg); color:var(--ink); cursor:pointer; }
 .pending { margin:0 0 4px 44px; font-size:13px; color:var(--muted); }
 details.answered { margin-top:12px; }
 details.answered > summary { cursor:pointer; color:var(--muted); font-size:.9em; padding:6px 0; }
@@ -133,7 +137,7 @@ footer { margin-top:24px; color:var(--muted); font-size:12.5px; }
   .grid > #debt { order:1; }
   details.entry > summary { grid-template-columns:32px minmax(0,1fr); padding:10px 0; }
   details.entry > summary .owner { grid-column:2; max-width:none; text-align:left; }
-  .opts, .pending { margin-left:0; }
+  .opts, .pending, .free { margin-left:0; }
   dl { margin-left:40px; }
   .filters select { flex:1; }
 }
@@ -178,6 +182,16 @@ on the milestone branch, dated by pull request. Unfinished work is projected one
 at the average pace of the last merges, in queue then ROADMAP order.</footer>
 </main>
 <script>
+document.querySelectorAll("form.free").forEach(function (form) {
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    var text = form.elements.answer.value.trim();
+    if (!text) { form.elements.answer.focus(); return; }
+    var url = new URL(form.getAttribute("action"));
+    url.searchParams.set("body", url.searchParams.get("body").replace("Answer: ", "Answer: " + text));
+    window.open(url.toString(), "_blank", "noopener");
+  });
+});
 (function () {
   var scroll = document.getElementById("scroll"), today = scroll.querySelector(".today");
   if (today) scroll.scrollLeft = Math.max(0, today.offsetLeft + today.offsetParent.offsetLeft - scroll.clientWidth / 2);
