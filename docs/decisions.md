@@ -4688,3 +4688,159 @@ done-when or the register row it cites.
 
 Sources: `ROADMAP.md` `w2c`, `w2c2`, § The W0 debt register #18–#22, #26,
 #28–#30, #35, #39, #41, #47, #50, #55, #57; `docs/questions.md` #16.
+
+## w2c — the encounter, the roster, and the turn loop
+
+**`engine/` now runs a fight**: `World` is the roster, `roll_initiative()`
+places each creature, `take_turn()` runs one turn between its two boundaries,
+and `Encounter` runs rounds until at most one side is standing. Seven debts are
+retired with it — #29, #30, #35, #41, #47, #50 and #55 — each by the boundary
+or the roster that the loop is the first thing to hold.
+
+### The order is asked, never stored
+
+`Encounter` keeps no list of turns. Each turn goes to the living creature whose
+`InitiativeKey` is the least one greater than the last key to act this round.
+That is the property DESIGN.md § Initiative is a key, not an index asks the key
+for, used directly: a creature that joins mid-round acts this round when its
+place is still ahead and next round otherwise, a creature that leaves is never
+found again, and nobody else's key moves for either. It costs a scan of the
+roster per turn, which at encounter sizes is cheaper than keeping a sorted list
+honest across arrivals. `join()` after the start rolls the joiner's own
+initiative, one independent tiebreak draw, or takes a key it is handed — a
+summon's `sharing_turn()`. A dead creature takes no turns and stays seated, so
+a revival needs no re-seat; `leave()` is for a creature the fight no longer
+holds at all, and gives its store a clock of its own again.
+
+### One clock per encounter, swept only where something is held
+
+**#29 and #55 are one change.** Each store used to keep its own time, so the
+only way to tell every store the time was to call every store, which is the
+32 calls a round § w1k priced. Stores now read a `Clock`, and `World.seat()`
+joins every store in the encounter to one. The clock knows which of its stores
+hold an effect — a store registers on its first effect and leaves on its last
+— so `Clock.expire_before()` and `expire_after()` set the time once and visit
+only those. A store nobody visits still reads the right time, which is what a
+per-store clock could not offer: skipping an empty store left its time stale
+for the first effect applied to it. `EffectStore.expire_before()` and
+`expire_after()` keep their meaning, setting the clock they read and sweeping
+themselves, for a store outside an encounter.
+
+Each boundary is swept twice, before its hooks and after them, so all four of
+`Expiry`'s cases are honoured: an effect ending at a start through that phase,
+which no `Duration` constructor makes today, is not a case the loop has to
+know is absent.
+
+### The turn's order of business
+
+At the start: the sweep before; every creature's once-per ledger told a turn
+began, `own` for the actor only — `Reset.TURN` is any turn boundary, so the
+loop is what tells the other ledgers; the actor's economy handed back at its
+current Speed, which is where the reaction comes back; the repeat saves named
+`TURN_START`; `on_turn_start`; the sweep after; then a dying creature's death
+save. At the end: the sweep before, the repeat saves named `TURN_END`,
+`on_turn_end`, the sweep after. The repeat save sits beside the sweep rather
+than beside the hooks — `docs/questions.md` #17 — and is read off
+`SaveRepeat`, never decided here, because `w3f`'s `Perturbation.repeat`
+names the same member (#35). A success removes the effect; the imposer passed
+to the save is its caster as the roster finds it.
+
+### The offer, and what it charges
+
+`offers()` builds every Command in `actions/` against the roster — an Attack
+per living enemy, a Stabilize per ally, then Dodge, Disengage, Dash and the
+pick-up — and keeps those `is_legal()` accepts. `is_legal()` asks
+`ActionEconomy.can_spend()` for the Command's own `COST`, so the loop charges
+the XPHB cost of each offer by construction and an offer the economy cannot
+pay is never shown; `w0i`'s self-buff charged an Action is not a mistake this
+loop can make, because it holds no cost table of its own. The loop re-polls
+after every Command, so a granted slot is offered at once. A policy returning
+something it was not handed raises, and so does a 33rd Command in one turn:
+only a free Command that stays legal can be chosen that often.
+
+`Policy` is a one-method protocol, `choose(actor, offers)`. It is the seat
+`w2e`'s compiled APL takes; nothing here reads an APL.
+
+### Incapacitated is a filter on the economy, not a zeroing (#41)
+
+`ActionEconomy` takes a `denied` predicate, and `Creature` passes whether any
+effect it holds `INCAPACITATES`. While it answers true, `can_spend()` is false
+and `spend()` raises, whatever is in hand. A zeroing method was the
+alternative and is wrong on the rules: a creature Stunned until the start of
+the monk's next turn regains its reaction at the start of its own turn while
+still Stunned, and may use it once the stun ends; zeroing it would lose it for
+the rest of the round. Because the dispatcher's costed handlers ask the same
+`can_spend()`, a reaction feature is denied by the same filter as the turn's
+offers, with no second check. Movement is not denied: Incapacitated does not
+say so, and the conditions that stop movement say Speed 0.
+
+`Effect.INCAPACITATES` and `Effect.SPEED_ZERO` are class attributes rather than
+an `isinstance` against `conditions/`, for the reason `Effect.CONDITION` is
+(§ The `w2b` spec correction): `creatures/` may not import upward.
+
+### Speed has an answer (#47)
+
+`Creature.speed_ft` is 0 while any held effect is `SPEED_ZERO`, and otherwise
+the stat block's Speed less each effect's `speed_reduction_ft`, floored at 0.
+The zero is checked before any reduction or, later, any increase, which is
+"Your Speed is 0 and can't increase" made structural rather than a matter of
+attachment order. Grappled, Paralyzed, Petrified, Restrained and Unconscious
+are `SPEED_ZERO`; Exhaustion takes 5 feet a level. `Dodging` now lapses on
+the real answer and its approximation is gone. Nothing raises Speed yet: the
+first feature that does adds the term, under the zero.
+
+### A third creature is found on the roster (#30)
+
+`apply_pending()` matches a queued target against the event's participants and,
+failing that, asks the first participant's store for its roster. `World` is the
+roster: seating a creature sets it. Outside an encounter there is no roster, so
+the old refusal stands for a creature nothing seats.
+
+### Every writer is handed the log (#50)
+
+The kinds stay with their writers (§ w1i): `RESOURCE_SPENT` in
+`creatures/resources.py`, `EFFECT_APPLIED` and `EFFECT_ENDED` in
+`creatures/effects.py`, `SAVE` in `engine/saves.py`, `DAMAGE` in
+`engine/damage.py`, `INITIATIVE`, `TURN_START`, `TURN_END` and `DEATH_SAVE` in
+`engine/turn.py`, `ROUND_START` and `ROUND_END` in `engine/encounter.py`. All
+are written at every level: each is what happened, not a roll under it. The
+store and the resources hold the log as a field `World.seat()` sets, since
+they are reached from every hook drain and threading a parameter through each
+would touch every caller; saves and damage take `log=` as `resolve_attack()`
+does. **The attack pipeline does not hand its log to `resolve_damage()`**: its
+`ATTACK` record already carries the damage dealt, and a reporter summing both
+would count every hit twice. A refresh absorbed by an incumbent writes nothing,
+because nothing attached.
+
+### What it cost the benchmark
+
+Priced as sequencing principle 10 asks, the branch before this task against
+this one, each in a sibling worktree on one container.
+
+- **The witness**: the fixed 200-encounter profiled run at seed 0 closes on the
+  same hit points (hero 55, enemies 207, 1,000, 1,000), 6,000 resolutions and
+  the same next draw on both arms, in **1,740,552 calls before and 1,715,734
+  after**: the sweeps of the enemy stores, which never hold anything, are gone,
+  net of what `speed_ft` and the economy's `denied()` now read.
+- **The rate**: eight rounds, the order alternated, `measure(1000, 3)` each:
+  26,104 before and 26,073 after, paired ratio **0.995** (0.964–1.023) —
+  noise. The spike's single-side loop sweeps one store that holds Rage, so the
+  sweep count was never where its time went; the multiplier #55 named is the
+  real loop's, at every creature of a larger roster, and the clock pays it
+  once a boundary.
+
+### What this task deliberately did not do
+
+- **No movement.** The walk, the per-step charge and the opportunity attack are
+  `w2c2`'s; `Dash` is offered and grants feet nothing spends yet.
+- **No APL.** `Policy` is the seat `w2e` fills.
+- **No side but a label.** Two creatures on one `side` string are allies; a
+  charmed creature fighting for the other side is a feature's question.
+- **No surprise.** Incapacitated imposes its Disadvantage on the roll, and that
+  is all an encounter knows of surprise; who is surprised is `w2f`'s scenario.
+
+Sources: `ROADMAP.md` `w2c`, § The W0 debt register #29, #30, #35, #41, #47,
+#50, #55; § The `w2c` spec correction; § w0d, § w1a, § w1c, § w1g, § w1h,
+§ w1i, § w1j, § w1k, § w2b; DESIGN.md § Initiative is a key, not an index,
+§ The APL; XPHB "Combat", "Initiative", Rules Glossary "Incapacitated",
+"Speed".
