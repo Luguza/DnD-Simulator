@@ -9,6 +9,7 @@ from typing import Final
 
 import pytest
 
+from dndsim.conditions.stunned import Stunned
 from dndsim.core.errors import EconomyError
 from dndsim.core.geometry import Cell
 from dndsim.creatures.creature import Creature
@@ -245,3 +246,51 @@ def test_movement_does_not_come_out_of_an_action() -> None:
     assert economy.can_spend(ACTION)
     assert economy.can_spend(BONUS)
     assert economy.can_spend(REACTION)
+
+
+# --- denied: Incapacitated (debt #41) -----------------------------------------
+
+
+@pytest.mark.parametrize("cost", [ACTION, BONUS, REACTION])
+def test_a_denied_economy_can_spend_nothing_whatever_is_in_hand(
+    cost: ActionCost,
+) -> None:
+    """XPHB Incapacitated: "You can't take any action, Bonus Action, or
+    Reaction." The counts are kept, and come back into use when the denial
+    lifts."""
+    denying = [True]
+    economy = ActionEconomy(denied=lambda: denying[0])
+    economy.turn_started(SPEED)
+
+    assert not economy.can_spend(cost)
+    with pytest.raises(EconomyError):
+        economy.spend(cost)
+    assert (economy.actions, economy.bonus_actions, economy.reactions) == (1, 1, 1)
+
+    denying[0] = False
+    assert economy.can_spend(cost)
+    economy.spend(cost)
+
+
+def test_a_denied_economy_still_moves() -> None:
+    """Incapacitated says nothing about movement."""
+    economy = ActionEconomy(denied=lambda: True)
+    economy.turn_started(SPEED)
+    economy.move(10)
+    assert economy.movement_ft == 20
+
+
+def test_a_creatures_economy_is_denied_exactly_while_it_is_incapacitated() -> None:
+    fighter = Creature(
+        name="fighter",
+        stats=StatBlock(abilities=SCORES, max_hp=20),
+        position=Cell(0, 0),
+    )
+    fighter.economy.turn_started(SPEED)
+    stun = fighter.effects.apply(Stunned(fighter))
+    assert stun is not None
+    costs = (ACTION, BONUS, REACTION)
+    assert not any(fighter.economy.can_spend(cost) for cost in costs)
+
+    fighter.effects.remove(stun)
+    assert all(fighter.economy.can_spend(cost) for cost in costs)
