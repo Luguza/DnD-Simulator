@@ -6,13 +6,15 @@ answered when the human reviews the finished product. An answer that overturns
 a choice becomes ordinary work for the queue.
 
 Each row is written for a D&D expert who knows nothing of the code: the table
-situation, the reading taken, and what the other reading would change in play.
-The reasoning behind a choice is in `docs/decisions.md`, under the task named
-in *Asked by*.
+situation, the readings on offer as lettered options (`A) … ; B) …`), the one
+taken, and what the other reading would change in play. The reasoning behind a
+choice is in `docs/decisions.md`, under the task named in *Asked by*. The
+dashboard turns each option into a button that files the answer as an issue
+(`docs/workflow.md` § Answers from the dashboard).
 
-| # | Asked by | Question | Choice taken | If answered otherwise |
-|---|---|---|---|---|
-| 15 | `w2b` | Unconscious says you drop whatever you're holding. Does a creature that falls unconscious drop its **shield** too? | **No: the weapon drops, the shield stays on** and keeps its +2 AC. A shield takes an action to put on or take off, like armour, so it reads as worn rather than held. | The shield drops as well: an unconscious creature loses the +2 AC, and has to pick the shield up again after it wakes. |
+| # | Asked by | Question | Options | Choice taken | If answered otherwise |
+|---|---|---|---|---|---|
+| 15 | `w2b` | Unconscious says you drop whatever you're holding. Does a creature that falls unconscious drop its **shield** too? | A) The shield stays on ; B) The shield drops too | **A: the weapon drops, the shield stays on** and keeps its +2 AC. A shield takes an action to put on or take off, like armour, so it reads as worn rather than held. | The shield drops as well: an unconscious creature loses the +2 AC, and has to pick the shield up again after it wakes. |
 
 ## Answered
 

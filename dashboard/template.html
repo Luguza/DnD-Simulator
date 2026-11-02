@@ -87,6 +87,13 @@ details.entry > summary { cursor:pointer; list-style:none; display:grid; grid-te
   gap:8px; padding:8px 0; align-items:start; font-size:13.5px; }
 details.entry > summary::-webkit-details-marker { display:none; }
 details.entry[open] > summary { font-weight:600; }
+.opts { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 4px 44px; }
+.opt { font-size:13px; padding:5px 10px; border:1px solid var(--line); border-radius:6px; color:var(--ink);
+  text-decoration:none; background:var(--bg); }
+.opt:hover { border-color:var(--muted); }
+.opt b { margin-right:4px; }
+.opt.other { color:var(--muted); }
+.pending { margin:0 0 4px 44px; font-size:13px; color:var(--muted); }
 details.answered { margin-top:12px; }
 details.answered > summary { cursor:pointer; color:var(--muted); font-size:.9em; padding:6px 0; }
 details.answered details.entry > summary { grid-template-columns:36px minmax(0,1fr); }
@@ -126,6 +133,7 @@ footer { margin-top:24px; color:var(--muted); font-size:12.5px; }
   .grid > #debt { order:1; }
   details.entry > summary { grid-template-columns:32px minmax(0,1fr); padding:10px 0; }
   details.entry > summary .owner { grid-column:2; max-width:none; text-align:left; }
+  .opts, .pending { margin-left:0; }
   dl { margin-left:40px; }
   .filters select { flex:1; }
 }
