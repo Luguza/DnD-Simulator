@@ -4,17 +4,19 @@ An `Effect` is a `HookSource` that ends, on a deadline or on its last charge;
 what a second application does is its declared `Stacking`. The store attaches
 and detaches through the creature and keeps the clock it was last told by a
 sweep; `apply_pending()` drains a context's queued effects onto the event's
-participants. A condition's gain and loss are announced as well
-(`docs/decisions.md` § w1c, § w2b; debts #29, #30).
+participants, or onto any creature the store's roster holds. A condition's
+gain and loss are announced as well, and the stores of one encounter share a
+`Clock` (`docs/decisions.md` § w1c, § w2b, § w2c).
 
 DESIGN.md § Durations.
 """
 
 from collections.abc import Iterator
 from enum import Enum, unique
-from typing import ClassVar, Protocol
+from typing import ClassVar, Final, NamedTuple, Protocol
 
 from dndsim.core.errors import EngineAssemblyError, FeatureContractError
+from dndsim.core.log import EventLog
 from dndsim.core.timeline import Duration, Expiry, TimeKey
 from dndsim.hooks.contexts import (
     Combatant,
@@ -30,9 +32,27 @@ from dndsim.hooks.definitions import (
 )
 from dndsim.hooks.registry import HookSpec
 from dndsim.hooks.source import HookSource
-from dndsim.rules.enums import Condition
+from dndsim.rules.enums import Ability, Condition, SaveRepeat
 
-__all__ = ["Effect", "EffectStore", "Holder", "Stacking", "apply_pending"]
+__all__ = [
+    "EFFECT_APPLIED",
+    "EFFECT_ENDED",
+    "Clock",
+    "Effect",
+    "EffectStore",
+    "Holder",
+    "RepeatSave",
+    "Roster",
+    "Stacking",
+    "apply_pending",
+]
+
+EFFECT_APPLIED: Final = "effect_applied"
+"""`(EFFECT_APPLIED, creature, effect)`, at every level: an effect attached.
+A refresh of one already held writes nothing."""
+
+EFFECT_ENDED: Final = "effect_ended"
+"""`(EFFECT_ENDED, creature, effect)`, at every level: an effect removed."""
 
 
 @unique
@@ -78,6 +98,22 @@ class Holder(Combatant, Protocol):
     def drop_held(self) -> None: ...
 
 
+class Roster(Protocol):
+    """Whoever can find the store of a creature an event does not carry: the
+    encounter's world (debt #30)."""
+
+    def holder(self, combatant: Combatant) -> Holder | None: ...
+
+
+class RepeatSave(NamedTuple):
+    """A save-ends effect's saving throw: what is rolled against what, and at
+    which of the holder's turn boundaries (DESIGN.md § Buffs and debuffs)."""
+
+    ability: Ability
+    dc: int
+    when: SaveRepeat
+
+
 class Effect(HookSource):
     """Something attached to a creature that ends.
 
@@ -97,6 +133,7 @@ class Effect(HookSource):
         "charges",
         "duration",
         "expiry",
+        "repeat_save",
     )
 
     STACKING: ClassVar[Stacking] = Stacking.REFRESH
@@ -106,6 +143,12 @@ class Effect(HookSource):
     """The condition this effect is the behaviour of, or `None` for an effect
     that is not one; `conditions/` declares it (`docs/decisions.md` § w2b)."""
 
+    INCAPACITATES: ClassVar[bool] = False
+    """Whether holding it denies every Action, Bonus Action and Reaction."""
+
+    SPEED_ZERO: ClassVar[bool] = False
+    """Whether holding it sets Speed to 0, which nothing raises."""
+
     def __init__(
         self,
         owner: Combatant,
@@ -113,6 +156,7 @@ class Effect(HookSource):
         duration: Duration | None = None,
         charges: int | None = None,
         caster: Combatant | None = None,
+        repeat_save: RepeatSave | None = None,
     ) -> None:
         super().__init__(owner)
         if charges is not None and charges < 1:
@@ -129,6 +173,7 @@ class Effect(HookSource):
         self.duration = duration
         self.charges = charges
         self.caster = caster
+        self.repeat_save = repeat_save
         self.expiry: Expiry | None = None
         self._store: EffectStore | None = None
         # What `expiry` was last resolved from; see `refresh()`.
@@ -150,6 +195,11 @@ class Effect(HookSource):
         if self.STACKING is Stacking.UNIQUE_PER_SOURCE:
             return (type(self), self.caster)
         return type(self)
+
+    @property
+    def speed_reduction_ft(self) -> int:
+        """How many feet holding it takes off Speed; 0 unless overridden."""
+        return 0
 
     def refresh(self) -> None:
         """Recompute the deadline against the store's clock as it reads now.
@@ -199,25 +249,72 @@ class Effect(HookSource):
         return store
 
 
+class Clock:
+    """The time a set of stores reads, and which of them hold anything.
+
+    One per encounter; a creature outside one has its own. The turn loop moves
+    it with `expire_before()` and `expire_after()`, which sweep only the stores
+    holding an effect (debt #55; `docs/decisions.md` § w2c).
+    """
+
+    __slots__ = ("_holding", "now")
+
+    def __init__(self, now: TimeKey) -> None:
+        self.now = now
+        self._holding: list[EffectStore] = []
+
+    def expire_before(self, now: TimeKey) -> None:
+        """Set the time to `now`, and drop from every store what is due to end
+        before `now`'s handlers run."""
+        self.now = now
+        if self._holding:
+            for store in tuple(self._holding):
+                store._sweep(now, through=False)
+
+    def expire_after(self, now: TimeKey) -> None:
+        """Set the time to `now`, and drop from every store what is due to end
+        once `now`'s handlers have run."""
+        self.now = now
+        if self._holding:
+            for store in tuple(self._holding):
+                store._sweep(now, through=True)
+
+
 class EffectStore:
     """One creature's attached effects: what is on it, and what ends when.
 
     One per creature. Attaching and detaching go through the holder, so its
     ownership check applies to an effect too (`docs/decisions.md` § w1c).
+    `log` and `roster` are `None` until an encounter seats the creature.
     """
 
-    __slots__ = ("_held", "_holder", "_now")
+    __slots__ = ("_clock", "_held", "_holder", "log", "roster")
 
     def __init__(self, holder: Holder, *, now: TimeKey) -> None:
         self._holder = holder
         self._held: list[Effect] = []
-        self._now = now
+        self._clock = Clock(now)
+        self.log: EventLog | None = None
+        self.roster: Roster | None = None
 
     @property
     def now(self) -> TimeKey:
-        """The clock as this store was last told it reads. Written only by the
-        sweeps below."""
-        return self._now
+        """The time on this store's clock. Moved only by a sweep."""
+        return self._clock.now
+
+    @property
+    def clock(self) -> Clock:
+        return self._clock
+
+    def join(self, clock: Clock) -> None:
+        """Read `clock` from now on, as every store in one encounter does."""
+        old = self._clock
+        if old is clock:
+            return
+        if self._held:
+            old._holding.remove(self)
+            clock._holding.append(self)
+        self._clock = clock
 
     def __iter__(self) -> Iterator[Effect]:
         return iter(self._held)
@@ -244,7 +341,13 @@ class EffectStore:
             self._holder.attach(effect)
             effect._store = self
             effect.refresh()
-            self._held.append(effect)
+            held = self._held
+            if not held:
+                self._clock._holding.append(self)
+            held.append(effect)
+            log = self.log
+            if log is not None:
+                log.write((EFFECT_APPLIED, self._holder.name, effect.name))
             condition = effect.CONDITION
             if condition is not None and not self._holds(condition, besides=effect):
                 self._announce_condition(ON_CONDITION_GAINED, condition)
@@ -271,8 +374,14 @@ class EffectStore:
                 "cannot be removed from it — it has expired already, or it "
                 "belongs to somebody else"
             )
-        self._held.remove(effect)
+        held = self._held
+        held.remove(effect)
+        if not held:
+            self._clock._holding.remove(self)
         effect._store = None
+        log = self.log
+        if log is not None:
+            log.write((EFFECT_ENDED, self._holder.name, effect.name))
         self._announce(ON_EFFECT_EXPIRED, effect, vetoable=False)
         self._holder.detach(effect)
         condition = effect.CONDITION
@@ -282,15 +391,16 @@ class EffectStore:
     def expire_before(self, now: TimeKey) -> None:
         """Drop everything due to end *before* `now`'s handlers run, and set
         the store's clock to `now`."""
+        self._clock.now = now
         self._sweep(now, through=False)
 
     def expire_after(self, now: TimeKey) -> None:
         """Drop everything due to end once `now`'s handlers have run, and set
         the store's clock to `now`."""
+        self._clock.now = now
         self._sweep(now, through=True)
 
     def _sweep(self, now: TimeKey, *, through: bool) -> None:
-        self._now = now
         if not self._held:
             return
         expired = [
@@ -375,9 +485,10 @@ def apply_pending(ctx: Context, *among: Holder | None) -> None:
     """Apply everything `ctx`'s handlers queued, to the creature each named.
 
     `among` is the participants of the event the caller owns; each queued
-    target is matched by identity against them. Raises `EngineAssemblyError`
-    for a target that is none of them (debt #30) and `FeatureContractError` for
-    a queued item that is not an `Effect`. Clears the queue.
+    target is matched by identity against them, then looked up on the first
+    participant's roster. Raises `EngineAssemblyError` for a target neither
+    finds and `FeatureContractError` for a queued item that is not an
+    `Effect`. Clears the queue.
     """
     # The private list: `ctx.pending_effects` builds a tuple per call, and most
     # calls find the queue empty.
@@ -387,11 +498,13 @@ def apply_pending(ctx: Context, *among: Holder | None) -> None:
     for target, queued in pending:
         holder = next((one for one in among if one is target), None)
         if holder is None:
+            holder = _on_roster(target, among)
+        if holder is None:
             raise EngineAssemblyError(
                 f"{type(ctx).__name__} queued {queued.name} onto "
-                f"{target.name}, which is not one of this event's participants. "
-                "Only w2c's roster can find a creature the event does not "
-                "carry (debt #30)."
+                f"{target.name}, which is not one of this event's participants "
+                "and is on no roster they are seated on. A creature outside an "
+                "encounter can only be reached by an event it takes part in."
             )
         if not isinstance(queued, Effect):
             raise FeatureContractError(
@@ -402,3 +515,13 @@ def apply_pending(ctx: Context, *among: Holder | None) -> None:
             )
         holder.effects.apply(queued)
     pending.clear()
+
+
+def _on_roster(target: Combatant, among: tuple[Holder | None, ...]) -> Holder | None:
+    """`target`'s holder, as the first seated participant's roster finds it."""
+    for one in among:
+        if one is not None:
+            roster = one.effects.roster
+            if roster is not None:
+                return roster.holder(target)
+    return None

@@ -15,10 +15,8 @@ class Grappled(SourcedCondition):
     __slots__ = ()
 
     CONDITION = enums.Condition.GRAPPLED
+    SPEED_ZERO = True
     NEEDS_HOOK = (
-        "nothing can change a creature's Speed: "
-        '"Your Speed is 0 and can\'t increase." '
-        "(ROADMAP.md § The W0 debt register #47)",
         "nothing moves a creature with another creature, and no movement is "
         'charged against the economy yet: "The grappler can drag or carry you '
         'when it moves, but every foot of movement costs it 1 extra foot." '

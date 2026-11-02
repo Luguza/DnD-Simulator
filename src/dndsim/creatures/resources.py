@@ -17,6 +17,7 @@ from typing import Final
 
 from dndsim.core.dice import Dice
 from dndsim.core.errors import EconomyError, FeatureContractError
+from dndsim.core.log import EventLog
 from dndsim.creatures.effects import Holder, apply_pending
 from dndsim.creatures.stats import StatBlock
 from dndsim.hooks.contexts import ResourceSpentContext
@@ -26,6 +27,7 @@ from dndsim.rules.enums import CasterProgression, RecoveryTrigger
 
 __all__ = [
     "ALL",
+    "RESOURCE_SPENT",
     "MAX_SLOT_LEVEL",
     "Recovery",
     "ResourcePool",
@@ -42,6 +44,10 @@ ALL: Final = sys.maxsize
 `recover()` clamps it with one `min()`."""
 
 MAX_SLOT_LEVEL: Final = 9
+
+RESOURCE_SPENT: Final = "resource_spent"
+"""`(RESOURCE_SPENT, creature, resource, amount)`, at every level: one spend
+committed, written before `on_resource_spent` fires."""
 
 _SHORT_REST: Final = RecoveryTrigger.SHORT_REST
 _LONG_REST: Final = RecoveryTrigger.LONG_REST
@@ -152,6 +158,7 @@ class Resources:
     """A creature's pools, and the only thing that announces a spend.
 
     Each pool's maximum is read off `stats` once, when the pool is added.
+    `log` is `None` until an encounter seats the creature.
     """
 
     __slots__ = (
@@ -161,6 +168,7 @@ class Resources:
         "_slots",
         "_spells",
         "_stats",
+        "log",
     )
 
     def __init__(self, holder: Holder, stats: StatBlock) -> None:
@@ -168,6 +176,7 @@ class Resources:
         self._stats = stats
         self._pools: dict[str, ResourcePool] = {}
         self._in_transaction = False
+        self.log: EventLog | None = None
         # The slot pools by level, index 0 unused, each in the order added.
         self._slots: tuple[list[ResourcePool], ...] = tuple(
             [] for _ in range(MAX_SLOT_LEVEL + 1)
@@ -247,6 +256,9 @@ class Resources:
 
     def _announce(self, key: str, amount: int) -> None:
         holder = self._holder
+        log = self.log
+        if log is not None:
+            log.write((RESOURCE_SPENT, holder.name, key, amount))
         ctx = ResourceSpentContext(creature=holder, resource=key, amount=amount)
         holder.dispatch(ON_RESOURCE_SPENT, ctx)
         apply_pending(ctx, holder)

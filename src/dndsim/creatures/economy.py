@@ -3,12 +3,15 @@
 A ledger of an Action, a Bonus Action, a Reaction and a number of feet, with no
 rules about what they buy or when a turn begins. Spending what is not there
 raises `EconomyError`; `can_spend()` and `can_move()` ask for free. The reaction
-comes back only in `turn_started()`.
+comes back only in `turn_started()`. While `denied()` answers true no Action,
+Bonus Action or Reaction can be spent, whatever is in hand (debt #41 retired;
+`docs/decisions.md` § w2c).
 
 XPHB (2024) "Combat" (Your Turn, Reactions, Movement); `docs/decisions.md`
 § w1a.
 """
 
+from collections.abc import Callable
 from types import MappingProxyType
 from typing import Final
 
@@ -37,10 +40,11 @@ class ActionEconomy:
     count, not a flag, so a grant adds one more (`docs/decisions.md` § w1a).
     """
 
-    __slots__ = ("actions", "bonus_actions", "movement_ft", "reactions")
+    __slots__ = ("actions", "bonus_actions", "denied", "movement_ft", "reactions")
 
-    def __init__(self) -> None:
+    def __init__(self, *, denied: Callable[[], bool] | None = None) -> None:
         # Reaction in hand and nothing else until `turn_started()`.
+        self.denied = denied
         self.actions = 0
         self.bonus_actions = 0
         self.reactions = 1
@@ -49,7 +53,11 @@ class ActionEconomy:
     # -- the `Economy` protocol ------------------------------------------------
 
     def can_spend(self, cost: ActionCost) -> bool:
-        """Whether one of `cost` is still in hand. Changes nothing."""
+        """Whether one of `cost` is still in hand and may be spent. Changes
+        nothing."""
+        denied = self.denied
+        if denied is not None and denied():
+            return False
         if cost is _ACTION:
             return self.actions > 0
         if cost is _BONUS_ACTION:
@@ -57,7 +65,15 @@ class ActionEconomy:
         return self.reactions > 0
 
     def spend(self, cost: ActionCost) -> None:
-        """Spend one of `cost`, or raise if there was none to spend."""
+        """Spend one of `cost`, or raise if there was none to spend or it may
+        not be spent."""
+        denied = self.denied
+        if denied is not None and denied():
+            raise EconomyError(
+                f"this creature cannot take a {_NAMES[cost]} while it is "
+                "Incapacitated: \"You can't take any action, Bonus Action, or "
+                'Reaction." Ask `can_spend()` first.'
+            )
         if cost is _ACTION:
             if self.actions < 1:
                 raise EconomyError(self._nothing_to_spend(cost))

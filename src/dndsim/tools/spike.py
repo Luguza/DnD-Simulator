@@ -30,8 +30,9 @@ from dndsim.core.geometry import Cell, distance_ft, route, steps_within
 from dndsim.core.log import EventLog, LogLevel
 from dndsim.core.rng import MersenneRng, Rng, mix
 from dndsim.core.timeline import Duration, InitiativeKey, TimeKey, TurnPhase
-from dndsim.creatures.creature import Creature
+from dndsim.creatures.creature import UNSEATED, Creature
 from dndsim.creatures.economy import ActionEconomy
+from dndsim.creatures.effects import Clock
 from dndsim.creatures.resources import spell_slot_specs
 from dndsim.creatures.stats import GREATSWORD, Armour, StatBlock, Weapon
 from dndsim.engine.attack import FRESH, AttackContexts, PooledContexts, resolve_attack
@@ -177,6 +178,7 @@ class Spike:
     enemy_contexts: tuple[AttackContexts, ...]
     sources: tuple[Fixture, ...]
     log: EventLog
+    clock: Clock
 
     def reset(self) -> None:
         """Put the encounter back to round one. Runs inside the timed region
@@ -243,6 +245,10 @@ def build_spike(
     apl = Apl(_entries(), namespace)
     hero.dispatcher.bind(gate=apl)
 
+    clock = Clock(TimeKey(1, UNSEATED, TurnPhase.START))
+    for creature in (hero, *enemies):
+        creature.effects.join(clock)
+
     spike = Spike(
         hero=hero,
         enemies=enemies,
@@ -257,6 +263,7 @@ def build_spike(
         ),
         sources=sources,
         log=EventLog(log_level),
+        clock=clock,
     )
     return spike, MersenneRng(mix(seed, 0))
 
@@ -360,15 +367,13 @@ def _boundaries(number: int) -> tuple[tuple[TimeKey, TimeKey], ...]:
 
 
 def _expire_before(spike: Spike, now: TimeKey) -> None:
-    """Sweep every combatant's store before `now`'s hooks
-    (`docs/decisions.md` § w1k)."""
-    for creature in spike.combatants:
-        creature.effects.expire_before(now)
+    """Sweep the stores holding an effect before `now`'s hooks (debt #55;
+    `docs/decisions.md` § w2c)."""
+    spike.clock.expire_before(now)
 
 
 def _expire_after(spike: Spike, now: TimeKey) -> None:
-    for creature in spike.combatants:
-        creature.effects.expire_after(now)
+    spike.clock.expire_after(now)
 
 
 def _hero_turn(spike: Spike, rng: Rng, number: int) -> int:

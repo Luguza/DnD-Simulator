@@ -23,6 +23,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Final, Protocol
 
+from dndsim.core.log import EventLog
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.effects import apply_pending
@@ -37,6 +38,7 @@ from dndsim.hooks.definitions import ON_DAMAGE_TAKEN, ON_INCOMING_DAMAGE
 from dndsim.rules.enums import DamageType
 
 __all__ = [
+    "DAMAGE",
     "DamageContexts",
     "FreshDamageContexts",
     "Mitigated",
@@ -44,6 +46,13 @@ __all__ = [
     "resolve_damage",
     "roll_damage",
 ]
+
+
+DAMAGE: Final = "damage"
+"""`(DAMAGE, attacker, defender, taken)`, at every level: what an instance of
+damage came to after every defence, `attacker` `None` when nothing dealt it.
+Not written for an attack's damage, which its own `ATTACK` record carries
+(`docs/decisions.md` § w2c)."""
 
 
 class DamageContexts(Protocol):
@@ -234,6 +243,7 @@ def resolve_damage(
     contexts: DamageContexts = FRESH_DAMAGE,
     halved_by: str | None = None,
     critical: bool = False,
+    log: EventLog | None = None,
 ) -> int:
     """Deal damage to `defender` and return what it took.
 
@@ -248,6 +258,8 @@ def resolve_damage(
 
     `critical` is whether the damage is a Critical Hit's (XPHB, "Dropping to 0
     Hit Points" -> Damage at 0 Hit Points; `docs/decisions.md` § w1j).
+
+    `log`, when given, is written a `DAMAGE` record for damage that landed.
     """
     incoming = contexts.incoming(defender=defender, attacker=attacker, amounts=amounts)
     if halved_by is not None:
@@ -280,6 +292,15 @@ def resolve_damage(
         else:
             defender.hp = 0
             dropped_to_zero(defender, attacker=attacker, overflow=-hp)
+    if log is not None:
+        log.write(
+            (
+                DAMAGE,
+                None if attacker is None else attacker.name,
+                defender.name,
+                mitigated.total,
+            )
+        )
 
     taken = contexts.taken(
         defender=defender,

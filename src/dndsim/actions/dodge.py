@@ -3,7 +3,6 @@
 from typing import ClassVar
 
 from dndsim.actions.base import Action
-from dndsim.conditions.incapacitated import Incapacitated
 from dndsim.core.rng import Rng
 from dndsim.core.timeline import Duration
 from dndsim.creatures.creature import Creature
@@ -29,9 +28,6 @@ class Dodging(Effect):
         "the Disadvantage is imposed against every attacker, where the rule "
         'says "if you can see the attacker" — so a Blinded dodger still '
         "imposes it (ROADMAP.md § The W0 debt register #39)",
-        '"You lose these benefits … if your Speed is 0" reads the stat '
-        "block's Speed, which no condition can lower — so a Grappled or "
-        "Restrained dodger keeps them (ROADMAP.md § The W0 debt register #47)",
     )
 
     def __init__(self, owner: Creature, *, duration: Duration) -> None:
@@ -40,9 +36,7 @@ class Dodging(Effect):
 
     def _lapsed(self) -> bool:
         creature = self._creature
-        return creature.speed_ft == 0 or any(
-            isinstance(effect, Incapacitated) for effect in creature.effects
-        )
+        return creature.incapacitated or creature.speed_ft == 0
 
     @hook("on_incoming_attack_declared")
     def attacks_against(self, ctx: AttackDeclaredContext) -> R:
