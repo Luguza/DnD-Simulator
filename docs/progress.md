@@ -42,8 +42,8 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 13 | w2i — the M0 levers 🔒 | done | |
 | 14 | w2b — `Action` Commands and the stabilise | done | |
 | 15 | w2c — turn loop, initiative, the turn-boundary debts 🔒 | done | #62 |
-| 16 | w2c2 — opportunity attacks and the walk 🔒 | next | |
-| — | ⏸ plan review — and the M0 budget revision (`docs/questions.md` #10) | queued | |
+| 16 | w2c2 — opportunity attacks and the walk 🔒 | done | |
+| — | ⏸ plan review — and the M0 budget revision (`docs/questions.md` #10) | next | |
 | 17 | w2e — the APL compiler 🔒 | queued | |
 | 18 | w2a — content ACL | queued | |
 | 19 | w2d — `TargetDummy` | queued | |
