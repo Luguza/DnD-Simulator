@@ -732,3 +732,50 @@ def test_a_large_watcher_gets_the_opportunity_attack_its_anchor_would_miss() -> 
     goblin, missed, _, _ = _threatener("Goblin", Cell(-2, 0))
     walk_provoking(runner, walked, [goblin])
     assert missed.swings == []
+
+
+# --- the price of a step (crawling) ------------------------------------------
+
+
+@pytest.mark.parametrize("watched", [False, True])
+def test_a_ten_foot_step_charges_ten_feet_a_square(watched: bool) -> None:
+    """Three squares at ten feet each: 30 - 30 = 0, on either path."""
+    mover = _creature("Runner", Cell(0, 0))
+    bystanders: list[Creature] = []
+    if watched:
+        watcher = _creature("Watcher", Cell(0, -1))
+        watcher.attach(Ledger(watcher))
+        bystanders.append(watcher)
+
+    walked = walk_provoking(mover, _east(Cell(0, 0), 3), bystanders, step_ft=10)
+
+    assert walked == _east(Cell(0, 0), 3)
+    assert mover.economy.movement_ft == 0
+
+
+def test_a_ten_foot_step_is_charged_as_it_is_taken() -> None:
+    """The watcher is left on the second step, with one ten-foot step paid."""
+    mover = _creature("Runner", Cell(0, 0))
+    watcher = _creature("Watcher", Cell(0, -1))
+    ledger = Ledger(watcher)
+    watcher.attach(ledger)
+
+    walk_provoking(mover, _east(Cell(0, 0), 3), [watcher], step_ft=10)
+
+    assert ledger.seen == [20]
+
+
+@pytest.mark.parametrize("watched", [False, True])
+def test_a_route_of_ten_foot_steps_costing_too_much_raises(watched: bool) -> None:
+    """Four squares at ten feet is 40 against 30; nothing moves or is charged."""
+    mover = _creature("Runner", Cell(0, 0))
+    guard, reaction, _, _ = _threatener("Guard", Cell(-1, 0))
+
+    with pytest.raises(EconomyError):
+        walk_provoking(
+            mover, _east(Cell(0, 0), 4), [guard] if watched else [], step_ft=10
+        )
+
+    assert mover.position == Cell(0, 0)
+    assert mover.economy.movement_ft == 30
+    assert reaction.swings == []

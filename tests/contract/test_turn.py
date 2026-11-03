@@ -23,10 +23,12 @@ from dndsim.actions.base import Action
 from dndsim.actions.dash import Dash
 from dndsim.actions.dodge import Dodge
 from dndsim.conditions.exhaustion import Exhaustion
+from dndsim.conditions.frightened import Frightened
 from dndsim.conditions.grappled import Grappled
 from dndsim.conditions.incapacitated import Incapacitated
 from dndsim.conditions.paralyzed import Paralyzed
 from dndsim.conditions.petrified import Petrified
+from dndsim.conditions.prone import Prone
 from dndsim.conditions.stunned import Stunned
 from dndsim.conditions.unconscious import Unconscious
 from dndsim.core.errors import EngineAssemblyError
@@ -1153,3 +1155,125 @@ def test_a_turn_can_close_and_then_swing() -> None:
     assert fighter.position == Cell(3, 3)
     assert goblin.hp == HP - 11
     assert rng.exhausted
+
+
+# --- Move while crawling or afraid (XPHB Rules Glossary: Prone, Frightened) ----
+
+
+def test_a_prone_creature_crawls_at_ten_feet_a_square() -> None:
+    """ "Your only movement options are to crawl" — each foot costs one extra:
+    30 feet buys three squares, (1, 1) to (3, 3), and leaves nothing."""
+    seated, fighter, goblin = closing(Cell(10, 10))
+    fighter.effects.apply(Prone(fighter))
+
+    walked = Move(fighter, goblin, world=seated).execute(rng=no_dice())
+
+    assert walked == DIAGONAL
+    assert fighter.economy.movement_ft == 0
+
+
+def test_a_prone_creature_with_ten_feet_left_crawls_one_square() -> None:
+    seated, fighter, goblin = closing(Cell(10, 10))
+    fighter.effects.apply(Prone(fighter))
+    fighter.economy.move(20)
+
+    walked = Move(fighter, goblin, world=seated).execute(rng=no_dice())
+
+    assert walked == (Cell(1, 1),)
+    assert fighter.economy.movement_ft == 0
+
+
+def test_a_prone_creature_with_five_feet_left_is_offered_no_move() -> None:
+    """Five feet is half a crawled square."""
+    seated, fighter, goblin = closing(Cell(10, 10))
+    fighter.effects.apply(Prone(fighter))
+    fighter.economy.move(25)
+
+    assert not Move(fighter, goblin, world=seated).is_legal()
+    assert "move" not in ids(offers(seated, fighter))
+
+
+def test_a_frightened_creature_is_offered_no_move_toward_its_source() -> None:
+    """ "You can't willingly move closer to the source of fear." Every step
+    toward the goblin at (4, 4) is a step closer to it."""
+    seated, fighter, goblin = closing(Cell(4, 4))
+    fighter.effects.apply(Frightened(fighter, caster=goblin))
+
+    assert not Move(fighter, goblin, world=seated).is_legal()
+    assert "move" not in ids(offers(seated, fighter))
+
+
+def test_once_the_fear_ends_the_move_is_offered_again() -> None:
+    seated, fighter, goblin = closing(Cell(4, 4))
+    fear = Frightened(fighter, caster=goblin)
+    fighter.effects.apply(fear)
+    assert "move" not in ids(offers(seated, fighter))
+
+    fighter.effects.remove(fear)
+
+    offered = [one for one in offers(seated, fighter) if one.ID == "move"]
+    assert [getattr(one, "target", None) for one in offered] == [goblin]
+    assert offered[0].execute(rng=no_dice()) == DIAGONAL
+
+
+def test_a_frightened_creature_walks_freely_away_from_its_source() -> None:
+    """The source stands at (-5, 0); the walk to (3, 3) puts it 30, 35 and 40
+    feet away, never closer."""
+    seated, fighter, goblin = closing(Cell(4, 4))
+    dread = creature("dread", cell=Cell(-5, 0), initiative=SECOND)
+    seated.seat(dread, "monsters")
+    fighter.effects.apply(Frightened(fighter, caster=dread))
+
+    walked = Move(fighter, goblin, world=seated).execute(rng=no_dice())
+
+    assert walked == DIAGONAL
+    assert fighter.economy.movement_ft == 15
+
+
+def _cornered() -> tuple[World, Creature, Creature, Creature]:
+    """The fighter at the origin, the goblin at (6, 0), and a wall of the
+    fighter's friends on (2, -1) to (2, 5) and on (3, -2) and (3, -3). The only
+    shortest way round is (1, -1), (2, -2), (3, -1), then two more squares to
+    stand beside the goblin. The source of fear `dread` waits at (4, 4)."""
+    seated, fighter, goblin = closing(Cell(6, 0))
+    wall = [Cell(2, y) for y in range(-1, 6)] + [Cell(3, -2), Cell(3, -3)]
+    for index, cell in enumerate(wall):
+        seated.seat(creature(f"wall{index}", cell=cell), "heroes")
+    dread = creature("dread", cell=Cell(4, 4), initiative=SECOND)
+    seated.seat(dread, "monsters")
+    return seated, fighter, goblin, dread
+
+
+def test_the_corner_is_walked_whole_without_fear() -> None:
+    """The control for the next test: the route it truncates."""
+    seated, fighter, goblin, _ = _cornered()
+
+    walked = Move(fighter, goblin, world=seated).execute(rng=no_dice())
+
+    assert walked[:3] == (Cell(1, -1), Cell(2, -2), Cell(3, -1))
+    assert len(walked) == 5
+    assert reaches(fighter, goblin)
+
+
+def test_a_frightened_creature_stops_before_the_first_step_toward_its_source() -> None:
+    """From the origin the dread at (4, 4) is 20 feet away; (1, -1) is 25 and
+    (2, -2) 30, but (3, -1) would be 25, closer than the square it leaves. The
+    walk stops on (2, -2), having paid for two squares."""
+    seated, fighter, goblin, dread = _cornered()
+    fighter.effects.apply(Frightened(fighter, caster=dread))
+
+    walked = Move(fighter, goblin, world=seated).execute(rng=no_dice())
+
+    assert walked == (Cell(1, -1), Cell(2, -2))
+    assert fighter.position == Cell(2, -2)
+    assert fighter.economy.movement_ft == 20
+    assert not Move(fighter, goblin, world=seated).is_legal()
+
+
+def test_fear_of_a_creature_outside_the_encounter_does_not_hold_a_move_back() -> None:
+    """Only a seated source is asked where it stands."""
+    seated, fighter, goblin = closing(Cell(4, 4))
+    absent = creature("absent", cell=Cell(5, 5))
+    fighter.effects.apply(Frightened(fighter, caster=absent))
+
+    assert Move(fighter, goblin, world=seated).execute(rng=no_dice()) == DIAGONAL
