@@ -320,8 +320,9 @@ class PooledContexts:
     rebinds every field.
 
     **One pool resolves one attack at a time**: `declared()` raises
-    `EngineAssemblyError` on re-entry until `release()` (debt #26,
-    `docs/decisions.md` § w1f).
+    `EngineAssemblyError` on re-entry until `release()`. An attack made from
+    inside another one is given a second pool, never this one again
+    (`docs/decisions.md` § w1f, § w2c2).
     """
 
     __slots__ = (
@@ -408,7 +409,8 @@ class PooledContexts:
                 "another attack sharing this context pool. The outer attack's "
                 "contexts are live; rebinding them here would resolve it against "
                 "the inner attack's numbers. Give the nested attack its own "
-                "PooledContexts (debt #26, w2c2) or resolve it through FRESH."
+                "PooledContexts — a reaction's is the one its "
+                "OpportunityAttacks source holds — or resolve it through FRESH."
             )
         self._live = True
         ctx = self._declared

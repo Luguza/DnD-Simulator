@@ -4644,6 +4644,10 @@ this one, each in a sibling worktree on one container.
 - **No unarmed strike.** A creature that has dropped its weapon cannot Attack
   until it picks it up.
 
+**The owner's answer to `docs/questions.md` #15** (2026-11-03): the shield
+stays held, but an Unconscious creature loses its +2 AC; the AC half is
+`ROADMAP.md` § The W0 debt register #61.
+
 Sources: `ROADMAP.md` `w2b`, § Sequencing principles 10; § The `w2b` spec
 correction; § w1a, § w1c, § w1h, § w1j, § w2i; DESIGN.md § The APL; XPHB
 "Actions", "Combat", "Dropping to 0 Hit Points", Rules Glossary "Unconscious".
@@ -4952,6 +4956,259 @@ is safe against a double start for the same reason the checks were: two hours
 without activity is longer than any live session goes between pushes, and the
 round cap counts the PR's verdicts, so an adopter cannot reset it.
 
+## w2d — the target dummy
+
+`creatures/dummy.py`: a frozen `DummySpec` holding every knob DESIGN.md § The
+target dummy names, `DummySpec.from_mapping()` reading it from a parsed YAML
+document, and `build_dummies()` turning it into `TargetDummy` creatures.
+
+### Data now, behaviour where the turn is
+
+The row depends only on `w1a`, but half its knobs act on the dummy's turn, and
+the turn is `w2c`'s and the walk `w2c2`'s, both in flight beside this task. A
+knob was built as behaviour exactly when a hook that already exists carries it
+without a turn:
+
+- **Resistances, immunities and vulnerabilities** are a `DamageDefences`
+  source on `on_incoming_damage`, so the one resolution order in
+  `engine/damage.py` applies them (§ w1e).
+- **Legendary Resistance** is a pool with a long-rest `Recovery` and a source
+  on `on_save_resolved`, the hook whose summary names it.
+
+Everything else — `movement_profile`, `threat_profile`, `damage_per_round`,
+`regeneration`, `save_dc` — is validated data on `TargetDummy.spec`, and debt
+#59 names who reads each. Regeneration looked buildable on `on_turn_start` and
+is not: `heal()` takes a generator and `TurnContext` carries none, and setting
+`hp` directly would skip `on_heal`'s veto. The done-when's second clause,
+"provokes and is provoked", cannot be met without the walk, so it moves to
+`w2e` with the profile (#59) rather than being faked with an `engine/` edit.
+This run was one of three tasks the owner had run in parallel, and the
+owner's instruction for it, quoted on PR #65, was: "`movement_profile`
+(`closes_to_melee`, `kites_at`) touches the walk that `w2c2` is building in
+`engine/turn.py`. Do not edit `engine/`. … If the dummy can only hold its
+profile as data for `w2c2`/`w2e` to act on, build that and record the choice.
+If the row can't be built without the walk, open a spec PR". So the correction rides this PR instead of a spec PR, and it
+amends the rows that take the work on — `w2d`'s own done-when, and `w2e`'s and
+`w2g`'s, which now name what each owes — rather than leaving it in the
+register alone.
+
+### Choices a reader would otherwise reopen
+
+- **"Configurable from YAML" is a mapping, not a parser.** No YAML library is
+  a dependency yet and the Produces cell is one file; `w2f`'s loader and `w2h`'s
+  `--dummy ac=16` both hand over the parsed or overridden mapping, and
+  `dataclasses.replace(spec, ac=n)` is the sweep. An unknown knob fails with a
+  difflib suggestion (DESIGN.md § Failing loudly).
+- **A save bonus is stored as an ability score**, `10 + 2 × bonus`, because
+  `save_bonus()` adds the bare modifier until debt #36's field exists. The
+  cost is that the Dexterity save bonus is also the dummy's initiative
+  modifier; AC is unaffected, being `Armour.natural()` (§ w1a). The score is
+  an encoding, not a score a creature has, so no bonus is capped: a monster's
+  save bonus includes its proficiency, and +13 is the score 36.
+- **Legendary Resistance is spent on every failed save** while a use is left
+  — the control spends it the first time it can (`docs/questions.md` #18).
+- **`count` dummies stand in a row along +x, one footprint apart**, from
+  `position`. A layout knob is one field when a scenario needs another.
+- **`ThreatProfile` has two members**, `nearest` and `lowest_hp`; a third is
+  one member when `w2e`'s selectors can express it.
+
+Sources: `ROADMAP.md` `w2d`, debt #36, #59; DESIGN.md § The target dummy,
+§ Failing loudly; § w1a, § w1e.
+## w2c2 — the walk and the opportunity attack
+
+**A creature can now walk in a fight, and be hit for leaving.** The turn loop
+offers a `Move` toward each enemy out of reach, the walk charges each step to
+the economy, and `actions/opportunity_attack.py` is the Command the movement
+audience of § w0g3 offers. Five debts are retired with it: #18, #19, #20, #26
+and #28.
+
+### The Command and the rule are two classes
+
+`OpportunityAttack` is an `Attack` with `ID = "opportunity_attack"` and the
+Reaction as its `COST`. `OpportunityAttacks` is the rule a creature carries: a
+`HookSource` whose `on_leave_reach` handler declares
+`costs=REACTION, gate="opportunity_attack"`, so the dispatcher checks the
+Reaction, asks the owner's policy under the Command's id, and spends the
+Reaction only on `APPLIED` (§ w0g3, DESIGN.md § Reactions in the APL). That is
+why the Command has a `resolve()` that makes the attack without spending:
+`execute()` would spend the Reaction the dispatcher is about to spend.
+
+The rule is attached by whoever builds the creature, not by `World.seat()`:
+a creature the APL never names must not make one (unmentioned is OFF), and a
+gated handler on a dispatcher with no gate raises rather than reading as an
+open gate. `w2f`'s build loader attaches it with the gate wired. Holding the
+world, the rule also holds the side check § w0g3 promised the Command:
+`OpportunityAttack._permits()` refuses a target on the actor's own side, so an
+APL entry with no `if:` does not swing at an ally walking past. The weapon is
+the actor's own, and with none there is no attack: the unarmed strike is
+§ w2b's gap, not a new one.
+
+### A second pool, never a deeper one (#26)
+
+`OpportunityAttacks` takes the `AttackContexts` its attacks resolve through,
+and that is the reaction's pool, apart from the one the creature's turn uses.
+A reaction resolved inside another attack — a walk forced from an `on_hit`
+handler, a Sentinel answering an attack — rebinds its own contexts while the
+outer attack's stay live, and re-entering one pool still raises (§ w1f). The
+spike gives each enemy one `PooledContexts` for its turn and another for its
+reaction. Nothing in `engine/attack.py` changed but the docstring and the
+refusal's message, which now names where the second pool lives.
+
+### The walk (#18, #19, #20, #28)
+
+- **#18.** `_offer()` drains what a handler queued through `apply_pending()`
+  with the watcher and the mover as participants, so an effect on a third
+  creature is found on the roster `w2c` built for #30.
+- **#19.** After each offer the walk stops if the mover is down **or at
+  Speed 0**, on the square it was leaving and with that step uncharged, and a
+  later watcher left by the same step is not offered it: a held mover leaves
+  nobody's reach. The independent test pass found the second half missing. The Speed half applies only to a walk the mover pays for
+  (`charge`): a creature moved without paying — a shove, a drag — is not
+  stopped by a Speed of 0 it may have had all along, whoever is watching.
+  The review found the walk stopping such a mover only when a watcher stood
+  near. A
+  speed-to-zero reaction (2024 Sentinel) lands through #18 and is read
+  through `Creature.speed_ft` (#47).
+- **#20.** `Move` passes `provokes=not disengaged(mover)`. Forced movement and
+  teleportation will pass `provokes=False` when a feature first makes either;
+  nothing makes them yet.
+- **#28.** `walk_provoking(..., charge=True)` spends five feet a step. On the
+  watched path the charge is per step, after the offer, so a walk a reaction
+  stopped has paid only for what it walked. On the path nobody watches, nothing
+  can stop the walk, so the whole route is charged in one call: the per-step
+  calls would buy nothing on the path whose claim is that it is free (§ w0g3).
+  A route longer than the movement left, or any walk at Speed 0, raises before
+  anything moves: the caller truncates, as `steps_within()` exists for.
+
+### `Move` is in `engine/turn.py`, not `actions/`
+
+DESIGN.md § Module layout lists no move Command under `actions/`, and the
+row puts "the walk" in `engine/turn.py`. Movement is paid in feet, not an
+economy slot, so `COST` is `None`, and `Move` overrides `is_legal()` because
+Incapacitated stops no movement — Speed 0 does, and is asked. It is one form of
+DESIGN.md § The APL's `move:` clause, `toward <enemy> until in_reach`, which
+the default policy needs ("a build with no `move:` clause closes to its nearest
+enemy"); `away_from` and `hold` are `w2e`'s, with the selector.
+
+The destination is the square with the shortest route whose footprint has
+the target in the actor's reach (`in_reach`, between footprints, so #34 does
+not apply here) and stands in nobody's space; ties go to the nearest by
+Chebyshev, then lowest `y`, then `x`, so a seed reproduces the walk. Squares
+are tried in Chebyshev order and the search stops once that floor reaches the
+best route found, since no route is shorter than it. The review found the first
+cut taking the first square it could reach in that order, which a detour can
+make the longer walk. Every other living creature's space is impassable,
+which never produces illegal movement but forbids passing through an ally:
+#60. The route is planned once for the positions the two creatures hold, so
+`is_legal()` then `execute()` plans once rather than three times — the spike's
+witness was 3.99M calls before that and 3.03M after.
+
+### Fear and crawling, which a walk that costs something has to ask
+
+Two conditions declared their movement clauses unwritable while nothing spent
+movement and nothing chose a walk (#28 was their owner), and this task makes
+both writable, so `Move` asks them. Following `INCAPACITATES` and `SPEED_ZERO`
+(§ w2c), `Effect` gained two flags, so `engine/` names no condition:
+
+- **`CRAWLS`** (Prone): each square costs ten feet, so `walk_provoking()` takes
+  a `step_ft` and `Move` truncates the route by it. Righting oneself is a
+  separate choice nothing offers yet: #62.
+- **`NO_APPROACH`** (Frightened): "You can't willingly move closer to the
+  source of fear." `Move` walks the route only up to the first step that ends
+  nearer the effect's caster than the square it left, and is not offered when
+  that is the first step. A detour around the source is not searched for; a
+  Frightened creature that cannot close without approaching stays put.
+
+Grappled's dragging clause is a Grapple's, and now cites #57, which owns it.
+The review of this PR found both.
+
+### What it cost the benchmark
+
+`tools/spike.py` was a configuration in which no offer could fire: the hero
+closes once and never leaves anybody's reach, and the enemies owned no
+reaction. The row asks for one where they do, without counting an opportunity
+attack by a featureless creature as a resolution. `build_spike(provoking=True)`,
+now the default:
+
+- each enemy owns `OpportunityAttacks`, always taken, through its own pool;
+- the enemies close with the turn loop's `Move` rather than the spike's
+  anchor arithmetic, which stalled them behind each other once the hero moved;
+- one enemy, the skirmisher, falls back two squares after it swings, so on
+  every hero turn after the first the hero walks out of the other two's reach
+  to follow it: two opportunity attacks a round, 1,600 over the 200-encounter
+  witness;
+- every creature's economy is handed back at its turn, and every step is
+  charged.
+
+`run_encounter()` counts the attacks made on a turn, as before; the 1,600
+opportunity attacks are not in the numerator. They are in the log: with
+`provoking`, the spike's `World` holds its `EventLog`, so an opportunity attack
+pays for its records as every counted attack does, and the effect and resource
+writers `w2c` wired (#50) pay for theirs. The review found the first cut
+seating the world without it, which left the provoking arm cheaper than it
+should be. `provoking=False`
+(`--no-provoking`) is the configuration before this task.
+
+**The witness**, the fixed 200-encounter profiled run at seed 0:
+
+| Arm | Calls | Closing HP (hero; enemies) | Resolutions | Next draw |
+|---|---|---|---|---|
+| `w2c`, `78adf99` | 1,740,518 | 55; 207, 1,000, 1,000 | 6,000 | 108454 |
+| this task, `provoking=False` | 1,761,875 | 55; 207, 1,000, 1,000 | 6,000 | 108454 |
+| this task, `provoking=True` | 3,116,414 | 49; 180, 1,000, 1,000 | 6,000 | 401888 |
+
+The first two are the same fights; the 21k calls between them are the
+enemies' economies handed back each turn, the per-step charge and the Speed
+read before each walk. The third is new work, attributed by cumulative time
+in the same profile: the 1,600 opportunity attacks 0.26 s (inside
+`MovementWatch._offer()`'s 0.31 s), the enemies' `Move` planning 0.44 s over
+3,000 plans (the `CRAWLS` and `NO_APPROACH` scans of each mover's effects added
+since, and the shortest-route search's early stop taken back off), `walk_provoking()` 0.54 s in all, against `resolve_attack()`'s
+1.50 s for the 7,600 attacks made. The hero's lowest closing HP over the run
+is 19, so it never drops and Uncanny Dodge's gate still answers.
+
+**The rate**: eight rounds of three arms, the order reversed every other
+round, each arm a fresh interpreter on one container, `measure(1000, 3)`'s
+body each:
+
+| Arm | Median | Ratio to `w2c`, median (span) |
+|---|---|---|
+| `w2c`, `78adf99` | 15,785 | — |
+| this task, `provoking=False` | 15,985 | **0.994** (0.910–1.118) |
+| this task, `provoking=True` | 8,883 | **0.562** (0.534–0.593) |
+
+The first ratio is noise, as the witness says it should be: the wiring costs
+the old configuration nothing measurable. The second is not a slowdown of
+anything the old configuration did; it is the configuration doing more per
+counted resolution. Counting the uncounted opportunity attacks too would read
+11.3k attacks a second, 0.71 of `w2c`, and the rest is the walking: the
+enemies now plan routes around each other every turn, and the hero walks every
+round. A second agent's test runs shared the container for part of it, and
+every arm reads below `w2i`'s figures; only the ratios travel.
+
+**For the `⏸` gate that revises the budget** (`docs/questions.md` #10): the
+human's floor was set against `w2i`'s re-measure of `w0i`'s configuration, and
+`--no-provoking` is that configuration, unchanged by this task. Whether the
+budget is quoted against it or against the provoking default — which is what
+a real fight's walking and reactions cost, at two opportunity attacks a round,
+more than most fights make — is the gate's call; the default is the one the
+row asked to be re-run.
+
+### What this task deliberately did not do
+
+- **No `away_from` or `hold`.** `Move` is the one form the default policy
+  needs; the selector grammar is `w2e`'s.
+- **No pass-through and no Difficult Terrain**: #60.
+- **No visibility gate and no hook for entering reach**: #21 and #22 stay with
+  `w3f`.
+- **No attachment of `OpportunityAttacks` at seating.** `w2f`'s loader.
+
+Sources: `ROADMAP.md` `w2c2`, § The W0 debt register #18–#22, #26, #28, #34,
+#57, #60–#62; § Sequencing principles 10; § w0g3, § w1f, § w2b, § w2c; DESIGN.md
+§ Reactions in the APL, § The APL, § Module layout; XPHB "Combat" ->
+Opportunity Attacks, "Movement and Position", "Actions" -> Disengage; Rules
+Glossary "Frightened", "Prone".
+
 ## w2a — the content ACL
 
 ### The fields on `Weapon` and `Armour`
@@ -4998,7 +5255,7 @@ are kept as columns too because the Warlock table prints them as columns.
 Its damage is a flat 1 with no die. A `Dice(1, 1)` would import it, and would
 deal 2 on a Critical Hit where the rules deal 1, which is the crit trap
 DESIGN.md § Structural prevention exists to make unwritable. It is listed in
-`weapons.NOT_IMPORTED` with the reason (debt #59). The list is
+`weapons.NOT_IMPORTED` with the reason (debt #63). The list is
 checked against the data in both directions: any other weapon without a die
 raises, and an entry the data no longer holds raises too.
 

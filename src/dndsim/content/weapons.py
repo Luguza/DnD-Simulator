@@ -57,7 +57,7 @@ NOT_IMPORTED: Final = MappingProxyType(
     {
         "Blowgun": (
             "its damage is a flat 1 with no die, and `Weapon.damage` is dice "
-            "only; a d1 would double to 2 on a Critical Hit (debt #59)"
+            "only; a d1 would double to 2 on a Critical Hit (debt #63)"
         ),
     }
 )
