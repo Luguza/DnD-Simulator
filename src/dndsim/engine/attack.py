@@ -408,7 +408,7 @@ class PooledContexts:
                 "another attack sharing this context pool. The outer attack's "
                 "contexts are live; rebinding them here would resolve it against "
                 "the inner attack's numbers. Give the nested attack its own "
-                "PooledContexts (w2c) or resolve it through FRESH."
+                "PooledContexts (debt #26, w2c2) or resolve it through FRESH."
             )
         self._live = True
         ctx = self._declared

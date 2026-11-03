@@ -1170,7 +1170,7 @@ DEBUFF_PROFILE = Perturbation(
                                         # a repeating one declares repeat=, whose
                                         # members are the enum `w1g` adds to
                                         # rules/enums.py and never string
-                                        # literals (ROADMAP debt #35): the engine
+                                        # literals (decisions.md § w2c): the engine
                                         # that rolls the repeat save reads the
                                         # same member. The two differ by a whole
                                         # round of value, see above
@@ -1198,7 +1198,7 @@ and the three that say how it ends — `save=`, its optional `repeat=`
 (end-of-turn or start-of-turn, which select between the two `E[N]` formulas
 above; its members are the enum `w1g` adds to `rules/enums.py`, read by the
 engine that rolls the repeat save as well as by the scorer, and never two sets
-of string literals that can disagree — `ROADMAP.md` § The W0 debt register #35),
+of string literals that can disagree — `docs/decisions.md` § w1g, § w2c),
 and `ends_on_damage=`.
 
 Keeping them apart is what makes the closed list closable: the perturbation keys

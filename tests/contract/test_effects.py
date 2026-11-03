@@ -16,7 +16,7 @@ from dndsim.core.errors import EngineAssemblyError, FeatureContractError
 from dndsim.core.geometry import Cell
 from dndsim.core.timeline import Duration, Expiry, InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import UNSEATED, Creature
-from dndsim.creatures.effects import Effect, EffectStore, Stacking
+from dndsim.creatures.effects import Clock, Effect, EffectStore, RepeatSave, Stacking
 from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
 from dndsim.hooks.contexts import (
     Combatant,
@@ -28,7 +28,7 @@ from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.definitions import ON_TURN_START
 from dndsim.hooks.registry import Phase
 from dndsim.hooks.source import HookSource
-from dndsim.rules.enums import Ability, Condition
+from dndsim.rules.enums import Ability, Condition, SaveRepeat
 
 SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 10))
 
@@ -400,8 +400,9 @@ def test_a_duration_resolves_against_the_clock_the_store_was_last_told() -> None
 
 
 def test_a_store_starts_at_one_arbitrary_point_in_an_undecided_order() -> None:
-    """A store never swept reads round 1 at `UNSEATED` (debt #29): an anchor at
-    or above `initiative=0` ends in round 2, one below it in round 1.
+    """A store never swept reads round 1 at `UNSEATED` (`docs/decisions.md`
+    § w2c): an anchor at or above `initiative=0` ends in round 2, one below it in
+    round 1.
     """
     assert creature().effects.now == TimeKey(1, UNSEATED, TurnPhase.START)
 
@@ -1052,3 +1053,76 @@ class DropsOn(HookSource):
         self.saw.append((before, ctx.drops_held, self._creature.weapon is not None))
         self.reasons = ctx.dropped_by
         return R.APPLIED
+
+
+# --- One clock for many stores (`docs/decisions.md` § w2c) ----------------------------
+
+
+def test_stores_joined_to_one_clock_read_the_time_it_was_last_moved_to() -> None:
+    """The clock is moved to round 2, the barbarian's turn; the ogre's store
+    was never swept itself, and still resolves Rage "until the end of the
+    barbarian's next turn" against round 2 — so round 3, not round 2."""
+    barbarian, ogre = creature(), creature("ogre", initiative=OGRE)
+    clock = Clock(at(1, UNSEATED, TurnPhase.START))
+    barbarian.effects.join(clock)
+    ogre.effects.join(clock)
+
+    clock.expire_before(at(2, BARBARIAN, TurnPhase.START))
+    rage = ogre.effects.apply(
+        Rage(ogre, duration=Duration.until_end_of_next_turn_of(BARBARIAN))
+    )
+
+    assert rage is not None
+    assert ogre.effects.now == at(2, BARBARIAN, TurnPhase.START)
+    assert rage.expiry == Expiry(at(3, BARBARIAN, TurnPhase.END), through_phase=True)
+
+
+def test_a_shared_clock_ends_what_is_due_on_every_store_holding_it() -> None:
+    barbarian, ogre = creature(), creature("ogre", initiative=OGRE)
+    clock = Clock(at(1, BARBARIAN, TurnPhase.START))
+    for one in (barbarian, ogre):
+        one.effects.join(clock)
+        one.effects.apply(Rage(one, duration=Duration.until_end_of_next_turn_of(OGRE)))
+
+    clock.expire_before(at(1, OGRE, TurnPhase.END))
+    assert len(barbarian.effects) == 1 and len(ogre.effects) == 1
+    clock.expire_after(at(1, OGRE, TurnPhase.END))
+    assert len(barbarian.effects) == 0 and len(ogre.effects) == 0
+
+
+def test_a_store_joining_a_new_clock_takes_what_it_holds_along() -> None:
+    """Held effects are swept by the clock the store reads now, and no longer
+    by the one it left."""
+    barbarian = creature()
+    old, new = barbarian.effects.clock, Clock(at(1, BARBARIAN, TurnPhase.START))
+    barbarian.effects.apply(
+        Rage(barbarian, duration=Duration.until_start_of_next_turn_of(OGRE))
+    )
+    barbarian.effects.join(new)
+    assert barbarian.effects.clock is new
+
+    old.expire_before(at(5, OGRE, TurnPhase.START))
+    assert len(barbarian.effects) == 1
+    new.expire_before(at(5, OGRE, TurnPhase.START))
+    assert len(barbarian.effects) == 0
+
+
+def test_an_effect_carries_its_repeat_save_and_defaults_to_none() -> None:
+    barbarian = creature()
+    save = RepeatSave(Ability.WISDOM, 15, SaveRepeat.TURN_END)
+    assert Effect(barbarian).repeat_save is None
+    assert Rage(barbarian, repeat_save=save).repeat_save == save
+    assert (save.ability, save.dc, save.when) == (
+        Ability.WISDOM,
+        15,
+        SaveRepeat.TURN_END,
+    )
+
+
+def test_a_plain_effect_neither_incapacitates_nor_touches_speed() -> None:
+    rage = Rage(creature())
+    assert (rage.INCAPACITATES, rage.SPEED_ZERO, rage.speed_reduction_ft) == (
+        False,
+        False,
+        0,
+    )

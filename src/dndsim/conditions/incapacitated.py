@@ -16,11 +16,8 @@ class Incapacitated(Condition):
     __slots__ = ()
 
     CONDITION = enums.Condition.INCAPACITATED
+    INCAPACITATES = True
     NEEDS_HOOK: ClassVar[tuple[str, ...]] = (
-        "ActionEconomy can be granted and spent but not emptied, and nothing "
-        "filters what a creature is offered: \"You can't take any action, "
-        'Bonus Action, or Reaction." '
-        "(ROADMAP.md § The W0 debt register #41)",
         "nothing concentrates on anything yet, so there is nothing to break: "
         '"Your Concentration is broken." '
         "(ROADMAP.md § The W0 debt register #46)",

@@ -5,6 +5,11 @@ description: Take the next task off docs/progress.md and drive it to a merged PR
 Work the queue. One task, one branch, one PR, reviewed until clean.
 `docs/workflow.md` is the procedure; this is the checklist.
 
+**If something stops you, resolve it — do not just report it.** A conflict, a
+missing verdict, a PR whose session died: each is yours to fix, and only a
+`held` row, a workflow edit or a refused permission waits for the human
+(`docs/workflow.md` § When the loop is stuck).
+
 **Read only what you need.** `DESIGN.md`, `ROADMAP.md` and `docs/decisions.md`
 are each well over 100KB — grep them for the claim you need, never read them end
 to end. Budget your reading to: the queue row, the ROADMAP row for your id, the
@@ -69,6 +74,11 @@ Each wake: read the sticky verdict comment and CI.
 - **PLAUSIBLE** → fix, or reply on the thread saying why it is not a defect.
 - A verdict saying the review did not run or did not finish is not a pass.
 - CI red or a merge conflict is work now, whatever the review says.
+- **After every push, read the PR's mergeable state.** A PR that conflicts
+  with M runs no CI and no review, so no event will ever wake you: merge M
+  into the branch, resolve, validate, push. No verdict and no check runs on
+  your head commit means look for the conflict first (`docs/workflow.md`
+  § The milestone branch).
 - **Fourth non-clean verdict:** stop pushing and comment naming what is
   contested. If CI is green and every CONFIRMED finding is fixed, record the
   contested findings in `ROADMAP.md` § The W0 debt register, owned by the next
