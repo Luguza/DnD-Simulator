@@ -4951,3 +4951,62 @@ adopt a dead session's PR or milestone review instead of naming it. Adopting
 is safe against a double start for the same reason the checks were: two hours
 without activity is longer than any live session goes between pushes, and the
 round cap counts the PR's verdicts, so an adopter cannot reset it.
+
+## w2d — the target dummy
+
+`creatures/dummy.py`: a frozen `DummySpec` holding every knob DESIGN.md § The
+target dummy names, `DummySpec.from_mapping()` reading it from a parsed YAML
+document, and `build_dummies()` turning it into `TargetDummy` creatures.
+
+### Data now, behaviour where the turn is
+
+The row depends only on `w1a`, but half its knobs act on the dummy's turn, and
+the turn is `w2c`'s and the walk `w2c2`'s, both in flight beside this task. A
+knob was built as behaviour exactly when a hook that already exists carries it
+without a turn:
+
+- **Resistances, immunities and vulnerabilities** are a `DamageDefences`
+  source on `on_incoming_damage`, so the one resolution order in
+  `engine/damage.py` applies them (§ w1e).
+- **Legendary Resistance** is a pool with a long-rest `Recovery` and a source
+  on `on_save_resolved`, the hook whose summary names it.
+
+Everything else — `movement_profile`, `threat_profile`, `damage_per_round`,
+`regeneration`, `save_dc` — is validated data on `TargetDummy.spec`, and debt
+#59 names who reads each. Regeneration looked buildable on `on_turn_start` and
+is not: `heal()` takes a generator and `TurnContext` carries none, and setting
+`hp` directly would skip `on_heal`'s veto. The done-when's second clause,
+"provokes and is provoked", cannot be met without the walk, so it moves to
+`w2e` with the profile (#59) rather than being faked with an `engine/` edit.
+This run was one of three tasks the owner had run in parallel, and the
+owner's instruction for it, quoted on PR #65, was: "`movement_profile`
+(`closes_to_melee`, `kites_at`) touches the walk that `w2c2` is building in
+`engine/turn.py`. Do not edit `engine/`. … If the dummy can only hold its
+profile as data for `w2c2`/`w2e` to act on, build that and record the choice.
+If the row can't be built without the walk, open a spec PR". So the correction rides this PR instead of a spec PR, and it
+amends the rows that take the work on — `w2d`'s own done-when, and `w2e`'s and
+`w2g`'s, which now name what each owes — rather than leaving it in the
+register alone.
+
+### Choices a reader would otherwise reopen
+
+- **"Configurable from YAML" is a mapping, not a parser.** No YAML library is
+  a dependency yet and the Produces cell is one file; `w2f`'s loader and `w2h`'s
+  `--dummy ac=16` both hand over the parsed or overridden mapping, and
+  `dataclasses.replace(spec, ac=n)` is the sweep. An unknown knob fails with a
+  difflib suggestion (DESIGN.md § Failing loudly).
+- **A save bonus is stored as an ability score**, `10 + 2 × bonus`, because
+  `save_bonus()` adds the bare modifier until debt #36's field exists. The
+  cost is that the Dexterity save bonus is also the dummy's initiative
+  modifier; AC is unaffected, being `Armour.natural()` (§ w1a). The score is
+  an encoding, not a score a creature has, so no bonus is capped: a monster's
+  save bonus includes its proficiency, and +13 is the score 36.
+- **Legendary Resistance is spent on every failed save** while a use is left
+  — the control spends it the first time it can (`docs/questions.md` #18).
+- **`count` dummies stand in a row along +x, one footprint apart**, from
+  `position`. A layout knob is one field when a scenario needs another.
+- **`ThreatProfile` has two members**, `nearest` and `lowest_hp`; a third is
+  one member when `w2e`'s selectors can express it.
+
+Sources: `ROADMAP.md` `w2d`, debt #36, #59; DESIGN.md § The target dummy,
+§ Failing loudly; § w1a, § w1e.
