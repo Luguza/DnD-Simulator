@@ -37,6 +37,14 @@ at the end, not a gate they pass on the way.
   workflow edit, a tooling fix) is merged into the milestone branch before the
   next task starts, so the two never diverge and the milestone PR never
   conflicts.
+- **M flows on into the PR in flight.** Merging into M while a task PR is open
+  can leave that PR conflicting with M, and GitHub runs no CI and no review on
+  a conflicting PR, so nothing ever wakes the session waiting on it. A
+  conflict is therefore never left for an event to report: whoever merges into
+  M checks every open PR into M, the task session checks its own after every
+  push, and the watchdog checks on every firing; each one that finds a
+  conflict merges M into the PR's head, resolves it and pushes
+  (`docs/decisions.md` § The `w2c` merge conflict).
 
 ## The cycle
 
@@ -69,6 +77,9 @@ every finding **CONFIRMED** or **PLAUSIBLE**. It reviews on two axes
   Never silently skipped. The split exists so that a weak finding costs a reply
   rather than a speculative commit.
 - **Done** = `✅ Looks good` **and** CI green **and** no merge conflict.
+  A conflicting PR has no CI and no review at all, so a missing verdict or a
+  missing check run is read as a conflict until the PR's mergeable state says
+  otherwise (§ The milestone branch).
 - **Round cap: three.** On a fourth non-clean verdict the session stops pushing
   and posts one comment naming what is still contested. If CI is green and every
   **CONFIRMED** finding is fixed, it merges and records the contested findings
@@ -133,8 +144,39 @@ here. A row is for a choice a careful reader of the same documents could make
 the other way. `w1d`'s three rows were the other kind, and the human closed them
 as trivial (`docs/decisions.md` § w1d).
 
+A row is written for a D&D expert who knows nothing of the code or of the
+queue's progress: the table situation in game terms, the readings on offer as
+lettered options (`A) … ; B) …`, the Options column the dashboard turns into
+answer buttons), what each changes in play, and the one taken. No file, task
+id, debt number or engine term is needed to answer it. A choice about the process, the tooling or
+the code's shape is never a row: the loop takes it and records it in
+`docs/decisions.md`. The human returned four rows of that kind unanswered
+(`docs/decisions.md` § The human's answers, 2026-11-02).
+
 A question is never a reason to skip a check, widen a task, or merge something a
 review has not passed. If no reading is safe to proceed on, the row is `held`.
+
+### Answers from the dashboard
+
+The dashboard renders each open row's options as buttons. A button opens a new
+issue titled `Answer #<n>: <letter>`; the text box under the buttons opens one
+titled `Answer #<n>: other`, with the human's own answer in the body. The human
+submits it. Every `/next-task` and
+`/plan-review` run starts by listing the open issues with that title and
+records each one in the run's own PR:
+
+- **Only the repository owner's issue counts.** Anyone can open an issue on a
+  public repository; one from another author is left alone. If the owner filed
+  two for one row, the latest wins.
+- **Record it**: the row moves to `docs/questions.md` § Answered, with the
+  question kept in its plain wording and the answer (with any note from the
+  body) beside it, and `docs/decisions.md` gets a line under the task that asked.
+- **Act on it**: an answer that confirms the choice taken needs nothing more.
+  One that overturns it becomes work for the queue: a debt row with an owner,
+  or a queue row when it is too large for one, never an edit to code outside
+  the run's own task.
+- **Close the issue** with a comment linking the PR once that PR has merged. A
+  run that finds an issue whose row is already in § Answered only closes it.
 
 ## When the spec is wrong
 
@@ -144,6 +186,11 @@ A session that finds a real gap in the task spec does not guess. It opens a
 starts a fresh `/next-task` session, which re-reads the corrected row. The W0 debt
 register is what this project gets when specs are read critically; an
 implementer that can only ever implement is worse than one that can stop.
+
+A row that misstates what the rules text settles (a count, a name, a number)
+is not a gap. What the plan says is irrelevant if the features are correct: the
+implementing PR builds what the quoted rules say and corrects the row in the
+same diff (`docs/questions.md` #5, answered).
 
 ## Plan reviews
 
@@ -198,7 +245,9 @@ worker, and both paths below drive the Routine rather than spawn around it.
   ahead, and opening the draft milestone PR once it has commits of its own),
   then runs its checks and, only if all of them hold, works the task itself in
   that same session: no milestone PR is ready, the queue has a `next`
-  row, no `claude/task-*` PR is open, and nothing is `held`. The checks are what
+  row, no `claude/task-*` PR is open, and nothing is `held`. An open task PR
+  that conflicts with M is brought up to date instead, since nothing else
+  would wake its session (§ The milestone branch). The checks are what
   stop it double-starting a task or starting the next milestone on a branch
   whose merge is waiting (§ Plan reviews); firing no more often than the slowest
   task reaches its PR is the other half of that guard.
@@ -230,9 +279,14 @@ worker, and both paths below drive the Routine rather than spawn around it.
   4. Read docs/progress.md on M. Find the row whose status is `next`. If there
      is none, or any row is `held`: stop, notifying the user in one sentence
      for a `held` row.
-  5. If a pull request with a `claude/task-*` head branch is open, stop
-     silently — a task is in flight. Exception: if its last activity is over
-     two hours old, say so in one sentence naming the PR and what it waits on.
+  5. If a pull request with a `claude/task-*` head branch is open, a task is
+     in flight. If GitHub reports it conflicting with its base, merge the base
+     into its head branch, resolve the conflict, run the pre-commit hooks,
+     push, and stop: a conflicting PR runs no CI and no review, so nothing
+     else will wake its session. If you cannot resolve it, say so in one
+     sentence naming the PR and the files. Otherwise stop silently.
+     Exception: if its last activity is over two hours old, say so in one
+     sentence naming the PR and what it waits on.
 
   Only if all of these pass: run `/next-task` yourself, in this session, on M,
   and drive it to a PR merged into M. Never call `create_session` — a Routine

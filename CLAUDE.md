@@ -25,8 +25,9 @@ from 50k by the W0 spike (`docs/decisions.md` § w0i). **`w1k` re-measured it
 against the real W1 substrate and it is missed by about a quarter** (~22k
 projected), attributed to three costs, debt #53–#55. `w2i` took their engine
 halves and brought it back to ~23.5k; what is left is the spike's configuration
-and `w2c`'s sweep count. The budget is **not** revised, and whether it comes
-down is `docs/questions.md` #10, the human's. Read `docs/decisions.md` § w1k
+and `w2c`'s sweep count. The human has accepted the measured rate
+(`docs/questions.md` #10, answered): the budget comes down to it, no lower than
+~22k, and that edit is the next `⏸` gate's. Read `docs/decisions.md` § w1k
 and § w2i before pricing anything against it.
 
 **`ROADMAP.md` § The W0 debt register** lists every first cut and deferred

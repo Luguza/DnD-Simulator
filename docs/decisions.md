@@ -4689,6 +4689,34 @@ done-when or the register row it cites.
 Sources: `ROADMAP.md` `w2c`, `w2c2`, § The W0 debt register #18–#22, #26,
 #28–#30, #35, #39, #41, #47, #50, #55, #57; `docs/questions.md` #16.
 
+## The human's answers, 2026-11-02
+
+The open rows of `docs/questions.md` were restated in plain D&D terms and the
+human answered them; the answers stand in that file's § Answered, which
+keeps the questions in their plain wording and the old wording to its history.
+
+- **Confirmed**: an open field (#12), the featureless M1 Fighter (#13), two
+  failures for a Critical Hit at 0 HP (#7), and the wait for Exhaustion 6's
+  route to death (#9).
+- **Conditions never stack** (#8). Re-applying a condition a creature already
+  has changes nothing it does. `Downed` is consistent with that: it adds nothing
+  while a spell's Unconscious holds, and it is a separate instance only so that
+  the creature stays Unconscious until both the spell and the 0 HP have ended
+  (§ w1j).
+- **The rules text outranks the plan** (#5). A row that miscounts what the
+  quoted rules settle is corrected in the implementing PR, now written into
+  `docs/workflow.md` § When the spec is wrong.
+- **The budget comes down** (#10). The human accepts the measured rate, put to
+  them as about 3 minutes a build comparison on one core, ~25 seconds on eight
+  (DESIGN.md § Performance's 4M resolutions at ~22k a second). The next `⏸` gate
+  revises it to a figure `w2i`'s re-measure justifies, no lower than that, in
+  the places `w0i` revised it; #11 is moot.
+- **Returned unanswered**: #4, #6, #14 and #16 are process choices, which the
+  human does not decide. Their choices stand, and `docs/workflow.md` § Questions
+  for the human now keeps such choices out of the file.
+
+#15 was still open and was put to the human with the rest.
+
 ## w2c — the encounter, the roster, and the turn loop
 
 **`engine/` now runs a fight**: `World` is the roster, `roll_initiative()`
@@ -4855,6 +4883,17 @@ this one, each in a sibling worktree on one container.
   real loop's, at every creature of a larger roster, and the clock pays it
   once a boundary.
 
+### Which verdicts count toward the round cap
+
+Only a verdict that reviewed the head it names counts. A push made while the
+previous push's review is still running cancels that review, and the sticky
+comment then says the review did not run on the superseded commit; that is not
+a round, and not a pass either. PR #62's rounds were therefore `35e072a`,
+`421bfd2`, `126b01c` and `0335bd9`; the "did not run" notices on `bc99d9c` and
+`1823c5b` were each superseded within a minute by their own session's next
+push. This was `docs/questions.md` #18 until the human's answers moved process
+choices out of that file.
+
 ### What this task deliberately did not do
 
 - **No movement.** The walk, the per-step charge and the opportunity attack are
@@ -4870,3 +4909,31 @@ Sources: `ROADMAP.md` `w2c`, § The W0 debt register #29, #30, #35, #41, #47,
 § w1i, § w1j, § w1k, § w2b; DESIGN.md § Initiative is a key, not an index,
 § The APL; XPHB "Combat", "Initiative", Rules Glossary "Incapacitated",
 "Speed".
+
+## The `w2c` merge conflict
+
+PR #62 sat for hours with no CI and no review after its hold was cleared
+(`b1f9c0a`, 2026-11-03), and the watchdog reported it as stalled. The cause was
+not in the PR: `main` had been merged into `milestone/m1-w2` at `739b190`
+earlier that day, carrying the human's answers and the dashboard's restating
+of `docs/questions.md`, and that merge and the PR both edited
+`docs/progress.md`, `docs/questions.md` and `docs/decisions.md`. GitHub runs no
+`pull_request` workflow on a PR it cannot merge, so the reviewer never posted,
+no event reached the task session, and the watchdog's step 5 only ever saw a
+task in flight. Every party followed its procedure; the procedure had no owner
+for a conflict made by a merge into M after a task PR opened.
+
+The fix gives it three, each cheap where it sits (`docs/workflow.md` § The
+milestone branch): whoever merges into M checks the open PRs into M; the task
+session reads its own PR's mergeable state after every push, since no event
+will report a conflict to it (`/next-task` step 5); and the watchdog's step 5
+merges M into a conflicting task PR's head on every firing, the backstop that
+does not depend on either of the other two remembering. The Routine's prompt
+was updated to match the copy in `docs/workflow.md` § The chain.
+
+The resolution itself took the milestone branch's side wherever the human's
+answers had changed a file, and the task's additions on top: the ⏸ row keeps
+its budget-revision name; `docs/questions.md` keeps its plain-wording layout,
+with #17 restated in it; #18 was a process choice, which that file no longer
+holds, and moved to § w2c › Which verdicts count toward the round cap; and
+both new `docs/decisions.md` sections stand, in the order they landed.

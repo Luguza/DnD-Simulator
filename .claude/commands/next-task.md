@@ -20,6 +20,8 @@ touch, and the files themselves.
 - Never stop to ask the user. Where CLAUDE.md says to ask, take the most
   conservative reading, proceed, and record it in `docs/questions.md` in this
   PR (`docs/workflow.md` § Questions for the human).
+- List the open issues titled `Answer #<n>: …` and record the owner's in this
+  PR (`docs/workflow.md` § Answers from the dashboard).
 - `docs/progress.md` on M → the `next` row. A `⏸` row means run `/plan-review`
   instead, in this session. A `held` row means stop and report.
 - `grep -n "^| <id> " ROADMAP.md` → the task row: scope, depends, produces,
@@ -67,6 +69,11 @@ Each wake: read the sticky verdict comment and CI.
 - **PLAUSIBLE** → fix, or reply on the thread saying why it is not a defect.
 - A verdict saying the review did not run or did not finish is not a pass.
 - CI red or a merge conflict is work now, whatever the review says.
+- **After every push, read the PR's mergeable state.** A PR that conflicts
+  with M runs no CI and no review, so no event will ever wake you: merge M
+  into the branch, resolve, validate, push. No verdict and no check runs on
+  your head commit means look for the conflict first (`docs/workflow.md`
+  § The milestone branch).
 - **Fourth non-clean verdict:** stop pushing and comment naming what is
   contested. If CI is green and every CONFIRMED finding is fixed, record the
   contested findings in `ROADMAP.md` § The W0 debt register, owned by the next

@@ -15,6 +15,9 @@ The `docs/decisions.md` sections for the tasks since the last `⏸`, their merge
 PRs, and the ROADMAP rows for what comes next. Grep `DESIGN.md` for the specific
 claims those tasks touched — never read it end to end.
 
+Then the open issues titled `Answer #<n>: …`: record the owner's in this gate's
+PR (`docs/workflow.md` § Answers from the dashboard).
+
 ## Ask
 
 1. **Did a measurement move a number the plan assumes?** `w0i` revised the
