@@ -43,7 +43,7 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 14 | w2b — `Action` Commands and the stabilise | done | |
 | 15 | w2c — turn loop, initiative, the turn-boundary debts 🔒 | next | |
 | 16 | w2c2 — opportunity attacks and the walk 🔒 | queued | |
-| — | ⏸ plan review | queued | |
+| — | ⏸ plan review — and the M0 budget revision (`docs/questions.md` #10) | queued | |
 | 17 | w2e — the APL compiler 🔒 | queued | |
 | 18 | w2a — content ACL | queued | |
 | 19 | w2d — `TargetDummy` | queued | |

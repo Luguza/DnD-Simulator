@@ -20,6 +20,8 @@ touch, and the files themselves.
 - Never stop to ask the user. Where CLAUDE.md says to ask, take the most
   conservative reading, proceed, and record it in `docs/questions.md` in this
   PR (`docs/workflow.md` § Questions for the human).
+- List the open issues titled `Answer #<n>: …` and record the owner's in this
+  PR (`docs/workflow.md` § Answers from the dashboard).
 - `docs/progress.md` on M → the `next` row. A `⏸` row means run `/plan-review`
   instead, in this session. A `held` row means stop and report.
 - `grep -n "^| <id> " ROADMAP.md` → the task row: scope, depends, produces,

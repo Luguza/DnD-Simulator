@@ -133,8 +133,39 @@ here. A row is for a choice a careful reader of the same documents could make
 the other way. `w1d`'s three rows were the other kind, and the human closed them
 as trivial (`docs/decisions.md` § w1d).
 
+A row is written for a D&D expert who knows nothing of the code or of the
+queue's progress: the table situation in game terms, the readings on offer as
+lettered options (`A) … ; B) …`, the Options column the dashboard turns into
+answer buttons), what each changes in play, and the one taken. No file, task
+id, debt number or engine term is needed to answer it. A choice about the process, the tooling or
+the code's shape is never a row: the loop takes it and records it in
+`docs/decisions.md`. The human returned four rows of that kind unanswered
+(`docs/decisions.md` § The human's answers, 2026-11-02).
+
 A question is never a reason to skip a check, widen a task, or merge something a
 review has not passed. If no reading is safe to proceed on, the row is `held`.
+
+### Answers from the dashboard
+
+The dashboard renders each open row's options as buttons. A button opens a new
+issue titled `Answer #<n>: <letter>`; the text box under the buttons opens one
+titled `Answer #<n>: other`, with the human's own answer in the body. The human
+submits it. Every `/next-task` and
+`/plan-review` run starts by listing the open issues with that title and
+records each one in the run's own PR:
+
+- **Only the repository owner's issue counts.** Anyone can open an issue on a
+  public repository; one from another author is left alone. If the owner filed
+  two for one row, the latest wins.
+- **Record it**: the row moves to `docs/questions.md` § Answered, with the
+  question kept in its plain wording and the answer (with any note from the
+  body) beside it, and `docs/decisions.md` gets a line under the task that asked.
+- **Act on it**: an answer that confirms the choice taken needs nothing more.
+  One that overturns it becomes work for the queue: a debt row with an owner,
+  or a queue row when it is too large for one, never an edit to code outside
+  the run's own task.
+- **Close the issue** with a comment linking the PR once that PR has merged. A
+  run that finds an issue whose row is already in § Answered only closes it.
 
 ## When the spec is wrong
 
@@ -144,6 +175,11 @@ A session that finds a real gap in the task spec does not guess. It opens a
 starts a fresh `/next-task` session, which re-reads the corrected row. The W0 debt
 register is what this project gets when specs are read critically; an
 implementer that can only ever implement is worse than one that can stop.
+
+A row that misstates what the rules text settles (a count, a name, a number)
+is not a gap. What the plan says is irrelevant if the features are correct: the
+implementing PR builds what the quoted rules say and corrects the row in the
+same diff (`docs/questions.md` #5, answered).
 
 ## Plan reviews
 
