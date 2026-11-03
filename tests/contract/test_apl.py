@@ -26,6 +26,7 @@ from typing import Any, Final
 import pytest
 
 from dndsim import actions
+from dndsim.actions.attack import Attack
 from dndsim.actions.base import Action
 from dndsim.actions.move import Move, Retreat, Walk
 from dndsim.actions.opportunity_attack import OpportunityAttack, OpportunityAttacks
@@ -39,7 +40,8 @@ from dndsim.apl.apl import (
 )
 from dndsim.apl.dummy import arm_dummy, dummy_apl
 from dndsim.apl.expr import AplLoadError, MoveMode, compile_move
-from dndsim.apl.schema import Kind, NamespaceSchema
+from dndsim.apl.namespace import SelfProxy, TargetProxy
+from dndsim.apl.schema import CREATURE_FIELDS, Kind, NamespaceSchema
 from dndsim.core.dice import Dice
 from dndsim.core.geometry import Cell, distance_ft, in_reach
 from dndsim.core.log import EventLog
@@ -1163,3 +1165,196 @@ def test_an_enemy_that_dies_is_gone_with_no_change_of_seating() -> None:
     assert world.seating == seating
     assert names(enemies.alive) == ["stays"]
     assert names(enemies.in_reach) == ["stays"]
+
+
+# --- `target` is bound before an entry's `if:` reads it ----------------------
+
+PICKED_IF: Final = "target.hp > 10"
+
+
+def picked_and_stale(
+    picked_hp: int, stale_hp: int
+) -> tuple[Creature, Creature, Creature, World]:
+    """A hero, the one enemy its `target:` can pick, and a bystander seated on
+    the hero's side that `target` is left bound to beforehand."""
+    hero = creature("hero", Cell(0, 0))
+    goblin = creature("goblin", Cell(1, 0), hp=picked_hp)
+    stale = creature("stale", Cell(5, 5), hp=stale_hp)
+    world = seated((hero, "heroes"), (stale, "heroes"), (goblin, "monsters"))
+    return hero, goblin, stale, world
+
+
+def targeted(hero: Creature, world: World) -> Apl:
+    return Apl([Entry("attack", if_=PICKED_IF, target="lowest_hp of enemies")]).bind(
+        hero, world
+    )
+
+
+def test_choose_reads_target_hp_off_the_creature_the_target_clause_picks() -> None:
+    hero, goblin, stale, world = picked_and_stale(picked_hp=12, stale_hp=1)
+    apl = targeted(hero, world)
+    apl.namespace.target.bind(stale)
+
+    choice = apl.choose(hero, [Attack(hero, goblin)])
+
+    assert isinstance(choice, Attack)
+    assert choice.target is goblin
+
+
+def test_choose_declines_when_the_picked_creature_fails_the_if() -> None:
+    hero, goblin, stale, world = picked_and_stale(picked_hp=8, stale_hp=20)
+    apl = targeted(hero, world)
+    apl.namespace.target.bind(stale)
+
+    assert apl.choose(hero, [Attack(hero, goblin)]) is None
+
+
+def test_first_reads_target_hp_off_the_creature_the_target_clause_picks() -> None:
+    hero, _, stale, world = picked_and_stale(picked_hp=12, stale_hp=1)
+    apl = targeted(hero, world)
+    apl.namespace.target.bind(stale)
+
+    assert apl.first(frozenset({"attack"})) is apl.compiled[0]
+
+
+def test_first_declines_when_the_picked_creature_fails_the_if() -> None:
+    hero, _, stale, world = picked_and_stale(picked_hp=8, stale_hp=20)
+    apl = targeted(hero, world)
+    apl.namespace.target.bind(stale)
+
+    assert apl.first(frozenset({"attack"})) is None
+
+
+def nearest_and_far(near_hp: int, far_hp: int) -> tuple[Creature, Creature, Creature]:
+    hero = creature("hero", Cell(0, 0))
+    near = creature("near", Cell(1, 0), hp=near_hp)
+    far = creature("far", Cell(2, 0), hp=far_hp)
+    return hero, near, far
+
+
+def test_with_no_target_clause_choose_binds_the_nearest_offers_target() -> None:
+    hero, near, far = nearest_and_far(near_hp=12, far_hp=1)
+    world = seated((hero, "heroes"), (near, "monsters"), (far, "monsters"))
+    apl = Apl([Entry("attack", if_=PICKED_IF)]).bind(hero, world)
+    apl.namespace.target.bind(far)
+
+    choice = apl.choose(hero, [Attack(hero, far), Attack(hero, near)])
+
+    assert isinstance(choice, Attack)
+    assert choice.target is near
+
+
+def test_with_no_target_clause_the_nearest_offer_failing_the_if_declines() -> None:
+    hero, near, far = nearest_and_far(near_hp=8, far_hp=20)
+    world = seated((hero, "heroes"), (near, "monsters"), (far, "monsters"))
+    apl = Apl([Entry("attack", if_=PICKED_IF)]).bind(hero, world)
+    apl.namespace.target.bind(far)
+
+    assert apl.choose(hero, [Attack(hero, far), Attack(hero, near)]) is None
+
+
+# --- division only by a non-zero number written out --------------------------
+
+
+@pytest.mark.parametrize("clause", ["self.hp / target.hp > 2", "self.hp / 0 > 1"])
+def test_division_by_anything_but_a_written_non_zero_number_is_refused(
+    clause: str,
+) -> None:
+    with pytest.raises(AplLoadError):
+        Apl([Entry("attack", if_=clause)])
+
+
+@pytest.mark.parametrize("clause", ["self.hp / 2 > 5", "self.hp / -2 < 0"])
+def test_division_by_a_written_non_zero_number_compiles(clause: str) -> None:
+    assert len(Apl([Entry("attack", if_=clause)]).compiled) == 1
+
+
+# --- `with:` parameters -------------------------------------------------------
+
+WITH_YAML: Final = """
+- action: attack
+  with:
+    slot_level: "3 if trigger.crit else self.slots.highest"
+    upcast: 2
+"""
+
+
+def test_a_with_mapping_is_held_as_pairs_in_written_order() -> None:
+    (entry,) = Apl.from_yaml(WITH_YAML).entries
+
+    assert entry.with_ == (
+        ("slot_level", "3 if trigger.crit else self.slots.highest"),
+        ("upcast", "2"),
+    )
+
+
+def test_a_bare_number_in_with_is_its_own_expression() -> None:
+    (entry,) = Apl.from_yaml("- {action: attack, with: {slot_level: 3}}").entries
+
+    assert entry.with_ == (("slot_level", "3"),)
+
+
+def test_with_round_trips_through_serialisation() -> None:
+    parsed = Apl.from_yaml(WITH_YAML)
+    again = Apl.from_yaml(parsed.to_yaml())
+
+    assert again == parsed
+    assert again.entries[0].with_ == parsed.entries[0].with_
+    assert again.canonical_hash == parsed.canonical_hash
+
+
+def test_the_canonical_hash_moves_with_a_with_value() -> None:
+    three = Apl.from_yaml("- {action: attack, with: {slot_level: 3}}")
+    four = Apl.from_yaml("- {action: attack, with: {slot_level: 4}}")
+    none = Apl.from_yaml("- {action: attack}")
+
+    assert three.canonical_hash != four.canonical_hash
+    assert three.canonical_hash != none.canonical_hash
+
+
+def test_an_unknown_path_in_a_with_expression_fails_at_load() -> None:
+    with pytest.raises(AplLoadError):
+        Apl.from_yaml("- {action: attack, with: {slot_level: self.slots.hihgest}}")
+
+
+@pytest.mark.parametrize("written", ["3", "[3]", '"slot_level"'])
+def test_a_with_that_is_not_a_mapping_fails_at_load(written: str) -> None:
+    with pytest.raises(AplLoadError):
+        Apl.from_yaml(f"- {{action: attack, with: {written}}}")
+
+
+def test_with_is_constructible_from_entry_objects() -> None:
+    apl = Apl([Entry("attack", with_=(("slot_level", "3"),))])
+
+    assert apl.entries[0].with_ == (("slot_level", "3"),)
+    assert apl == Apl.from_yaml("- {action: attack, with: {slot_level: 3}}")
+
+
+# --- the creature field list agrees everywhere ------------------------------
+
+
+@pytest.mark.parametrize("name", sorted(CREATURE_FIELDS))
+def test_every_creature_field_is_on_both_proxies(name: str) -> None:
+    assert hasattr(SelfProxy, name)
+    assert hasattr(TargetProxy, name)
+
+
+def field_clause(path: str) -> str:
+    kind = CREATURE_FIELDS[path.split(".", 1)[1]].kind
+    return f"{path} >= 0" if kind is Kind.NUMBER else f"{path} or not {path}"
+
+
+@pytest.mark.parametrize("root", ["self", "target"])
+@pytest.mark.parametrize("name", sorted(CREATURE_FIELDS))
+@pytest.mark.parametrize("target_bound", [True, False])
+def test_every_creature_field_compiles_and_evaluates_on_both_roots(
+    root: str, name: str, target_bound: bool
+) -> None:
+    hero = creature("hero", Cell(0, 0))
+    goblin = creature("goblin", Cell(1, 0))
+    world = seated((hero, "heroes"), (goblin, "monsters"))
+    apl = Apl([Entry("attack", if_=field_clause(f"{root}.{name}"))]).bind(hero, world)
+    if target_bound:
+        apl.namespace.target.bind(goblin)
+
+    assert apl.compiled[0].condition(apl.namespace) is True

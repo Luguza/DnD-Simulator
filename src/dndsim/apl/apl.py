@@ -32,6 +32,7 @@ from dndsim.apl.expr import (
     MoveMode,
     compile_condition,
     compile_move,
+    compile_param,
     compile_selector,
 )
 from dndsim.apl.namespace import Namespace, build_namespace
@@ -76,17 +77,19 @@ DEFAULT_MOVE: Final = "toward nearest of enemies until in_reach"
 """What a list with no `move:` clause anywhere does when nothing else is
 taken (DESIGN.md § APL)."""
 
-_KEYS: Final = ("action", "if", "target", "move")
+_KEYS: Final = ("action", "if", "target", "move", "with")
 
 
 @dataclass(frozen=True, slots=True)
 class Entry:
-    """One row as written: an action id and up to three clauses of text."""
+    """One row as written: an action id, up to three clauses of text, and the
+    `with:` parameters, each an expression, in the order written."""
 
     action: str
     if_: str | None = None
     target: str | None = None
     move: str | None = None
+    with_: tuple[tuple[str, str], ...] = ()
 
     @classmethod
     def from_mapping(cls, row: Mapping[str, Any]) -> "Entry":
@@ -100,14 +103,35 @@ class Entry:
         if "action" not in row:
             raise AplLoadError(f"an APL entry names its action: {dict(row)!r}")
         for key, value in row.items():
-            if not isinstance(value, str):
+            if key != "with" and not isinstance(value, str):
                 raise AplLoadError(f"APL entry {key} is text, got {value!r}")
-        return cls(row["action"], row.get("if"), row.get("target"), row.get("move"))
+        return cls(
+            row["action"],
+            row.get("if"),
+            row.get("target"),
+            row.get("move"),
+            _params(row.get("with", {})),
+        )
 
-    def to_mapping(self) -> dict[str, str]:
+    def to_mapping(self) -> dict[str, Any]:
         """The row as written, without the clauses it leaves out."""
-        values = (self.action, self.if_, self.target, self.move)
+        values = (self.action, self.if_, self.target, self.move, dict(self.with_))
         return {key: value for key, value in zip(_KEYS, values, strict=True) if value}
+
+
+def _params(written: Any) -> tuple[tuple[str, str], ...]:
+    """A `with:` mapping as `(name, expression)` pairs; a number written bare
+    is the expression of itself. Raises `AplLoadError` for anything else."""
+    if not isinstance(written, Mapping):
+        raise AplLoadError(f"APL entry with: is a mapping, got {written!r}")
+    pairs: list[tuple[str, str]] = []
+    for name, value in written.items():
+        if not isinstance(name, str) or isinstance(value, bool):
+            raise AplLoadError(f"APL entry with: {name!r}: {value!r} is not a param")
+        if not isinstance(value, str | int | float):
+            raise AplLoadError(f"APL entry with: {name} is text, got {value!r}")
+        pairs.append((name, str(value)))
+    return tuple(pairs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +145,8 @@ class CompiledEntry:
     target: Compiled | None
     move: MoveClause | None
     gate: str
+    params: tuple[tuple[str, Compiled], ...] = ()
+    reads_target: bool = False
 
 
 def _always(ns: Namespace) -> bool:
@@ -222,6 +248,8 @@ class Apl:
                 paths |= compiled.target.reads
             if compiled.move is not None and compiled.move.selector is not None:
                 paths |= compiled.move.selector.reads
+            for _, param in compiled.params:
+                paths |= param.reads
         return frozenset(paths)
 
     def __eq__(self, other: object) -> bool:
@@ -273,7 +301,11 @@ class Apl:
         passes."""
         namespace = self.namespace
         for entry in self._compiled:
-            if entry.action in offered and entry.condition(namespace):
+            if entry.action not in offered:
+                continue
+            if entry.reads_target:
+                _aim(entry, namespace, ())
+            if entry.condition(namespace):
                 return entry
         return None
 
@@ -312,6 +344,8 @@ class Apl:
                 f"{actor.name} was asked through an APL bound to another creature"
             )
         for entry in self._compiled:
+            if entry.reads_target:
+                _aim(entry, namespace, offers)
             if not entry.condition(namespace):
                 continue
             if entry.move is not None:
@@ -374,6 +408,7 @@ def _compile_entry(
     condition = None if entry.if_ is None else compile_condition(entry.if_, schema)
     target = None if entry.target is None else compile_selector(entry.target, schema)
     move = None if entry.move is None else compile_move(entry.move, schema)
+    params = tuple((name, compile_param(text, schema)) for name, text in entry.with_)
     return CompiledEntry(
         action=action,
         condition=_always if condition is None else condition.fn,
@@ -381,6 +416,9 @@ def _compile_entry(
         target=target,
         move=move,
         gate=gates.get(action, action),
+        params=params,
+        reads_target=condition is not None
+        and any(path.startswith("target.") for path in condition.reads),
     )
 
 
@@ -422,6 +460,30 @@ def _target_of(command: Action[Any]) -> Creature | None:
     if isinstance(command, Attack | Stabilize | Walk):
         return command.target
     return None
+
+
+def _aim(
+    entry: CompiledEntry, namespace: Namespace, offers: Sequence[Action[Any]]
+) -> None:
+    """Bind `target` to the creature `entry` would take its action on, before
+    its `if:` reads it: the first of its `target:` picks that an offer is
+    against, else its first pick; with no `target:`, the nearest offer's."""
+    matching = [offer for offer in offers if entry.action == offer.ID]
+    picked: Creature | None = None
+    selector = entry.target
+    if selector is not None:
+        candidates = _candidates(selector.fn(namespace), selector.kind)
+        offered = {id(_target_of(offer)) for offer in matching}
+        picked = next(
+            (creature for creature in candidates if id(creature) in offered),
+            candidates[0] if candidates else None,
+        )
+    elif matching:
+        actor = namespace.self.creature
+        picked = _target_of(
+            min(matching, key=lambda offer: _distance(actor, _target_of(offer)))
+        )
+    namespace.target.bind(picked)
 
 
 def _pick(

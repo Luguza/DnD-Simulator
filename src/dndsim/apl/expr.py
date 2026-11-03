@@ -37,6 +37,7 @@ __all__ = [
     "MoveMode",
     "compile_condition",
     "compile_move",
+    "compile_param",
     "compile_selector",
 ]
 
@@ -214,6 +215,10 @@ class _Compiler:
         if isinstance(node, ast.BinOp):
             if not isinstance(node.op, _ARITHMETIC):
                 raise self.fail(f"{type(node.op).__name__} is not allowed")
+            if isinstance(node.op, ast.Div) and not _nonzero_literal(node.right):
+                # A clause that loads must not raise mid-encounter, and an
+                # unbound `target` reads 0 (`docs/decisions.md` § w2e).
+                raise self.fail("division is only by a non-zero number written out")
             arithmetic: ast.expr = ast.BinOp(
                 self.number(node.left), node.op, self.number(node.right)
             )
@@ -395,9 +400,25 @@ def _compile(
     return Compiled(source, typed.kind, frozenset(compiler.reads), fn)
 
 
+def _nonzero_literal(node: ast.expr) -> bool:
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        node = node.operand
+    return (
+        isinstance(node, ast.Constant)
+        and isinstance(node.value, int | float)
+        and not isinstance(node.value, bool)
+        and node.value != 0
+    )
+
+
 def compile_condition(source: str, schema: NamespaceSchema) -> Compiled:
     """An `if:` clause, true or false. Raises `AplLoadError`."""
     return _compile(source, schema, frozenset({Kind.BOOL, Kind.GROUP}))
+
+
+def compile_param(source: str, schema: NamespaceSchema) -> Compiled:
+    """A `with:` parameter: a number or a truth value. Raises `AplLoadError`."""
+    return _compile(source, schema, frozenset({Kind.NUMBER, Kind.BOOL}))
 
 
 _OF: Final = re.compile(r"(?P<picker>\w+)\s+of\s+(?P<group>.+)")

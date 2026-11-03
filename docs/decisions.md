@@ -5643,6 +5643,31 @@ done-when clause: a dummy that closes to melee provokes and is provoked, so
 the grid is exercised rather than decorative. `w2g` is still where a dummy's
 scripted attack and Regeneration become behaviour.
 
+### What the first review found
+
+- **`target` is bound before an `if:` reads it.** `choose()` and `first()`
+  asked an entry's `if:` before its `target:` bound anybody, so a clause
+  reading `target.hp` read the last pick's creature. An entry whose `if:`
+  reads a `target.*` path is aimed first (`_aim`): the first of its `target:`
+  picks an offer is against, else its first pick; with no `target:`, the
+  nearest matching offer's. Only entries that read `target` pay for it,
+  which the compiled clause's `reads` says at load. A gate's `allows()` is
+  unchanged: there the offer *is* the target, bound by whoever asks.
+- **Division is by a non-zero number written out, or refused at load.** An
+  unbound target reads 0 by design, so `self.hp / target.hp` would load and
+  then raise mid-encounter, which DESIGN.md § Failing loudly puts at load.
+  No clause in DESIGN.md or the spike divides; `hp_pct` is the ratio an
+  author wants.
+- **`with:` ships with the other three.** DESIGN.md § APL writes it into an
+  entry, and adding a key after builds exist is the migration the row names.
+  Each parameter is an expression through the same whitelist, compiled at
+  load and counted in `reads`; checking the names against a feature's
+  declared `params` is the loader's, `w2f`'s, since only it knows the
+  feature.
+- The four copies of the creature field list (`CREATURE_FIELDS`, the
+  compiler's readers, both proxies) are held together by a contract test
+  rather than generated, so each stays a plain read.
+
 ### What it cost the benchmark
 
 The spike's hero now runs on the real compiler, and its `move:` clause goes
