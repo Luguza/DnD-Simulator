@@ -4743,6 +4743,13 @@ is not: `heal()` takes a generator and `TurnContext` carries none, and setting
 `hp` directly would skip `on_heal`'s veto. The done-when's second clause,
 "provokes and is provoked", cannot be met without the walk, so it moves to
 `w2e` with the profile (#59) rather than being faked with an `engine/` edit.
+This run was one of three tasks the owner had run in parallel, with the
+instruction to hold the profile as data and record the choice if the dummy
+could do no more without the walk, and a spec PR only if the row could not be
+built at all; so the correction rides this PR instead of a spec PR, and it
+amends the rows that take the work on — `w2d`'s own done-when, and `w2e`'s and
+`w2g`'s, which now name what each owes — rather than leaving it in the
+register alone.
 
 ### Choices a reader would otherwise reopen
 

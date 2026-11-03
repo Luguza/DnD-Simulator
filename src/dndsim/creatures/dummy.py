@@ -1,12 +1,9 @@
-"""`TargetDummy` — the configurable stand-in that is the only monster until W7.
+"""`TargetDummy` — a creature built from a `DummySpec` of configurable knobs.
 
-A `DummySpec` holds every knob DESIGN.md § The target dummy names, and
-`DummySpec.from_mapping()` reads them from a parsed YAML document.
-`build_dummies()` turns a spec into `count` creatures the engine cannot tell
-from any other. The knobs that act through a hook that already exists are
-attached as hook sources; the ones that need a turn to act in — the attack
-routine, regeneration, target selection and movement — are data on the spec
-for the turn loop and the APL to read (`docs/decisions.md` § w2d).
+`DummySpec.from_mapping()` reads the knobs from a parsed YAML document and
+`build_dummies()` turns a spec into `count` creatures. Damage defences and
+Legendary Resistance are attached as hook sources; every other knob is data on
+`TargetDummy.spec` (`docs/decisions.md` § w2d).
 """
 
 import difflib
@@ -176,6 +173,8 @@ class DummySpec:
         ):
             if value < least:
                 raise ValueError(f"dummy {knob} is at least {least}, got {value}")
+        if self.save_dc is not None and self.save_dc < 1:
+            raise ValueError(f"dummy save_dc is at least 1, got {self.save_dc}")
         for ability, bonus in self.saves.items():
             if not MIN_SAVE_BONUS <= bonus <= MAX_SAVE_BONUS:
                 raise ValueError(

@@ -237,6 +237,8 @@ def test_a_misspelt_damage_type_is_refused_with_a_suggestion() -> None:
         {"ac": True},
         {"hp": 0},
         {"count": 0},
+        {"save_dc": 0},
+        {"save_dc": "13"},
         {"saves": {"dex": 11}},
         {"saves": {"dexterity": 2}},
         {"position": [1]},
