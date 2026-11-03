@@ -45,7 +45,7 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 16 | w2c2 — opportunity attacks and the walk 🔒 | queued | |
 | — | ⏸ plan review — and the M0 budget revision (`docs/questions.md` #10) | queued | |
 | 17 | w2e — the APL compiler 🔒 | queued | |
-| 18 | w2a — content ACL | queued | |
+| 18 | w2a — content ACL | done | #67 |
 | 19 | w2d — `TargetDummy` | queued | |
 | — | ⏸ plan review | queued | |
 | 20 | w2f — build schema and `Character` | queued | |
