@@ -126,6 +126,7 @@ _READ_CREATURE: Final[dict[str, Callable[[Creature | None], Any]]] = {
 _GLOBALS: Final[dict[str, Any]] = {
     "__builtins__": {},
     "_len": len,
+    "_bool": bool,
     "_lowest_hp": _lowest_hp,
     "_highest_hp": _highest_hp,
     "_first": _first,
@@ -188,12 +189,16 @@ class _Compiler:
         return typed.node
 
     def truthy(self, node: ast.expr) -> ast.expr:
+        """`node` as a bool: a group is true when it is not empty."""
         typed = self.value(node)
         if typed.kind not in _TRUTHY:
             raise self.fail(
                 f"{typed.path} is a {typed.kind.value}; a condition is a bool, "
                 "or a group that is true when it is not empty"
             )
+        if typed.kind is Kind.GROUP:
+            # `and`/`or` return an operand, and a group operand is a tuple.
+            return ast.Call(ast.Name("_bool", ast.Load()), [typed.node], [])
         return typed.node
 
     def walk(self, node: ast.expr) -> _Typed:

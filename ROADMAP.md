@@ -303,8 +303,8 @@ opened three (#60–#62), and the `w2a` spec correction re-owned two (#13, #24)
 and opened one (#63) and left one at its round cap (#64), and `w2a` has
 narrowed two (#24, #27), and the W2 mid-wave review re-owned seven (#13, #24,
 #57, #60–#63) and opened one (#65), and `w2e` has retired three (#11, #14,
-#34), narrowed a fourth (#59) and opened one (#66), so the table stands at
-thirty-five.
+#34), narrowed a fourth (#59) and opened two (#66, #67), so the table stands
+at thirty-six.
 Every one of them was the right thing to write — a hostile spike needs real
 machinery now, not finished machinery later — and every one of them is invisible
 six months from now, when the file around it has grown and the paragraph

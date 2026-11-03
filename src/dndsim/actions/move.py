@@ -189,11 +189,12 @@ class Retreat(Walk):
     no `keep_ft`, as far from it as this turn's movement takes it.
 
     The destination is searched among the squares this turn's movement
-    reaches: the nearest to walk to of those at least `keep_ft` away, else the
-    farthest from `target`; ties go to the shorter walk, then lowest `y`, then
-    `x`. No step is offered when the actor is already `keep_ft` away, or when
-    no square it can reach is farther from `target` than where it stands
-    (`docs/decisions.md` § w2e).
+    reaches: of those at least `keep_ft` away, the nearest to walk to, then
+    the farthest from `target`; with none, the farthest from `target`, then
+    the nearest to walk to; then lowest `y`, then `x`. No step is offered
+    when the actor is already `keep_ft` away, or when no square it can reach
+    is farther from `target` than where it stands (`docs/decisions.md`
+    § w2e).
     """
 
     __slots__ = ("keep_ft",)

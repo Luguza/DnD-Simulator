@@ -5697,6 +5697,16 @@ scripted attack and Regeneration become behaviour.
 - **`World.seating` is read-only**: the roster cache trusts it, so only
   `seat()` and `leave()` move it.
 
+### What the fourth review found
+
+- **A group in `and`/`or`/`not` reads as a bool.** Python's `and`/`or`
+  return an operand, so `enemies.in_reach or self.down` produced a tuple the
+  compiler had typed as a bool, and `== True` on it was false. A group
+  operand is wrapped in `bool()` where it is read as a condition.
+- Three citations were corrected: the spike's docstring (the hero walks by
+  `Move` in both configurations, so a `Move` change is priced on both), the
+  debt register's count, and `Retreat`'s tie-break order.
+
 ### What it cost the benchmark
 
 The spike's hero now runs on the real compiler, and its `move:` clause goes

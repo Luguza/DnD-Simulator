@@ -9,7 +9,8 @@ it out of the others' reach, drawing their opportunity attacks.
 `BUDGET_PER_SECOND` is checked only on `provoking=False`, the configuration
 before `w2c2`: no fall-back and no opportunity attacks, the enemies closing by
 the spike's own stepping rather than `Move`, and a `World` holding no log, so a
-change to `Move` or to the world's log is priced on the default only.
+change to the world's log is priced on the default only. The hero walks by
+`Move` in both, so a change to `Move` is priced on both.
 `measure_startup()` times a spawned worker separately.
 
 `docs/decisions.md` § w0i has the configuration's reasoning and the

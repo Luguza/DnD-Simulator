@@ -39,7 +39,13 @@ from dndsim.apl.apl import (
     unprovided,
 )
 from dndsim.apl.dummy import arm_dummy, dummy_apl
-from dndsim.apl.expr import AplLoadError, MoveMode, compile_move
+from dndsim.apl.expr import (
+    AplLoadError,
+    MoveMode,
+    compile_condition,
+    compile_move,
+    compile_param,
+)
 from dndsim.apl.namespace import SelfProxy, TargetProxy, TriggerProxy
 from dndsim.apl.schema import CREATURE_FIELDS, Kind, NamespaceSchema
 from dndsim.core.dice import Dice
@@ -1502,3 +1508,48 @@ def test_the_world_s_seating_cannot_be_assigned() -> None:
         world.seating = 0  # type: ignore[misc]
 
     assert world.seating == 0
+
+
+# --- a group operand of `and` / `or` / `not` reads as a bool -------------------
+
+
+def reach_namespace(goblin_cell: Cell) -> Apl:
+    hero = creature("hero", Cell(0, 0))
+    goblin = creature("goblin", goblin_cell)
+    world = seated((hero, "heroes"), (goblin, "monsters"))
+    return Apl([Entry("attack")]).bind(hero, world)
+
+
+def test_a_group_or_a_bool_compared_with_true_holds_with_an_enemy_in_reach() -> None:
+    apl = reach_namespace(Cell(1, 0))
+    compiled = compile_condition(
+        "(enemies.in_reach or self.down) == True", NamespaceSchema()
+    )
+
+    assert compiled.fn(apl.namespace) is True
+
+
+def test_a_group_and_true_is_exactly_true_with_an_enemy_in_reach() -> None:
+    apl = reach_namespace(Cell(1, 0))
+    compiled = compile_param("enemies.in_reach and True", NamespaceSchema())
+
+    assert compiled.fn(apl.namespace) is True
+
+
+def test_a_group_or_a_bool_is_exactly_false_with_no_enemy_in_reach() -> None:
+    apl = reach_namespace(Cell(20, 0))
+    compiled = compile_condition("enemies.in_reach or self.down", NamespaceSchema())
+
+    assert compiled.fn(apl.namespace) is False
+
+
+@pytest.mark.parametrize(
+    ("goblin_cell", "expected"), [(Cell(1, 0), False), (Cell(20, 0), True)]
+)
+def test_not_a_group_is_true_only_when_it_is_empty(
+    goblin_cell: Cell, expected: bool
+) -> None:
+    apl = reach_namespace(goblin_cell)
+    compiled = compile_condition("not enemies.in_reach", NamespaceSchema())
+
+    assert compiled.fn(apl.namespace) is expected
