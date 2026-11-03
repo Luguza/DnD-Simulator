@@ -11,7 +11,7 @@ from typing import Final, NamedTuple
 
 from dndsim.core.rng import Rng
 from dndsim.core.timeline import InitiativeKey
-from dndsim.creatures.creature import Creature
+from dndsim.creatures.creature import UNSEATED, Creature
 from dndsim.engine.d20 import settle
 from dndsim.engine.query import standing_sides
 from dndsim.engine.turn import Policy, roll_initiative, take_turn
@@ -80,7 +80,15 @@ class Encounter:
         when the fight has begun, with everyone else otherwise — unless
         `initiative` places it, a summon's `sharing_turn()`; no other
         creature's key moves. Raises `ValueError` for a key another seated
-        creature holds: the order would have no place for one of the two."""
+        creature holds: the order would have no place for one of the two; and
+        for a key taken from a creature not yet rolled for, which `run()`
+        would never move off `UNSEATED`."""
+        if initiative is not None and _unrolled(initiative):
+            raise ValueError(
+                f"{creature.name} was placed at {initiative}, a key taken from a "
+                "creature nobody has rolled initiative for; join it once the "
+                "fight has begun"
+            )
         if initiative is not None and any(
             other.initiative == initiative for other in self.world
         ):
@@ -148,6 +156,21 @@ class Encounter:
             *everyone,
         )
         ctx.close()
+
+
+def _unrolled(key: InitiativeKey) -> bool:
+    """Whether `key` is `UNSEATED` or a place in its summon chain."""
+    return (
+        key.initiative,
+        key.dexterity,
+        key.player_character,
+        key.tiebreak,
+    ) == (
+        UNSEATED.initiative,
+        UNSEATED.dexterity,
+        UNSEATED.player_character,
+        UNSEATED.tiebreak,
+    )
 
 
 def _next(world: World, last: InitiativeKey | None) -> Creature | None:

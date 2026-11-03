@@ -817,3 +817,47 @@ def test_two_creatures_placed_on_one_key_both_act_or_are_refused() -> None:
     except (ValueError, EngineAssemblyError):
         return
     assert {name for _, name in turns(log)} == {"a", "first", "second", "b"}
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        UNSEATED,
+        UNSEATED.sharing_turn(),
+        UNSEATED.sharing_turn(1).sharing_turn(),
+    ],
+    ids=["unseated", "sharing-unseated", "nested-chain-off-unseated"],
+)
+def test_a_placement_before_the_start_off_an_unrolled_key_is_refused(
+    key: InitiativeKey,
+) -> None:
+    """Before `run()`, a key that is `UNSEATED` or a chain off it raises
+    `ValueError` and seats nobody."""
+    world, a, b = two_sides()
+    beast = creature("beast")
+    encounter = Encounter(
+        world, policy=Passive(), rng=ScriptedRng(A_THEN_B), max_rounds=1
+    )
+
+    with pytest.raises(ValueError):
+        encounter.join(beast, "x", initiative=key)
+
+    assert beast not in world
+    assert list(world) == [a, b]
+
+
+def test_a_placement_before_the_start_with_a_real_key_is_kept() -> None:
+    log = summary()
+    world, _, _ = two_sides(log)
+    beast = creature("beast")
+    key = InitiativeKey(15, 14, False, 0.0)
+    encounter = Encounter(
+        world, policy=Passive(), rng=ScriptedRng(A_THEN_B), max_rounds=1
+    )
+
+    encounter.join(beast, "x", initiative=key)
+    encounter.run()
+
+    assert beast in world
+    assert beast.initiative == key
+    assert turns(log) == [(1, "a"), (1, "beast"), (1, "b")]
