@@ -46,7 +46,7 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | — | ⏸ plan review — and the M0 budget revision (`docs/questions.md` #10) | queued | |
 | 17 | w2e — the APL compiler 🔒 | queued | |
 | 18 | w2a — content ACL | queued | |
-| 19 | w2d — `TargetDummy` | done | |
+| 19 | w2d — `TargetDummy` | done | #65 |
 | — | ⏸ plan review | queued | |
 | 20 | w2f — build schema and `Character` | queued | |
 | 21 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |

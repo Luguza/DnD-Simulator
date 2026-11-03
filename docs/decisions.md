@@ -4716,3 +4716,51 @@ keeps the questions in their plain wording and the old wording to its history.
   for the human now keeps such choices out of the file.
 
 #15 was still open and was put to the human with the rest.
+
+## w2d — the target dummy
+
+`creatures/dummy.py`: a frozen `DummySpec` holding every knob DESIGN.md § The
+target dummy names, `DummySpec.from_mapping()` reading it from a parsed YAML
+document, and `build_dummies()` turning it into `TargetDummy` creatures.
+
+### Data now, behaviour where the turn is
+
+The row depends only on `w1a`, but half its knobs act on the dummy's turn, and
+the turn is `w2c`'s and the walk `w2c2`'s, both in flight beside this task. A
+knob was built as behaviour exactly when a hook that already exists carries it
+without a turn:
+
+- **Resistances, immunities and vulnerabilities** are a `DamageDefences`
+  source on `on_incoming_damage`, so the one resolution order in
+  `engine/damage.py` applies them (§ w1e).
+- **Legendary Resistance** is a pool with a long-rest `Recovery` and a source
+  on `on_save_resolved`, the hook whose summary names it.
+
+Everything else — `movement_profile`, `threat_profile`, `damage_per_round`,
+`regeneration`, `save_dc` — is validated data on `TargetDummy.spec`, and debt
+#59 names who reads each. Regeneration looked buildable on `on_turn_start` and
+is not: `heal()` takes a generator and `TurnContext` carries none, and setting
+`hp` directly would skip `on_heal`'s veto. The done-when's second clause,
+"provokes and is provoked", cannot be met without the walk, so it moves to
+`w2e` with the profile (#59) rather than being faked with an `engine/` edit.
+
+### Choices a reader would otherwise reopen
+
+- **"Configurable from YAML" is a mapping, not a parser.** No YAML library is
+  a dependency yet and the Produces cell is one file; `w2f`'s loader and `w2h`'s
+  `--dummy ac=16` both hand over the parsed or overridden mapping, and
+  `dataclasses.replace(spec, ac=n)` is the sweep. An unknown knob fails with a
+  difflib suggestion (DESIGN.md § Failing loudly).
+- **A save bonus is stored as an ability score**, `10 + 2 × bonus`, because
+  `save_bonus()` adds the bare modifier until debt #36's field exists. The
+  cost is that the Dexterity save bonus is also the dummy's initiative
+  modifier; AC is unaffected, being `Armour.natural()` (§ w1a).
+- **Legendary Resistance is spent on every failed save** while a use is left
+  — the control spends it the first time it can (`docs/questions.md` #17).
+- **`count` dummies stand in a row along +x, one footprint apart**, from
+  `position`. A layout knob is one field when a scenario needs another.
+- **`ThreatProfile` has two members**, `nearest` and `lowest_hp`; a third is
+  one member when `w2e`'s selectors can express it.
+
+Sources: `ROADMAP.md` `w2d`, debt #36, #59; DESIGN.md § The target dummy,
+§ Failing loudly; § w1a, § w1e.
