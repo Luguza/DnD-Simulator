@@ -23,8 +23,9 @@ CLI yet — those are W2.
 
 **W0 and W1 are complete; work is at W2.** The M0 performance budget is **≥22k
 attack resolutions/sec/core** on `w0i`'s hostile configuration, which since
-`w2c2` is the spike's `--no-provoking`; its default also walks and draws
-opportunity attacks, at about 0.56 of that rate. The budget was 50k until the
+`w2c2` is the spike's `--no-provoking`; its default adds the enemies'
+opportunity attacks and a skirmisher the hero chases, at about 0.56 of that
+rate. The budget was 50k until the
 W0 spike (§ w0i), then 30k until the human accepted the rate `w2i` re-measured
 (`docs/questions.md` #10; § The W2 mid-wave review). Only ratios travel between
 containers: read § w2i and § w2c2 before pricing anything against it.

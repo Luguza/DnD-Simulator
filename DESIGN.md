@@ -2090,13 +2090,14 @@ common shape of agent-authored slop.
 
 ~10k iterations × 5 encounters × 5 rounds × 5 creatures × 3 attacks ≈ **4M
 attack resolutions** per build comparison. Budget: **≥22k attack
-resolutions/sec/core** on the spike's hostile configuration without walking
-(`python -m dndsim.tools.spike --no-provoking`) — about three minutes a core for
-one comparison, or about twenty-five seconds across eight. The spike's default
-also walks both sides on the grid and draws opportunity attacks, and runs at
-about 0.56 of that rate per counted resolution (`docs/decisions.md` § w2c2), so
-a comparison whose fights walk as much as the spike's costs nearer five minutes
-a core.
+resolutions/sec/core** on the spike's hostile configuration without
+opportunity attacks (`python -m dndsim.tools.spike --no-provoking`), in which
+both sides still walk real routes — about three minutes a core for one
+comparison, or about twenty-five seconds across eight. The spike's default adds
+a skirmisher that falls back, a hero that chases it out of the other enemies'
+reach, and the opportunity attacks that draws, and runs at about 0.56 of that
+rate per counted resolution (`docs/decisions.md` § w2c2), so a comparison whose
+fights provoke as often as the spike's costs nearer five minutes a core.
 
 > **That number was 50k until M0, and the spike is what changed it.** The
 > original was set before anything had been measured. `w0i` measured 17k on the

@@ -5345,17 +5345,18 @@ of the wave diagram, the wave table, and DESIGN.md § Cost, honestly, whose
 derivation estimates rise by the ratio 30/22.
 
 **The configuration is `--no-provoking`.** `w2c2` left the gate a choice
-(§ w2c2, What it cost the benchmark): its default now walks both sides and
-draws two opportunity attacks a round, at 0.562 of the rate per counted
-resolution. The owner's floor was priced on `w0i`'s configuration — "about 3
+(§ w2c2, What it cost the benchmark): its default now has the hero chase a
+skirmisher out of the other enemies' reach, drawing two opportunity attacks a
+round, at 0.562 of the rate per counted resolution. Both configurations walk
+real routes; `--no-provoking` drops only the fall-back and the reactions. The owner's floor was priced on `w0i`'s configuration — "about 3
 minutes a build comparison" — and `--no-provoking` is that configuration
-unchanged. Quoting the budget on the walking default would mean ~13k, under
+unchanged. Quoting the budget on the provoking default would mean ~13k, under
 the floor the owner set, which is not this gate's to take. So the gate test
 measures `provoking=False`, and `main()` gives a verdict only on that
-configuration. The walking default stays the spike's default, and the rows that
+configuration. The provoking default stays the spike's default, and the rows that
 change the walk (`w2e`, `w2f2`, `w2j`) price their ratios on both. DESIGN.md
-§ Performance now says what walking costs a comparison, nearer five minutes a
-core than three. On this gate's container the two read 14,072 and 8,084, a
+§ Performance now says what that much provoking costs a comparison, nearer
+five minutes a core than three. On this gate's container the two read 14,072 and 8,084, a
 ratio of 0.574, consistent with `w2c2`'s; the absolute numbers are a slow
 container's and only the ratio travels.
 
@@ -5376,7 +5377,7 @@ options, the Grappled escape and drag, standing up, and the Shield. **#60 moves
 into it from `w2e`**: passing through a creature's space is a rule of the walk,
 not of the `move:` clause, and `w2e` is the largest row left in W2. `w2j`
 changes the route search, which `w2c2` measured at about a third of
-`resolve_attack()`'s time, so it is priced on the walking configuration.
+`resolve_attack()`'s time, so it is priced on both configurations.
 #49's "nothing applies a condition as an action" is no longer the reason it is
 exact; the one condition that grants a condition immunity (Petrified, to
 Poisoned) is not one `w2j` applies, and the row says so.

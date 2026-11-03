@@ -3,10 +3,11 @@
 Measures attack resolutions per second per core on a deliberately hostile
 configuration: a hero carrying the twenty-five sources of
 `tools/spike_features.py` and the hand-compiled APL of `tools/spike_apl.py`,
-three enemies swinging back, and by default both sides walking real routes on a
-real grid, paying for each step and drawing the enemies' opportunity attacks.
+three enemies swinging back, and both sides walking real routes on a real grid,
+paying for each step. By default one enemy also falls back and the hero chases
+it out of the others' reach, drawing their opportunity attacks.
 `BUDGET_PER_SECOND` is checked only on `provoking=False`, the same fight
-without the walking and the opportunity attacks.
+without the fall-back and the opportunity attacks.
 `measure_startup()` times a spawned worker separately.
 
 `docs/decisions.md` § w0i has the configuration's reasoning and the
