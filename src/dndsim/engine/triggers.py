@@ -5,19 +5,21 @@ offers `on_leave_reach` to each watcher a step leaves, in initiative order. An
 opportunity attack is not implemented here: it is a gated `on_leave_reach`
 handler, and the dispatcher spends the reaction (`docs/decisions.md` § w0g3).
 
-Sources: XPHB (2024) "Combat" -> Opportunity Attacks.
+`walk_provoking()` charges each step to the mover's economy and stops a mover
+a reaction has dropped or brought to Speed 0 (`docs/decisions.md` § w2c2).
 
-Open debts: rows 18-22 of ROADMAP.md § The W0 debt register. Until #18,
-`_offer()` raises if a handler queues an effect, since nothing here drains
-`ctx.pending_effects`.
+Sources: XPHB (2024) "Combat" -> Opportunity Attacks, Movement and Position.
+
+Open debts: rows 21 and 22 of ROADMAP.md § The W0 debt register.
 """
 
 from collections.abc import Iterable, Sequence
 
-from dndsim.core.errors import EngineAssemblyError
+from dndsim.core.errors import EconomyError
 from dndsim.core.geometry import Cell, distance_ft, in_reach
 from dndsim.core.timeline import InitiativeKey
 from dndsim.creatures.creature import Creature
+from dndsim.creatures.effects import apply_pending
 from dndsim.hooks.contexts import LeaveReachContext
 from dndsim.hooks.definitions import ON_LEAVE_REACH
 from dndsim.rules.constants import CELL_SIZE_FT
@@ -115,13 +117,7 @@ class MovementWatch:
             )
         creature.dispatch(ON_LEAVE_REACH, context)
         if context._pending:
-            raise EngineAssemblyError(
-                f"{creature.name} queued an effect from an opportunity-attack "
-                "offer and nothing here applies it. Draining "
-                "`ctx.pending_effects` belongs to the engine that owns the "
-                "event (hooks/dispatch.py), and for this one that drain is "
-                "debt #18, owned by w2c2 — see the module docstring."
-            )
+            apply_pending(context, creature, self._mover)
         context.close()
         # Asked once per offer rather than per step: the answer only changes
         # when a handler has just run, and this is the moment it just did.
@@ -199,28 +195,49 @@ def walk_provoking(
     bystanders: Iterable[Creature],
     *,
     provokes: bool = True,
+    charge: bool = True,
 ) -> tuple[Cell, ...]:
     """Walk `mover` along `route` square by square, provoking on the way out.
 
-    Returns the part of the route actually walked, which is the whole of it
-    unless an opportunity attack dropped the mover partway. It does not choose
-    the route or dispatch `on_move`.
+    Returns the part of the route actually walked: the whole of it unless a
+    reaction dropped the mover or brought its Speed to 0 partway. It does not
+    choose the route or dispatch `on_move`.
 
     Each offer is made while the mover is still on the square it is leaving,
-    and the position moves afterwards (`docs/decisions.md` § w0g3).
+    and the position moves afterwards (`docs/decisions.md` § w0g3). With
+    `charge`, each step walked spends five feet of the mover's movement;
+    raises `EconomyError` before anything moves when the route costs more
+    than the mover has left, or when it is at Speed 0.
     """
+    economy = mover.economy
+    if charge and route and mover.speed_ft == 0:
+        raise EconomyError(
+            f"{mover.name} has a Speed of 0 and cannot move; ask `speed_ft` "
+            "before walking it"
+        )
+    if charge and not economy.can_move(len(route) * CELL_SIZE_FT):
+        raise EconomyError(
+            f"{mover.name} has {economy.movement_ft} ft of movement left and "
+            f"the route is {len(route) * CELL_SIZE_FT} ft; truncate it with "
+            "`steps_within()` before walking it"
+        )
     watch = watch_movement(mover, bystanders, squares=len(route), provokes=provokes)
     if watch is None:
-        # Nobody can react: the route is a single assignment.
+        # Nobody can react, so nothing can stop the walk: one assignment and one
+        # charge for the whole route (`docs/decisions.md` § w2c2).
         if not route:
             return ()
+        if charge:
+            economy.move(len(route) * CELL_SIZE_FT)
         mover.position = route[-1]
         return tuple(route)
     walked = []
     for square in route:
         watch.leaving(square)
-        if mover.is_down:
+        if mover.is_down or mover.speed_ft == 0:
             break
+        if charge:
+            economy.move(CELL_SIZE_FT)
         mover.position = square
         walked.append(square)
     return tuple(walked)

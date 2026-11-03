@@ -3,11 +3,13 @@
 Measures attack resolutions per second per core against `BUDGET_PER_SECOND`, on
 a deliberately hostile configuration: a hero carrying the twenty-five sources
 of `tools/spike_features.py` and the hand-compiled APL of `tools/spike_apl.py`,
-three enemies swinging back, and both sides walking real routes on a real grid.
+three enemies swinging back, and both sides walking real routes on a real grid,
+paying for each step and drawing the enemies' opportunity attacks.
 `measure_startup()` times a spawned worker separately.
 
 `docs/decisions.md` § w0i has the configuration's reasoning and the
-measurements, and § w1k what the completed W1 substrate added to them.
+measurements, § w1k what the completed W1 substrate added to them, and § w2c2
+what the walk and the opportunity attacks did.
 
 Run it: `python -m dndsim.tools.spike` (add `--startup` for the worker cost).
 
@@ -25,20 +27,24 @@ from statistics import median
 from types import MappingProxyType
 from typing import Final
 
+from dndsim.actions.opportunity_attack import OpportunityAttacks
 from dndsim.core.dice import Dice
 from dndsim.core.geometry import Cell, distance_ft, route, steps_within
 from dndsim.core.log import EventLog, LogLevel
 from dndsim.core.rng import MersenneRng, Rng, mix
 from dndsim.core.timeline import Duration, InitiativeKey, TimeKey, TurnPhase
-from dndsim.creatures.creature import UNSEATED, Creature
+from dndsim.creatures.creature import Creature
 from dndsim.creatures.economy import ActionEconomy
 from dndsim.creatures.effects import Clock
 from dndsim.creatures.resources import spell_slot_specs
 from dndsim.creatures.stats import GREATSWORD, Armour, StatBlock, Weapon
 from dndsim.engine.attack import FRESH, AttackContexts, PooledContexts, resolve_attack
 from dndsim.engine.triggers import walk_provoking
-from dndsim.hooks.contexts import MoveContext, TurnContext
+from dndsim.engine.turn import Move
+from dndsim.engine.world import World
+from dndsim.hooks.contexts import Context, MoveContext, TurnContext
 from dndsim.hooks.definitions import ON_MOVE, ON_TURN_START
+from dndsim.hooks.source import HookSource
 from dndsim.rules.enums import (
     Ability,
     ActionCost,
@@ -103,6 +109,8 @@ _ENEMY_HP: Final = 1_000
 _HERO_START: Final = Cell(0, 0)
 # Spread out, so that focus-firing the lowest-hp enemy means walking.
 _ENEMY_STARTS: Final = (Cell(5, 0), Cell(0, 5), Cell(7, 6))
+_FALL_BACK: Final = 2
+"""Squares the skirmisher retreats after it swings: out of a 5-foot reach."""
 
 
 def _seat(place: int) -> InitiativeKey:
@@ -179,6 +187,8 @@ class Spike:
     sources: tuple[Fixture, ...]
     log: EventLog
     clock: Clock
+    world: World
+    skirmisher: Creature | None
 
     def reset(self) -> None:
         """Put the encounter back to round one. Runs inside the timed region
@@ -198,17 +208,34 @@ class Spike:
             enemy.hp = enemy.max_hp
             enemy.revive()
             enemy.position = start
+            enemy.economy.turn_started(enemy.speed_ft)
+
+
+class _Swing:
+    """The enemies' policy: every opportunity attack offered is taken."""
+
+    __slots__ = ()
+
+    def allows(self, gate_id: str, source: HookSource, ctx: Context) -> bool:
+        return True
 
 
 def build_spike(
-    seed: int = 0, *, pooled: bool = True, log_level: LogLevel = LogLevel.FULL
+    seed: int = 0,
+    *,
+    pooled: bool = True,
+    log_level: LogLevel = LogLevel.FULL,
+    provoking: bool = True,
 ) -> tuple[Spike, Rng]:
     """Assemble the hostile creature, its three enemies and its compiled APL.
 
     Everything built once per encounter is built here (DESIGN.md § Levers).
     `pooled` reuses each side's attack contexts rather than allocating them per
     attack; `log_level` is the level of the `EventLog` every attack writes to
-    (`docs/decisions.md` § w1i). Returns the spike and its seeded rng.
+    (`docs/decisions.md` § w1i). `provoking=False` is the configuration before
+    `w2c2`: no enemy owns an opportunity attack and none falls back, for the
+    witness (`docs/decisions.md` § w2c2).
+    Returns the spike and its seeded rng.
     """
     hero = Creature(
         name="Spike",
@@ -245,9 +272,25 @@ def build_spike(
     apl = Apl(_entries(), namespace)
     hero.dispatcher.bind(gate=apl)
 
-    clock = Clock(TimeKey(1, UNSEATED, TurnPhase.START))
-    for creature in (hero, *enemies):
-        creature.effects.join(clock)
+    world = World()
+    world.seat(hero, "hero")
+    for enemy in enemies:
+        world.seat(enemy, "enemies")
+    rng = MersenneRng(mix(seed, 0))
+    if provoking:
+        # Each enemy's reaction has a pool of its own, apart from its turn's
+        # (`docs/decisions.md` § w2c2).
+        for enemy in enemies:
+            enemy.dispatcher.bind(gate=_Swing())
+            enemy.attach(
+                OpportunityAttacks(
+                    enemy,
+                    world=world,
+                    rng=rng,
+                    contexts=PooledContexts(enemy, hero, _MAUL) if pooled else FRESH,
+                    trigger=namespace.trigger,
+                )
+            )
 
     spike = Spike(
         hero=hero,
@@ -263,9 +306,11 @@ def build_spike(
         ),
         sources=sources,
         log=EventLog(log_level),
-        clock=clock,
+        clock=world.clock,
+        world=world,
+        skirmisher=enemies[0] if provoking else None,
     )
-    return spike, MersenneRng(mix(seed, 0))
+    return spike, rng
 
 
 # --- the eight entries, hand-compiled ---------------------------------------
@@ -347,7 +392,8 @@ def _close_on_the_weakest(ns: Namespace) -> Cell | None:
 def run_encounter(spike: Spike, rng: Rng, rounds: int = ROUNDS_PER_ENCOUNTER) -> int:
     """One encounter. Returns the attack resolutions it took to run.
 
-    Counts every resolved attack on both sides.
+    Counts every attack made on a turn, on both sides; an enemy's opportunity
+    attack is not counted (`docs/decisions.md` § w2c2).
     """
     spike.reset()
     resolutions = 0
@@ -437,6 +483,9 @@ def _execute(spike: Spike, entry: Entry, rng: Rng) -> int:
 
 def _enemy_turns(spike: Spike, rng: Rng, number: int) -> int:
     """The other side of the fight: three featureless attackers, closing.
+    With `provoking`, they close by the turn loop's `Move`, and the skirmisher
+    falls back out of reach after it swings, so the hero walks out of the
+    other two's reach to follow it (`docs/decisions.md` § w2c2).
 
     Trap: the hero's `trigger` is passed with their attacks, because the gate
     answered on this side is the hero's (`docs/decisions.md` § w0i).
@@ -451,16 +500,31 @@ def _enemy_turns(spike: Spike, rng: Rng, number: int) -> int:
     ):
         _expire_before(spike, start)
         enemy.dispatcher.resets.turn_started(own=True)
-        destination = toward_until_in_reach(enemy.position, enemy.reach_ft, hero)
-        if destination is not None:
-            _step(spike, enemy, destination)
+        enemy.economy.turn_started(enemy.speed_ft)
+        if spike.skirmisher is None:
+            destination = toward_until_in_reach(enemy.position, enemy.reach_ft, hero)
+            if destination is not None:
+                _step(spike, enemy, destination)
+        else:
+            closing = Move(enemy, hero, world=spike.world)
+            if closing.is_legal():
+                closing.execute(rng=rng)
         if distance_ft(enemy.position, hero.position) <= enemy.reach_ft:
             resolve_attack(
                 enemy, hero, rng=rng, contexts=contexts, trigger=trigger, log=log
             )
             resolutions += 1
+        if enemy is spike.skirmisher:
+            _step(spike, enemy, _away(enemy.position, hero.position))
         _expire_after(spike, end)
     return resolutions
+
+
+def _away(position: Cell, threat: Cell) -> Cell:
+    """The square `_FALL_BACK` steps straight away from `threat`."""
+    dx = (position.x > threat.x) - (position.x < threat.x)
+    dy = (position.y > threat.y) - (position.y < threat.y)
+    return Cell(position.x + _FALL_BACK * dx, position.y + _FALL_BACK * dy)
 
 
 def _walk(spike: Spike, destination: Cell | None) -> None:
@@ -470,7 +534,8 @@ def _walk(spike: Spike, destination: Cell | None) -> None:
 
 def _step(spike: Spike, mover: Creature, destination: Cell) -> None:
     """Walk `mover` along the shortest legal route toward `destination`, as
-    far as its speed allows, past everybody else's square (DESIGN.md § APL).
+    far as its movement left allows, past everybody else's square (DESIGN.md
+    § APL). Each step is charged to its economy.
     """
     blocked = frozenset(
         creature.position for creature in spike.combatants if creature is not mover
@@ -480,11 +545,9 @@ def _step(spike: Spike, mover: Creature, destination: Cell) -> None:
     walked = route(mover.position, destination, blocked=blocked, size=mover.size)
     if not walked:
         return
-    reachable = walked[: steps_within(mover.speed_ft)]
+    reachable = walked[: steps_within(mover.economy.movement_ft)]
     if not reachable:
         return
-    # Nobody here owns a movement reaction, so only the audience computation
-    # is measured (`docs/decisions.md` § w0g3).
     stepped = walk_provoking(mover, reachable, spike.combatants)
     if not stepped:
         return
@@ -507,14 +570,17 @@ def measure(
     *,
     pooled: bool = True,
     log_level: LogLevel = LogLevel.FULL,
+    provoking: bool = True,
 ) -> tuple[float, int]:
     """Attack resolutions per second, median of `repeats` runs after a warmup.
 
     Returns the rate and the resolutions in one repeat. The default of a
     thousand encounters is a floor, not a number to trim (`docs/decisions.md`
-    § w0i).
+    § w0i). `provoking` is `build_spike()`'s.
     """
-    spike, rng = build_spike(seed, pooled=pooled, log_level=log_level)
+    spike, rng = build_spike(
+        seed, pooled=pooled, log_level=log_level, provoking=provoking
+    )
     _burn(spike, rng, max(encounters // 10, 1))
 
     rates: list[float] = []
@@ -573,6 +639,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="how much of the event log every attack writes",
     )
     parser.add_argument(
+        "--no-provoking",
+        action="store_true",
+        help="the configuration before w2c2: no enemy makes an opportunity "
+        "attack and none falls back",
+    )
+    parser.add_argument(
         "--startup",
         action="store_true",
         help="also measure spawn worker startup, separately",
@@ -585,6 +657,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.seed,
         pooled=not args.fresh,
         log_level=LogLevel(args.log_level),
+        provoking=not args.no_provoking,
     )
     verdict = "PASS" if rate >= BUDGET_PER_SECOND else "MISS"
     print(

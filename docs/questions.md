@@ -14,7 +14,6 @@ dashboard turns each option into a button that files the answer as an issue
 
 | # | Asked by | Question | Options | Choice taken | If answered otherwise |
 |---|---|---|---|---|---|
-| 15 | `w2b` | Unconscious says you drop whatever you're holding. Does a creature that falls unconscious drop its **shield** too? | A) The shield stays on ; B) The shield drops too | **A: the weapon drops, the shield stays on** and keeps its +2 AC. A shield takes an action to put on or take off, like armour, so it reads as worn rather than held. | The shield drops as well: an unconscious creature loses the +2 AC, and has to pick the shield up again after it wakes. |
 | 17 | `w2c` | A creature under a save-ends condition gets to repeat the save at the start (or end) of its turn, and other effects also trigger "at the start of your turn". Which happens first? | A) The repeat save first, then the other start-of-turn effects ; B) The other start-of-turn effects first, then the repeat save | **A: the repeat save first.** A creature that shakes off a condition that set its Speed to 0 has its full movement that turn, and an effect that reads "while you have the condition, at the start of your turn" never sees one just saved off. The same order holds at the end of the turn. | Start-of-turn effects would still see the condition the creature is about to save off, and a creature that saves off a Speed-0 condition at the start of its turn would still need its movement handed back afterwards. |
 
 ## Answered
@@ -35,4 +34,5 @@ and records point at them; the original wording is in this file's history.
 | 12 | the M0 / W1 milestone review | Should fights have cover and terrain, or take place on an open field? | **An open field** in the first version: no walls, no cover. |
 | 13 | the M0 / W1 milestone review | Is a plain level 5 Fighter, one attack per turn with no class features, an acceptable first end-to-end test? | **Yes.** |
 | 14 | the M0 / W1 milestone review | Which branch a review session pushes to. | **Returned to the loop**: a process choice, not a D&D one. The choice stands. |
+| 15 | `w2b` | Unconscious says you drop whatever you're holding. Does a creature that falls unconscious drop its **shield** too? | **Neither option as written** (answered 2026-11-03): the shield stays held, so there is nothing to pick up afterwards, but the creature loses the +2 AC while it is Unconscious, because a shield needs a conscious block. Overturns the AC half of the choice taken; `ROADMAP.md` § The W0 debt register #60 owns the change. |
 | 16 | `w2c` | Whether a large task may be split in two. | **Returned to the loop**: a process choice, not a D&D one. The choice stands. |
