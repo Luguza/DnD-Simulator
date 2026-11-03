@@ -218,8 +218,8 @@ review notifies the human
 once, naming the PR and which of the two it is, and stops. Any other red CI or
 a conflict on the milestone PR is the milestone review's to fix before it
 merges — red CI through a reviewed PR into M, never a commit pushed to M, since
-the reviewer skips the milestone PR; a conflict by merging `main` into M; if the session dies first, the watchdog's two-hour
-notice is what reports it. While the milestone PR is ready and unmerged the
+the reviewer skips the milestone PR; a conflict by merging `main` into M; if the session dies first, the watchdog's
+two-hour exception finishes it (§ When the loop is stuck). While the milestone PR is ready and unmerged the
 watchdog starts nothing: the queue on M already names the next milestone's
 first task, and running it on the closed milestone's branch is the thing that
 check exists to stop. The next firing after the merge picks the chain up again.
@@ -231,6 +231,36 @@ milestone: it merges its milestone PR as above, leaves no row `next`, and
 notifies the human once that the product is ready for review, linking the
 milestone PRs and `docs/questions.md`. That review is the human's, and the only
 one.
+
+## When the loop is stuck
+
+**A session that finds the chain stuck on something it can fix fixes it**, in
+that session, and does not stop at reporting it. A report waits for the human,
+who does not watch the loop; the fix usually costs one push. The chain halts
+for the human only on what § Merge authority and § Plan reviews reserve to
+them: a `held` row, a PR that edits `.github/workflows/`, and a merge refused
+for a permission the session lacks. Everything else that stops it is the
+loop's own work:
+
+- **A PR conflicting with its base.** Merge the base in, resolve, push
+  (§ The milestone branch).
+- **No verdict, or no check run, on the head commit.** Look for the conflict
+  first; if there is none, re-run the workflow run that failed or was
+  cancelled. Never an empty commit or a close-and-reopen to kick it.
+- **A verdict or red CI nobody answered.** The session that opened the PR has
+  died or been archived. Adopt the PR: subscribe to it and take it through
+  `/next-task` steps 5 and 6, counting the PR's verdicts, not your own
+  (§ The review loop).
+- **A milestone PR left ready and unmerged.** The milestone review died. Fix
+  its CI or conflict as § Plan reviews says and merge it, unless its diff
+  touches `.github/workflows/` or the merge is refused, which are the human's.
+
+A fix is still a change like any other: it goes through a reviewed PR, it is
+validated before the push, and it never skips a test, disables a check, or
+merges what a review has not passed. When the cause is one the procedure gave
+no owner — the `w2c` conflict was — the fix also names the owner, in this
+file and in the decision record of the PR that made it. The watchdog's two
+exceptions are where an unattended stall is found (§ The chain).
 
 ## The chain
 
@@ -250,7 +280,9 @@ worker, and both paths below drive the Routine rather than spawn around it.
   would wake its session (§ The milestone branch). The checks are what
   stop it double-starting a task or starting the next milestone on a branch
   whose merge is waiting (§ Plan reviews); firing no more often than the slowest
-  task reaches its PR is the other half of that guard.
+  task reaches its PR is the other half of that guard. Two hours without
+  activity on an open PR means its session is gone, and the watchdog adopts
+  it rather than reporting it (§ When the loop is stuck).
 - **Fast path.** On merging, the session fires the Routine (`fire_trigger`)
   instead of waiting for the schedule, so the next task starts in a fresh
   session with a clean context. The checks run again on that firing, which is
@@ -274,8 +306,10 @@ worker, and both paths below drive the Routine rather than spawn around it.
      after the milestone.
   3. If the pull request from M into main is open and not a draft, stop
      silently — the milestone is closing, and its merge is waiting.
-     Exception: if its last activity is over two hours old, say so in one
-     sentence naming the PR and what it waits on.
+     Exception: if its last activity is over two hours old, the milestone
+     review died: finish it (docs/workflow.md § When the loop is stuck), and
+     notify the user in one sentence only for what that section reserves to
+     them.
   4. Read docs/progress.md on M. Find the row whose status is `next`. If there
      is none, or any row is `held`: stop, notifying the user in one sentence
      for a `held` row.
@@ -285,8 +319,10 @@ worker, and both paths below drive the Routine rather than spawn around it.
      push, and stop: a conflicting PR runs no CI and no review, so nothing
      else will wake its session. If you cannot resolve it, say so in one
      sentence naming the PR and the files. Otherwise stop silently.
-     Exception: if its last activity is over two hours old, say so in one
-     sentence naming the PR and what it waits on.
+     Exception: if its last activity is over two hours old, its session is
+     gone: adopt the PR and drive it to a merge into M with `/next-task`
+     steps 5 and 6 (docs/workflow.md § When the loop is stuck), notifying
+     the user in one sentence only for what that section reserves to them.
 
   Only if all of these pass: run `/next-task` yourself, in this session, on M,
   and drive it to a PR merged into M. Never call `create_session` — a Routine

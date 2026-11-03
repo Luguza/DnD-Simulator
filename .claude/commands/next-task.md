@@ -5,6 +5,11 @@ description: Take the next task off docs/progress.md and drive it to a merged PR
 Work the queue. One task, one branch, one PR, reviewed until clean.
 `docs/workflow.md` is the procedure; this is the checklist.
 
+**If something stops you, resolve it — do not just report it.** A conflict, a
+missing verdict, a PR whose session died: each is yours to fix, and only a
+`held` row, a workflow edit or a refused permission waits for the human
+(`docs/workflow.md` § When the loop is stuck).
+
 **Read only what you need.** `DESIGN.md`, `ROADMAP.md` and `docs/decisions.md`
 are each well over 100KB — grep them for the claim you need, never read them end
 to end. Budget your reading to: the queue row, the ROADMAP row for your id, the

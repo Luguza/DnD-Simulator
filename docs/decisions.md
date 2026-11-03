@@ -4938,3 +4938,14 @@ its budget-revision name; `docs/questions.md` keeps its plain-wording layout,
 with #17 restated in it; #18 was a process choice, which that file no longer
 holds, and moved to § w2c › Which verdicts count toward the round cap; and
 both new `docs/decisions.md` sections stand, in the order they landed.
+
+The human's ruling on it: **an agent resolves what makes it stuck.** The
+conflict sat for hours because every party that saw it — the task session, the
+watchdog's two-hour notice — was written to report, and the human does not
+watch the loop. `docs/workflow.md` § When the loop is stuck makes resolving
+the general rule: the human is reached only for what § Merge authority and
+§ Plan reviews already reserve to them, and the watchdog's two exceptions
+adopt a dead session's PR or milestone review instead of naming it. Adopting
+is safe against a double start for the same reason the checks were: two hours
+without activity is longer than any live session goes between pushes, and the
+round cap counts the PR's verdicts, so an adopter cannot reset it.
