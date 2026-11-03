@@ -6,8 +6,10 @@ configuration: a hero carrying the twenty-five sources of
 three enemies swinging back, and both sides walking real routes on a real grid,
 paying for each step. By default one enemy also falls back and the hero chases
 it out of the others' reach, drawing their opportunity attacks.
-`BUDGET_PER_SECOND` is checked only on `provoking=False`, the same fight
-without the fall-back and the opportunity attacks.
+`BUDGET_PER_SECOND` is checked only on `provoking=False`, the configuration
+before `w2c2`: no fall-back and no opportunity attacks, the enemies closing by
+the spike's own stepping rather than `Move`, and a `World` holding no log, so a
+change to `Move` or to the world's log is priced on the default only.
 `measure_startup()` times a spawned worker separately.
 
 `docs/decisions.md` § w0i has the configuration's reasoning and the
@@ -239,7 +241,7 @@ def build_spike(
     attack; `log_level` is the level of the `EventLog` every attack writes to
     (`docs/decisions.md` § w1i). `provoking=False` is the configuration before
     `w2c2`: no enemy owns an opportunity attack and none falls back, for the
-    witness (`docs/decisions.md` § w2c2).
+    witness and for `BUDGET_PER_SECOND` (`docs/decisions.md` § w2c2).
     Returns the spike and its seeded rng.
     """
     hero = Creature(

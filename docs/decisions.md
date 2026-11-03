@@ -5347,8 +5347,10 @@ derivation estimates rise by the ratio 30/22.
 **The configuration is `--no-provoking`.** `w2c2` left the gate a choice
 (§ w2c2, What it cost the benchmark): its default now has the hero chase a
 skirmisher out of the other enemies' reach, drawing two opportunity attacks a
-round, at 0.562 of the rate per counted resolution. Both configurations walk
-real routes; `--no-provoking` drops only the fall-back and the reactions. The owner's floor was priced on `w0i`'s configuration — "about 3
+round, at 0.562 of the rate per counted resolution. `--no-provoking` is the
+configuration before `w2c2`: no fall-back and no reactions, the enemies closing
+by the spike's own stepping rather than `Move`, and a `World` with no log. So a
+change to `Move` or to the world's log records is priced on the default only. The owner's floor was priced on `w0i`'s configuration — "about 3
 minutes a build comparison" — and `--no-provoking` is that configuration
 unchanged. Quoting the budget on the provoking default would mean ~13k, under
 the floor the owner set, which is not this gate's to take. So the gate test
