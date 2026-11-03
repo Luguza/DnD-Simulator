@@ -17,9 +17,10 @@ dying and healing, and the movement observer), `w2b` has added `actions/`
 (the Commands a turn is made of) and `w2c` the encounter, its roster and the
 turn loop (`engine/encounter.py`, `turn.py`, `world.py`, `query.py`), and
 `w2c2` the walk and the opportunity attack (`actions/opportunity_attack.py`,
-`Move` in `engine/turn.py`), `w2d` the target dummy (`creatures/dummy.py`) and
-`w2a` the 5etools import (`content/`). There is no APL, build loader, runner or
-CLI yet — those are W2.
+the walk), `w2d` the target dummy (`creatures/dummy.py`), `w2a` the 5etools
+import (`content/`) and `w2e` the APL and its compiler (`apl/`, and
+`actions/move.py`, where the walk now lives). There is no build loader, runner
+or CLI yet — those are W2.
 
 **W0 and W1 are complete; work is at W2.** The M0 performance budget is **≥22k
 attack resolutions/sec/core** on `w0i`'s hostile configuration, which since
@@ -266,12 +267,14 @@ there is local to a module.
 | `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c, § w2i, § w2b, § w2c |
 | `conditions/`, a condition, a declared gap | § w1h, § w2b, § w2c |
 | `actions/`, a Command, legality, dropping and picking up a weapon | § w2b, § w2c2 |
+| `actions/move.py`, the walk, the retreat, a `move:` destination | § w2c2, § w2e |
+| `apl/`, a clause, the namespace, the policy, the dummy's policy | § w2e |
 | `creatures/dummy.py`, the target dummy | § w2d |
-| `engine/turn.py`, `encounter.py`, `world.py`, `query.py`, the shared `Clock`, Speed, incapacitation | § w2c, § w2c2 (`Move`) |
+| `engine/turn.py`, `encounter.py`, `world.py`, `query.py`, the shared `Clock`, Speed, incapacitation | § w2c, § w2c2 (the walk), § w2e (the policy) |
 | `content/`, the 5etools import, `table_value()` | § w2a |
 | `creatures/resources.py`, pools, slots, `transaction()` | § w1b, § w2i |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
-| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k, § w2i, § w2c2, § The W2 mid-wave review |
+| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k, § w2i, § w2c2, § w2e, § The W2 mid-wave review |
 | `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § The M0 / W1 milestone review, § The W2 mid-wave review |
 | the performance budget, pricing a change | § w0i, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § w1k, § The M0 / W1 milestone review, § w2i, § The W2 mid-wave review |
 | `engine/triggers.py`, `Dispatcher.responsive()`, the opportunity attack, the walk | § w0g3, § w2c2 |

@@ -22,6 +22,7 @@ import pytest
 from dndsim.actions.base import Action
 from dndsim.actions.dash import Dash
 from dndsim.actions.dodge import Dodge
+from dndsim.actions.move import Move
 from dndsim.conditions.exhaustion import Exhaustion
 from dndsim.conditions.frightened import Frightened
 from dndsim.conditions.grappled import Grappled
@@ -48,7 +49,6 @@ from dndsim.engine.turn import (
     INITIATIVE,
     TURN_END,
     TURN_START,
-    Move,
     offers,
     roll_initiative,
     take_turn,

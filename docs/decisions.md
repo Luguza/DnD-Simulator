@@ -5496,3 +5496,162 @@ was cleared by a single push once the owner said to; `w2c2` (#66) and `w2d`
 - **Not proposed:** a check on `docs/questions.md` numbers being reused. `w2d`
   took #18 after `w2c`'s process row left it, which made one pointer in § w2c
   ambiguous; it has happened once and the pointer is fixed.
+
+## w2e — the APL, compiled
+
+**A build's policy is now text an author writes.** `apl/` parses the three
+clauses of DESIGN.md § APL against one AST whitelist and one namespace schema,
+and the result is the `Policy` the turn loop asks and the `Gate` the dispatcher
+asks. The spike's eight hand-compiled callables are gone: `SPIKE_APL` in
+`tools/spike.py` is the YAML of that section, compiled by this package, which
+is what the benchmark below prices. Retires #11, #14 and #34, and the half of
+#59 that `w2d` handed over.
+
+### The whitelist is a rewrite, not a filter
+
+Each clause is parsed with `ast.parse`, every node is checked against the
+allowed set, **and the checked tree is rewritten before it is compiled** —
+the author's text is never what runs. The rewrite is where three things are
+settled once at load rather than on every evaluation:
+
+- a root becomes an attribute read off the namespace object;
+- a group in a numeric position becomes `len(...)`, which is what makes
+  DESIGN.md's own `enemies.within(30) >= 1` and `allies.down >= 1` mean what
+  they say;
+- a field read off a creature-valued expression becomes a call that reads `0`
+  from nobody, so `trigger.mover.hp_pct < 0.5` is false rather than an
+  `AttributeError` when the offer carries no mover.
+
+A filter that approved the author's own tree and then `eval`'d the source
+would have to re-derive each of those at run time, and the second
+implementation is where the two disagree.
+
+### Paths carry a kind, which is what makes the failure a load-time one
+
+`NamespaceSchema` gives every path a `Kind` (number, bool, creature, group,
+cell, node), so a clause is type-checked while the build loads: `lowest_hp of
+self` and `enemies.in_reach.hp` are refused there rather than raising at
+simulation-minute-nine, and `target:` is refused unless it evaluates to a
+creature or a group. The kinds are the reason the grammar needs no coercion
+rules written anywhere else.
+
+`self` is the one root a build widens. `NamespaceSchema.extend(name, kind,
+read)` declares state a feature provides — the spike declares
+`self.raging` — and `build_namespace()` generates the `SelfProxy` subclass that
+answers it, per schema, the way `reopen()` is generated per context class
+(§ w0f). That is also what makes the done-when's own example work:
+`self.ragging` fails at load *with a suggestion*, because `raging` is in the
+schema to be suggested. Without the extension mechanism the suggestion could
+only name the engine's own fields, and the typo the author actually makes is
+on their own feature's state.
+
+### One grammar, three clauses, and only one piece of sugar
+
+`if:` compiles to a bool (or a group, true when it is not empty); `target:`
+compiles to a creature or a group; `move:` is a mode and a selector. The only
+sugar is `<picker> of <group>`, rewritten to `<picker>(<group>)` before
+parsing, so the five pickers are ordinary calls in the same whitelist. `move:`
+is read by three regexes — `toward … until in_reach`, `away_from … to_max_range`,
+`away_from … to <n> ft`, `hold` — each of whose selectors goes through the
+same compiler. A clause's compiled form records the paths it read
+(`Apl.reads`), which is what `w2f`'s loader will prove an APL against the state
+a build has.
+
+### A `move:` clause names a creature; the Command picks the square (#34)
+
+The stand-in computed its destination by arithmetic on two anchors, which is
+exact only while both creatures are one square (#34). Rather than fix that
+arithmetic, this task deletes it: the clause names *who* to close on and
+`actions/move.py` answers *where to stand*, and `Move` already searches the
+squares whose footprint has the target in reach (§ w2c2). The destination is a
+footprint question and it is now asked in exactly one place.
+
+That is why `Apl.walk()` returns a `Walk` Command rather than a `Cell`: a cell
+would need the engine to re-derive legality, provocation and the per-step
+charge the Command already owns.
+
+### `Move` moves to `actions/`, with `Walk` and `Retreat` beside it
+
+DESIGN.md § Module layout says `actions/` holds every Command whatever it
+costs; `Move` was in `engine/turn.py` because the layout listed no move Command
+(§ w2c2), and the W2 mid-wave review ruled the layout right. So `Walk` is the
+shared base — the plan, the fear and crawling scans, the charge and the
+`on_move` dispatch — and the two subclasses differ only in the route they plan.
+`engine/turn.py` keeps offering a `Move` per enemy out of reach, and now also
+accepts a `Walk` of the acting creature's own from a policy that planned one,
+since a `move:` clause's destination is not one of the offers.
+
+`Retreat` searches rather than stepping away in a straight line: a
+breadth-first sweep of the squares this turn's movement reaches, taking the
+nearest one that is far enough away, or — when none is — the farthest it can
+reach. A straight-line step walks a kiter into whatever stands behind it and
+reads as a movement bug rather than a policy one; the sweep is bounded by the
+movement left, which is six squares for a typical Speed.
+
+### An `Apl` is an artefact before it is a policy
+
+Unbound, an `Apl` holds its entries, their compiled clauses, a canonical hash
+and nothing creature-shaped: `from_yaml()` / `to_yaml()` round-trip it, and
+equality and the hash are the entries' alone, so provenance does not depend on
+who is holding the list (W8's seam — DESIGN.md § A derived APL is an artefact
+with provenance). `bind(owner, world)` returns the copy a creature is asked
+through, sharing the compiled clauses and holding a namespace of its own.
+Asking an unbound list raises `EngineAssemblyError` rather than reading as an
+empty policy.
+
+It answers two questions with one list. `first(offered)` takes a set of action
+ids, which is the shape the dispatcher's offer and the spike's economy-filtered
+turn have; `choose(actor, offers)` takes the Commands `engine/turn.py` offers
+and is the `Policy` protocol. Both walk the same compiled entries in order, so
+there is no second ordering to disagree.
+
+**Reactions are entries like any other**, so `allows()` is the same walk
+narrowed to the entry that claims a gate id. On a movement offer it binds
+`trigger.mover`, `trigger.origin`, `trigger.destination` **and** `target` from
+the `LeaveReachContext` before it asks, which is what lets an entry read
+`trigger.mover.hp_pct < 0.5` or `target.hp` at the moment the mover is leaving.
+An action id is its own gate id unless the build maps it (`gates=`): the spike's
+features declare `barbarian.reckless_attack` under the id `reckless_attack`,
+and keeping that mapping outside the grammar is what stops a feature's internal
+id leaking into the language an author writes.
+
+**Unmentioned is OFF, movement excepted.** `allows()` on a gate no entry claims
+is `False` with no condition written. The one exception is compiled, not
+branched: a list with no `move:` clause anywhere compiles `DEFAULT_MOVE`
+("toward nearest of enemies until in_reach") through the same grammar and
+offers it when no entry was taken, so the default closing is a clause like any
+other rather than an engine heuristic.
+
+**`best_scored` is reserved now** (DESIGN.md § `best_scored`): it is in the
+closed vocabulary, so an entry naming it compiles, and `unprovided()` — the
+loader's "APL action id no attached feature provides" check, which `w2f` will
+call — never reports it, permanently. Nothing offers it, so such an entry is
+skipped until `w8b`.
+
+### The dummy's policy is compiled from its profiles (#59)
+
+A `TargetDummy` has no build and no `apl:`, so `apl/dummy.py` writes one from
+`spec.threat_profile` and `spec.movement_profile`: `static` is `hold`,
+`closes_to_melee` is this row's own default clause, `kites_at(r)` is
+`away_from nearest of enemies to r ft`, and the threat profile is the picker in
+both the `target:` and the closing `move:`. `arm_dummy()` binds that policy as
+the dummy's gate and attaches `OpportunityAttacks`, which is `w2d`'s moved
+done-when clause: a dummy that closes to melee provokes and is provoked, so
+the grid is exercised rather than decorative. `w2g` is still where a dummy's
+scripted attack and Regeneration become behaviour.
+
+### What it cost the benchmark
+
+The spike's hero now runs on the real compiler, and its `move:` clause goes
+through `Move`, which lands it one square from where the stand-in's arithmetic
+put it (lowest `y` of three squares equally near, against the arithmetic's
+straight-line one). In the `--no-provoking` arm that one square put the third
+enemy's single fixture step onto an occupied square, which cost the arm an
+attack a round — 25 counted resolutions an encounter instead of 30 — and
+quietly made the configuration the budget is quoted on *less* hostile. So the
+fixture's own stepping now takes the nearest **free** square in reach, the way
+`Move` does, and both arms count 30 again. The fixture keeps its anchor
+arithmetic, which is exact for the Medium creatures the spike builds: it is
+what the enemies closed by before `w2c2`, and `--no-provoking` has to stay the
+configuration the owner's floor was priced on (§ The W2 mid-wave review).
+

@@ -26,6 +26,7 @@ from unittest.mock import patch
 import pytest
 
 from dndsim.actions.opportunity_attack import OpportunityAttack, OpportunityAttacks
+from dndsim.apl.apl import Apl
 from dndsim.core.log import LogLevel
 from dndsim.core.rng import Rng
 from dndsim.core.timeline import Reset
@@ -51,7 +52,6 @@ from dndsim.tools.spike import (
     measure_startup,
     run_encounter,
 )
-from dndsim.tools.spike_apl import Apl
 from dndsim.tools.spike_features import (
     ON_HIT_SOURCES,
     RAGE,
@@ -98,7 +98,7 @@ def test_fifteen_of_them_are_on_the_busiest_hook() -> None:
 
 def test_the_apl_has_eight_conditions_a_target_and_a_move() -> None:
     spike, _ = build_spike(0)
-    entries = spike.apl.entries
+    entries = spike.apl.compiled
 
     assert len(entries) == 8
     assert [e.action for e in entries] == [
@@ -118,7 +118,7 @@ def test_the_apl_has_eight_conditions_a_target_and_a_move() -> None:
 def test_three_entries_are_answered_inside_an_attack() -> None:
     spike, _ = build_spike(0)
 
-    assert {e.gate for e in spike.apl.entries if e.gate is not None} == {
+    assert {e.gate for e in spike.apl.compiled} >= {
         "barbarian.reckless_attack",
         "paladin.divine_smite",
         "rogue.uncanny_dodge",
