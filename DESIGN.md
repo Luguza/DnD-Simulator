@@ -2375,7 +2375,7 @@ src/dndsim/
   actions/    base.py attack.py opportunity_attack.py dash.py dodge.py
               disengage.py stabilize.py pick_up.py move.py cast_spell.py
   spells/     base.py concentration.py templates.py level0..level6/
-  apl/        expr.py schema.py namespace.py apl.py
+  apl/        expr.py schema.py namespace.py apl.py dummy.py
               score/  registry.py context.py horizon.py coefficients.py
                       terms/ damage.py offensive.py defensive.py
                              lethality.py restoration.py resources.py

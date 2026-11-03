@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "A Monte Carlo D&D 5e (2024 / XPHB) combat simulator"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pyyaml>=6.0",
+]
 
 [project.scripts]
 dndsim = "dndsim.cli:main"
@@ -22,6 +24,7 @@ dev = [
     "pre-commit>=3.8",
     "pytest>=8.0",
     "ruff>=0.6",
+    "types-pyyaml>=6.0",
 ]
 
 [tool.pytest.ini_options]

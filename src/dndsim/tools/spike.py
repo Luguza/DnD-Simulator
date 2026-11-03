@@ -2,14 +2,15 @@
 
 Measures attack resolutions per second per core on a deliberately hostile
 configuration: a hero carrying the twenty-five sources of
-`tools/spike_features.py` and the hand-compiled APL of `tools/spike_apl.py`,
+`tools/spike_features.py` and the APL of `SPIKE_APL`, compiled by `apl/`,
 three enemies swinging back, and both sides walking real routes on a real grid,
 paying for each step. By default one enemy also falls back and the hero chases
 it out of the others' reach, drawing their opportunity attacks.
 `BUDGET_PER_SECOND` is checked only on `provoking=False`, the configuration
 before `w2c2`: no fall-back and no opportunity attacks, the enemies closing by
 the spike's own stepping rather than `Move`, and a `World` holding no log, so a
-change to `Move` or to the world's log is priced on the default only.
+change to the world's log is priced on the default only. The hero walks by
+`Move` in both, so a change to `Move` is priced on both.
 `measure_startup()` times a spawned worker separately.
 
 `docs/decisions.md` § w0i has the configuration's reasoning and the
@@ -33,9 +34,12 @@ from statistics import median
 from types import MappingProxyType
 from typing import Final
 
+from dndsim.actions.move import Move
 from dndsim.actions.opportunity_attack import OpportunityAttacks
+from dndsim.apl.apl import Apl, CompiledEntry
+from dndsim.apl.schema import Kind, NamespaceSchema
 from dndsim.core.dice import Dice
-from dndsim.core.geometry import Cell, distance_ft, route, steps_within
+from dndsim.core.geometry import Cell, distance_ft, in_reach, route, steps_within
 from dndsim.core.log import EventLog, LogLevel
 from dndsim.core.rng import MersenneRng, Rng, mix
 from dndsim.core.timeline import Duration, InitiativeKey, TimeKey, TurnPhase
@@ -46,11 +50,11 @@ from dndsim.creatures.resources import spell_slot_specs
 from dndsim.creatures.stats import GREATSWORD, Armour, StatBlock, Weapon
 from dndsim.engine.attack import FRESH, AttackContexts, PooledContexts, resolve_attack
 from dndsim.engine.triggers import walk_provoking
-from dndsim.engine.turn import Move
 from dndsim.engine.world import World
 from dndsim.hooks.contexts import Context, MoveContext, TurnContext
 from dndsim.hooks.definitions import ON_MOVE, ON_TURN_START
 from dndsim.hooks.source import HookSource
+from dndsim.rules.constants import CELL_SIZE_FT
 from dndsim.rules.enums import (
     Ability,
     ActionCost,
@@ -58,23 +62,21 @@ from dndsim.rules.enums import (
     DamageType,
     RecoveryTrigger,
 )
-from dndsim.tools.spike_apl import (
-    AlliesProxy,
-    Apl,
-    EnemiesProxy,
-    Entry,
-    Namespace,
-    SelfProxy,
-    first,
-    lowest_hp,
-    toward_until_in_reach,
+from dndsim.tools.spike_features import (
+    RAGE,
+    SOURCES,
+    Fixture,
+    SpikeRage,
+    SpikeState,
+    raging,
 )
-from dndsim.tools.spike_features import RAGE, SOURCES, Fixture, SpikeRage, SpikeState
 
 __all__ = [
     "ATTACKS_PER_TURN",
     "BUDGET_PER_SECOND",
+    "SPIKE_APL",
     "Spike",
+    "compile_spike_apl",
     "build_spike",
     "main",
     "measure",
@@ -271,14 +273,6 @@ def build_spike(
     for source in sources:
         hero.attach(source)
 
-    namespace = Namespace(
-        own=SelfProxy(hero),
-        enemies=EnemiesProxy(hero, enemies),
-        allies=AlliesProxy((hero,)),
-    )
-    apl = Apl(_entries(), namespace)
-    hero.dispatcher.bind(gate=apl)
-
     log = EventLog(log_level)
     # Seated with the log only when provoking: the configuration before
     # `w2c2` wrote no effect or resource records (`docs/decisions.md` § w2c2).
@@ -286,6 +280,9 @@ def build_spike(
     world.seat(hero, "hero")
     for enemy in enemies:
         world.seat(enemy, "enemies")
+    apl = compile_spike_apl().bind(hero, world)
+    namespace = apl.namespace
+    hero.dispatcher.bind(gate=apl)
     rng = MersenneRng(mix(seed, 0))
     if provoking:
         # Each enemy's reaction has a pool of its own, apart from its turn's
@@ -323,77 +320,54 @@ def build_spike(
     return spike, rng
 
 
-# --- the eight entries, hand-compiled ---------------------------------------
-#
-# Each is one row of the YAML in DESIGN.md § APL; the comment above each is the
-# clause it was compiled from.
+# --- the eight entries, as an author writes them -----------------------------
 
 
-def _entries() -> tuple[Entry, ...]:
-    return (
-        # - { action: rage, if: "not self.raging and enemies.within(30) >= 1" }
-        Entry(
-            action="rage",
-            condition=lambda ns: not ns.self.raging and ns.enemies.within(30) >= 1,
-        ),
-        # - { action: reckless_attack, if: "self.hp_pct > 0.4 or target.ac >= 17" }
-        Entry(
-            action="reckless_attack",
-            condition=lambda ns: ns.self.hp_pct > 0.4 or ns.target.ac >= 17,
-            gate="barbarian.reckless_attack",
-        ),
-        # - action: divine_smite
-        #   if: "trigger.crit or (self.slots.highest >= 3 and target.hp > 25)"
-        Entry(
-            action="divine_smite",
-            condition=lambda ns: (
-                ns.trigger.crit or (ns.self.slots_highest >= 3 and ns.target.hp > 25)
-            ),
-            gate="paladin.divine_smite",
-        ),
-        # - { action: uncanny_dodge,
-        #     if: "trigger.damage_estimate >= self.hp * 0.25" }
-        Entry(
-            action="uncanny_dodge",
-            condition=lambda ns: ns.trigger.damage_estimate >= ns.self.hp * 0.25,
-            gate="rogue.uncanny_dodge",
-        ),
-        # - { action: second_wind, if: "self.hp_pct < 0.5" }
-        Entry(
-            action="second_wind",
-            condition=lambda ns: ns.self.hp_pct < 0.5,
-        ),
-        # - action: healing_word
-        #   if: "allies.down >= 1"
-        #   target: "first(allies.down)"
-        Entry(
-            action="healing_word",
-            condition=lambda ns: len(ns.allies.down) >= 1,
-            target=lambda ns: first(ns.allies.down),
-        ),
-        # - action: attack
-        #   target: "lowest_hp of enemies.in_reach"
-        #   move:   "toward lowest_hp of enemies until in_reach"
-        Entry(
-            action="attack",
-            condition=lambda ns: len(ns.enemies.alive) >= 1,
-            target=lambda ns: lowest_hp(ns.enemies.in_reach),
-            move=_close_on_the_weakest,
-        ),
-        # - { action: dodge, if: "enemies.within(30) == 0" }
-        Entry(
-            action="dodge",
-            condition=lambda ns: ns.enemies.within(30) == 0,
-        ),
+SPIKE_APL: Final = """
+- { action: rage,            if: "not self.raging and enemies.within(30) >= 1" }
+- { action: reckless_attack, if: "self.hp_pct > 0.4 or target.ac >= 17" }
+- action: divine_smite
+  if:     "trigger.crit or (self.slots.highest >= 3 and target.hp > 25)"
+- { action: uncanny_dodge,   if: "trigger.damage_estimate >= self.hp * 0.25" }
+- { action: second_wind,     if: "self.hp_pct < 0.5" }
+- action: healing_word
+  if:     "allies.down >= 1"
+  target: "first(allies.down)"
+- action: attack
+  if:     "enemies.alive >= 1"
+  target: "lowest_hp of enemies.in_reach"
+  move:   "toward lowest_hp of enemies until in_reach"
+- { action: dodge,           if: "enemies.within(30) == 0" }
+"""
+"""The hero's list, the YAML of DESIGN.md § APL. Compiled by `apl/`, which is
+what this spike prices (ROADMAP w2e, debt #14)."""
+
+_SPIKE_GATES: Final = MappingProxyType(
+    {
+        "reckless_attack": "barbarian.reckless_attack",
+        "divine_smite": "paladin.divine_smite",
+        "uncanny_dodge": "rogue.uncanny_dodge",
+    }
+)
+"""The gate id each of the three in-attack entries answers, where the spike's
+features declare one that is not the action's own id."""
+
+_SPIKE_ACTIONS: Final = frozenset(
+    {"rage", "second_wind", "healing_word", *_SPIKE_GATES}
+)
+"""What the spike's features provide on top of the Commands in `actions/`."""
+
+
+def compile_spike_apl() -> Apl:
+    """`SPIKE_APL` compiled, with `self.raging` declared as the one piece of
+    state the spike's features add to the namespace."""
+    schema = NamespaceSchema().extend("raging", Kind.BOOL, raging)
+    return Apl.from_yaml(
+        SPIKE_APL,
+        schema=schema,
+        actions=_SPIKE_ACTIONS,
+        gates=_SPIKE_GATES,
     )
-
-
-def _close_on_the_weakest(ns: Namespace) -> Cell | None:
-    """`move: "toward lowest_hp of enemies until in_reach"`."""
-    target = lowest_hp(ns.enemies.alive)
-    if target is None:
-        return None
-    return toward_until_in_reach(ns.self.position, ns.self.reach_ft, target)
 
 
 # --- the turn loop ----------------------------------------------------------
@@ -444,7 +418,7 @@ def _hero_turn(spike: Spike, rng: Rng, number: int) -> int:
 
     resolutions = 0
     for _ in range(_MAX_ACTIONS_PER_TURN):
-        entry = spike.apl.choose(_offered(spike))
+        entry = spike.apl.first(_offered(spike))
         if entry is None:
             break
         resolutions += _execute(spike, entry, rng)
@@ -458,7 +432,7 @@ def _offered(spike: Spike) -> frozenset[str]:
     return _OFFERS[2 * (economy.actions > 0) + (economy.bonus_actions > 0)]
 
 
-def _execute(spike: Spike, entry: Entry, rng: Rng) -> int:
+def _execute(spike: Spike, entry: CompiledEntry, rng: Rng) -> int:
     """Take the offer the APL accepted. Returns attack resolutions."""
     action = entry.action
     if action != "attack":
@@ -470,19 +444,19 @@ def _execute(spike: Spike, entry: Entry, rng: Rng) -> int:
         spike.economy.spend(_TURN_COSTS[action])
         return 0
 
-    namespace = spike.apl.namespace
-    if entry.move is not None:
-        _walk(spike, entry.move(namespace))
-    target = None if entry.target is None else entry.target(namespace)
+    apl = spike.apl
+    walk = apl.walk(entry)
+    if walk is not None and walk.is_legal():
+        walk.execute(rng=rng)
+    target = apl.target(entry)
     if target is None:
         # The move: clause could not close the distance; the Action is spent.
         spike.economy.spend(ActionCost.ACTION)
         return 0
 
-    namespace.target.bind(target)
     spike.economy.spend(ActionCost.ACTION)
     contexts = spike.contexts
-    trigger = namespace.trigger
+    trigger = apl.namespace.trigger
     log = spike.log
     for _ in range(ATTACKS_PER_TURN):
         resolve_attack(
@@ -512,7 +486,7 @@ def _enemy_turns(spike: Spike, rng: Rng, number: int) -> int:
         enemy.dispatcher.resets.turn_started(own=True)
         enemy.economy.turn_started(enemy.speed_ft)
         if spike.skirmisher is None:
-            destination = toward_until_in_reach(enemy.position, enemy.reach_ft, hero)
+            destination = _closing_square(spike, enemy, hero)
             if destination is not None:
                 _step(spike, enemy, destination)
         else:
@@ -530,16 +504,38 @@ def _enemy_turns(spike: Spike, rng: Rng, number: int) -> int:
     return resolutions
 
 
+def _closing_square(spike: "Spike", mover: Creature, target: Creature) -> Cell | None:
+    """The unoccupied square within `mover`'s reach of `target` nearest to
+    it, then lowest `y`, then `x`; `None` when it already has `target` in
+    reach. Anchors, not footprints (`docs/decisions.md` § w2e).
+    """
+    origin = mover.position
+    goal = target.position
+    reach = mover.reach_ft
+    if in_reach(origin, goal, reach):
+        return None
+    taken = {
+        creature.position for creature in spike.combatants if creature is not mover
+    }
+    steps = reach // CELL_SIZE_FT
+    candidates = [
+        square
+        for dy in range(-steps, steps + 1)
+        for dx in range(-steps, steps + 1)
+        if (square := Cell(goal.x + dx, goal.y + dy)) not in taken
+    ]
+    return min(
+        candidates,
+        key=lambda square: (distance_ft(origin, square), square.y, square.x),
+        default=None,
+    )
+
+
 def _away(position: Cell, threat: Cell) -> Cell:
     """The square `_FALL_BACK` steps straight away from `threat`."""
     dx = (position.x > threat.x) - (position.x < threat.x)
     dy = (position.y > threat.y) - (position.y < threat.y)
     return Cell(position.x + _FALL_BACK * dx, position.y + _FALL_BACK * dy)
-
-
-def _walk(spike: Spike, destination: Cell | None) -> None:
-    if destination is not None:
-        _step(spike, spike.hero, destination)
 
 
 def _step(spike: Spike, mover: Creature, destination: Cell) -> None:

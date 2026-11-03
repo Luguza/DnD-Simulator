@@ -20,6 +20,7 @@ from typing import Any, Final
 import pytest
 
 from dndsim.actions.base import Action
+from dndsim.actions.move import Move
 from dndsim.actions.opportunity_attack import OpportunityAttack, OpportunityAttacks
 from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.geometry import Cell
@@ -37,7 +38,7 @@ from dndsim.engine.attack import (
     resolve_attack,
 )
 from dndsim.engine.triggers import walk_provoking
-from dndsim.engine.turn import Move, take_turn
+from dndsim.engine.turn import take_turn
 from dndsim.engine.world import World
 from dndsim.hooks.contexts import AttackDeclaredContext, Context, HitContext
 from dndsim.hooks.decorator import R, hook

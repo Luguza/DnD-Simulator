@@ -27,6 +27,7 @@ from dndsim.actions.base import Action
 from dndsim.actions.dash import Dash
 from dndsim.actions.disengage import Disengage, disengaged
 from dndsim.actions.dodge import Dodge, Dodging
+from dndsim.actions.move import Move, Retreat, Walk
 from dndsim.actions.opportunity_attack import OpportunityAttack
 from dndsim.actions.pick_up import PickUpWeapon
 from dndsim.actions.stabilize import Stabilize
@@ -684,6 +685,35 @@ def _opportunity(
     return OpportunityAttack(actor, target, world=seated)
 
 
+def _walking(
+    actor: Creature,
+    target: Creature,
+    *,
+    keep_ft: int | None = None,
+    away: bool = False,
+    others: tuple[Creature, ...] = (),
+) -> Walk:
+    """A walk in a world seating `actor`, `target` and `others`."""
+    seated = World()
+    seated.seat(actor, "heroes")
+    seated.seat(target, "monsters")
+    for other in others:
+        seated.seat(other, "monsters")
+    if away:
+        return Retreat(actor, target, world=seated, keep_ft=keep_ft)
+    return Move(actor, target, world=seated)
+
+
+def _penned(actor: Creature) -> tuple[Creature, ...]:
+    """Enough bodies to fill every square around `actor`."""
+    return tuple(
+        goblin(Cell(actor.position.x + dx, actor.position.y + dy))
+        for dx in (-1, 0, 1)
+        for dy in (-1, 0, 1)
+        if (dx, dy) != (0, 0)
+    )
+
+
 def _reacted(subject: Creature) -> Creature:
     subject.economy.spend(ActionCost.REACTION)
     return subject
@@ -799,6 +829,60 @@ SCENARIOS: Final[dict[type[Action[Any]], tuple[tuple[str, Build, bool], ...]]] =
         ),
         ("dead-target", lambda: _opportunity(fighter(), _dead(goblin())), False),
         ("dead-actor", lambda: _opportunity(_dead_actor(), goblin()), False),
+    ),
+    Move: (
+        ("legal", lambda: _walking(ready(fighter()), goblin(TWO_EAST)), True),
+        (
+            "incapacitated",
+            lambda: _walking(_incapacitated(ready(fighter())), goblin(TWO_EAST)),
+            True,
+        ),
+        ("in-reach", lambda: _walking(ready(fighter()), goblin()), False),
+        ("no-movement", lambda: _walking(fighter(), goblin(TWO_EAST)), False),
+        (
+            "speed-zero",
+            lambda: _walking(ready(fighter(speed=0)), goblin(TWO_EAST)),
+            False,
+        ),
+        (
+            "dead-target",
+            lambda: _walking(ready(fighter()), _dead(goblin(TWO_EAST))),
+            False,
+        ),
+        ("dead-actor", lambda: _walking(_dead_actor(), goblin(TWO_EAST)), False),
+        ("down-actor", lambda: _walking(_downed_actor(), goblin(TWO_EAST)), False),
+    ),
+    Retreat: (
+        (
+            "legal",
+            lambda: _walking(ready(fighter()), goblin(), away=True, keep_ft=30),
+            True,
+        ),
+        (
+            "no-keep",
+            lambda: _walking(ready(fighter()), goblin(), away=True),
+            True,
+        ),
+        (
+            "far-enough",
+            lambda: _walking(ready(fighter()), goblin(TWO_EAST), away=True, keep_ft=10),
+            False,
+        ),
+        (
+            "penned-in",
+            lambda: (
+                lambda actor: _walking(
+                    actor, goblin(), away=True, keep_ft=30, others=_penned(actor)
+                )
+            )(ready(fighter())),
+            False,
+        ),
+        ("no-movement", lambda: _walking(fighter(), goblin(), away=True), False),
+        (
+            "dead-actor",
+            lambda: _walking(_dead_actor(), goblin(), away=True, keep_ft=30),
+            False,
+        ),
     ),
     PickUpWeapon: (
         ("legal", lambda: PickUpWeapon(_dropped(fighter())), True),
