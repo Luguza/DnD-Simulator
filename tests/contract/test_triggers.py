@@ -779,3 +779,92 @@ def test_a_route_of_ten_foot_steps_costing_too_much_raises(watched: bool) -> Non
     assert mover.position == Cell(0, 0)
     assert mover.economy.movement_ft == 30
     assert reaction.swings == []
+
+
+# --- unpaid movement ignores Speed (review round 2) --------------------------
+
+
+@pytest.mark.parametrize("watched", [False, True])
+def test_an_unpaid_walk_moves_a_speed_zero_mover_the_whole_route(
+    watched: bool,
+) -> None:
+    """Forced movement is not the mover's own: a Speed of 0 does not stop it,
+    whether or not anybody is watching."""
+    mover = _creature("Runner", Cell(0, 0))
+    mover.effects.apply(Halted(mover))
+    bystanders: list[Creature] = []
+    if watched:
+        guard, _, _, _ = _threatener("Guard", Cell(-1, 0))
+        bystanders.append(guard)
+
+    walked = walk_provoking(mover, _east(Cell(0, 0), 3), bystanders, charge=False)
+
+    assert walked == _east(Cell(0, 0), 3)
+    assert mover.position == Cell(3, 0)
+    assert mover.economy.movement_ft == 30
+
+
+def test_an_unpaid_walk_at_speed_zero_is_still_offered_to_the_watcher() -> None:
+    """Adjacent at (0, 0), the step to (1, 0) leaves the guard's reach."""
+    mover = _creature("Runner", Cell(0, 0))
+    mover.effects.apply(Halted(mover))
+    guard, reaction, economy, _ = _threatener("Guard", Cell(-1, 0))
+
+    walk_provoking(mover, _east(Cell(0, 0), 3), [guard], charge=False)
+
+    assert reaction.swings == [(Cell(0, 0), Cell(1, 0))]
+    assert not economy.can_spend(ActionCost.REACTION)
+
+
+def test_an_unpaid_walk_at_speed_zero_offers_every_watcher_left() -> None:
+    """Two watchers left on the same step are both offered: no Speed-0 cutoff
+    applies to movement that is not the mover's own."""
+    mover = _creature("Runner", Cell(0, 0))
+    mover.effects.apply(Halted(mover))
+    quick, quick_swing, _, _ = _threatener("Quick", Cell(0, -1), initiative=20)
+    slow, slow_swing, _, _ = _threatener("Slow", Cell(0, 1), initiative=2)
+
+    walked = walk_provoking(mover, _east(Cell(0, 0), 3), [quick, slow], charge=False)
+
+    assert walked == _east(Cell(0, 0), 3)
+    assert quick_swing.swings == [(Cell(1, 0), Cell(2, 0))]
+    assert slow_swing.swings == [(Cell(1, 0), Cell(2, 0))]
+
+
+def test_an_unpaid_walk_still_stops_on_a_dropped_mover() -> None:
+    mover = _creature("Runner", Cell(0, 0))
+    killer, _, _, _ = _threatener("Killer", Cell(0, -1))
+
+    class Lethal(HookSource):
+        __slots__ = ()
+
+        @hook("on_leave_reach", costs=ActionCost.REACTION, gate=_GATE_ID)
+        def kill(self, ctx: LeaveReachContext) -> R:
+            mover.hp = 0
+            return R.APPLIED
+
+    _rearm(killer, Lethal(killer))
+
+    walked = walk_provoking(mover, _east(Cell(0, 0), 5), [killer], charge=False)
+
+    assert walked == (Cell(1, 0),)
+    assert mover.position == Cell(1, 0)
+
+
+def test_a_paid_walk_halted_by_a_reaction_still_stops_and_offers_no_one_else() -> None:
+    """The paid case is unchanged: Sentinel's Speed 0 ends the walk on (1, 0),
+    and the lower-initiative watcher left on that step is not offered it."""
+    mover = _creature("Runner", Cell(0, 0))
+    sentinel, _, _, _ = _threatener("Sentinel", Cell(0, -1), initiative=20)
+    second, second_swing, second_economy, _ = _threatener(
+        "Second", Cell(0, 1), initiative=2
+    )
+    _rearm(sentinel, Queues(sentinel, onto=lambda ctx: mover, make=Halted))
+
+    walked = walk_provoking(mover, _east(Cell(0, 0), 4), [sentinel, second])
+
+    assert walked == (Cell(1, 0),)
+    assert mover.position == Cell(1, 0)
+    assert mover.economy.movement_ft == 25
+    assert second_swing.swings == []
+    assert second_economy.can_spend(ActionCost.REACTION)
