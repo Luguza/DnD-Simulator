@@ -5209,6 +5209,34 @@ Sources: `ROADMAP.md` `w2c2`, § The W0 debt register #18–#22, #26, #28, #34,
 Opportunity Attacks, "Movement and Position", "Actions" -> Disengage; Rules
 Glossary "Frightened", "Prone".
 
+## The `w2a` spec correction — the engine halves move to `w2f`
+
+`w2a`'s done-when asked for two things outside `content/`: removing
+`stats.GREATSWORD` from the spike and the skeleton (#13), and a ranged branch
+in `engine/attack.py` (#24). `docs/progress.md` is a serial queue, and on it
+`w2c2` releases those files before `w2a` starts. On 2026-11-03 the owner
+departed from it to make up lost time. They ran `w2a`, `w2c2` and `w2d` at
+once, each told to flip only its own row and to stay inside its Produces cell,
+so the queue file still shows the serial order. While the three run, `w2c2`
+holds `engine/attack.py` and `tools/spike.py`. The skeleton is nobody's, but it
+calls the constant #13 removes, so it goes with the spike; the contract tests
+that import it keep the weapon as a fixture, since they must run without
+fetched data.
+Both halves therefore go to `w2f`, the first task after the parallel ones that assembles a creature from
+its equipment. The next `⏸` plan review may re-own them. What `w2a` owes both
+is the data: the normal/long pair on `Weapon` and the Strength requirement on
+`Armour`, plus the Versatile die the Weapon table prints, which `w2f` rolls
+when a build holds the weapon in two hands. The three `creatures/stats.py`
+fields are added to its Produces cell, since #27 already said "`w2a` lands the
+field". `w2f`'s new engine work is a hot-path change, so its row asks for the
+paired spike run and marks it solo within the task, as `w2b`'s row did for its
+`hooks/contexts.py` widening.
+
+The Blowgun's damage is a flat 1 with no die, and `Weapon.damage` is dice only.
+A d1 would double to 2 on a Critical Hit, so `w2a` declares it instead of
+importing it (#63, `w2f`). The row's "38 weapons" stands, as 37 imported plus
+one declared. "`species.json`" is 5etools' `races.json`.
+
 ## w2a — the content ACL
 
 ### The fields on `Weapon` and `Armour`
