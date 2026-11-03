@@ -5818,9 +5818,10 @@ is a `.github/workflows/` change the loop cannot merge (`docs/workflow.md`
 
 **A range does not say what kind of weapon it is on.** The ranged branch asks
 "is this a ranged weapon?", and the fields `w2a` imported cannot answer it: a
-Dagger (Melee, Thrown, 20/60) and a Dart (Ranged, Thrown, 20/60) carry the same
-properties and the same range, and differ only in the table's Melee/Ranged
-column — which decides whether the attack is a melee or a ranged one and, for
+Dagger (Melee; Finesse, Light, Thrown, 20/60) and a Dart (Ranged; Finesse,
+Thrown, 20/60) share Finesse, Thrown and the range, and Light says nothing
+about either kind, so only the table's Melee/Ranged column tells them apart —
+which decides whether the attack is a melee or a ranged one and, for
 a weapon without Finesse, whether it uses Strength or Dexterity. The importer
 reads the column (`type` `M`/`R`) and drops it, so `content/weapons.py` keeps
 it and `Weapon` and its protocol carry it. A thrown melee weapon is thrown only
@@ -5830,7 +5831,7 @@ nothing here offers.
 
 **The close-combat rule needs the creatures around the attacker, and
 `resolve_attack()` has only two.** XPHB "Ranged Attacks in Close Combat" asks
-whether an enemy is within 5 feet of the attacker. `resolve_attack()` is given
+whether an enemy that is not Incapacitated is within 5 feet of the attacker. `resolve_attack()` is given
 the attacker and the defender, and the `Attack` Command, which calls it, holds
 no world; `engine/turn.py`'s `offers()` builds it without one. The
 Command is therefore given the `World`, `offers()` passes it, and
