@@ -4743,10 +4743,12 @@ is not: `heal()` takes a generator and `TurnContext` carries none, and setting
 `hp` directly would skip `on_heal`'s veto. The done-when's second clause,
 "provokes and is provoked", cannot be met without the walk, so it moves to
 `w2e` with the profile (#59) rather than being faked with an `engine/` edit.
-This run was one of three tasks the owner had run in parallel, with the
-instruction to hold the profile as data and record the choice if the dummy
-could do no more without the walk, and a spec PR only if the row could not be
-built at all; so the correction rides this PR instead of a spec PR, and it
+This run was one of three tasks the owner had run in parallel, and the
+owner's instruction for it, quoted on PR #65, was: "`movement_profile`
+(`closes_to_melee`, `kites_at`) touches the walk that `w2c2` is building in
+`engine/turn.py`. Do not edit `engine/`. … If the dummy can only hold its
+profile as data for `w2c2`/`w2e` to act on, build that and record the choice.
+If the row can't be built without the walk, open a spec PR". So the correction rides this PR instead of a spec PR, and it
 amends the rows that take the work on — `w2d`'s own done-when, and `w2e`'s and
 `w2g`'s, which now name what each owes — rather than leaving it in the
 register alone.
