@@ -17,6 +17,8 @@ import os
 import re
 import statistics
 import subprocess
+import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -26,6 +28,8 @@ from typing import Any
 
 TEMPLATE = Template((Path(__file__).parent / "template.html").read_text("utf-8"))
 TASK_ID = re.compile(r"w\d[a-z]\d*")
+OPTION = re.compile(r"(?:^|\s;\s)([A-Z])\)\s*")
+ANSWER_TITLE = re.compile(r"Answer #(\d+): (\S+)")
 DAY_PX = 6
 PHONE_DAY_PX = 2.5
 PACE_WINDOW = 10
@@ -85,8 +89,16 @@ class Question:
     number: str
     asked_by: str
     question: str
+    options: list[tuple[str, str]]
     choice: str
     otherwise: str
+
+
+@dataclass
+class Answer:
+    number: str
+    question: str
+    answer: str
 
 
 def git_show(ref: str, path: str) -> str:
@@ -177,10 +189,27 @@ def parse_debt(roadmap: str) -> list[Debt]:
 
 
 def parse_questions(questions: str) -> list[Question]:
+    open_rows = questions.split("\n## Answered", 1)[0]
     return [
-        Question(*row[:5])
-        for row in table_rows(questions)
-        if row[0].isdigit() and len(row) >= 5
+        Question(row[0], row[1], row[2], parse_options(row[3]), row[4], row[5])
+        for row in table_rows(open_rows)
+        if row[0].isdigit() and len(row) >= 6
+    ]
+
+
+def parse_options(cell: str) -> list[tuple[str, str]]:
+    """`A) one ; B) two` as `[("A", "one"), ("B", "two")]`."""
+    parts = OPTION.split(cell)[1:]
+    return [(parts[i], parts[i + 1].strip()) for i in range(0, len(parts), 2)]
+
+
+def parse_answers(questions: str) -> list[Answer]:
+    if "\n## Answered" not in questions:
+        return []
+    return [
+        Answer(row[0], row[2], row[3])
+        for row in table_rows(section(questions, "Answered"))
+        if row[0].isdigit() and len(row) >= 4
     ]
 
 
@@ -207,6 +236,21 @@ def fetch_prs() -> list[dict[str, Any]]:
         if len(batch) < 100:
             break
     return prs
+
+
+def fetch_pending(owner: str) -> dict[str, str]:
+    """The owner's open answer issues, as question number → option letter."""
+    pending: dict[str, str] = {}
+    try:
+        issues = github("issues?state=open&per_page=100")
+    except urllib.error.HTTPError:  # the workflow's token may not read issues
+        return pending
+    for issue in sorted(issues, key=lambda i: str(i["created_at"])):
+        found = ANSWER_TITLE.match(issue.get("title", ""))
+        author = (issue.get("user") or {}).get("login", "")
+        if found and "pull_request" not in issue and author.lower() == owner.lower():
+            pending[found.group(1)] = found.group(2)
+    return pending
 
 
 def arrange(waves: list[Wave], queue: list[QueueRow]) -> None:
@@ -421,12 +465,50 @@ def render_debt(debts: list[Debt]) -> tuple[str, str]:
     return options, items
 
 
-def render_questions(questions: list[Question]) -> str:
+def answer_url(repo_url: str, q: Question, letter: str, text: str) -> str:
+    """A new-issue link pre-filled with the answer `docs/workflow.md`
+    § Answers from the dashboard reads."""
+    body = (
+        f"Question #{q.number}: {plain(q.question)}\n\n"
+        + (f"Answer: {letter}) {plain(text)}\n\n" if text else "Answer: \n\n")
+        + "Notes (optional): "
+    )
+    query = urllib.parse.urlencode(
+        {"title": f"Answer #{q.number}: {letter}", "body": body}
+    )
+    return html.escape(f"{repo_url}/issues/new?{query}")
+
+
+def render_questions(
+    questions: list[Question], pending: dict[str, str], repo_url: str
+) -> str:
+    def answer(q: Question) -> str:
+        if q.number in pending:
+            return (
+                f'<p class="pending">Answered <strong>{html.escape(pending[q.number])}'
+                "</strong>, waiting for the next run to pick it up.</p>"
+            )
+        buttons = "".join(
+            f'<a class="opt" href="{answer_url(repo_url, q, letter, text)}" '
+            f'target="_blank" rel="noopener"><b>{letter}</b> {inline(text)}</a>'
+            for letter, text in q.options
+        )
+        other = answer_url(repo_url, q, "other", "")
+        return (
+            f'<div class="opts">{buttons}</div>'
+            f'<form class="free" action="{other}" target="_blank">'
+            '<textarea name="answer" rows="2" '
+            f'aria-label="Your own answer to #{q.number}" '
+            'placeholder="Or write your own answer…"></textarea>'
+            '<button type="submit">Send</button></form>'
+        )
+
     return (
         "".join(
-            f'<details class="entry"><summary><span class="num">#{q.number}</span>'
+            f'<details class="entry" open><summary><span class="num">#{q.number}</span>'
             f'<span class="t">{inline(q.question)}</span>'
             f'<span class="owner">{inline(q.asked_by)}</span></summary>'
+            f"{answer(q)}"
             f"<dl><dt>Choice taken</dt><dd>{inline(q.choice)}</dd>"
             f"<dt>If answered otherwise</dt><dd>{inline(q.otherwise)}</dd>"
             "</dl></details>"
@@ -436,11 +518,28 @@ def render_questions(questions: list[Question]) -> str:
     )
 
 
+def render_answers(answers: list[Answer]) -> str:
+    if not answers:
+        return ""
+    items = "".join(
+        f'<details class="entry"><summary><span class="num">#{a.number}</span>'
+        f'<span class="t">{inline(a.question)}</span></summary>'
+        f"<dl><dt>Answer</dt><dd>{inline(a.answer)}</dd></dl></details>"
+        for a in sorted(answers, key=lambda a: int(a.number))
+    )
+    return (
+        f'<details class="answered"><summary>Answered · {len(answers)}</summary>'
+        f"{items}</details>"
+    )
+
+
 def render(
     milestone: str,
     waves: list[Wave],
     debts: list[Debt],
     questions: list[Question],
+    answers: list[Answer],
+    pending: dict[str, str],
     prs: list[dict[str, Any]],
     pace: float,
     now: datetime,
@@ -525,7 +624,8 @@ def render(
         debt_options=debt_options,
         debt=debt_items,
         question_count=len(questions),
-        questions=render_questions(questions),
+        questions=render_questions(questions, pending, repo_url),
+        answers=render_answers(answers),
         open_prs="".join(pr_item(p, "created_at") for p in open_prs) or empty,
         merged_prs="".join(pr_item(p, "merged_at") for p in merged) or empty,
     )
@@ -545,6 +645,7 @@ def main() -> None:
     milestone = found.group(1) if found else "main"
     ref = f"{args.remote}/{milestone}"
     roadmap = git_show(ref, "ROADMAP.md")
+    questions = git_show(ref, "docs/questions.md")
 
     waves = parse_waves(roadmap)
     arrange(waves, parse_queue(git_show(ref, "docs/progress.md")))
@@ -557,7 +658,9 @@ def main() -> None:
         milestone,
         waves,
         parse_debt(roadmap),
-        parse_questions(git_show(ref, "docs/questions.md")),
+        parse_questions(questions),
+        parse_answers(questions),
+        {} if args.prs else fetch_pending(repo.split("/")[0]),
         prs,
         pace,
         now,
