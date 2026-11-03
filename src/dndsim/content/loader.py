@@ -79,17 +79,29 @@ class Dataset:
 
 _TAG: Final = re.compile(r"\{@(\w+)(?: ([^{}]*))?\}")
 
-_FIRST_SEGMENT_TAGS: Final = frozenset(
-    {"5etools", "book", "damage", "dice", "filter", "i", "b", "link", "note"}
-)
-
-# Tags whose display text follows a key longer than `name|source`.
+# Every tag `plain()` reads, by the segment holding its display text when the
+# tag carries one; an unlisted tag raises rather than being guessed at.
 _DISPLAY_SEGMENT: Final = {
-    "classFeature": 5,
+    **dict.fromkeys(
+        ("5etools", "b", "book", "damage", "dice", "filter", "i", "link", "note"),
+        0,
+    ),
+    **dict.fromkeys(("tip",), 0),
+    **dict.fromkeys(
+        (
+            "action", "class", "condition", "creature", "deck", "feat",
+            "hazard", "item", "itemMastery", "itemProperty", "language",
+            "object", "optfeature", "race", "sense", "skill", "spell",
+            "status", "table", "variantrule",
+        ),
+        2,
+    ),
     "deity": 3,
+    "quickref": 4,
     "subclass": 4,
+    "classFeature": 5,
     "subclassFeature": 7,
-}
+}  # fmt: skip
 
 
 def _display(match: re.Match[str]) -> str:
@@ -99,18 +111,16 @@ def _display(match: re.Match[str]) -> str:
         return f"DC {parts[0]}"
     if tag == "hit":
         return f"+{parts[0]}" if not parts[0].startswith(("+", "-")) else parts[0]
-    if tag == "quickref":
-        return parts[4] if len(parts) > 4 and parts[4] else parts[0]
-    if tag in _DISPLAY_SEGMENT:
-        at = _DISPLAY_SEGMENT[tag]
-        return parts[at] if len(parts) > at and parts[at] else parts[0]
-    if tag not in _FIRST_SEGMENT_TAGS and len(parts) > 2 and parts[2]:
-        return parts[2]
-    return parts[0]
+    at = _DISPLAY_SEGMENT.get(tag)
+    if at is None:
+        raise ContentError(f"no reading for the tag {match[0]!r}")
+    return parts[at] if len(parts) > at and parts[at] else parts[0]
 
 
 def plain(text: str) -> str:
     """`text` with every `{@tag …}` replaced by what the page would print.
+
+    Raises `ContentError` for a tag it has no reading for.
 
     Inner tags first, so a nested tag resolves before the one holding it.
     """

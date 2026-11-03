@@ -364,6 +364,12 @@ def test_plain_prints_what_the_page_prints(tagged: str, printed: str) -> None:
     assert plain(tagged) == printed
 
 
+@pytest.mark.parametrize("tagged", ["{@atkr m}", "{@actSave dex}", "{@d20 5}"])
+def test_plain_refuses_a_tag_it_cannot_read(tagged: str) -> None:
+    with pytest.raises(ContentError, match="no reading"):
+        plain(tagged)
+
+
 # -- weapons, armour, masteries -----------------------------------------------
 
 
