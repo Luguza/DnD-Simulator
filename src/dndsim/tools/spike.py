@@ -1,10 +1,12 @@
 """The pessimistic performance spike (ROADMAP w0i) — the M0 gate.
 
-Measures attack resolutions per second per core against `BUDGET_PER_SECOND`, on
-a deliberately hostile configuration: a hero carrying the twenty-five sources
-of `tools/spike_features.py` and the hand-compiled APL of `tools/spike_apl.py`,
-three enemies swinging back, and both sides walking real routes on a real grid,
-paying for each step and drawing the enemies' opportunity attacks.
+Measures attack resolutions per second per core on a deliberately hostile
+configuration: a hero carrying the twenty-five sources of
+`tools/spike_features.py` and the hand-compiled APL of `tools/spike_apl.py`,
+three enemies swinging back, and by default both sides walking real routes on a
+real grid, paying for each step and drawing the enemies' opportunity attacks.
+`BUDGET_PER_SECOND` is checked only on `provoking=False`, the same fight
+without the walking and the opportunity attacks.
 `measure_startup()` times a spawned worker separately.
 
 `docs/decisions.md` § w0i has the configuration's reasoning and the
