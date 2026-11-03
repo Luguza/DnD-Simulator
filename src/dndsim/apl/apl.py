@@ -42,7 +42,7 @@ from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.geometry import distance_ft, in_reach
 from dndsim.creatures.creature import Creature
 from dndsim.engine.world import World
-from dndsim.hooks.contexts import Context, LeaveReachContext
+from dndsim.hooks.contexts import Combatant, Context, LeaveReachContext
 from dndsim.hooks.source import HookSource
 
 __all__ = [
@@ -369,7 +369,9 @@ class Apl:
         """The dispatcher's question (`hooks/dispatch.py`'s `Gate`): may a
         gated handler act? Unmentioned is OFF. A movement offer binds
         `trigger.mover`, `trigger.origin`, `trigger.destination` and `target`
-        to the mover first."""
+        to the mover first; during an attack, `target` is the other party and
+        a defender's `trigger.*` holds the attacker's newer offer
+        (`docs/decisions.md` § w2e)."""
         condition = self._by_gate.get(gate_id)
         if condition is None:
             return False
@@ -381,7 +383,27 @@ class Apl:
             if mover is not None:
                 namespace.trigger.offer_movement(mover, ctx.origin, ctx.destination)
                 namespace.target.bind(mover)
+        else:
+            attacker = getattr(ctx, "attacker", None)
+            if attacker is not None:
+                _face(namespace, attacker, ctx.defender)  # type: ignore[attr-defined]
         return bool(condition(namespace))
+
+
+def _face(namespace: Namespace, attacker: Combatant, defender: Combatant) -> None:
+    """Bind `target` to the other party of an attack, and give a defender's
+    root the attacker's offer when it is the newer one."""
+    world = namespace.world
+    owner = namespace.self.creature
+    striker = world.holder(attacker)
+    if striker is owner:
+        namespace.target.bind(world.holder(defender))
+        return
+    namespace.target.bind(striker)
+    theirs = None if striker is None else _ROOTS.get(striker)
+    mine = namespace.trigger
+    if theirs is not None and theirs.stamp > mine.stamp:
+        mine.take(theirs)
 
 
 def unprovided(apl: Apl, provided: Iterable[str]) -> frozenset[str]:
@@ -526,31 +548,13 @@ def _pick(
     if chosen is not None:
         namespace.target.bind(_target_of(chosen))
         if isinstance(chosen, Attack) and chosen.trigger is None:
-            # The attack rebinds these roots, so a gated rider or reaction on
-            # either side reads this attack (`docs/decisions.md` § w2e).
-            defender = _ROOTS.get(chosen.target)
-            mine = namespace.trigger
-            chosen.trigger = mine if defender is None else _Both(mine, defender)
+            # The attack rebinds this root, so a gated rider reads this attack.
+            chosen.trigger = namespace.trigger
     return chosen
 
 
 _ROOTS: "WeakKeyDictionary[Creature, TriggerProxy]" = WeakKeyDictionary()
 """Each creature's `trigger.*` root, from the last `bind()` of an APL to it."""
-
-
-class _Both:
-    """Two `trigger.*` roots told the same offer: the attacker's and the
-    defender's."""
-
-    __slots__ = ("_first", "_second")
-
-    def __init__(self, first: TriggerProxy, second: TriggerProxy) -> None:
-        self._first = first
-        self._second = second
-
-    def bind(self, *, crit: bool = False, damage_estimate: int = 0) -> None:
-        self._first.bind(crit=crit, damage_estimate=damage_estimate)
-        self._second.bind(crit=crit, damage_estimate=damage_estimate)
 
 
 def _distance(actor: Creature, target: Creature | None) -> int:

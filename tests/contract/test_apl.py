@@ -62,10 +62,16 @@ from dndsim.creatures.dummy import (
     build_dummies,
 )
 from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
-from dndsim.engine.attack import ATTACK
+from dndsim.engine.attack import ATTACK, resolve_attack
 from dndsim.engine.turn import Policy, take_turn
 from dndsim.engine.world import World
-from dndsim.hooks.contexts import Context, LeaveReachContext
+from dndsim.hooks.contexts import (
+    Context,
+    HitContext,
+    IncomingDamageContext,
+    LeaveReachContext,
+)
+from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.dispatch import Gate
 from dndsim.hooks.source import HookSource
 from dndsim.rules.constants import SIZE_WIDTH_CELLS
@@ -1612,7 +1618,68 @@ def test_a_movement_offer_after_a_crit_does_not_read_the_crit() -> None:
     assert apl.namespace.trigger.damage_estimate == 0
 
 
-# --- an attack an APL picks tells the defender's `trigger` root too ----------
+# --- during an attack, `target` is the other party and a defender's
+# `trigger` reads the attacker's newer offer ----------------------------------
+
+DODGE: Final = "rogue.uncanny_dodge"
+SMITE: Final = "paladin.divine_smite"
+
+
+class Dodge(HookSource):
+    """A gated defender's reaction asked during an attack: it halves the hit
+    and records what its owner's APL read when it passed."""
+
+    __slots__ = ("apl", "seen")
+
+    ID = "test.dodge"
+
+    def __init__(self, owner: Creature, apl: Apl) -> None:
+        super().__init__(owner)
+        self.apl = apl
+        self.seen: list[tuple[bool, int, Creature | None, Creature | None]] = []
+
+    @hook("on_incoming_damage", gate=DODGE)
+    def dodge(self, ctx: IncomingDamageContext) -> R:
+        namespace = self.apl.namespace
+        trigger = namespace.trigger
+        self.seen.append(
+            (
+                trigger.crit,
+                trigger.damage_estimate,
+                trigger.mover,
+                namespace.target.creature,
+            )
+        )
+        ctx.halve("uncanny dodge")
+        return R.APPLIED
+
+
+class Smite(HookSource):
+    """A gated attacker's rider: two radiant damage on a hit."""
+
+    __slots__ = ()
+
+    ID = "test.smite"
+
+    @hook("on_hit", gate=SMITE)
+    def smite(self, ctx: HitContext) -> R:
+        ctx.damage.add(flat=2, damage_type=DamageType.RADIANT)
+        return R.APPLIED
+
+
+def dodging(text: str, owner: Creature, world: World) -> tuple[Apl, Dodge]:
+    """`text` bound to `owner` as its gate, `uncanny_dodge` mapped to
+    `DODGE`, with a `Dodge` attached."""
+    apl = bound(
+        text,
+        owner,
+        world,
+        actions=("uncanny_dodge",),
+        gates={"uncanny_dodge": DODGE},
+    )
+    reaction = Dodge(owner, apl)
+    owner.attach(reaction)
+    return apl, reaction
 
 
 def stale(trigger: TriggerProxy, *, mover: Creature) -> None:
@@ -1623,30 +1690,166 @@ def stale(trigger: TriggerProxy, *, mover: Creature) -> None:
     trigger.mover = mover
 
 
-def test_a_turn_s_attack_rebinds_the_defender_s_stale_trigger_root() -> None:
+def test_a_defender_s_reaction_asked_during_an_attack_reads_that_attack() -> None:
     """The goblin's root is left as an earlier crit while the hero moved would
-    leave it; the hero's natural 15 is a hit, not a crit, for 4 + 4 + 3 =
-    11."""
+    leave it; the hero's natural 15 is a hit, not a crit, for 4 + 4 + 3 = 11,
+    which the goblin's gate reads and halves to 5."""
     hero = creature("hero", Cell(0, 0), initiative=20)
     goblin = creature("goblin", Cell(1, 0))
     log = EventLog()
     world = seated((hero, "heroes"), (goblin, "monsters"), log=log)
     apl = Apl([Entry("attack")]).bind(hero, world)
-    theirs = Apl([Entry("attack")]).bind(goblin, world).namespace.trigger
-    stale(theirs, mover=hero)
+    theirs, reaction = dodging(
+        '- { action: uncanny_dodge, if: "trigger.damage_estimate == 11 '
+        'and not trigger.crit and target.hp == 20" }',
+        goblin,
+        world,
+    )
+    stale(theirs.namespace.trigger, mover=hero)
     rng = ScriptedRng(list(ELEVEN))
 
     taken = take_turn(world, hero, 1, policy=apl, rng=rng)
 
     assert taken == 1
-    assert attacks(log) == [(ATTACK, "hero", "goblin", "Greatsword", Outcome.HIT, 11)]
-    assert goblin.hp == HP - 11 == 9
-    assert theirs.crit is False
-    assert theirs.damage_estimate == 11
-    assert theirs.mover is None
+    assert reaction.seen == [(False, 11, None, hero)]
+    assert attacks(log) == [(ATTACK, "hero", "goblin", "Greatsword", Outcome.HIT, 5)]
+    assert goblin.hp == HP - 11 // 2 == 15
     assert apl.namespace.trigger.crit is False
     assert apl.namespace.trigger.damage_estimate == 11
     assert rng.exhausted
+
+
+@pytest.mark.parametrize(("rolled", "dodged"), [(7, True), (5, False)])
+def test_a_reaction_reads_the_opportunity_attack_not_its_owner_s_earlier_crit(
+    rolled: int, dodged: bool
+) -> None:
+    """The hero crits the goblin on its turn: a natural 20 and 2d6 doubled to
+    6 + 6 + 6 + 6, + 3 = 27. It then walks out of the dummy's pike reach, and
+    the dummy's opportunity attack, a natural 15 at + 2 = 17 against AC 12,
+    deals 1d10 as rolled. The hero's gate reads that, not its own 27: a 7 is
+    halved to 3, and a 5 is taken whole."""
+    log = EventLog()
+    dummy = one_dummy(DummySpec(hp=60, position=Cell(0, 0)))
+    dummy.weapon = PIKE
+    hero = creature("hero", Cell(2, 0), initiative=20)
+    goblin = creature("goblin", Cell(2, 1), hp=30)
+    world = seated((dummy, "monsters"), (hero, "heroes"), (goblin, "monsters"), log=log)
+    rng = ScriptedRng([20, 6, 6, 6, 6, HIT, rolled])
+    arm_dummy(dummy, world, rng=rng)
+    apl, reaction = dodging(
+        """
+        - { action: attack }
+        - { action: uncanny_dodge, if: "trigger.damage_estimate >= 7" }
+        """,
+        hero,
+        world,
+    )
+
+    assert take_turn(world, hero, 1, policy=apl, rng=rng) == 1
+    assert apl.namespace.trigger.crit is True
+    assert apl.namespace.trigger.damage_estimate == 27
+    hero.economy.turn_started(hero.speed_ft)
+    Retreat(hero, dummy, world=world, keep_ft=25).execute(rng=rng)
+
+    taken = rolled // 2 if dodged else rolled
+    assert attacks(log) == [
+        (ATTACK, "hero", "goblin", "Greatsword", Outcome.CRITICAL_HIT, 27),
+        (ATTACK, "Target Dummy", "hero", "Pike", Outcome.HIT, taken),
+    ]
+    assert reaction.seen == ([(False, rolled, None, dummy)] if dodged else [])
+    assert hero.hp == HP - taken
+    assert rng.exhausted
+
+
+def test_a_defender_s_target_is_its_attacker_not_its_last_pick() -> None:
+    """The hero last picked the goblin at 5 hit points; the ogre at 20 attacks
+    it, and `target.hp > 10` reads the ogre: 11 halved to 5. The ogre has no
+    APL, so there is no offer of its to take and the hero's root keeps its
+    own."""
+    hero = creature("hero", Cell(0, 0))
+    goblin = creature("goblin", Cell(1, 0), hp=5)
+    ogre = creature("ogre", Cell(0, 1))
+    log = EventLog()
+    world = seated((hero, "heroes"), (goblin, "monsters"), (ogre, "monsters"), log=log)
+    apl, reaction = dodging(
+        """
+        - { action: attack, target: "lowest_hp of enemies" }
+        - { action: uncanny_dodge, if: "target.hp > 10" }
+        """,
+        hero,
+        world,
+    )
+    apl.choose(hero, [Attack(hero, goblin), Attack(hero, ogre)])
+    assert apl.namespace.target.creature is goblin
+    rng = ScriptedRng(list(ELEVEN))
+
+    resolve_attack(ogre, hero, rng=rng, log=log)
+
+    assert reaction.seen == [(False, 0, None, ogre)]
+    assert attacks(log) == [(ATTACK, "ogre", "hero", "Greatsword", Outcome.HIT, 5)]
+    assert hero.hp == HP - 5
+    assert rng.exhausted
+
+
+def test_an_attacker_s_target_is_its_defender_not_its_last_pick() -> None:
+    """The hero last picked the ogre at 20 hit points; an attack it makes on
+    the goblin at 5 asks its rider with `target` bound to the goblin, so
+    `target.hp < 10` passes: 11 + 2 radiant = 13."""
+    hero = creature("hero", Cell(0, 0))
+    goblin = creature("goblin", Cell(1, 0), hp=5)
+    ogre = creature("ogre", Cell(0, 1))
+    log = EventLog()
+    world = seated((hero, "heroes"), (goblin, "monsters"), (ogre, "monsters"), log=log)
+    apl = bound(
+        """
+        - { action: attack, target: "highest_hp of enemies" }
+        - { action: smite, if: "target.hp < 10" }
+        """,
+        hero,
+        world,
+        actions=("smite",),
+        gates={"smite": SMITE},
+    )
+    hero.attach(Smite(hero))
+    apl.choose(hero, [Attack(hero, goblin), Attack(hero, ogre)])
+    assert apl.namespace.target.creature is ogre
+    rng = ScriptedRng(list(ELEVEN))
+
+    resolve_attack(hero, goblin, rng=rng, trigger=apl.namespace.trigger, log=log)
+
+    assert attacks(log) == [(ATTACK, "hero", "goblin", "Greatsword", Outcome.HIT, 13)]
+    assert apl.namespace.target.creature is goblin
+    assert rng.exhausted
+
+
+def test_a_defender_s_newer_offer_is_not_overwritten_by_an_older_attacker_s() -> None:
+    """The ogre's root is told its offer first, the hero's second: asked
+    during the ogre's attack, the hero keeps its own newer one."""
+    hero = creature("hero", Cell(0, 0))
+    ogre = creature("ogre", Cell(0, 1))
+    world = seated((hero, "heroes"), (ogre, "monsters"))
+    theirs = Apl([Entry("attack")]).bind(ogre, world).namespace.trigger
+    mine = Apl(
+        [Entry("uncanny_dodge", if_="trigger.damage_estimate == 4")],
+        actions=("uncanny_dodge",),
+        gates={"uncanny_dodge": DODGE},
+    ).bind(hero, world)
+    theirs.bind(crit=True, damage_estimate=30)
+    mine.namespace.trigger.bind(damage_estimate=4)
+    incoming = IncomingDamageContext(
+        defender=hero, attacker=ogre, amounts={DamageType.SLASHING: 30}
+    )
+
+    trigger = mine.namespace.trigger
+
+    assert mine.allows(DODGE, Marker(hero), incoming)
+    assert (trigger.crit, trigger.damage_estimate) == (False, 4)
+    assert mine.namespace.target.creature is ogre
+
+    theirs.bind(crit=True, damage_estimate=30)
+
+    assert not mine.allows(DODGE, Marker(hero), incoming)
+    assert (trigger.crit, trigger.damage_estimate) == (True, 30)
 
 
 # --- `==` and the canonical hash agree on the order of `with:` --------------

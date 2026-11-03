@@ -8,6 +8,7 @@ which side is kept between reads, until the world seats or unseats someone.
 """
 
 from collections.abc import Callable
+from itertools import count
 from weakref import ReferenceType, ref
 
 from dndsim.apl.schema import NamespaceSchema
@@ -149,9 +150,10 @@ class TriggerProxy:
     `offer_movement()` is told about a creature leaving reach.
     """
 
-    __slots__ = ("crit", "damage_estimate", "destination", "mover", "origin")
+    __slots__ = ("crit", "damage_estimate", "destination", "mover", "origin", "stamp")
 
     def __init__(self) -> None:
+        self.stamp = 0
         self.crit = False
         self.damage_estimate = 0
         self.mover: Creature | None = None
@@ -160,6 +162,7 @@ class TriggerProxy:
 
     def bind(self, *, crit: bool = False, damage_estimate: int = 0) -> None:
         """An attack is on offer: replaces the whole offer."""
+        self.stamp = next(_OFFERS)
         self.crit = crit
         self.damage_estimate = damage_estimate
         self.mover = self.origin = self.destination = None
@@ -168,11 +171,25 @@ class TriggerProxy:
         self, mover: Creature, origin: "CellLike", destination: "CellLike"
     ) -> None:
         """A creature is leaving reach: replaces the whole offer."""
+        self.stamp = next(_OFFERS)
         self.crit = False
         self.damage_estimate = 0
         self.mover = mover
         self.origin = origin
         self.destination = destination
+
+    def take(self, other: "TriggerProxy") -> None:
+        """Hold `other`'s offer: what it was last told is what this is told."""
+        self.stamp = other.stamp
+        self.crit = other.crit
+        self.damage_estimate = other.damage_estimate
+        self.mover = other.mover
+        self.origin = other.origin
+        self.destination = other.destination
+
+
+_OFFERS = count(1)
+"""Orders every offer told to any root, so the newest one can be found."""
 
 
 class _Side:

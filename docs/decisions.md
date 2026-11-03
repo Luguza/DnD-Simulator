@@ -5715,11 +5715,19 @@ held. The owner said to fix everything and merge, which cleared it:
 - **Each `trigger.*` offer replaces the whole root.** `bind()` (an attack)
   clears the mover and squares, and `offer_movement()` clears `crit` and the
   estimate, so neither kind of offer reads the other's leftovers.
-- **An attack an APL picks tells the defender's root too.** Each `bind()` of
-  an APL records its creature's root, and the `Attack` the APL picks carries
-  both roots, so the defender's gated reaction reads this attack, not its
-  own last one. An attacker driven by no APL still tells only the root its
-  caller passes, as the spike's does.
+- **A reaction reads the attack landing on it.** During an attack,
+  `allows()` binds `target` to the other party (DESIGN.md § The APL: a
+  reaction's default target is the creature that triggered it), and a
+  defender's `trigger.*` takes the attacker's root when that holds the newer
+  offer: every offer is stamped from one counter, and each `bind()` of an
+  APL records its creature's root. Syncing at the ask, rather than having
+  every attack fan out to both roots, covers the opportunity attacks
+  `arm_dummy` builds as well as the turn loop's, and leaves a root a caller
+  passed straight in (the spike's) untouched. Only `target`'s identity and
+  a root the engine already bound are read off the attack; the offer's facts
+  are never scraped from the context. An attacker with no APL and no root passed by its
+  caller tells nobody, so a defender then reads its own last offer; every
+  creature `w2g`'s encounter seats is APL-driven (#66), which closes it.
 - **`canonical_hash` keeps `with:` in written order**, as `==` does.
 - **A `toward` move over a group ends at a pick already in reach**: walking
   on toward a later pick would leave the first one's reach.
