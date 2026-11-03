@@ -4951,3 +4951,21 @@ adopt a dead session's PR or milestone review instead of naming it. Adopting
 is safe against a double start for the same reason the checks were: two hours
 without activity is longer than any live session goes between pushes, and the
 round cap counts the PR's verdicts, so an adopter cannot reset it.
+
+## The `w2a` spec correction — the engine halves move to `w2f`
+
+`w2a`'s done-when asked for two things outside `content/`: removing
+`stats.GREATSWORD` from the spike and the skeleton (#13), and a ranged branch
+in `engine/attack.py` (#24). The owner runs `w2a` in parallel with `w2c2` and
+`w2d`, and told it to stay inside `content/`, because `w2c2` holds
+`engine/attack.py` and `tools/spike.py` while it runs. Both halves therefore go
+to `w2f`, the first task after the parallel ones that assembles a creature from
+its equipment. The next `⏸` plan review may re-own them. What `w2a` owes both
+is the data: the normal/long pair on `Weapon` and the Strength requirement on
+`Armour`. The `creatures/stats.py` fields are added to its Produces cell, since
+#27 already said "`w2a` lands the field".
+
+The Blowgun's damage is a flat 1 with no die, and `Weapon.damage` is dice only.
+A d1 would double to 2 on a Critical Hit, so `w2a` declares it instead of
+importing it (#59, `w2f`). The row's "38 weapons" stands, as 37 imported plus
+one declared. "`species.json`" is 5etools' `races.json`.
