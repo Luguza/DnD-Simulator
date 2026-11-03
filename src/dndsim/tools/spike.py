@@ -272,7 +272,10 @@ def build_spike(
     apl = Apl(_entries(), namespace)
     hero.dispatcher.bind(gate=apl)
 
-    world = World()
+    log = EventLog(log_level)
+    # Seated with the log only when provoking: the configuration before
+    # `w2c2` wrote no effect or resource records (`docs/decisions.md` § w2c2).
+    world = World(log=log if provoking else None)
     world.seat(hero, "hero")
     for enemy in enemies:
         world.seat(enemy, "enemies")
@@ -305,7 +308,7 @@ def build_spike(
             PooledContexts(enemy, hero, _MAUL) if pooled else FRESH for enemy in enemies
         ),
         sources=sources,
-        log=EventLog(log_level),
+        log=log,
         clock=world.clock,
         world=world,
         skirmisher=enemies[0] if provoking else None,

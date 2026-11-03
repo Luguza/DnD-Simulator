@@ -214,9 +214,10 @@ class Move(Action[tuple[Cell, ...]]):
         return planned
 
     def _route(self) -> tuple[Cell, ...]:
-        """The shortest legal route to the nearest square from which the
-        actor has `target` in reach; empty when it already has, or when no
-        such square can be reached."""
+        """The shortest legal route to a square from which the actor has
+        `target` in reach — of equal routes, the one ending nearest, then
+        lowest `y`, then `x`; empty when it already has the target in reach,
+        or when no such square can be reached."""
         actor, target = self.actor, self.target
         origin = actor.position
         planned = self._planned
@@ -242,11 +243,18 @@ class Move(Action[tuple[Cell, ...]]):
         ):
             return ()
         blocked = _occupied(self.world, actor)
+        best: tuple[Cell, ...] = ()
         for destination in _stands(actor, target, blocked):
+            # No route is shorter than the Chebyshev floor `_stands` sorts by,
+            # so once that floor reaches the best route found, nothing later
+            # can beat it.
+            if best and distance_ft(origin, destination) >= len(best) * CELL_SIZE_FT:
+                break
             walked = route(origin, destination, blocked=blocked, size=actor.size)
-            if walked and walked[-1] == destination:
-                return walked
-        return ()
+            reached = walked and walked[-1] == destination
+            if reached and (not best or len(walked) < len(best)):
+                best = walked
+        return best
 
 
 def _step_ft(actor: Creature) -> int:
