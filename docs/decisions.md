@@ -5657,3 +5657,39 @@ fixture's own stepping now takes the nearest **free** square in reach, the way
 arithmetic, which is exact for the Medium creatures the spike builds: it is
 what the enemies closed by before `w2c2`, and `--no-provoking` has to stay the
 configuration the owner's floor was priced on (§ The W2 mid-wave review).
+
+**The witness**, the fixed 200-encounter profiled run at seed 0, against the
+milestone branch at `3804f05`:
+
+| Arm | Calls | Last encounter's closing HP (hero; enemies) | Resolutions | Next draw |
+|---|---|---|---|---|
+| `3804f05`, `provoking=False` | 1,762,676 | 55; 207, 1,000, 1,000 | 6,000 | 108454 |
+| this task, `provoking=False` | 1,885,098 | 55; 207, 1,000, 1,000 | 6,000 | 108454 |
+| `3804f05`, `provoking=True` | 3,120,215 | 49; 180, 1,000, 1,000 | 6,000 | 401888 |
+| this task, `provoking=True` | 3,286,104 | 49; 180, 1,000, 1,000 | 6,000 | 401888 |
+
+Every encounter's closing hit points fingerprint identically within each
+configuration, so these are the same fights. The first cut made 1,981,130 and
+3,535,259; three levers took it down: a gate's entries compile to one condition
+and `_passes()` is inlined; the `enemies`/`allies` proxies keep who is seated on
+which side until `World.seating` moves, filtering only death on each read; and
+`Move`'s stand search stops asking `in_reach()` of a box that is exactly the
+anchors in reach. The last one is most of the provoking arm's recovery, since
+every enemy closes by `Move` there.
+
+**The rate**: six rounds, each arm a fresh interpreter, the order reversed
+every other round, `measure(1000, 3)` each:
+
+| Configuration | `3804f05` median | This task median | Ratio, median (span) |
+|---|---|---|---|
+| `--no-provoking` | 25,573 | 23,622 | **0.919** (0.900–0.956) |
+| provoking | 14,523 | 14,168 | **0.980** (0.942–0.997) |
+
+**This misses the row's "costs no more than the stand-in did"**, and the
+miss is recorded as debt #67 rather than closed by trimming the configuration.
+By cProfile cumulative time over 1,000 encounters on `--no-provoking`: the
+hero's `move:` clause goes through `Move` at 0.20 s against the stand-in's
+0.09 s of anchor arithmetic, which is #34's footprint search being done at
+all; the clause reads (`first`, `target`, `allows`) at 0.32 s against the
+stand-in's 0.18 s, the namespace reading live state the stand-in held as
+fixed tuples; and the fixture's own free-square stepping at 0.09 s.

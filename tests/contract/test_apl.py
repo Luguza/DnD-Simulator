@@ -1081,3 +1081,85 @@ def test_every_command_can_be_named_by_an_entry(action_id: str) -> None:
     apl = Apl([Entry(action_id)])
 
     assert apl.entries[0].action == action_id
+
+
+# --- the enemies and allies roots follow the world's seating ------------------
+
+
+def names(members: tuple[Creature, ...]) -> list[str]:
+    """Read through a call, so mypy does not narrow a root's property across
+    the seating change between two reads."""
+    return [one.name for one in members]
+
+
+def test_seat_and_leave_each_move_the_world_s_seating() -> None:
+    world = World()
+    one = creature("one", Cell(0, 0))
+    before = world.seating
+
+    world.seat(one, "heroes")
+    seated_at = world.seating
+    world.leave(one)
+
+    assert seated_at != before
+    assert world.seating not in (before, seated_at)
+
+
+def test_an_enemy_seated_after_a_read_appears_on_the_next() -> None:
+    hero = creature("hero", Cell(0, 0))
+    first = creature("first", Cell(1, 0))
+    world = seated((hero, "heroes"), (first, "monsters"))
+    enemies = Apl([Entry("attack")]).bind(hero, world).namespace.enemies
+    assert names(enemies.alive) == ["first"]
+
+    late = creature("late", Cell(0, 1))
+    world.seat(late, "monsters")
+
+    assert names(enemies.alive) == ["first", "late"]
+    assert names(enemies.in_reach) == ["first", "late"]
+
+
+def test_an_ally_seated_down_after_a_read_appears_on_the_next() -> None:
+    """At 0 hit points and not dead: `allies.down`, not `allies.alive`."""
+    hero = creature("hero", Cell(0, 0))
+    world = seated((hero, "heroes"))
+    allies = Apl([Entry("attack")]).bind(hero, world).namespace.allies
+    assert names(allies.down) == []
+
+    fallen = creature("fallen", Cell(1, 0), hp=0)
+    world.seat(fallen, "heroes")
+
+    assert names(allies.down) == ["fallen"]
+    assert names(allies.alive) == []
+
+
+def test_an_enemy_that_leaves_after_a_read_is_gone_on_the_next() -> None:
+    hero = creature("hero", Cell(0, 0))
+    gone = creature("gone", Cell(1, 0))
+    stays = creature("stays", Cell(0, 1))
+    world = seated((hero, "heroes"), (gone, "monsters"), (stays, "monsters"))
+    enemies = Apl([Entry("attack")]).bind(hero, world).namespace.enemies
+    assert names(enemies.alive) == ["gone", "stays"]
+
+    world.leave(gone)
+
+    assert names(enemies.alive) == ["stays"]
+    assert names(enemies.in_reach) == ["stays"]
+
+
+def test_an_enemy_that_dies_is_gone_with_no_change_of_seating() -> None:
+    """Death is not a seating change: `world.seating` stays put, and the
+    roots still drop the dead creature on the next read."""
+    hero = creature("hero", Cell(0, 0))
+    doomed = creature("doomed", Cell(1, 0))
+    stays = creature("stays", Cell(0, 1))
+    world = seated((hero, "heroes"), (doomed, "monsters"), (stays, "monsters"))
+    enemies = Apl([Entry("attack")]).bind(hero, world).namespace.enemies
+    assert names(enemies.in_reach) == ["doomed", "stays"]
+    seating = world.seating
+
+    doomed.die()
+
+    assert world.seating == seating
+    assert names(enemies.alive) == ["stays"]
+    assert names(enemies.in_reach) == ["stays"]
