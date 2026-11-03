@@ -5796,3 +5796,57 @@ before its economy and route, for the turns that start in reach. It read
 0.927 (0.905–0.961) on `--no-provoking`, inside the span above, and 0.954
 (0.929–0.972) on provoking, where every mover not yet in reach pays the extra
 question.
+
+## The `w2f2` spec correction — the data CI lacks, the column, and the world
+
+`w2f2`'s row asked three things its Produces cell could not deliver.
+
+**The spike and the skeleton cannot read the table in CI.** `data/` is
+gitignored and CI runs `uv run pytest` with `content` deselected (§ w2a, The
+tests and the data), while `tests/bench/test_skeleton.py` and the unmarked half
+of `tests/bench/test_spike.py` build both tools on every push. A tool that
+loads its greatsword from `Dataset()` therefore turns CI red, and one that falls
+back to a hand-written weapon when no data is there is #13's second definition
+again, now silent. So the tools read the table only in `main()`, and take their
+weapons as parameters everywhere else; the default suite and `-m bench` pass a
+fixture of each weapon, and a `content`-marked test asserts each fixture equals
+its imported entry, so the one copy that remains is in `tests/` and is checked
+against the source. The spike's maul is the same kind of hand-written weapon in
+the same file and goes the same way. Editing CI to fetch data was rejected: it
+is a `.github/workflows/` change the loop cannot merge (`docs/workflow.md`
+§ Merge authority), and it would make every push depend on an upstream mirror.
+
+**A range does not say what kind of weapon it is on.** The ranged branch asks
+"is this a ranged weapon?", and the fields `w2a` imported cannot answer it: a
+Dagger (Melee, Thrown, 20/60) and a Dart (Ranged, Thrown, 20/60) carry the same
+properties and the same range, and differ only in the table's Melee/Ranged
+column — which decides whether the attack is a melee or a ranged one and, for
+a weapon without Finesse, whether it uses Strength or Dexterity. The importer
+reads the column (`type` `M`/`R`) and drops it, so `content/weapons.py` keeps
+it and `Weapon` and its protocol carry it. A thrown melee weapon is thrown only
+at a target outside its reach: within reach the same attack is a melee one with
+no close-combat Disadvantage, and which to make is otherwise a policy question
+nothing here offers.
+
+**The close-combat rule needs the creatures around the attacker, and
+`resolve_attack()` has only two.** XPHB "Ranged Attacks in Close Combat" asks
+whether an enemy is within 5 feet of the attacker. `resolve_attack()` is given
+the attacker and the defender, and the `Attack` Command, which calls it, holds
+no world; `engine/turn.py`'s `offers()` builds it without one. The
+Command is therefore given the `World`, `offers()` passes it, and
+`resolve_attack()` reads the enemies off it. A ranged attack made without a
+world raises: skipping the check would silently drop the Disadvantage, which
+is the approximation-into-silence § w1h forbids. A melee attack never asks.
+
+**An opportunity attack is a melee attack.** XPHB "Opportunity Attacks" lets
+the reacting creature "make one melee attack with a weapon or an Unarmed
+Strike". Once `Weapon` can be ranged, `OpportunityAttack` would otherwise
+resolve a Longbow shot as one. It is refused with a ranged weapon, and a thrown
+melee weapon is swung. The Unarmed Strike a Longbow wielder may make instead is
+`w2j`'s, which is why `Creature.reach_ft` stays 5 for that wielder: the reach
+is the Unarmed Strike's, and the route search keeps avoiding it.
+
+Ammunition and Loading are not counted; nothing here spends an attack that
+could be refused for lack of ammunition, and Loading binds only with Extra
+Attack, which is not modelled (§ w2b, Attack is one attack). `w2f2` files them as a debt rather than
+leaving them silent.
