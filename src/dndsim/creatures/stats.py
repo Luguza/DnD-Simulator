@@ -41,7 +41,9 @@ class Weapon:
     `damage` is dice only: the wielder's modifier is a `flat` contribution the
     attack adds, so it never doubles on a crit (DESIGN.md § Structural
     prevention). `mastery` names the weapon's mastery property and implements
-    nothing.
+    nothing. `range_ft` is the printed normal/long pair, `None` for a weapon
+    with no range; `versatile_damage` is the two-handed die of a Versatile
+    weapon. Nothing reads either yet (`docs/decisions.md` § w2a).
     """
 
     name: str
@@ -50,6 +52,8 @@ class Weapon:
     properties: frozenset[WeaponProperty] = frozenset()
     mastery: Mastery | None = None
     reach_ft: int = 5
+    range_ft: tuple[int, int] | None = None
+    versatile_damage: Dice | None = None
 
     def has(self, prop: WeaponProperty) -> bool:
         """Whether this weapon has a property."""
@@ -140,6 +144,9 @@ class Armour:
     abilities: tuple[tuple[Ability, int | None], ...] = ()
     """Which ability modifiers this armour adds, each with its cap or `None` for
     no cap."""
+    strength_requirement: int | None = None
+    """The Strength score the Armor table prints for heavy armour; nothing
+    applies it yet (debt #27)."""
 
     @classmethod
     def light(cls, name: str, base_ac: int) -> "Armour":
@@ -154,9 +161,13 @@ class Armour:
         )
 
     @classmethod
-    def heavy(cls, name: str, base_ac: int) -> "Armour":
+    def heavy(
+        cls, name: str, base_ac: int, strength_requirement: int | None = None
+    ) -> "Armour":
         """Heavy armour: the printed number, and no Dexterity at all."""
-        return cls(name=name, base_ac=base_ac)
+        return cls(
+            name=name, base_ac=base_ac, strength_requirement=strength_requirement
+        )
 
     @classmethod
     def natural(cls, base_ac: int, name: str = "Natural Armor") -> "Armour":

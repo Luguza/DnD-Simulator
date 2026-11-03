@@ -264,6 +264,7 @@ there is local to a module.
 | `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c, § w2i, § w2b |
 | `conditions/`, a condition, a declared gap | § w1h, § w2b |
 | `actions/`, a Command, legality, dropping and picking up a weapon | § w2b |
+| `content/`, the 5etools import, `table_value()` | § w2a |
 | `creatures/resources.py`, pools, slots, `transaction()` | § w1b, § w2i |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k, § w2i |

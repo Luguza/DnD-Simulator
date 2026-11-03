@@ -4716,3 +4716,98 @@ keeps the questions in their plain wording and the old wording to its history.
   for the human now keeps such choices out of the file.
 
 #15 was still open and was put to the human with the rest.
+
+## w2a — the content ACL
+
+### The row's two engine halves went to `w2f`
+
+The done-when asked for two things outside `content/`: removing
+`stats.GREATSWORD` from the spike and the skeleton (#13), and a ranged branch
+in `engine/attack.py` (#24). The owner ran `w2a` in parallel with `w2c`,
+`w2c2` and `w2d`, which hold `engine/`, `actions/` and `tools/spike.py` while
+they run, so this task could not edit either file without a conflict on
+someone else's PR. What `w2a` owed both is the data, and that landed:
+`Weapon.range_ft` carries the printed normal/long pair. The protocol in
+`hooks/contexts.py`, the branch and the greatsword's removal went to `w2f`,
+the first task after the parallel ones that assembles a creature from its
+equipment. The next `⏸` plan review may re-own them. This is a correction of
+the row in the same diff, not a spec PR, because it only moves work to a later
+owner: `w2a` builds nothing differently because of it.
+
+`creatures/stats.py` is outside the Produces cell too, and it was edited
+anyway: #27 already said "`w2a` lands the field", and an importer that cannot
+put the range or the Strength requirement on the value it returns would have
+to drop them. Both fields are additive and default to `None`, so no caller
+changes, and the `Weapon` protocol stays at six members (§ w1f) until the
+branch that reads the range exists. `versatile_damage` is in for the same
+reason: the Weapon table prints the two-handed die, and an importer that
+dropped it would leave a later task re-reading the source.
+
+### What leaves the package
+
+`Weapon`, `Armour`, `Dice`, the `rules` enums, and three plain records:
+`FeatureText` (a name, a level, prose with every `{@tag}` reduced to what the
+page prints), `ClassTable` and `Species`. No 5etools code (`dmg1`, `2H`, `HA`,
+`casterProgression`) appears in any of them, and the `content`-marked test
+checks every class, subclass and species prose block for a leftover `{@`.
+`ContentError` is defined in `content/loader.py` rather than `core/errors.py`,
+which content work may not touch, and subclasses `DndSimError` like every
+other deliberate raise.
+
+### The Shield is checked, not returned
+
+Holding a shield is `Creature.shield`, worth `SHIELD_AC_BONUS` (§ w1a). The
+importer therefore returns no Shield value. It checks the printed +2 against
+the constant and raises if the two disagree, which is how § w0b asked the
+spell-slot tables to be treated: two copies of one number, checked at the ACL
+rather than one picked as the winner.
+
+### Spell slots, the same way
+
+A caster's `rowsSpellProgression` is compared with `rules.constants.spell_slots`
+and never returned as a column. 5etools labels the 2024 half-caster row
+`artificer`, since the Paladin and Ranger now cast from level 1; it maps to
+`CasterProgression.HALF`, and the check passing on the real data is what shows
+that `HALF_CASTER_SLOTS` is the 2024 row. Pact Magic's "Spell Slots" and
+"Slot Level" columns are checked against `PACT_MAGIC_SLOTS` the same way, and
+are kept as columns too because the Warlock table prints them as columns.
+
+### The Blowgun is declared, not approximated
+
+Its damage is a flat 1 with no die. A `Dice(1, 1)` would import it, and would
+deal 2 on a Critical Hit where the rules deal 1, which is the crit trap
+DESIGN.md § Structural prevention exists to make unwritable. It is listed in
+`weapons.NOT_IMPORTED` with the reason, and is debt #59 (`w2f`). The list is
+checked against the data in both directions: any other weapon without a die
+raises, and an entry the data no longer holds raises too.
+
+### Reference resolution flattens
+
+A `refClassFeature`, `refSubclassFeature` or `refOptionalfeature` inside a
+feature's entries becomes a `FeatureText` of its own, placed right after the
+feature that referenced it. The referencing feature's prose keeps only the
+name. Inlining the text instead would bury Frenzy inside "Path of the
+Berserker", where a W4 author looking for Frenzy would not find it. A
+referenced optional feature, such as an invocation, has no level of its own, so
+it takes the level of the feature that offered it. A reference that names
+nothing raises.
+
+### The tests and the data
+
+`data/` is gitignored, so the contract tests run on hand-built fixtures shaped
+like the 5etools files, one per translation and per refusal. The real data is
+tested under a `content` marker, deselected by default the way `bench` is, and
+asked deliberately with `uv run pytest -m content` after
+`python -m dndsim.content.fetch`. Run without the data, it raises in
+`Dataset()` rather than skipping, so it cannot pass on nothing. CI does not
+fetch the data, and giving it a fetch step is a `.github/workflows/` edit, which
+is the human's to make (`docs/workflow.md` § Merge authority).
+
+### Fetch
+
+`git ls-remote` names the upstream HEAD commit. Every file is then read from
+`raw.githubusercontent.com/…/<sha>/data/`, never from `main`, so the SHA in
+`VERSION` is the tree that was actually read. The files go into a staging
+directory beside the target, and the target is replaced only after the last
+file has arrived. `python -m dndsim.content.fetch [sha]` is the entry point
+until the CLI lands in `w2h`, which wires `dndsim content fetch` to it.
