@@ -17,10 +17,10 @@ class Grappled(SourcedCondition):
     CONDITION = enums.Condition.GRAPPLED
     SPEED_ZERO = True
     NEEDS_HOOK = (
-        "nothing moves a creature with another creature, and no movement is "
-        'charged against the economy yet: "The grappler can drag or carry you '
-        'when it moves, but every foot of movement costs it 1 extra foot." '
-        "(ROADMAP.md § The W0 debt register #28)",
+        'nothing moves a creature with another creature: "The grappler can '
+        "drag or carry you when it moves, but every foot of movement costs it "
+        '1 extra foot." (ROADMAP.md § The W0 debt register #57, which owns '
+        "the Grapple)",
     )
 
     @hook("on_declare_attack")

@@ -27,6 +27,7 @@ from dndsim.actions.base import Action
 from dndsim.actions.dash import Dash
 from dndsim.actions.disengage import Disengage, disengaged
 from dndsim.actions.dodge import Dodge, Dodging
+from dndsim.actions.opportunity_attack import OpportunityAttack
 from dndsim.actions.pick_up import PickUpWeapon
 from dndsim.actions.stabilize import Stabilize
 from dndsim.conditions.grappled import Grappled
@@ -49,6 +50,7 @@ from dndsim.engine import attack, damage, dying, healing, saves
 from dndsim.engine.damage import resolve_damage
 from dndsim.engine.dying import MEDICINE, STABILIZE_DC
 from dndsim.engine.saves import saving_throw
+from dndsim.engine.world import World
 from dndsim.hooks.contexts import AbilityCheckContext, StabilizeContext
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.dispatch import Dispatcher
@@ -667,6 +669,31 @@ def _rearmed(subject: Creature) -> Creature:
     return subject
 
 
+def _opportunity(
+    actor: Creature,
+    target: Creature,
+    *,
+    sides: tuple[str | None, str | None] = ("heroes", "monsters"),
+) -> OpportunityAttack:
+    """An opportunity attack in a world seating `actor` and `target` on
+    `sides`; `None` leaves that creature unseated."""
+    seated = World()
+    for subject, side in zip((actor, target), sides, strict=True):
+        if side is not None:
+            seated.seat(subject, side)
+    return OpportunityAttack(actor, target, world=seated)
+
+
+def _reacted(subject: Creature) -> Creature:
+    subject.economy.spend(ActionCost.REACTION)
+    return subject
+
+
+def _incapacitated(subject: Creature) -> Creature:
+    subject.effects.apply(Incapacitated(subject))
+    return subject
+
+
 SCENARIOS: Final[dict[type[Action[Any]], tuple[tuple[str, Build, bool], ...]]] = {
     Attack: (
         ("legal", lambda: Attack(ready(fighter()), goblin()), True),
@@ -737,6 +764,41 @@ SCENARIOS: Final[dict[type[Action[Any]], tuple[tuple[str, Build, bool], ...]]] =
         ("no-action", lambda: Stabilize(fighter(), downed()), False),
         ("dead-actor", lambda: Stabilize(_dead_actor(), downed()), False),
         ("down-actor", lambda: Stabilize(_downed_actor(), downed()), False),
+    ),
+    OpportunityAttack: (
+        # A fresh economy holds its Reaction: no turn need have started.
+        ("legal", lambda: _opportunity(fighter(), goblin()), True),
+        (
+            "reach-weapon",
+            lambda: _opportunity(_rearmed(fighter()), goblin(TWO_EAST)),
+            True,
+        ),
+        ("dying-target", lambda: _opportunity(fighter(), downed()), True),
+        (
+            "ally",
+            lambda: _opportunity(fighter(), goblin(), sides=("heroes", "heroes")),
+            False,
+        ),
+        (
+            "target-unseated",
+            lambda: _opportunity(fighter(), goblin(), sides=("heroes", None)),
+            False,
+        ),
+        (
+            "actor-unseated",
+            lambda: _opportunity(fighter(), goblin(), sides=(None, "monsters")),
+            False,
+        ),
+        ("reaction-spent", lambda: _opportunity(_reacted(fighter()), goblin()), False),
+        ("out-of-reach", lambda: _opportunity(fighter(), goblin(TWO_EAST)), False),
+        ("no-weapon", lambda: _opportunity(fighter(weapon=None), goblin()), False),
+        (
+            "incapacitated",
+            lambda: _opportunity(_incapacitated(fighter()), goblin()),
+            False,
+        ),
+        ("dead-target", lambda: _opportunity(fighter(), _dead(goblin())), False),
+        ("dead-actor", lambda: _opportunity(_dead_actor(), goblin()), False),
     ),
     PickUpWeapon: (
         ("legal", lambda: PickUpWeapon(_dropped(fighter())), True),
