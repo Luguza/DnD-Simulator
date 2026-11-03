@@ -4956,14 +4956,22 @@ round cap counts the PR's verdicts, so an adopter cannot reset it.
 
 `w2a`'s done-when asked for two things outside `content/`: removing
 `stats.GREATSWORD` from the spike and the skeleton (#13), and a ranged branch
-in `engine/attack.py` (#24). The owner runs `w2a` in parallel with `w2c2` and
-`w2d`, and told it to stay inside `content/`, because `w2c2` holds
-`engine/attack.py` and `tools/spike.py` while it runs. Both halves therefore go
-to `w2f`, the first task after the parallel ones that assembles a creature from
+in `engine/attack.py` (#24). `docs/progress.md` is a serial queue, and on it
+`w2c2` releases those files before `w2a` starts. On 2026-11-03 the owner
+departed from it to make up lost time. They ran `w2a`, `w2c2` and `w2d` at
+once, each told to flip only its own row and to stay inside its Produces cell,
+so the queue file still shows the serial order. While the three run, `w2c2`
+holds `engine/attack.py` and `tools/spike.py`. The skeleton is nobody's, but it
+is the other caller of the constant #13 removes, so it goes with the spike.
+Both halves therefore go to `w2f`, the first task after the parallel ones that assembles a creature from
 its equipment. The next `⏸` plan review may re-own them. What `w2a` owes both
 is the data: the normal/long pair on `Weapon` and the Strength requirement on
-`Armour`. The `creatures/stats.py` fields are added to its Produces cell, since
-#27 already said "`w2a` lands the field".
+`Armour`, plus the Versatile die the Weapon table prints, which `w2f` rolls
+when a build holds the weapon in two hands. The three `creatures/stats.py`
+fields are added to its Produces cell, since #27 already said "`w2a` lands the
+field". `w2f`'s new engine work is a hot-path change, so its row asks for the
+paired spike run and marks it solo within the task, as `w2b`'s row did for its
+`hooks/contexts.py` widening.
 
 The Blowgun's damage is a flat 1 with no die, and `Weapon.damage` is dice only.
 A d1 would double to 2 on a Critical Hit, so `w2a` declares it instead of
