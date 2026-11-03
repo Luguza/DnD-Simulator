@@ -4929,7 +4929,8 @@ session reads its own PR's mergeable state after every push, since no event
 will report a conflict to it (`/next-task` step 5); and the watchdog's step 5
 merges M into a conflicting task PR's head on every firing, the backstop that
 does not depend on either of the other two remembering. The Routine's prompt
-was updated to match the copy in `docs/workflow.md` § The chain.
+lives in the claude.ai Routines UI, which only the human can edit; the copy in
+`docs/workflow.md` § The chain is the one to paste there.
 
 The resolution itself took the milestone branch's side wherever the human's
 answers had changed a file, and the task's additions on top: the ⏸ row keeps
