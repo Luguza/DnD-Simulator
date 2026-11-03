@@ -4646,7 +4646,7 @@ this one, each in a sibling worktree on one container.
 
 **The owner's answer to `docs/questions.md` #15** (2026-11-03): the shield
 stays held, but an Unconscious creature loses its +2 AC; the AC half is
-`ROADMAP.md` § The W0 debt register #60.
+`ROADMAP.md` § The W0 debt register #61.
 
 Sources: `ROADMAP.md` `w2b`, § Sequencing principles 10; § The `w2b` spec
 correction; § w1a, § w1c, § w1h, § w1j, § w2i; DESIGN.md § The APL; XPHB
@@ -4956,6 +4956,64 @@ is safe against a double start for the same reason the checks were: two hours
 without activity is longer than any live session goes between pushes, and the
 round cap counts the PR's verdicts, so an adopter cannot reset it.
 
+## w2d — the target dummy
+
+`creatures/dummy.py`: a frozen `DummySpec` holding every knob DESIGN.md § The
+target dummy names, `DummySpec.from_mapping()` reading it from a parsed YAML
+document, and `build_dummies()` turning it into `TargetDummy` creatures.
+
+### Data now, behaviour where the turn is
+
+The row depends only on `w1a`, but half its knobs act on the dummy's turn, and
+the turn is `w2c`'s and the walk `w2c2`'s, both in flight beside this task. A
+knob was built as behaviour exactly when a hook that already exists carries it
+without a turn:
+
+- **Resistances, immunities and vulnerabilities** are a `DamageDefences`
+  source on `on_incoming_damage`, so the one resolution order in
+  `engine/damage.py` applies them (§ w1e).
+- **Legendary Resistance** is a pool with a long-rest `Recovery` and a source
+  on `on_save_resolved`, the hook whose summary names it.
+
+Everything else — `movement_profile`, `threat_profile`, `damage_per_round`,
+`regeneration`, `save_dc` — is validated data on `TargetDummy.spec`, and debt
+#59 names who reads each. Regeneration looked buildable on `on_turn_start` and
+is not: `heal()` takes a generator and `TurnContext` carries none, and setting
+`hp` directly would skip `on_heal`'s veto. The done-when's second clause,
+"provokes and is provoked", cannot be met without the walk, so it moves to
+`w2e` with the profile (#59) rather than being faked with an `engine/` edit.
+This run was one of three tasks the owner had run in parallel, and the
+owner's instruction for it, quoted on PR #65, was: "`movement_profile`
+(`closes_to_melee`, `kites_at`) touches the walk that `w2c2` is building in
+`engine/turn.py`. Do not edit `engine/`. … If the dummy can only hold its
+profile as data for `w2c2`/`w2e` to act on, build that and record the choice.
+If the row can't be built without the walk, open a spec PR". So the correction rides this PR instead of a spec PR, and it
+amends the rows that take the work on — `w2d`'s own done-when, and `w2e`'s and
+`w2g`'s, which now name what each owes — rather than leaving it in the
+register alone.
+
+### Choices a reader would otherwise reopen
+
+- **"Configurable from YAML" is a mapping, not a parser.** No YAML library is
+  a dependency yet and the Produces cell is one file; `w2f`'s loader and `w2h`'s
+  `--dummy ac=16` both hand over the parsed or overridden mapping, and
+  `dataclasses.replace(spec, ac=n)` is the sweep. An unknown knob fails with a
+  difflib suggestion (DESIGN.md § Failing loudly).
+- **A save bonus is stored as an ability score**, `10 + 2 × bonus`, because
+  `save_bonus()` adds the bare modifier until debt #36's field exists. The
+  cost is that the Dexterity save bonus is also the dummy's initiative
+  modifier; AC is unaffected, being `Armour.natural()` (§ w1a). The score is
+  an encoding, not a score a creature has, so no bonus is capped: a monster's
+  save bonus includes its proficiency, and +13 is the score 36.
+- **Legendary Resistance is spent on every failed save** while a use is left
+  — the control spends it the first time it can (`docs/questions.md` #18).
+- **`count` dummies stand in a row along +x, one footprint apart**, from
+  `position`. A layout knob is one field when a scenario needs another.
+- **`ThreatProfile` has two members**, `nearest` and `lowest_hp`; a third is
+  one member when `w2e`'s selectors can express it.
+
+Sources: `ROADMAP.md` `w2d`, debt #36, #59; DESIGN.md § The target dummy,
+§ Failing loudly; § w1a, § w1e.
 ## w2c2 — the walk and the opportunity attack
 
 **A creature can now walk in a fight, and be hit for leaving.** The turn loop
@@ -5031,7 +5089,7 @@ target in the actor's reach (`in_reach`, between footprints, so #34 does not
 apply here) and stands in nobody's space; ties go to lowest `y`, then `x`, so
 a seed reproduces the walk. Every other living creature's space is impassable,
 which never produces illegal movement but forbids passing through an ally:
-#59. The route is planned once for the positions the two creatures hold, so
+#60. The route is planned once for the positions the two creatures hold, so
 `is_legal()` then `execute()` plans once rather than three times — the spike's
 witness was 3.99M calls before that and 3.03M after.
 
@@ -5105,12 +5163,12 @@ row asked to be re-run.
 
 - **No `away_from` or `hold`.** `Move` is the one form the default policy
   needs; the selector grammar is `w2e`'s.
-- **No pass-through and no Difficult Terrain**: #59.
+- **No pass-through and no Difficult Terrain**: #60.
 - **No visibility gate and no hook for entering reach**: #21 and #22 stay with
   `w3f`.
 - **No attachment of `OpportunityAttacks` at seating.** `w2f`'s loader.
 
 Sources: `ROADMAP.md` `w2c2`, § The W0 debt register #18–#22, #26, #28, #34,
-#59, #60; § Sequencing principles 10; § w0g3, § w1f, § w2b, § w2c; DESIGN.md
+#60, #61; § Sequencing principles 10; § w0g3, § w1f, § w2b, § w2c; DESIGN.md
 § Reactions in the APL, § The APL, § Module layout; XPHB "Combat" ->
 Opportunity Attacks, "Movement and Position", "Actions" -> Disengage.
