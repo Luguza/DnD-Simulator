@@ -4998,7 +4998,9 @@ register alone.
 - **A save bonus is stored as an ability score**, `10 + 2 × bonus`, because
   `save_bonus()` adds the bare modifier until debt #36's field exists. The
   cost is that the Dexterity save bonus is also the dummy's initiative
-  modifier; AC is unaffected, being `Armour.natural()` (§ w1a).
+  modifier; AC is unaffected, being `Armour.natural()` (§ w1a). The score is
+  an encoding, not a score a creature has, so no bonus is capped: a monster's
+  save bonus includes its proficiency, and +13 is the score 36.
 - **Legendary Resistance is spent on every failed save** while a use is left
   — the control spends it the first time it can (`docs/questions.md` #18).
 - **`count` dummies stand in a row along +x, one footprint apart**, from

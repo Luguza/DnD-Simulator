@@ -125,6 +125,13 @@ def test_save_bonuses_are_what_the_engine_adds() -> None:
     assert save_bonus(dummy, Ability.STRENGTH) == 0
 
 
+def test_a_save_bonus_may_include_proficiency() -> None:
+    # An adult dragon's Constitution save, +13: the modifier and proficiency.
+    dummy = one(DummySpec.from_mapping({"saves": {"con": 13, "int": -6}}))
+    assert save_bonus(dummy, Ability.CONSTITUTION) == 13
+    assert save_bonus(dummy, Ability.INTELLIGENCE) == -6
+
+
 def test_count_stands_in_a_row_one_footprint_apart() -> None:
     dummies = build_dummies(
         DummySpec(count=3, size=Size.LARGE, position=Cell(2, 5), name="Ogre")
@@ -239,7 +246,6 @@ def test_a_misspelt_damage_type_is_refused_with_a_suggestion() -> None:
         {"count": 0},
         {"save_dc": 0},
         {"save_dc": "13"},
-        {"saves": {"dex": 11}},
         {"saves": {"dexterity": 2}},
         {"position": [1]},
         {"damage_per_round": [{"to_hit": 5, "dice": "1d6"}]},

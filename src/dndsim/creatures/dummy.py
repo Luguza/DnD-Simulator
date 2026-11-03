@@ -40,10 +40,6 @@ __all__ = [
 
 _E = TypeVar("_E", bound=Enum)
 
-MIN_SAVE_BONUS: Final = -5
-MAX_SAVE_BONUS: Final = 10
-"""The modifiers an ability score of 1 and of 30 give."""
-
 LEGENDARY_RESISTANCE: Final = "legendary_resistance"
 
 
@@ -116,11 +112,7 @@ class ThreatProfile(Enum):
 
 @dataclass(frozen=True, slots=True)
 class DummyAttack:
-    """One attack in a dummy's scripted `damage_per_round` routine.
-
-    `dice` doubles on a Critical Hit and `flat` never does (DESIGN.md
-    § Structural prevention).
-    """
+    """One attack in a dummy's scripted `damage_per_round` routine."""
 
     to_hit: int
     dice: Dice
@@ -175,13 +167,6 @@ class DummySpec:
                 raise ValueError(f"dummy {knob} is at least {least}, got {value}")
         if self.save_dc is not None and self.save_dc < 1:
             raise ValueError(f"dummy save_dc is at least 1, got {self.save_dc}")
-        for ability, bonus in self.saves.items():
-            if not MIN_SAVE_BONUS <= bonus <= MAX_SAVE_BONUS:
-                raise ValueError(
-                    f"a {ability.value} save bonus of {bonus:+d} is outside "
-                    f"{MIN_SAVE_BONUS:+d}..{MAX_SAVE_BONUS:+d}, the modifiers an "
-                    "ability score can give"
-                )
         object.__setattr__(self, "saves", MappingProxyType(dict(self.saves)))
 
     @classmethod
@@ -205,7 +190,9 @@ class DummySpec:
         return cls(**kwargs)  # type: ignore[arg-type]
 
     def abilities(self) -> dict[Ability, int]:
-        """The ability scores whose modifiers are the save bonuses."""
+        """The ability scores whose modifiers are the save bonuses; a score is
+        an encoding here and may fall outside 1-30 (`docs/decisions.md` § w2d).
+        """
         return {ability: 10 + 2 * self.saves.get(ability, 0) for ability in Ability}
 
 
