@@ -1881,12 +1881,12 @@ and terrible at AC 20 is a finding, not a defect to average away.
 ### Cost, honestly
 
 An adventuring-day run is on the order of 300 attack resolutions, so at the M0
-budget of 30k/sec/core one core does roughly 100 day-runs per second. A staged
+budget of 22k/sec/core one core does roughly 70 day-runs per second. A staged
 search of ~2,000 candidates with racing (most dying at 32 seeds, finalists at
-512) is on the order of 10^5 day-runs — **about 15 core-minutes per character**,
-and about 3 core-hours for a four-member party over three coordinate-ascent
-sweeps. Without racing the same search is ~10^6 runs **per character** — 2.8
-core-hours each, so roughly 34 for that same four-member, three-sweep party;
+512) is on the order of 10^5 day-runs — **about 25 core-minutes per character**,
+and about 5 core-hours for a four-member party over three coordinate-ascent
+sweeps. Without racing the same search is ~10^6 runs **per character** — about
+4 core-hours each, so roughly 48 for that same four-member, three-sweep party;
 a five-scenario distribution multiplies both by five.
 
 Those numbers are an order-of-magnitude estimate to be replaced by a measurement
@@ -2089,10 +2089,15 @@ common shape of agent-authored slop.
 ## Performance
 
 ~10k iterations × 5 encounters × 5 rounds × 5 creatures × 3 attacks ≈ **4M
-attack resolutions** per build comparison. Budget: **≥30k attack
-resolutions/sec/core**, measured in W0 — before any content is written against
-the architecture. About two minutes a core for one comparison, or under twenty
-seconds across eight.
+attack resolutions** per build comparison. Budget: **≥22k attack
+resolutions/sec/core** on the spike's hostile configuration without
+opportunity attacks (`python -m dndsim.tools.spike --no-provoking`), in which
+both sides still walk real routes — about three minutes a core for one
+comparison, or about twenty-five seconds across eight. The spike's default adds
+a skirmisher that falls back, a hero that chases it out of the other enemies'
+reach, and the opportunity attacks that draws, and runs at about 0.56 of that
+rate per counted resolution (`docs/decisions.md` § w2c2), so a comparison whose
+fights provoke as often as the spike's costs nearer five minutes a core.
 
 > **That number was 50k until M0, and the spike is what changed it.** The
 > original was set before anything had been measured. `w0i` measured 17k on the
@@ -2112,6 +2117,13 @@ seconds across eight.
 > shortfall, and with the shortfall attributed, whether it comes down is the
 > human's (`docs/questions.md` #10). `w2i` took the engine-side levers and
 > brought it back to about 23.5k (`docs/decisions.md` § w2i).
+>
+> **It was revised a second time, to 22k, by the human.** They accepted the
+> measured rate with ~22k as the floor (`docs/questions.md` #10, answered), and
+> the W2 mid-wave review set it by `w0i`'s method — the measured rate with the
+> run-to-run spread taken off (`docs/decisions.md` § The W2 mid-wave review).
+> A third revision is held to the same rule as the second: only after the
+> shortfall is attributed, and only by the human.
 
 ### The spike must be pessimistic, or M0 proves nothing
 
@@ -2361,16 +2373,17 @@ src/dndsim/
               classes/<class>/[subclasses/<subclass>/] feats/ masteries/
               fighting_styles/ species/
   actions/    base.py attack.py opportunity_attack.py dash.py dodge.py
-              disengage.py cast_spell.py
+              disengage.py stabilize.py pick_up.py move.py cast_spell.py
   spells/     base.py concentration.py templates.py level0..level6/
   apl/        expr.py schema.py namespace.py apl.py
               score/  registry.py context.py horizon.py coefficients.py
                       terms/ damage.py offensive.py defensive.py
                              lethality.py restoration.py resources.py
   builds/     schema.py loader.py
-  engine/     world.py query.py attack.py damage.py saves.py turn.py
-              encounter.py adventuring_day.py triggers.py estimate.py
-  content/    fetch.py loader.py refs.py tables.py weapons.py
+  engine/     world.py query.py attack.py damage.py saves.py turn.py d20.py
+              dying.py healing.py encounter.py adventuring_day.py triggers.py
+              estimate.py
+  content/    fetch.py loader.py refs.py tables.py weapons.py species.py
   sim/        runner.py day.py compare.py sweep.py
   search/     candidates.py encoding.py evaluate.py driver.py
               ablate.py party.py emit.py objectives.py fit.py
@@ -2562,7 +2575,7 @@ retire, and which task retires each.
 
 | Wave | Content | Exit |
 |---|---|---|
-| **W0** | Scaffold, rules vocabulary, RNG/dice, timeline, hook registry, contexts, dispatch, **spike substrate + walking skeleton + pessimistic spike** | **M0:** ≥30k attack resolutions/sec/core on a 25-feature creature (revised down from 50k by the spike itself) |
+| **W0** | Scaffold, rules vocabulary, RNG/dice, timeline, hook registry, contexts, dispatch, **spike substrate + walking skeleton + pessimistic spike** | **M0:** ≥22k attack resolutions/sec/core on a 25-feature creature (revised down from 50k to 30k by the spike itself, and to 22k by the human once the shortfall was attributed) |
 | **W1** | `Creature` and AC derivation, resources, effects, grid, damage + attack resolution, saves, conditions, death saves, event log | interfaces importable |
 | **W2** | Content importers, actions, turn/encounter loop, target dummy, APL, build loader, runner, API + CLI | **M1:** a level-5 Fighter kills a dummy, golden-verified |
 | **W3** | Golden harness, linter, doc generators, reference exemplars, **the paper pass**, hook gap resolution, authoring skill, interaction matrix, statistical harness, **the canary batch** | **M2:** API frozen — *by a real batch, not by inspection* |

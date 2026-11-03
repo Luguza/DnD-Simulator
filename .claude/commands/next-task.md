@@ -55,7 +55,7 @@ it through steps 5 and 6 like a task PR.
   you push, every time. A push that turns CI red costs a review round.
 - Add the `docs/decisions.md` § `<id>` section: the *why*, not the what.
 - Retire the `ROADMAP.md` § The W0 debt register rows this task owns.
-- Flip your queue row to `done` and the row below to `next`.
+- Flip your queue row to `done` and the first row below it that is not `done` to `next` (`docs/progress.md`).
 
 ## 4. Open the PR
 

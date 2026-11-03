@@ -543,14 +543,14 @@ def test_the_sweeps_move_every_stores_clock() -> None:
 
 @pytest.mark.bench
 def test_the_spike_meets_the_m0_budget() -> None:
-    """The budget, on the configuration ROADMAP w0i specifies
-    (`docs/decisions.md` § w0i)."""
-    rate, _ = measure(encounters=1000, repeats=5)
+    """The budget, on the configuration ROADMAP w0i specifies, which is the
+    spike without `provoking` (`docs/decisions.md` § The W2 mid-wave review)."""
+    rate, _ = measure(encounters=1000, repeats=5, provoking=False)
 
     assert rate >= BUDGET_PER_SECOND, (
         f"{rate:,.0f} attack resolutions/sec/core against a budget of "
-        f"{BUDGET_PER_SECOND:,}. M0 is the moment to revise the dispatch "
-        "design rather than to lower this number quietly."
+        f"{BUDGET_PER_SECOND:,}. Attribute the shortfall before anything "
+        "else; this number is not lowered quietly."
     )
 
 

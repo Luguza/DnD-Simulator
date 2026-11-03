@@ -4897,7 +4897,7 @@ comment then says the review did not run on the superseded commit; that is not
 a round, and not a pass either. PR #62's rounds were therefore `35e072a`,
 `421bfd2`, `126b01c` and `0335bd9`; the "did not run" notices on `bc99d9c` and
 `1823c5b` were each superseded within a minute by their own session's next
-push. This was `docs/questions.md` #18 until the human's answers moved process
+push. This was `docs/questions.md` #18 (a number `w2d`'s row has since reused) until the human's answers moved process
 choices out of that file.
 
 ### What this task deliberately did not do
@@ -4908,7 +4908,8 @@ choices out of that file.
 - **No side but a label.** Two creatures on one `side` string are allies; a
   charmed creature fighting for the other side is a feature's question.
 - **No surprise.** Incapacitated imposes its Disadvantage on the roll, and that
-  is all an encounter knows of surprise; who is surprised is `w2f`'s scenario.
+  is all an encounter knows of surprise; who is surprised is `w2g`'s (debt
+  #65, placed by § The W2 mid-wave review).
 
 Sources: `ROADMAP.md` `w2c`, § The W0 debt register #29, #30, #35, #41, #47,
 #50, #55; § The `w2c` spec correction; § w0d, § w1a, § w1c, § w1g, § w1h,
@@ -5319,3 +5320,179 @@ would cite a tree nobody can fetch again. Every file is then read from
 directory beside the target, and the target is replaced only after the last
 file has arrived. `python -m dndsim.content.fetch [sha]` is the entry point
 until the CLI lands in `w2h`, which wires `dndsim content fetch` to it.
+
+## The W2 mid-wave review (w2c, w2c2, w2d, w2a) and the M0 budget revision
+
+`w2i`, `w2b`, `w2c`, `w2c2`, `w2d` and `w2a` landed since § The M0 / W1
+milestone review; the last three ran at once, in sessions the owner started.
+The model is § The W0 plan review. **One number moved and the human had
+already ruled on it**: the budget comes down to 22k. Everything else this gate
+changed is where four debts and two `w2c2` obligations go, and how the queue
+reads a row run out of order. No open `Answer #<n>` issue was found.
+
+### The budget is 22k, on `--no-provoking`
+
+The owner's answer to `docs/questions.md` #10 accepts the measured rate with
+~22k as the floor, and asks for the figure `w2i`'s re-measure justifies.
+`w0i`'s method set 30k as "the measured ~31,500 with the run-to-run spread
+taken off" (§ w0i, The budget, revised once). `w2i` measured 0.745 of W0, so
+~23.5k carried onto `w0i`'s ~31.5k, with a span reaching down to 0.701 (~22.1k).
+Taking the spread off as `w0i` did and rounding down to the thousand, as `w0i`
+did, gives **22,000**, which is also the owner's floor. It is set in the places
+`w0i` set 30k — `BUDGET_PER_SECOND`, DESIGN.md § Performance, the `w0i` row and
+the M0 blockquote — and in the places that cite them: CLAUDE.md, the M0 node
+of the wave diagram, the wave table, and DESIGN.md § Cost, honestly, whose
+derivation estimates rise by the ratio 30/22.
+
+**The configuration is `--no-provoking`.** `w2c2` left the gate a choice
+(§ w2c2, What it cost the benchmark): its default now has the hero chase a
+skirmisher out of the other enemies' reach, drawing two opportunity attacks a
+round, at 0.562 of the rate per counted resolution. `--no-provoking` is the
+configuration before `w2c2`: no fall-back and no reactions, the enemies closing
+by the spike's own stepping rather than `Move`, and a `World` with no log. So a
+change to `Move` or to the world's log records is priced on the default only. The owner's floor was priced on `w0i`'s configuration — "about 3
+minutes a build comparison" — and `--no-provoking` is that configuration
+unchanged. Quoting the budget on the provoking default would mean ~13k, under
+the floor the owner set, which is not this gate's to take. So the gate test
+measures `provoking=False`, and `main()` gives a verdict only on that
+configuration. The provoking default stays the spike's default, and the rows that
+change the walk (`w2e`, `w2f2`, `w2j`) price their ratios on both. DESIGN.md
+§ Performance now says what that much provoking costs a comparison, nearer
+five minutes a core than three. On this gate's container the two read 14,072 and 8,084, a
+ratio of 0.574, consistent with `w2c2`'s; the absolute numbers are a slow
+container's and only the ratio travels.
+
+### The four rows this gate owned, and `w2j`
+
+#57 (Shove and Grapple), #61 (the Unconscious Shield) and #62 (standing up
+from Prone) were filed against this gate to place. Two findings decide where:
+
+- **Shove and Grapple are options of Unarmed Strike**, and Unarmed Strike deals
+  1 plus the Strength modifier with no die: the Blowgun's shape exactly (#63).
+  A Command built before #63's representation exists would write the d1 the
+  crit rule forbids. So the row that holds them depends on whatever retires #63.
+- **They must exist before W3's paper pass**, which reads the action
+  vocabulary; W4's Grappler and the Monk need them. W2 is the place.
+
+So **`w2j`** is a new 👥 row after `w2f`: Unarmed Strike with its three
+options, the Grappled escape and drag, standing up, and the Shield. **#60 moves
+into it from `w2e`**: passing through a creature's space is a rule of the walk,
+not of the `move:` clause, and `w2e` is the largest row left in W2. `w2j`
+changes the route search, which `w2c2` measured at about a third of
+`resolve_attack()`'s time, so it is priced on both configurations.
+#49's "nothing applies a condition as an action" is no longer the reason it is
+exact; the one condition that grants a condition immunity (Petrified, to
+Poisoned) is not one `w2j` applies, and the row says so.
+
+### `w2f` splits
+
+`w2f` carried the schema, the `Character`, `Dispatcher.bind()` and five debts,
+then took three more from the `w2a` spec correction (#13, #24, #63) and a
+hot-path widening. `w2c`'s row was split at about fifteen files for the same
+reason (§ The `w2c` spec correction), and `w1j`, `w2c` and `w2a` — the large
+rows of this stretch and the last — each reached the round cap. The seam was
+already there: the three re-owned debts are the imported weapons reaching the
+engine, need no schema, and are hot-path work. **`w2f2`** takes them, 🔒, on
+`w2a` and `w2c2`; `w2f` keeps the schema and the `Character` and depends on
+`w2f2`, so the two never hold `engine/attack.py` at once. `w2f2` also writes
+its flat damage for a weapon that is not a table entry, since `w2j`'s Unarmed
+Strike is the second reader. #36's two readers, `engine/saves.py` and
+`engine/dying.py`, were missing from `w2f`'s Produces cell and are added.
+
+### What landed and what the rows had not caught up with
+
+- **`w2e`'s Produces cell named `apl/` alone.** Its done-when retires #14 and
+  #34 in `tools/spike_apl.py` and `tools/spike.py`, reads `creatures/dummy.py`
+  for #59, and its `move:` clause extends `Move`. The cell now names them, and
+  `w2d` is a dependency. Its benchmark line said "`dndsim bench`", which is
+  `w2h`'s CLI; it now names the spike and both configurations.
+- **`Move` contradicts DESIGN.md § Module layout.** That section says
+  `actions/` holds every Command whatever it costs, and `Move` is an `Action`
+  in `engine/turn.py`, placed there because the layout listed no move Command
+  (§ w2c2). DESIGN.md is the one that is right — the boundary is the rule, and
+  the list is an index — so `w2e` moves `Move` to `actions/move.py` as it adds
+  `away_from` and `hold`. The layout also lists the files that landed and were
+  missing: `stabilize.py`, `pick_up.py`, `d20.py`, `dying.py`, `healing.py`,
+  `species.py`.
+- **Two obligations a record handed on that no row carried.** `w2c2` says
+  `w2f`'s loader attaches `OpportunityAttacks` with the gate wired; `w2f`'s row
+  now says so, and `w2e`'s says the dummy gets the rule from its compiled
+  policy, since it has no build. `w2c` handed "who is surprised" to `w2f`'s
+  scenario, but `w2f` holds no encounter; it is **debt #65**, `w2g`'s.
+- **Not filed:** `w2b`'s cheaper condition announcement — ask whether anything
+  listens before building the context. It is a lever with no cost behind it
+  yet, and no feature listens to either hook before W4.
+
+### No W8 seam is uncut
+
+`w2c`'s `Policy` is the seat `w2e`'s `Apl` takes, `best_scored` and the
+round-trippable `Apl` are still `w2e`'s, the seed list and per-seed vector
+`w2g`'s, and `Perturbation` `w3f`'s.
+
+### The queue
+
+- **The second ⏸ moves to after `w2f`.** Where it stood it would have reviewed
+  `w2e` alone, since `w2a` and `w2d` below it ran early. A gate sits every two
+  or three tasks (`docs/workflow.md` § Plan reviews); after `w2e`, `w2f2` and
+  `w2f` it sees the APL and the loader that binds it together, which is where
+  the seam the two share would show a crack.
+- **A row run ahead of its place is skipped.** "The row below" in
+  `docs/progress.md`, `/next-task` and `/plan-review` is now "the first row
+  below that is not `done`". This gate's flip makes `w2e` `next`; `w2e`'s will
+  pass over `w2a` and `w2d` to `w2f2`.
+
+### Parallel runs stay the owner's mode
+
+The owner ran `w2c2`, `w2d` and `w2a` at once for pace, and asked whether that
+should become the procedure. **It should not become the loop's default; it is
+written down as the owner's mode, with the conditions this run showed it
+needs** (`docs/workflow.md` § Parallel runs). Three rows merged in about the
+time of one. What it cost:
+
+- **A spec correction mid-review.** `w2a`'s row needed `engine/attack.py` and
+  `tools/spike.py`, which `w2c2` held. The correction (#69) moved the work to
+  `w2f` while `w2a`'s PR was under review, and two verdicts carried CONFIRMED
+  spec findings against a row that was about to change. `w2a` then reached the
+  round cap.
+- **Behaviour deferred.** `w2d` could build its turn knobs only as data (#59),
+  because the walk was in flight beside it. That was the right call, and it
+  is also work moved onto `w2e` and `w2g`.
+- **A measurement on a shared container.** `w2c2` records another agent's tests
+  running beside its paired runs, which principle 10 says not to do.
+
+The loop cannot run rows in parallel anyway: the watchdog starts nothing while
+a `claude/task-*` PR is open, which is the double-start guard, and changing it
+is a Routine prompt only the owner can paste. Of what is queued, `w2j` and
+`w2g` are the pair that meets the conditions — disjoint files, one priced.
+
+Sources: § w2i, § w2b, § w2c, § w2c2, § w2d, § The `w2a` spec correction,
+§ w2a, § w0i; `ROADMAP.md` W2, M0, § The W0 debt register #13, #24, #36, #49,
+#57, #59–#63, #65; DESIGN.md § Performance, § Cost, honestly, § Module layout;
+`docs/questions.md` #10, #15; PRs #62, #65, #66, #67, #69.
+
+### Retro
+
+Six PRs since the last gate. `w2c` (#62) and `w2a` (#67) reached the round cap
+and were held — `w2c` on four findings, `w2a` on one CONFIRMED — and each hold
+was cleared by a single push once the owner said to; `w2c2` (#66) and `w2d`
+(#65) merged clean. `w2a` also needed a spec PR (#69) mid-review.
+
+- **The hold is now the session's to clear once.** Both holds sat until the
+  owner said to push the named fixes, which is what `docs/workflow.md`
+  § The review loop already let a later session do. A session that reaches the
+  cap with a CONFIRMED finding open now pushes those fixes alone and takes the
+  next verdict as final; only then does a row become `held`. `w2a`'s clearing
+  push was followed by a second commit, a PLAUSIBLE refactor; the rule now says
+  the fixes go "alone, once, and nothing after".
+- **Parallel runs have written conditions** (above), each from a cost this run
+  paid.
+- **The queue's "row below" wording** is fixed in the three files that carried
+  it (`docs/progress.md`, `/next-task`, `/plan-review`).
+- **Proposed, not made:** CI fetches the pinned 5etools data and runs
+  `pytest -m content`. `w2a`'s final verdict raised a PLAUSIBLE finding about
+  the Monk and Warlock tables that only the data could settle; the reviewer
+  could not fetch it, and the session answered it by hand. It is a
+  `.github/workflows/` edit, so it is `docs/questions.md` #20.
+- **Not proposed:** a check on `docs/questions.md` numbers being reused. `w2d`
+  took #18 after `w2c`'s process row left it, which made one pointer in § w2c
+  ambiguous; it has happened once and the pointer is fixed.

@@ -45,7 +45,8 @@ skills — made those tasks cost what they did. Its edits ride this PR.
 A contract PR against `ROADMAP.md`, `DESIGN.md`, `CLAUDE.md` and
 `docs/decisions.md`, plus whatever the retro changed — new or changed rows, new debt entries, a decision record
 for the review itself. Add the next wave's queue rows if this gate is what
-unblocks them. Flip the `⏸` row to `done` and the row below to `next`.
+unblocks them. Flip the `⏸` row to `done` and the first row below it that is not `done` to
+`next` (`docs/progress.md`).
 
 Branch `claude/task-review-<next id>` so the watchdog sees it in flight, and
 answer the review per `/next-task` step 5.

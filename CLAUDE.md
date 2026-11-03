@@ -17,19 +17,18 @@ dying and healing, and the movement observer), `w2b` has added `actions/`
 (the Commands a turn is made of) and `w2c` the encounter, its roster and the
 turn loop (`engine/encounter.py`, `turn.py`, `world.py`, `query.py`), and
 `w2c2` the walk and the opportunity attack (`actions/opportunity_attack.py`,
-`Move` in `engine/turn.py`). There is no APL, build loader, runner or CLI yet —
-those are W2.
+`Move` in `engine/turn.py`), `w2d` the target dummy (`creatures/dummy.py`) and
+`w2a` the 5etools import (`content/`). There is no APL, build loader, runner or
+CLI yet — those are W2.
 
-**W0 and W1 are complete; work is at W2.** The M0 performance budget is **≥30k
-attack resolutions/sec/core** on `w0i`'s hostile configuration, revised down
-from 50k by the W0 spike (`docs/decisions.md` § w0i). **`w1k` re-measured it
-against the real W1 substrate and it is missed by about a quarter** (~22k
-projected), attributed to three costs, debt #53–#55. `w2i` took their engine
-halves and brought it back to ~23.5k; what is left is the spike's configuration
-and `w2c`'s sweep count. The human has accepted the measured rate
-(`docs/questions.md` #10, answered): the budget comes down to it, no lower than
-~22k, and that edit is the next `⏸` gate's. Read `docs/decisions.md` § w1k
-and § w2i before pricing anything against it.
+**W0 and W1 are complete; work is at W2.** The M0 performance budget is **≥22k
+attack resolutions/sec/core** on `w0i`'s hostile configuration, which since
+`w2c2` is the spike's `--no-provoking`; its default adds the enemies'
+opportunity attacks and a skirmisher the hero chases, at about 0.56 of that
+rate. The budget was 50k until the
+W0 spike (§ w0i), then 30k until the human accepted the rate `w2i` re-measured
+(`docs/questions.md` #10; § The W2 mid-wave review). Only ratios travel between
+containers: read § w2i and § w2c2 before pricing anything against it.
 
 **`ROADMAP.md` § The W0 debt register** lists every first cut and deferred
 obligation still open, with the task that retires each. Check it for the file
@@ -224,11 +223,11 @@ capping a single estimate in place would put the estimator in deliberate
 disagreement with the damage roll, which is the divergence the test exists to
 catch. It is not optional.
 
-**Performance is a design constraint, not a later concern.** Budget is ≥30k
-attack resolutions/sec/core, revised down from 50k by the W0 spike itself,
-which measured ~31.5k on the hostile configuration (`docs/decisions.md` § w0i)
-and is now measured missed, at ~23.5k after `w2i`'s levers (§ w1k, § w2i) — so the
-budget is the number to hold, and it is not revised a second time by anyone who
+**Performance is a design constraint, not a later concern.** Budget is ≥22k
+attack resolutions/sec/core, revised twice: from 50k by the W0 spike itself
+(`docs/decisions.md` § w0i), and from 30k by the human once `w1k` had
+attributed the shortfall and `w2i` had taken its levers (§ The W2 mid-wave
+review). It is the number to hold, and it is not revised again by anyone who
 cannot attribute the shortfall (DESIGN.md § Biggest risks). Contexts are pooled and mutable
 (engine-owned, hot path); everything a feature stores is frozen (author-owned,
 cold path). **The hot path is measured, not guessed** — `tools/spike.py` is the
@@ -272,9 +271,9 @@ there is local to a module.
 | `content/`, the 5etools import, `table_value()` | § w2a |
 | `creatures/resources.py`, pools, slots, `transaction()` | § w1b, § w2i |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
-| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k, § w2i, § w2c2 |
-| `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § The M0 / W1 milestone review |
-| the performance budget, pricing a change | § w0i, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § w1k, § The M0 / W1 milestone review, § w2i |
+| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k, § w2i, § w2c2, § The W2 mid-wave review |
+| `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § The M0 / W1 milestone review, § The W2 mid-wave review |
+| the performance budget, pricing a change | § w0i, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § w1k, § The M0 / W1 milestone review, § w2i, § The W2 mid-wave review |
 | `engine/triggers.py`, `Dispatcher.responsive()`, the opportunity attack, the walk | § w0g3, § w2c2 |
 | `core/log.py`, the event log, its records and levels | § w1i |
 | `engine/dying.py`, `engine/healing.py`, `engine/d20.py`, `is_alive` | § w1j |

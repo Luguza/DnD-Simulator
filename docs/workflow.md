@@ -84,8 +84,13 @@ every finding **CONFIRMED** or **PLAUSIBLE**. It reviews on two axes
   and posts one comment naming what is still contested. If CI is green and every
   **CONFIRMED** finding is fixed, it merges and records the contested findings
   in `ROADMAP.md` § The W0 debt register, owned by the next milestone review.
-  Otherwise it sets the row to `held` and notifies the human. PR #19 took 27
-  pushes; the cap is what catches that.
+  Otherwise, with a **CONFIRMED** finding still open, it pushes the fixes
+  for the open **CONFIRMED** findings alone, once, and nothing after, and the next
+  verdict is final: if every **CONFIRMED** finding is then fixed and CI is
+  green it merges as above, and if not it sets the row to `held` and notifies
+  the human. Both holds of the W2 mid-wave stretch (#62, #67) sat until the
+  owner said to do exactly that (`docs/decisions.md` § The W2 mid-wave
+  review). PR #19 took 27 pushes; the cap is what catches that.
 - **The cap counts the PR's verdicts, not the session's.** A session that
   picks up a held PR pushes only the fix the hold names, and on the next
   verdict takes the branch above with no further round: it merges, or the
@@ -94,6 +99,26 @@ every finding **CONFIRMED** or **PLAUSIBLE**. It reviews on two axes
 
 A verdict that says *the review did not run* or *did not finish* is not a pass
 and never merges.
+
+## Parallel runs
+
+The queue is serial, and the loop runs it serially: the watchdog starts nothing
+while a `claude/task-*` PR is open (§ The chain). The owner may start several
+👥 rows at once, as they did with `w2c2`, `w2d` and `w2a`; that is the owner's
+mode, not the loop's, and the loop does not start one itself
+(`docs/decisions.md` § The W2 mid-wave review). A set run in parallel holds to:
+
+- **Every row's Depends are `done`.**
+- **Produces cells disjoint from each other's and from any row in flight.** A
+  file two of them need is given to one by a spec PR merged *before* the other
+  opens its PR; `w2a`'s correction (#69) landed mid-review and cost it two
+  rounds of findings against a row that was about to change.
+- **At most one priced row**, and its paired runs taken while nothing else
+  runs on its container: § Sequencing principles, 10 asks for the spike paired
+  on the task's own container, and `w2c2`'s rates were read with another
+  agent's tests beside them.
+- **Each flips only its own row.** The queue skips a row already `done`
+  (`docs/progress.md`), so the serial order still reads true afterwards.
 
 ## Merge authority
 
