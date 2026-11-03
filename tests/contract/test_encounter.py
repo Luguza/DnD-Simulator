@@ -526,8 +526,10 @@ def test_an_effect_applied_in_round_two_ends_at_the_end_of_the_next_turn() -> No
 
 
 def test_a_dodge_lasts_until_the_start_of_the_dodgers_next_turn() -> None:
-    """a Dodges in round 1; it still holds Dodging during b's turn and has
-    shed it by the time its own round-2 turn asks the policy."""
+    """a Dodges in round 1 and, its Action spent and its movement left, is
+    asked once more with nothing offered, already Dodging; it still holds
+    Dodging during b's turn and has shed it by the time its own round-2 turn
+    asks the policy."""
     world, a, b = two_sides()
     seen: list[tuple[str, bool]] = []
 
@@ -542,7 +544,13 @@ def test_a_dodge_lasts_until_the_start_of_the_dodgers_next_turn() -> None:
 
     Encounter(world, policy=DodgesOnce(), rng=ScriptedRng(A_THEN_B), max_rounds=2).run()
 
-    assert seen == [("a", False), ("b", True), ("a", False), ("b", False)]
+    assert seen == [
+        ("a", False),
+        ("a", True),
+        ("b", True),
+        ("a", False),
+        ("b", False),
+    ]
 
 
 # --- The roster answers a third creature (`docs/decisions.md` § w2c) ------------------

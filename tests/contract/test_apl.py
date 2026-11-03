@@ -579,6 +579,50 @@ def test_the_first_passing_entry_for_a_gate_answers_it() -> None:
     assert apl.allows(OpportunityAttack.ID, Marker(guard), leaving(guard, runner))
 
 
+@pytest.mark.parametrize(
+    "clause",
+    ["trigger.origin == trigger.destination", "trigger.origin != trigger.destination"],
+)
+def test_two_squares_compare_for_equality(clause: str) -> None:
+    Apl([Entry(OpportunityAttack.ID, if_=clause)])
+
+
+@pytest.mark.parametrize(
+    "clause",
+    [
+        "trigger.origin > 3",
+        "trigger.origin == 3",
+        "trigger.origin < trigger.destination",
+    ],
+)
+def test_a_square_is_neither_ordered_nor_compared_with_a_number(clause: str) -> None:
+    with pytest.raises(AplLoadError):
+        Apl([Entry(OpportunityAttack.ID, if_=clause)])
+
+
+@pytest.mark.parametrize(
+    ("clause", "answer"),
+    [
+        ("trigger.origin != trigger.destination", True),
+        ("trigger.origin == trigger.destination", False),
+    ],
+)
+def test_a_square_comparison_is_answered_on_a_movement_offer(
+    clause: str, answer: bool
+) -> None:
+    """`leaving` steps the runner from (1, 0) to (2, 0): two different
+    squares."""
+    guard = creature("guard", Cell(0, 0))
+    runner = creature("runner", Cell(1, 0))
+    world = seated((guard, "monsters"), (runner, "heroes"))
+    apl = Apl([Entry(OpportunityAttack.ID, if_=clause)]).bind(guard, world)
+
+    assert (
+        apl.allows(OpportunityAttack.ID, Marker(guard), leaving(guard, runner))
+        is answer
+    )
+
+
 # --- 5. the protocols it fills ----------------------------------------------
 
 
@@ -617,6 +661,42 @@ def test_a_turn_driven_by_an_apl_takes_the_action_its_target_clause_picks() -> N
     assert taken == 1
     assert wounded.hp == 3
     assert healthy.hp == HP
+    assert rng.exhausted
+
+
+def test_an_apl_attacks_and_then_walks_away_with_its_action_spent() -> None:
+    """The hero stands beside one goblin. Asked with every Command, the first
+    entry attacks: 11, leaving 9. Asked again with nothing offered and its 30
+    ft of movement left, the attack entry finds no offer and the dash entry's
+    `move:` walks five squares west, to 30 ft (six squares) from the goblin at
+    (1, 0); of those squares the lowest `y` is taken (`docs/decisions.md`
+    § w2e). Asked a third time with 5 ft left, it is already 30 ft away, no
+    Dash is offered, and the turn ends. Nothing answers the goblin's
+    Opportunity Attack, so no die is rolled for the walk."""
+    hero = creature("hero", Cell(0, 0), initiative=20)
+    goblin = creature("goblin", Cell(1, 0))
+    log = EventLog()
+    world = seated((hero, "heroes"), (goblin, "monsters"), log=log)
+    apl = bound(
+        """
+        - { action: attack }
+        - { action: dash, move: "away_from nearest of enemies to 30 ft" }
+        """,
+        hero,
+        world,
+    )
+    rng = ScriptedRng(list(ELEVEN))
+
+    taken = take_turn(world, hero, 1, policy=apl, rng=rng)
+
+    assert taken == 2
+    assert attacks(log) == [(ATTACK, "hero", "goblin", "Greatsword", Outcome.HIT, 11)]
+    assert goblin.hp == HP - 11 == 9
+    assert hero.position == Cell(-5, -5)
+    assert apart(hero, goblin) == 30
+    assert hero.economy.movement_ft == 5
+    assert hero.economy.actions == 0
+    assert goblin.position == Cell(1, 0)
     assert rng.exhausted
 
 

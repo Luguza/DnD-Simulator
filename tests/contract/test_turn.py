@@ -22,7 +22,7 @@ import pytest
 from dndsim.actions.base import Action
 from dndsim.actions.dash import Dash
 from dndsim.actions.dodge import Dodge
-from dndsim.actions.move import Move
+from dndsim.actions.move import Move, Retreat
 from dndsim.conditions.exhaustion import Exhaustion
 from dndsim.conditions.frightened import Frightened
 from dndsim.conditions.grappled import Grappled
@@ -465,14 +465,52 @@ def test_own_turn_budgets_are_already_back_when_on_turn_start_runs() -> None:
 # --- Incapacitation, through the loop and the dispatcher --------------------
 
 
-def test_an_incapacitated_creature_takes_no_command_and_the_policy_is_not_asked() -> (
-    None
-):
+def test_an_incapacitated_creature_takes_no_command_and_is_asked_with_nothing() -> None:
+    """Stunned stops actions, not movement: with its Speed left the policy is
+    asked once, with an empty offer list, and no Command is taken."""
     seated, fighter, _ = duel()
     fighter.effects.apply(Stunned(fighter))
     policy = Recorder(first_of("attack"))
     assert take_turn(seated, fighter, 1, policy=policy, rng=no_dice()) == 0
+    assert policy.calls == [("fighter", [])]
+    assert fighter.economy.movement_ft == 30
+
+
+def test_with_nothing_offered_and_no_movement_left_the_policy_is_not_asked() -> None:
+    """Paralyzed: Incapacitated and Speed 0, so nothing is offered and there is
+    no movement to walk."""
+    seated, fighter, _ = duel()
+    fighter.effects.apply(Paralyzed(fighter))
+    policy = Recorder()
+    assert take_turn(seated, fighter, 1, policy=policy, rng=no_dice()) == 0
+    assert fighter.economy.movement_ft == 0
     assert policy.calls == []
+
+
+def test_a_stunned_creature_walks_its_speed_and_is_then_not_asked_again() -> None:
+    """Stunned stops actions, not movement (XPHB Rules Glossary
+    "Incapacitated"). The goblin is already in reach, so nothing is offered;
+    asked with the empty list, the policy returns its own `Retreat` from it,
+    which walks all six squares, and with no movement left the policy is not
+    asked a second time. Of the squares six steps out, every one at x = -6 is
+    35 ft from the goblin at (1, 0); the lowest `y` is taken
+    (`docs/decisions.md` § w2e). Nothing here answers the goblin's
+    Opportunity Attack, so no die is rolled."""
+    seated, fighter, goblin = duel()
+    fighter.effects.apply(Stunned(fighter))
+
+    def chooser(actor: Creature, offered: Sequence[Action[Any]]) -> Action[Any]:
+        return Retreat(actor, goblin, world=seated)
+
+    policy = Recorder(chooser)
+
+    assert take_turn(seated, fighter, 1, policy=policy, rng=no_dice()) == 1
+
+    assert policy.calls == [("fighter", [])]
+    assert fighter.position == Cell(-6, -6)
+    assert fighter.economy.movement_ft == 0
+    assert fighter.economy.actions == 1
+    assert fighter.hp == HP
 
 
 def test_an_incapacitated_creature_cannot_react_and_can_once_it_ends() -> None:
@@ -520,8 +558,8 @@ class Focus(HookSource):
 def test_a_bonus_action_spent_never_starves_the_action() -> None:
     """The Bonus Action buff is paid out of the Bonus Action; the Attack is
     still offered and taken. d20 15 + 5 = 20 against AC 12, a hit; 2d6 3 + 4
-    + 3 = 10; 20 - 10 = 10. Then nothing costing an Action is offered again,
-    so the policy is asked once."""
+    + 3 = 10; 20 - 10 = 10. Then nothing is offered, and with its movement
+    left the policy is asked once more, with an empty list."""
     seated, fighter, goblin = duel()
     focus = Focus(fighter)
     fighter.attach(focus)
@@ -531,7 +569,10 @@ def test_a_bonus_action_spent_never_starves_the_action() -> None:
     assert take_turn(seated, fighter, 1, policy=policy, rng=rng) == 1
 
     assert focus.taken == 1
-    assert policy.calls == [("fighter", ["attack", "dodge", "disengage", "dash"])]
+    assert policy.calls == [
+        ("fighter", ["attack", "dodge", "disengage", "dash"]),
+        ("fighter", []),
+    ]
     assert goblin.hp == 10
     economy = fighter.economy
     assert (economy.actions, economy.bonus_actions, economy.reactions) == (0, 0, 1)
@@ -541,11 +582,17 @@ def test_a_bonus_action_spent_never_starves_the_action() -> None:
 def test_the_loop_re_polls_after_every_command() -> None:
     """The weapon lies at the fighter's feet: first the free pick-up is offered
     and no Attack, then — the weapon back in hand — the Attack, and after it
-    nothing. d20 15 + 5 = 20, a hit; 2d6 3 + 4 + 3 = 10."""
+    nothing offered, which still asks the policy while movement is left.
+    d20 15 + 5 = 20, a hit; 2d6 3 + 4 + 3 = 10."""
     seated, fighter, goblin = duel()
     fighter.drop_held()
     choices = iter(["pick_up_weapon", "attack"])
-    policy = Recorder(lambda actor, offered: first_of(next(choices))(actor, offered))
+
+    def chooser(actor: Creature, offered: Sequence[Action[Any]]) -> Action[Any] | None:
+        wanted = next(choices, None)
+        return None if wanted is None else first_of(wanted)(actor, offered)
+
+    policy = Recorder(chooser)
     rng = ScriptedRng([15, 3, 4])
 
     assert take_turn(seated, fighter, 1, policy=policy, rng=rng) == 2
@@ -553,6 +600,7 @@ def test_the_loop_re_polls_after_every_command() -> None:
     assert policy.calls == [
         ("fighter", ["dodge", "disengage", "dash", "pick_up_weapon"]),
         ("fighter", ["attack", "dodge", "disengage", "dash"]),
+        ("fighter", []),
     ]
     assert fighter.weapon is GREATSWORD
     assert goblin.hp == 10
@@ -623,7 +671,8 @@ def test_a_repeat_save_ends_the_effect_on_a_success_at_its_boundary(
     when: SaveRepeat, natural: int, acts: bool, ends: bool
 ) -> None:
     """A Stun with a DC 13 Wisdom save. Saved at the start of the turn, the
-    creature acts on it; saved at the end, it has spent the turn stunned. A
+    creature is offered its Commands; saved at the end, it has spent the turn
+    stunned and is asked only with an empty list (its movement is left). A
     failure keeps it either way. One d20 in every case."""
     log = EventLog(LogLevel.SUMMARY)
     seated, fighter, _ = duel(log=log)
@@ -633,7 +682,8 @@ def test_a_repeat_save_ends_the_effect_on_a_success_at_its_boundary(
 
     take_turn(seated, fighter, 1, policy=policy, rng=rng)
 
-    assert (policy.calls != []) is acts
+    offered = ["attack", "dodge", "disengage", "dash"] if acts else []
+    assert policy.calls == [("fighter", offered)]
     assert (stun in list(fighter.effects)) is not ends
     outcome = SaveOutcome.SUCCESS if ends else SaveOutcome.FAILURE
     assert kinds(log, SAVE) == [

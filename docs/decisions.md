@@ -5668,6 +5668,25 @@ scripted attack and Regeneration become behaviour.
   compiler's readers, both proxies) are held together by a contract test
   rather than generated, so each stays a plain read.
 
+### What the second review found
+
+- **A turn with nothing on offer still asks the policy while movement is
+  left.** `take_turn` ended the turn on an empty offer list, and `offers()`
+  holds only a `Move` toward an enemy out of reach, so a later entry's
+  `move: "away_from …"` was never asked once the action was spent: no build
+  could hit and run, and no `kites_at` dummy could back off after swinging.
+  The loop now ends on an empty list only when no movement is left. That
+  also reaches an Incapacitated creature with Speed, which § w2c2 already
+  says may walk: it is asked with nothing offered, and only its own `Walk`
+  is accepted, so it still takes no Command. `w2c`'s tests that asserted
+  the policy was never asked were rewritten to the new contract by the
+  independent test pass.
+- **`trigger.origin` and `trigger.destination` compare as squares**, equal
+  or not, and nothing else; they were readable at load as a kind no
+  operator accepted.
+- The `best_scored` docstring no longer names the task that will offer it;
+  that is DESIGN.md § `best_scored`'s.
+
 ### What it cost the benchmark
 
 The spike's hero now runs on the real compiler, and its `move:` clause goes

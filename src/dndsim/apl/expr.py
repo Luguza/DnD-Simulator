@@ -342,11 +342,12 @@ class _Compiler:
         ordering = any(not isinstance(op, ast.Eq | ast.NotEq) for op in node.ops)
         if ordering or kinds & {Kind.NUMBER, Kind.GROUP}:
             rewritten = [self.number(operand) for operand in operands]
-        elif kinds == {Kind.BOOL}:
+        elif kinds == {Kind.BOOL} or kinds == {Kind.CELL}:
             rewritten = [self.value(operand).node for operand in operands]
         else:
             raise self.fail(
-                f"only numbers and bools compare; got {sorted(k.value for k in kinds)}"
+                "only numbers and bools compare, and squares for equality; got "
+                f"{sorted(k.value for k in kinds)}"
             )
         return _Typed(
             ast.Compare(rewritten[0], node.ops, rewritten[1:]),

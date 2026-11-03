@@ -186,7 +186,9 @@ def take_turn(
     taken = 0
     while True:
         offered = offers(world, creature)
-        if not offered:
+        # Nothing on offer still leaves the policy its own `Walk` while
+        # movement is left (`docs/decisions.md` § w2e).
+        if not offered and creature.economy.movement_ft <= 0:
             break
         choice = policy.choose(creature, offered)
         if choice is None:

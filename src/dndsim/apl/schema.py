@@ -35,6 +35,7 @@ class Kind(Enum):
     GROUP = "group"
     """An ordered tuple of creatures; compared with a number, its length."""
     CELL = "cell"
+    """A square; compared with another square for equality only."""
     NODE = "node"
     """A proxy with members of its own, read only through one of them."""
 

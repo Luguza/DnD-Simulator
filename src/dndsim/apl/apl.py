@@ -55,8 +55,8 @@ __all__ = [
 ]
 
 BEST_SCORED: Final = "best_scored"
-"""Reserved: take the highest-scoring offered action. The scorer that offers
-it is `w8b`'s; until then nothing offers it (DESIGN.md § `best_scored`)."""
+"""Reserved: take the highest-scoring offered action. Nothing offers it yet
+(DESIGN.md § `best_scored`; `docs/decisions.md` § w2e)."""
 
 COMMAND_IDS: Final = frozenset(
     command.ID
