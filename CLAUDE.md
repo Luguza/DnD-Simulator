@@ -15,9 +15,10 @@ extension points, their contexts, and the dispatcher), `creatures/`
 `conditions/` (the 15 conditions) and `engine/` (damage, attack, saving throws,
 dying and healing, and the movement observer), `w2b` has added `actions/`
 (the Commands a turn is made of) and `w2c` the encounter, its roster and the
-turn loop (`engine/encounter.py`, `turn.py`, `world.py`, `query.py`). There is
-no opportunity attack, walk, APL, build loader, runner or CLI yet — those are
-W2.
+turn loop (`engine/encounter.py`, `turn.py`, `world.py`, `query.py`), and
+`w2c2` the walk and the opportunity attack (`actions/opportunity_attack.py`,
+`Move` in `engine/turn.py`). There is no APL, build loader, runner or CLI yet —
+those are W2.
 
 **W0 and W1 are complete; work is at W2.** The M0 performance budget is **≥30k
 attack resolutions/sec/core** on `w0i`'s hostile configuration, revised down
@@ -265,14 +266,15 @@ there is local to a module.
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
 | `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c, § w2i, § w2b, § w2c |
 | `conditions/`, a condition, a declared gap | § w1h, § w2b, § w2c |
-| `actions/`, a Command, legality, dropping and picking up a weapon | § w2b |
-| `engine/turn.py`, `encounter.py`, `world.py`, `query.py`, the shared `Clock`, Speed, incapacitation | § w2c |
+| `actions/`, a Command, legality, dropping and picking up a weapon | § w2b, § w2c2 |
+| `creatures/dummy.py`, the target dummy | § w2d |
+| `engine/turn.py`, `encounter.py`, `world.py`, `query.py`, the shared `Clock`, Speed, incapacitation | § w2c, § w2c2 (`Move`) |
 | `creatures/resources.py`, pools, slots, `transaction()` | § w1b, § w2i |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
-| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k, § w2i |
+| `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k, § w2i, § w2c2 |
 | `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § The M0 / W1 milestone review |
 | the performance budget, pricing a change | § w0i, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § w1k, § The M0 / W1 milestone review, § w2i |
-| `engine/triggers.py`, `Dispatcher.responsive()` | § w0g3 |
+| `engine/triggers.py`, `Dispatcher.responsive()`, the opportunity attack, the walk | § w0g3, § w2c2 |
 | `core/log.py`, the event log, its records and levels | § w1i |
 | `engine/dying.py`, `engine/healing.py`, `engine/d20.py`, `is_alive` | § w1j |
 | `.claude/skills/`, `CODING_STANDARDS.md`, the review loop | § The PR, review and retro skills |
