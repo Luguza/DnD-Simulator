@@ -4954,26 +4954,12 @@ round cap counts the PR's verdicts, so an adopter cannot reset it.
 
 ## w2a — the content ACL
 
-### The row's two engine halves went to `w2f`
+### The fields on `Weapon` and `Armour`
 
-The done-when asked for two things outside `content/`: removing
-`stats.GREATSWORD` from the spike and the skeleton (#13), and a ranged branch
-in `engine/attack.py` (#24). The owner ran `w2a` in parallel with `w2c`,
-`w2c2` and `w2d`, which hold `engine/`, `actions/` and `tools/spike.py` while
-they run, so this task could not edit either file without a conflict on
-someone else's PR. What `w2a` owed both is the data, and that landed:
-`Weapon.range_ft` carries the printed normal/long pair. The protocol in
-`hooks/contexts.py`, the branch and the greatsword's removal went to `w2f`,
-the first task after the parallel ones that assembles a creature from its
-equipment. The next `⏸` plan review may re-own them. This is a correction of
-the row in the same diff, not a spec PR, because it only moves work to a later
-owner: `w2a` builds nothing differently because of it.
-
-`creatures/stats.py` is outside the Produces cell too, and it was edited
-anyway: #27 already said "`w2a` lands the field", and an importer that cannot
-put the range or the Strength requirement on the value it returns would have
-to drop them. Both fields are additive and default to `None`, so no caller
-changes, and the `Weapon` protocol stays at six members (§ w1f) until the
+The engine halves of the row went to `w2f` (§ The `w2a` spec correction).
+An importer that cannot put the range or the Strength requirement on the
+value it returns would have to drop them, so both are fields now. They are
+additive and default to `None`, so no caller changes, and the `Weapon` protocol stays at six members (§ w1f) until the
 branch that reads the range exists. `versatile_damage` is in for the same
 reason: the Weapon table prints the two-handed die, and an importer that
 dropped it would leave a later task re-reading the source.
@@ -5012,7 +4998,7 @@ are kept as columns too because the Warlock table prints them as columns.
 Its damage is a flat 1 with no die. A `Dice(1, 1)` would import it, and would
 deal 2 on a Critical Hit where the rules deal 1, which is the crit trap
 DESIGN.md § Structural prevention exists to make unwritable. It is listed in
-`weapons.NOT_IMPORTED` with the reason, and is debt #59 (`w2f`). The list is
+`weapons.NOT_IMPORTED` with the reason (debt #59). The list is
 checked against the data in both directions: any other weapon without a die
 raises, and an entry the data no longer holds raises too.
 
@@ -5040,7 +5026,9 @@ is the human's to make (`docs/workflow.md` § Merge authority).
 
 ### Fetch
 
-`git ls-remote` names the upstream HEAD commit. Every file is then read from
+`git ls-remote` names the upstream HEAD commit, and a SHA passed in must be a
+full 40-hex commit: a branch or tag name moves, so a `VERSION` holding one
+would cite a tree nobody can fetch again. Every file is then read from
 `raw.githubusercontent.com/…/<sha>/data/`, never from `main`, so the SHA in
 `VERSION` is the tree that was actually read. The files go into a staging
 directory beside the target, and the target is replaced only after the last

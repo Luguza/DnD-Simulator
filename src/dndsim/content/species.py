@@ -1,8 +1,6 @@
 """The XPHB species: size, speed, darkvision and traits as prose.
 
-The traits' behaviour is hand-coded in `features/species/`; what imports is
-the numbers and the text. XPHB (2024) "Character Origins".
-`docs/decisions.md` § w2a.
+XPHB (2024) "Character Origins". `docs/decisions.md` § w2a.
 """
 
 from collections.abc import Mapping

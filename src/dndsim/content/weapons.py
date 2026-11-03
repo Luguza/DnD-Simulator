@@ -159,8 +159,8 @@ def armour(data: Dataset) -> Mapping[str, Armour]:
 def masteries(data: Dataset) -> frozenset[Mastery]:
     """The XPHB weapon masteries, checked against `Mastery`.
 
-    Only the names import: what each does is hand-coded in W3. Raises
-    `ContentError` unless the data and the enum hold the same eight.
+    Only the names are read. Raises `ContentError` unless the data and the
+    enum hold the same eight.
     """
     names = {
         entry["name"].lower()

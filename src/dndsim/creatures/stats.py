@@ -43,7 +43,7 @@ class Weapon:
     prevention). `mastery` names the weapon's mastery property and implements
     nothing. `range_ft` is the printed normal/long pair, `None` for a weapon
     with no range; `versatile_damage` is the two-handed die of a Versatile
-    weapon. Nothing reads either yet (`docs/decisions.md` § w2a).
+    weapon (`docs/decisions.md` § w2a).
     """
 
     name: str
@@ -145,8 +145,7 @@ class Armour:
     """Which ability modifiers this armour adds, each with its cap or `None` for
     no cap."""
     strength_requirement: int | None = None
-    """The Strength score the Armor table prints for heavy armour; nothing
-    applies it yet (debt #27)."""
+    """The Strength score the Armor table prints for heavy armour, or `None`."""
 
     @classmethod
     def light(cls, name: str, base_ac: int) -> "Armour":

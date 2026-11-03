@@ -7,6 +7,7 @@ from a moving branch, and `VERSION` is written only once all of them are.
 """
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,8 @@ FILES: Final = ("items-base.json", "races.json", OPTIONAL, CLASS_INDEX)
 """The files read directly; the class files are the ones `CLASS_INDEX` names."""
 
 Download = Callable[[str], bytes]
+
+_COMMIT: Final = re.compile(r"[0-9a-f]{40}")
 
 
 def upstream_head() -> str:
@@ -58,8 +61,12 @@ def fetch(
     """Replace `dest` with the data at commit `sha` (default: upstream HEAD).
 
     Returns the SHA. Nothing at `dest` changes unless every file arrived.
+    Raises `ContentError` for anything but a full 40-hex commit SHA: a branch
+    or tag name moves, and could not reproduce a run that cites it.
     """
     sha = sha or upstream_head()
+    if not _COMMIT.fullmatch(sha):
+        raise ContentError(f"{sha!r} is not a 40-hex commit SHA")
     base = f"{RAW}/{sha}/data"
     dest.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".fetch-", dir=dest.parent))

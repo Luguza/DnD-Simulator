@@ -621,3 +621,11 @@ def test_a_failed_fetch_leaves_the_old_data_alone(tmp_path: Path) -> None:
         fetch_module.fetch(dest, "f" * 40, _upstream(partial, []))
     assert Dataset(dest).version == SHA
     assert [p.name for p in tmp_path.iterdir()] == ["5etools"]
+
+
+@pytest.mark.parametrize("ref", ["main", "v1.0", "ABCDEF" * 7, "abc123"])
+def test_fetch_refuses_anything_but_a_commit_sha(tmp_path: Path, ref: str) -> None:
+    seen: list[str] = []
+    with pytest.raises(ContentError, match="commit SHA"):
+        fetch_module.fetch(tmp_path / "5etools", ref, _upstream(UPSTREAM, seen))
+    assert seen == []

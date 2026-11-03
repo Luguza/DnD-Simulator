@@ -1,9 +1,8 @@
 """The class and subclass tables, read by `table_value()`.
 
-Every scaling number a feature uses comes from here, never from a literal
-(DESIGN.md § The feature-authoring skill). Spell-slot rows are checked against
-`rules.constants` rather than returned as columns: the two copies must agree,
-and a dataset that disagrees raises (`docs/decisions.md` § w0b, § w2a).
+Spell-slot rows are checked against `rules.constants` rather than returned as
+columns, and a dataset that disagrees raises (`docs/decisions.md` § w0b,
+§ w2a).
 """
 
 from collections.abc import Mapping
