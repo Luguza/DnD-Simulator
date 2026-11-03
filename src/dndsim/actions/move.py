@@ -159,23 +159,15 @@ class Move(Walk):
 
     __slots__ = ()
 
-    def _permits(self) -> bool:
-        # Most turns start in reach; that answer needs no economy or route.
-        return not self._arrived(self.actor.position) and super()._permits()
-
-    def _arrived(self, origin: Cell) -> bool:
+    def _plan(self, origin: Cell) -> tuple[Cell, ...]:
         actor, target = self.actor, self.target
-        return in_reach(
+        if in_reach(
             origin,
             target.position,
             actor.reach_ft,
             origin_size=actor.size,
             destination_size=target.size,
-        )
-
-    def _plan(self, origin: Cell) -> tuple[Cell, ...]:
-        actor, target = self.actor, self.target
-        if self._arrived(origin):
+        ):
             return ()
         blocked = _occupied(self.world, actor)
         best: tuple[Cell, ...] = ()

@@ -5718,3 +5718,11 @@ hero's `move:` clause goes through `Move` at 0.20 s against the stand-in's
 all; the clause reads (`first`, `target`, `allows`) at 0.32 s against the
 stand-in's 0.18 s, the namespace reading live state the stand-in held as
 fixed tuples; and the fixture's own free-square stepping at 0.09 s.
+
+The first review's fixes leave both counts where they are: no entry the
+spike's hero is offered on its turn reads `target`, so `_aim` never runs. A
+fourth lever was measured and taken back out: `Move` asking `in_reach()`
+before its economy and route, for the turns that start in reach. It read
+0.927 (0.905–0.961) on `--no-provoking`, inside the span above, and 0.954
+(0.929–0.972) on provoking, where every mover not yet in reach pays the extra
+question.
