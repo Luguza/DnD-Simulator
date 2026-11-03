@@ -7,7 +7,7 @@ from dndsim.actions.base import Action
 from dndsim.core.geometry import in_reach
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
-from dndsim.engine.dying import stabilize
+from dndsim.engine.dying import dying, stabilize
 from dndsim.rules.enums import ActionCost
 
 __all__ = ["REACH_FT", "Stabilize"]
@@ -35,14 +35,7 @@ class Stabilize(Action[bool]):
 
     def _permits(self) -> bool:
         actor, target = self.actor, self.target
-        # `engine/dying.py`'s `_dying()`, which `stabilize()` raises on.
-        dying = (
-            target.hp <= 0
-            and not target.dead
-            and not target.stable
-            and target.player_character
-        )
-        return dying and in_reach(
+        return dying(target) and in_reach(
             actor.position,
             target.position,
             REACH_FT,

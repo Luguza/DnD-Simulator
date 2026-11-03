@@ -812,7 +812,7 @@ def test_the_second_dispatch_is_drained_too() -> None:
 
 def test_an_effect_queued_onto_a_non_participant_is_refused() -> None:
     """A queued effect naming a creature outside the event raises rather than
-    being dropped (debt #30)."""
+    being dropped (`docs/decisions.md` § w2c)."""
     dummy, stranger = creature(hp=20), creature(hp=20)
     dummy.attach(QueuesOntoAStranger(dummy, stranger))
 

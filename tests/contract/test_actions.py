@@ -29,9 +29,11 @@ from dndsim.actions.disengage import Disengage, disengaged
 from dndsim.actions.dodge import Dodge, Dodging
 from dndsim.actions.pick_up import PickUpWeapon
 from dndsim.actions.stabilize import Stabilize
+from dndsim.conditions.grappled import Grappled
 from dndsim.conditions.incapacitated import Incapacitated
 from dndsim.conditions.paralyzed import Paralyzed
 from dndsim.conditions.petrified import Petrified
+from dndsim.conditions.restrained import Restrained
 from dndsim.conditions.stunned import Stunned
 from dndsim.conditions.unconscious import Unconscious
 from dndsim.core.dice import Dice
@@ -920,3 +922,41 @@ class Probe(HookSource):
     def stable(self, ctx: StabilizeContext) -> R:
         self.stabilised += 1
         return R.APPLIED
+
+
+# --- Speed 0 from a condition (`docs/decisions.md` § w2c) -----------------------------
+
+
+@pytest.mark.parametrize("condition", ["grappled", "restrained"])
+def test_dash_is_refused_at_a_speed_a_condition_set_to_zero(condition: str) -> None:
+    """Grappled and Restrained leave the Action in hand and Speed at 0, so the
+    Dash is refused on its own terms rather than on its cost."""
+    actor, holder = fighter(), goblin()
+    applied: Effect = (
+        Grappled(actor, caster=holder) if condition == "grappled" else Restrained(actor)
+    )
+    actor.effects.apply(applied)
+    ready(actor)
+    assert actor.economy.actions == 1
+    assert actor.speed_ft == 0
+    assert not Dash(actor).is_legal()
+    assert Dodge(actor).is_legal()
+
+
+@pytest.mark.parametrize("condition", ["grappled", "restrained"])
+def test_a_dodger_brought_to_speed_zero_by_a_condition_loses_the_benefits(
+    condition: str,
+) -> None:
+    """ "You lose these benefits … if your Speed is 0." One d20 against the
+    held dodger: 17 + 5 = 22, a hit (Restrained also grants the attacker
+    Advantage, so it is scripted a second 17). 2d6 rolled 1 and 1, + 3 = 5."""
+    target, swinger = dodger(), fighter("swinger", cell=EAST)
+    if condition == "grappled":
+        target.effects.apply(Grappled(target, caster=swinger))
+        rng = ScriptedRng([17, 1, 1])
+    else:
+        target.effects.apply(Restrained(target))
+        rng = ScriptedRng([17, 17, 1, 1])
+    assert [type(effect) for effect in target.effects][0] is Dodging
+    assert attack.resolve_attack(swinger, target, rng=rng) == (Outcome.HIT, 5)
+    assert rng.exhausted
