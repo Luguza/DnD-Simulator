@@ -40,7 +40,7 @@ from dndsim.apl.apl import (
 )
 from dndsim.apl.dummy import arm_dummy, dummy_apl
 from dndsim.apl.expr import AplLoadError, MoveMode, compile_move
-from dndsim.apl.namespace import SelfProxy, TargetProxy
+from dndsim.apl.namespace import SelfProxy, TargetProxy, TriggerProxy
 from dndsim.apl.schema import CREATURE_FIELDS, Kind, NamespaceSchema
 from dndsim.core.dice import Dice
 from dndsim.core.geometry import Cell, distance_ft, in_reach
@@ -1438,3 +1438,67 @@ def test_every_creature_field_compiles_and_evaluates_on_both_roots(
         apl.namespace.target.bind(goblin)
 
     assert apl.compiled[0].condition(apl.namespace) is True
+
+
+# --- an attack the APL picks rebinds the APL's own `trigger` root ------------
+
+
+def test_an_attack_the_apl_picks_carries_its_trigger_root() -> None:
+    hero = creature("hero", Cell(0, 0))
+    goblin = creature("goblin", Cell(1, 0))
+    world = seated((hero, "heroes"), (goblin, "monsters"))
+    apl = Apl([Entry("attack")]).bind(hero, world)
+    offer = Attack(hero, goblin, log=world.log)
+    assert offer.trigger is None
+
+    choice = apl.choose(hero, [offer])
+
+    assert isinstance(choice, Attack)
+    assert choice.trigger is apl.namespace.trigger
+
+
+def test_an_attack_offered_with_its_own_trigger_keeps_it() -> None:
+    hero = creature("hero", Cell(0, 0))
+    goblin = creature("goblin", Cell(1, 0))
+    world = seated((hero, "heroes"), (goblin, "monsters"))
+    apl = Apl([Entry("attack")]).bind(hero, world)
+    own = TriggerProxy()
+
+    choice = apl.choose(hero, [Attack(hero, goblin, trigger=own)])
+
+    assert isinstance(choice, Attack)
+    assert choice.trigger is own
+    assert own is not apl.namespace.trigger
+
+
+def test_a_turn_s_attack_rebinds_a_stale_trigger_root() -> None:
+    """`trigger` is left as an earlier crit would leave it; the turn's hit is a
+    natural 15, not a crit, for 4 + 4 + 3 = 11."""
+    hero = creature("hero", Cell(0, 0), initiative=20)
+    goblin = creature("goblin", Cell(1, 0))
+    log = EventLog()
+    world = seated((hero, "heroes"), (goblin, "monsters"), log=log)
+    apl = Apl([Entry("attack")]).bind(hero, world)
+    apl.namespace.trigger.bind(crit=True, damage_estimate=99)
+    rng = ScriptedRng(list(ELEVEN))
+
+    taken = take_turn(world, hero, 1, policy=apl, rng=rng)
+
+    assert taken == 1
+    assert attacks(log) == [(ATTACK, "hero", "goblin", "Greatsword", Outcome.HIT, 11)]
+    assert goblin.hp == HP - 11 == 9
+    assert apl.namespace.trigger.crit is False
+    assert apl.namespace.trigger.damage_estimate == 11
+    assert rng.exhausted
+
+
+# --- the world's seating is moved only by `seat()` and `leave()` -------------
+
+
+def test_the_world_s_seating_cannot_be_assigned() -> None:
+    world = World()
+
+    with pytest.raises(AttributeError):
+        world.seating = 0  # type: ignore[misc]
+
+    assert world.seating == 0

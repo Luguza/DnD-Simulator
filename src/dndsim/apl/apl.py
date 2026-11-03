@@ -507,6 +507,9 @@ def _pick(
                 break
     if chosen is not None:
         namespace.target.bind(_target_of(chosen))
+        if isinstance(chosen, Attack) and chosen.trigger is None:
+            # The attack rebinds this root, so a gated rider reads this attack.
+            chosen.trigger = namespace.trigger
     return chosen
 
 

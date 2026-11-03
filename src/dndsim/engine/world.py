@@ -24,13 +24,13 @@ class World:
     and `leave()`, so a reader can cache who sits where until it moves.
     """
 
-    __slots__ = ("_sides", "clock", "log", "seating")
+    __slots__ = ("_seating", "_sides", "clock", "log")
 
     def __init__(self, *, log: EventLog | None = None) -> None:
         self.clock = Clock(TimeKey(1, UNSEATED, TurnPhase.START))
         self.log = log
         self._sides: dict[Creature, str] = {}
-        self.seating = 0
+        self._seating = 0
 
     def seat(self, creature: Creature, side: str) -> None:
         """Put `creature` in the encounter on `side`. Raises `ValueError` for a
@@ -38,7 +38,7 @@ class World:
         if creature in self._sides:
             raise ValueError(f"{creature.name} is already seated")
         self._sides[creature] = side
-        self.seating += 1
+        self._seating += 1
         effects = creature.effects
         effects.join(self.clock)
         effects.roster = self
@@ -49,7 +49,7 @@ class World:
         """Take `creature` out of the encounter. Its `InitiativeKey` is left
         alone, so a deadline anchored to it still falls where it did."""
         del self._sides[creature]
-        self.seating += 1
+        self._seating += 1
         effects = creature.effects
         effects.join(Clock(self.clock.now))
         effects.roster = None
@@ -64,6 +64,11 @@ class World:
 
     def __len__(self) -> int:
         return len(self._sides)
+
+    @property
+    def seating(self) -> int:
+        """Moved only by `seat()` and `leave()`."""
+        return self._seating
 
     def side_of(self, creature: Creature) -> str:
         return self._sides[creature]

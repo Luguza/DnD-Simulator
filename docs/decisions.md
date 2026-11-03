@@ -5687,6 +5687,16 @@ scripted attack and Regeneration become behaviour.
 - The `best_scored` docstring no longer names the task that will offer it;
   that is DESIGN.md § `best_scored`'s.
 
+### What the third review found
+
+- **An `Attack` the APL picks carries the APL's `trigger.*` root.** The turn
+  loop's offers are built with none, so the root kept whatever an
+  opportunity attack last wrote and a gated `if: "trigger.crit"` could pass
+  on a plain hit. The policy hands its own root to the offer it picks, rather
+  than `offers()` learning about policies.
+- **`World.seating` is read-only**: the roster cache trusts it, so only
+  `seat()` and `leave()` move it.
+
 ### What it cost the benchmark
 
 The spike's hero now runs on the real compiler, and its `move:` clause goes
