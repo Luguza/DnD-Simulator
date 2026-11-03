@@ -505,15 +505,9 @@ def _enemy_turns(spike: Spike, rng: Rng, number: int) -> int:
 
 
 def _closing_square(spike: "Spike", mover: Creature, target: Creature) -> Cell | None:
-    """The free square within `mover`'s reach of `target` nearest to it, or
-    `None` when it already stands in one.
-
-    The fixture's own stepping, not an APL clause: it is how the enemies
-    closed before `w2c2`, kept so that `--no-provoking` stays the
-    configuration the budget was quoted on. Anchors, not footprints, which is
-    exact for the Medium creatures this spike builds; it takes the nearest
-    unoccupied square, as `actions/move.py` does, since the hero's own
-    destination is now that file's (`docs/decisions.md` § w2e).
+    """The unoccupied square within `mover`'s reach of `target` nearest to
+    it, then lowest `y`, then `x`; `None` when it already has `target` in
+    reach. Anchors, not footprints (`docs/decisions.md` § w2e).
     """
     origin = mover.position
     goal = target.position
