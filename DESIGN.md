@@ -92,7 +92,7 @@ table at all:
 Large Form are combat-relevant, fit the existing feature API with no new
 machinery, and are roughly 18 implementations — small enough to batch alongside
 the martial grind. They live in `features/species/` and arrive through the same
-content ACL as everything else, off `species.json`.
+content ACL as everything else, off 5etools' `races.json`.
 
 ## Reconnaissance (done, against live data)
 
@@ -128,7 +128,7 @@ are used consistently throughout both documents:
 
 - **~400 combat-relevant features** — the non-spell grind, and the number the
   paper pass classifies.
-- **~18 species traits** — not part of the 735 (they live in `species.json`),
+- **~18 species traits** — not part of the 735 (they live in 5etools' `races.json`),
   small enough to ride along with the martial batches.
 - **212 combat spells** — a separate grind, pulled on demand.
 - **~630 implementations** at full coverage.
