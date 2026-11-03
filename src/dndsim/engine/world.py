@@ -20,15 +20,17 @@ class World:
     """The roster of one encounter, in the order creatures were seated.
 
     Satisfies `creatures/effects.py`'s `Roster`. `side` is any label; two
-    creatures with the same one are allies.
+    creatures with the same one are allies. `seating` counts every `seat()`
+    and `leave()`, so a reader can cache who sits where until it moves.
     """
 
-    __slots__ = ("_sides", "clock", "log")
+    __slots__ = ("_sides", "clock", "log", "seating")
 
     def __init__(self, *, log: EventLog | None = None) -> None:
         self.clock = Clock(TimeKey(1, UNSEATED, TurnPhase.START))
         self.log = log
         self._sides: dict[Creature, str] = {}
+        self.seating = 0
 
     def seat(self, creature: Creature, side: str) -> None:
         """Put `creature` in the encounter on `side`. Raises `ValueError` for a
@@ -36,6 +38,7 @@ class World:
         if creature in self._sides:
             raise ValueError(f"{creature.name} is already seated")
         self._sides[creature] = side
+        self.seating += 1
         effects = creature.effects
         effects.join(self.clock)
         effects.roster = self
@@ -46,6 +49,7 @@ class World:
         """Take `creature` out of the encounter. Its `InitiativeKey` is left
         alone, so a deadline anchored to it still falls where it did."""
         del self._sides[creature]
+        self.seating += 1
         effects = creature.effects
         effects.join(Clock(self.clock.now))
         effects.roster = None

@@ -5606,7 +5606,10 @@ and is the `Policy` protocol. Both walk the same compiled entries in order, so
 there is no second ordering to disagree.
 
 **Reactions are entries like any other**, so `allows()` is the same walk
-narrowed to the entry that claims a gate id. On a movement offer it binds
+narrowed to the entries that claim a gate id, the first passing one answering
+(DESIGN.md § APL: "takes the first passing entry"). The first cut kept only
+the first entry per gate, so a second `opportunity_attack` entry with a
+different `if:` was never asked; the independent test pass caught it. On a movement offer it binds
 `trigger.mover`, `trigger.origin`, `trigger.destination` **and** `target` from
 the `LeaveReachContext` before it asks, which is what lets an entry read
 `trigger.mover.hp_pct < 0.5` or `target.hp` at the moment the mover is leaving.
@@ -5654,4 +5657,3 @@ fixture's own stepping now takes the nearest **free** square in reach, the way
 arithmetic, which is exact for the Medium creatures the spike builds: it is
 what the enemies closed by before `w2c2`, and `--no-provoking` has to stay the
 configuration the owner's floor was priced on (§ The W2 mid-wave review).
-

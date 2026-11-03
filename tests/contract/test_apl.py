@@ -17,11 +17,16 @@ Sources: DESIGN.md § APL and mid-attack decisions, § Reactions in the APL,
 -> Opportunity Attacks.
 """
 
+import importlib
+import inspect
+import pkgutil
 from types import MappingProxyType
-from typing import Final
+from typing import Any, Final
 
 import pytest
 
+from dndsim import actions
+from dndsim.actions.base import Action
 from dndsim.actions.move import Move, Retreat, Walk
 from dndsim.actions.opportunity_attack import OpportunityAttack, OpportunityAttacks
 from dndsim.apl.apl import (
@@ -38,7 +43,7 @@ from dndsim.apl.schema import Kind, NamespaceSchema
 from dndsim.core.dice import Dice
 from dndsim.core.geometry import Cell, distance_ft, in_reach
 from dndsim.core.log import EventLog
-from dndsim.core.rng import Rng, ScriptedRng
+from dndsim.core.rng import ScriptedRng
 from dndsim.core.timeline import InitiativeKey
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.dummy import (
@@ -55,7 +60,7 @@ from dndsim.engine.world import World
 from dndsim.hooks.contexts import Context, LeaveReachContext
 from dndsim.hooks.dispatch import Gate
 from dndsim.hooks.source import HookSource
-from dndsim.rules.enums import Ability, DamageType, Size
+from dndsim.rules.enums import Ability, DamageType, Outcome, Size
 from dndsim.tools.spike import SPIKE_APL, compile_spike_apl
 
 SCORES: Final = MappingProxyType(
@@ -130,7 +135,7 @@ def no_dice() -> ScriptedRng:
 def bound(text: str, owner: Creature, world: World, **kwargs: object) -> Apl:
     """`text` compiled and bound to `owner`, with `owner`'s dispatcher asking
     it as its gate."""
-    apl = Apl.from_yaml(text, **kwargs).bind(owner, world)  # type: ignore[arg-type]
+    apl = Apl.from_yaml(text, **kwargs).bind(owner, world)
     owner.dispatcher.bind(gate=apl)
     return apl
 
@@ -302,9 +307,7 @@ def test_the_compiled_clause_records_the_paths_it_reads() -> None:
         ]
     )
 
-    assert apl.reads == frozenset(
-        {"self.hp_pct", "enemies.in_reach", "enemies.alive"}
-    )
+    assert apl.reads == frozenset({"self.hp_pct", "enemies.in_reach", "enemies.alive"})
 
 
 # --- 2. all three clauses, one whitelist -------------------------------------
@@ -477,14 +480,14 @@ def chase(
     runner.economy.turn_started(runner.speed_ft)
     apl = bound(watcher_apl, guard, world)
     guard.attach(
-        OpportunityAttacks(
-            guard, world=world, rng=rng, trigger=apl.namespace.trigger
-        )
+        OpportunityAttacks(guard, world=world, rng=rng, trigger=apl.namespace.trigger)
     )
     return world, runner, quarry, apl, rng
 
 
-WOUNDED_RUNNER: Final = '- { action: opportunity_attack, if: "trigger.mover.hp_pct < 0.5" }'
+WOUNDED_RUNNER: Final = (
+    '- { action: opportunity_attack, if: "trigger.mover.hp_pct < 0.5" }'
+)
 
 
 def test_a_reaction_entry_is_answered_at_the_moment_the_offer_is_made() -> None:
@@ -495,7 +498,7 @@ def test_a_reaction_entry_is_answered_at_the_moment_the_offer_is_made() -> None:
     Move(runner, quarry, world=world).execute(rng=rng)
 
     assert attacks(world.log) == [
-        (ATTACK, "guard", "runner", "Greatsword", "hit", 11)
+        (ATTACK, "guard", "runner", "Greatsword", Outcome.HIT, 11)
     ]
     assert runner.hp == 0
     assert rng.exhausted
@@ -532,14 +535,17 @@ def test_the_trigger_root_carries_the_mover_and_the_squares_being_left() -> None
     mover still stands on and `destination` the one it is stepping into."""
     world, runner, quarry, apl, rng = chase(mover_hp=9, watcher_apl=WOUNDED_RUNNER)
 
-    walked = Move(runner, quarry, world=world).execute(rng=rng)
+    Move(runner, quarry, world=world).execute(rng=rng)
 
     trigger = apl.namespace.trigger
     assert trigger.mover is runner
     assert trigger.origin == Cell(1, 0)
-    assert trigger.destination == walked[0]
+    # Every stand beside the quarry is six squares off, so of equal routes
+    # `Move` takes the lowest `y` (`docs/decisions.md` § w2c2): (7, -1), whose
+    # route leaves (1, 0) for (2, -1).
+    assert trigger.destination == Cell(2, -1)
     assert trigger.destination != runner.position
-    assert distance_ft(Cell(1, 0), walked[0]) == 5
+    assert distance_ft(Cell(1, 0), trigger.destination) == 5
 
 
 def test_a_reaction_entry_with_no_condition_takes_every_offer() -> None:
@@ -599,9 +605,9 @@ def test_a_turn_driven_by_an_apl_takes_the_action_its_target_clause_picks() -> N
         (wounded, "monsters"),
         log=EventLog(),
     )
-    apl = Apl(
-        [Entry("attack", target="lowest_hp of enemies.in_reach")]
-    ).bind(hero, world)
+    apl = Apl([Entry("attack", target="lowest_hp of enemies.in_reach")]).bind(
+        hero, world
+    )
     rng = ScriptedRng(list(ELEVEN))
 
     taken = take_turn(world, hero, 1, policy=apl, rng=rng)
@@ -726,9 +732,9 @@ def test_a_large_mover_closing_stops_one_square_short_of_the_anchor_answer() -> 
     target = creature("target", Cell(5, 0))
     world = seated((mover, "monsters"), (target, "heroes"))
     mover.economy.turn_started(mover.speed_ft)
-    apl = Apl(
-        [Entry("attack", move="toward nearest of enemies until in_reach")]
-    ).bind(mover, world)
+    apl = Apl([Entry("attack", move="toward nearest of enemies until in_reach")]).bind(
+        mover, world
+    )
 
     choice = apl.choose(mover, [])
     assert isinstance(choice, Walk)
@@ -746,9 +752,9 @@ def test_a_medium_mover_closing_on_the_same_square_takes_the_fourth_step() -> No
     target = creature("target", Cell(5, 0))
     world = seated((mover, "monsters"), (target, "heroes"))
     mover.economy.turn_started(mover.speed_ft)
-    apl = Apl(
-        [Entry("attack", move="toward nearest of enemies until in_reach")]
-    ).bind(mover, world)
+    apl = Apl([Entry("attack", move="toward nearest of enemies until in_reach")]).bind(
+        mover, world
+    )
 
     choice = apl.choose(mover, [])
     assert isinstance(choice, Walk)
@@ -766,9 +772,9 @@ def test_a_large_target_is_closed_on_against_its_near_edge() -> None:
     target = creature("ogre", Cell(5, 0), size=Size.LARGE)
     world = seated((mover, "monsters"), (target, "heroes"))
     mover.economy.turn_started(mover.speed_ft)
-    apl = Apl(
-        [Entry("attack", move="toward nearest of enemies until in_reach")]
-    ).bind(mover, world)
+    apl = Apl([Entry("attack", move="toward nearest of enemies until in_reach")]).bind(
+        mover, world
+    )
 
     choice = apl.choose(mover, [])
     assert isinstance(choice, Walk)
@@ -786,9 +792,9 @@ def test_a_retreat_stops_as_soon_as_it_is_far_enough() -> None:
     threat = creature("threat", Cell(0, 0))
     world = seated((kiter, "heroes"), (threat, "monsters"))
     kiter.economy.turn_started(kiter.speed_ft)
-    apl = Apl(
-        [Entry("attack", move="away_from nearest of enemies to 15 ft")]
-    ).bind(kiter, world)
+    apl = Apl([Entry("attack", move="away_from nearest of enemies to 15 ft")]).bind(
+        kiter, world
+    )
 
     choice = apl.choose(kiter, [])
     assert isinstance(choice, Retreat)
@@ -802,7 +808,9 @@ def test_a_retreat_stops_as_soon_as_it_is_far_enough() -> None:
 def test_to_max_range_reads_the_range_off_the_weapon_rather_than_the_clause() -> None:
     """`to_max_range` names no distance: the clause carries none and the walk
     asks what the actor wields."""
-    clause = compile_move("away_from nearest of enemies to_max_range", NamespaceSchema())
+    clause = compile_move(
+        "away_from nearest of enemies to_max_range", NamespaceSchema()
+    )
     assert clause.keep_ft is None
 
     kiter = creature("archer", Cell(1, 0), weapon=LONGBOW)
@@ -823,9 +831,9 @@ def test_a_retreat_that_is_already_far_enough_offers_no_walk() -> None:
     threat = creature("threat", Cell(0, 0))
     world = seated((kiter, "heroes"), (threat, "monsters"))
     kiter.economy.turn_started(kiter.speed_ft)
-    apl = Apl(
-        [Entry("attack", move="away_from nearest of enemies to 15 ft")]
-    ).bind(kiter, world)
+    apl = Apl([Entry("attack", move="away_from nearest of enemies to 15 ft")]).bind(
+        kiter, world
+    )
 
     assert apl.choose(kiter, []) is None
     assert kiter.position == Cell(6, 0)
@@ -895,7 +903,9 @@ def test_the_threat_profile_is_the_target_clause(
     feet and the wounded one at ten. `nearest` swings at the near one,
     `lowest_hp` at the far one, each for 7."""
     dummy = one_dummy(
-        DummySpec(movement_profile=MovementProfile.closes_to_melee(), threat_profile=profile)
+        DummySpec(
+            movement_profile=MovementProfile.closes_to_melee(), threat_profile=profile
+        )
     )
     dummy.weapon = PIKE
     healthy = creature("healthy", Cell(1, 0))
@@ -906,7 +916,10 @@ def test_the_threat_profile_is_the_target_clause(
     apl = arm_dummy(dummy, world, rng=no_dice())
     rng = ScriptedRng(list(SEVEN))
 
-    assert dummy_apl(dummy.spec).entries[1].target == f"{profile.value} of enemies.in_reach"
+    assert (
+        dummy_apl(dummy.spec).entries[1].target
+        == f"{profile.value} of enemies.in_reach"
+    )
     take_turn(world, dummy, 1, policy=apl, rng=rng)
 
     assert wounded.hp == wounded_hp
@@ -929,9 +942,7 @@ def test_a_dummy_that_closes_to_melee_is_provoked() -> None:
     dummy = one_dummy(spec)
     guard = creature("guard", Cell(0, 0))
     quarry = creature("quarry", Cell(10, 0), hp=5)
-    world = seated(
-        (dummy, "monsters"), (guard, "heroes"), (quarry, "heroes"), log=log
-    )
+    world = seated((dummy, "monsters"), (guard, "heroes"), (quarry, "heroes"), log=log)
     apl = arm_dummy(dummy, world, rng=rng)
     guard_apl = bound("- { action: opportunity_attack }", guard, world)
     guard.attach(
@@ -942,9 +953,12 @@ def test_a_dummy_that_closes_to_melee_is_provoked() -> None:
 
     take_turn(world, dummy, 1, policy=apl, rng=rng)
 
-    assert attacks(log) == [(ATTACK, "guard", "Target Dummy", "Greatsword", "hit", 11)]
+    assert attacks(log) == [
+        (ATTACK, "guard", "Target Dummy", "Greatsword", Outcome.HIT, 11)
+    ]
     assert dummy.hp == 60 - 11 == 49
-    assert dummy.position == Cell(7, 0)
+    # Thirty feet along the lowest-`y` route to its stand (§ w2c2's tie-break).
+    assert dummy.position == Cell(7, -1)
     assert guard.economy.reactions == 0
     assert rng.exhausted
 
@@ -963,7 +977,7 @@ def test_a_dummy_that_closes_to_melee_provokes() -> None:
 
     Retreat(runner, dummy, world=world, keep_ft=25).execute(rng=rng)
 
-    assert attacks(log) == [(ATTACK, "Target Dummy", "runner", "Pike", "hit", 7)]
+    assert attacks(log) == [(ATTACK, "Target Dummy", "runner", "Pike", Outcome.HIT, 7)]
     assert runner.hp == HP - 7 == 13
     assert dummy.economy.reactions == 0
     assert rng.exhausted
@@ -1031,9 +1045,7 @@ def test_the_gate_protocol_is_what_the_dispatcher_calls() -> None:
     world = seated((hero, "heroes"), (runner, "monsters"))
     apl = Apl([Entry(OpportunityAttack.ID)]).bind(hero, world)
 
-    assert answering(
-        apl, OpportunityAttack.ID, Marker(hero), leaving(hero, runner)
-    )
+    assert answering(apl, OpportunityAttack.ID, Marker(hero), leaving(hero, runner))
 
 
 # --- the closed vocabulary against the Commands that exist -------------------

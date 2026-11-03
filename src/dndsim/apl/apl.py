@@ -166,10 +166,10 @@ class Apl:
             _compile_entry(entry, self._schema, vocabulary, gates)
             for entry in self._entries
         )
-        by_gate: dict[str, CompiledEntry] = {}
+        by_gate: dict[str, list[CompiledEntry]] = {}
         for compiled in self._compiled:
-            by_gate.setdefault(compiled.gate, compiled)
-        self._by_gate = by_gate
+            by_gate.setdefault(compiled.gate, []).append(compiled)
+        self._by_gate = {gate: _any_of(found) for gate, found in by_gate.items()}
         self._default_move = (
             None
             if any(entry.move for entry in self._entries)
@@ -273,7 +273,7 @@ class Apl:
         passes."""
         namespace = self.namespace
         for entry in self._compiled:
-            if entry.action in offered and _passes(entry, namespace):
+            if entry.action in offered and entry.condition(namespace):
                 return entry
         return None
 
@@ -312,7 +312,7 @@ class Apl:
                 f"{actor.name} was asked through an APL bound to another creature"
             )
         for entry in self._compiled:
-            if not _passes(entry, namespace):
+            if not entry.condition(namespace):
                 continue
             if entry.move is not None:
                 walk = _walk(entry.move, namespace, actor)
@@ -330,16 +330,18 @@ class Apl:
         gated handler act? Unmentioned is OFF. A movement offer binds
         `trigger.mover`, `trigger.origin`, `trigger.destination` and `target`
         to the mover first."""
-        entry = self._by_gate.get(gate_id)
-        if entry is None:
+        condition = self._by_gate.get(gate_id)
+        if condition is None:
             return False
-        namespace = self.namespace
+        namespace = self._namespace
+        if namespace is None:
+            namespace = self.namespace
         if isinstance(ctx, LeaveReachContext):
             mover = namespace.world.holder(ctx.mover)
             if mover is not None:
                 namespace.trigger.offer_movement(mover, ctx.origin, ctx.destination)
                 namespace.target.bind(mover)
-        return _passes(entry, namespace)
+        return bool(condition(namespace))
 
 
 def unprovided(apl: Apl, provided: Iterable[str]) -> frozenset[str]:
@@ -348,6 +350,14 @@ def unprovided(apl: Apl, provided: Iterable[str]) -> frozenset[str]:
     loudly)."""
     known = COMMAND_IDS | {BEST_SCORED} | frozenset(provided)
     return frozenset(entry.action for entry in apl.entries if entry.action not in known)
+
+
+def _any_of(entries: Sequence[CompiledEntry]) -> Callable[[Namespace], Any]:
+    """One gate's question: the first of `entries` whose `if:` passes."""
+    if len(entries) == 1:
+        return entries[0].condition
+    conditions = tuple(entry.condition for entry in entries)
+    return lambda namespace: any(condition(namespace) for condition in conditions)
 
 
 def _compile_entry(
@@ -372,10 +382,6 @@ def _compile_entry(
         move=move,
         gate=gates.get(action, action),
     )
-
-
-def _passes(entry: CompiledEntry, namespace: Namespace) -> bool:
-    return bool(entry.condition(namespace))
 
 
 def _candidates(chosen: Any, kind: Kind) -> tuple[Creature, ...]:

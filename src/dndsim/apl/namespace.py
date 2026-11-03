@@ -2,7 +2,8 @@
 creature over live state, so a compiled clause is attribute access rather than
 object construction (DESIGN.md § Condition language).
 
-Every group is computed from live positions on each read, never cached.
+Every group is filtered on live state on each read; only who is seated on
+which side is kept between reads, until the world seats or unseats someone.
 `docs/decisions.md` § w2e.
 """
 
@@ -170,13 +171,23 @@ class TriggerProxy:
 
 
 class _Side:
-    __slots__ = ("_ref", "_world")
+    __slots__ = ("_ref", "_seated", "_seating", "_world")
 
     def __init__(self, owner: Creature, world: World) -> None:
         self._ref: ReferenceType[Creature] = ref(owner)
         self._world = world
+        self._seating = -1
+        self._seated: tuple[Creature, ...] = ()
 
     def _members(self) -> tuple[Creature, ...]:
+        """The side's seated creatures that are not dead, in seating order."""
+        world = self._world
+        if self._seating != world.seating:
+            self._seated = self._seat(_live(self._ref), world)
+            self._seating = world.seating
+        return tuple(c for c in self._seated if not c.dead)
+
+    def _seat(self, owner: Creature, world: World) -> tuple[Creature, ...]:
         raise NotImplementedError
 
     @property
@@ -205,11 +216,9 @@ class EnemiesProxy(_Side):
 
     __slots__ = ()
 
-    def _members(self) -> tuple[Creature, ...]:
-        owner = _live(self._ref)
-        world = self._world
+    def _seat(self, owner: Creature, world: World) -> tuple[Creature, ...]:
         side = world.side_of(owner)
-        return tuple(c for c in world if not c.dead and world.side_of(c) != side)
+        return tuple(c for c in world if world.side_of(c) != side)
 
     @property
     def in_reach(self) -> tuple[Creature, ...]:
@@ -234,15 +243,9 @@ class AlliesProxy(_Side):
 
     __slots__ = ()
 
-    def _members(self) -> tuple[Creature, ...]:
-        owner = _live(self._ref)
-        world = self._world
+    def _seat(self, owner: Creature, world: World) -> tuple[Creature, ...]:
         side = world.side_of(owner)
-        return tuple(
-            c
-            for c in world
-            if c is not owner and not c.dead and world.side_of(c) == side
-        )
+        return tuple(c for c in world if c is not owner and world.side_of(c) == side)
 
     @property
     def down(self) -> tuple[Creature, ...]:
