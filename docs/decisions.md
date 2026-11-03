@@ -5727,7 +5727,10 @@ held. The owner said to fix everything and merge, which cleared it:
   a root the engine already bound are read off the attack; the offer's facts
   are never scraped from the context. An attacker with no APL and no root passed by its
   caller tells nobody, so a defender then reads its own last offer; every
-  creature `w2g`'s encounter seats is APL-driven (#66), which closes it.
+  creature `w2g`'s encounter seats is APL-driven (#66), which closes it. The
+  check runs on every gated question asked during an attack: the witness
+  goes from 1,885,098 calls to 1,930,358 on `--no-provoking` with the same
+  fights, on top of the rates above and counted in debt #67.
 - **`canonical_hash` keeps `with:` in written order**, as `==` does.
 - **A `toward` move over a group ends at a pick already in reach**: walking
   on toward a later pick would leave the first one's reach.

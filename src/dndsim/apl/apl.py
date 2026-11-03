@@ -395,7 +395,12 @@ def _face(namespace: Namespace, attacker: Combatant, defender: Combatant) -> Non
     root the attacker's offer when it is the newer one."""
     world = namespace.world
     owner = namespace.self.creature
-    striker = world.holder(attacker)
+    if attacker is owner:
+        namespace.target.bind(
+            defender if isinstance(defender, Creature) else world.holder(defender)
+        )
+        return
+    striker = attacker if isinstance(attacker, Creature) else world.holder(attacker)
     if striker is owner:
         namespace.target.bind(world.holder(defender))
         return
