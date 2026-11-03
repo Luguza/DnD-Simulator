@@ -4717,6 +4717,241 @@ keeps the questions in their plain wording and the old wording to its history.
 
 #15 was still open and was put to the human with the rest.
 
+## w2c — the encounter, the roster, and the turn loop
+
+**`engine/` now runs a fight**: `World` is the roster, `roll_initiative()`
+places each creature, `take_turn()` runs one turn between its two boundaries,
+and `Encounter` runs rounds until at most one side is standing. Seven debts are
+retired with it — #29, #30, #35, #41, #47, #50 and #55 — each by the boundary
+or the roster that the loop is the first thing to hold.
+
+### The order is asked, never stored
+
+`Encounter` keeps no list of turns. Each turn goes to the living creature whose
+`InitiativeKey` is the least one greater than the last key to act this round.
+That is the property DESIGN.md § Initiative is a key, not an index asks the key
+for, used directly: a creature that joins mid-round acts this round when its
+place is still ahead and next round otherwise, a creature that leaves is never
+found again, and nobody else's key moves for either. It costs a scan of the
+roster per turn, which at encounter sizes is cheaper than keeping a sorted list
+honest across arrivals. `join()` after the start rolls the joiner's own
+initiative, one independent tiebreak draw, or takes a key it is handed — a
+summon's `sharing_turn()`. A key another seated creature holds is refused,
+since "the least key greater than the last" has a place for only one of two
+equal keys; a second summon sharing a turn takes `sharing_turn(1)`. A key
+handed to `join()` before the start is kept, not re-rolled. A shared-turn key
+is refused before the start: the creature it was taken from has yet to roll,
+so the summon would keep a turn its summoner no longer has. A dead creature takes no turns, and one that dies
+on its own start-of-turn death save takes nothing after it — no economy, no
+offers, no end-of-turn repeat saves, neither turn hook — while the clock still
+passes both of its boundaries. It stays seated, so
+a revival needs no re-seat; `leave()` is for a creature the fight no longer
+holds at all, and gives its store a clock of its own again.
+
+### One clock per encounter, swept only where something is held
+
+**#29 and #55 are one change.** Each store used to keep its own time, so the
+only way to tell every store the time was to call every store, which is the
+32 calls a round § w1k priced. Stores now read a `Clock`, and `World.seat()`
+joins every store in the encounter to one. The clock knows which of its stores
+hold an effect — a store registers on its first effect and leaves on its last
+— so `Clock.expire_before()` and `expire_after()` set the time once and visit
+only those. A store nobody visits still reads the right time, which is what a
+per-store clock could not offer: skipping an empty store left its time stale
+for the first effect applied to it. `EffectStore.expire_before()` and
+`expire_after()` call the same methods on the clock the store reads, so on a
+store seated in an encounter they sweep every store in it, and on one outside
+an encounter they sweep it alone; `Clock.now` is read-only, so nothing else
+moves the time. Such a store starts at
+`TimeKey(1, UNSEATED, START)`, and `UNSEATED` is a seat (`initiative=0`), not a
+position ahead of the order: a duration anchored at or above it reads its turn
+as begun and ends in round 2, one anchored below it in round 1. That is the
+trap `Creature`'s constructor comments, and the reason every store in a fight
+reads the encounter's clock rather than its own.
+
+Each boundary is swept twice, before its hooks and after them, so all four of
+`Expiry`'s cases are honoured: an effect ending at a start through that phase,
+which no `Duration` constructor makes today, is not a case the loop has to
+know is absent.
+
+### The turn's order of business
+
+At the start: the sweep before; every creature's once-per ledger told a turn
+began, `own` for the actor only — `Reset.TURN` is any turn boundary, so the
+loop is what tells the other ledgers, and it tells them before anything rolls
+so a handler on a start-of-turn save sees the budgets this boundary hands
+back; the repeat saves named `TURN_START`; a dying creature's death save; the
+actor's economy handed back at its current Speed, which is where the reaction
+comes back; `on_turn_start`; the sweep after. Both saves come before the
+economy because it reads Speed: a Paralyzed creature that saves, or a dying
+one whose natural 20 wakes it, moves its full Speed on that turn. The
+independent test pass found the first case and the review the second.
+`engine/dying.py`'s predicate is public as `dying()`, read by the loop and by
+`Stabilize`, so the rule for who rolls is written once. At the end: the sweep before, the repeat saves named `TURN_END`,
+`on_turn_end`, the sweep after. The repeat save sits beside the sweep rather
+than beside the hooks — `docs/questions.md` #17 — and is read off
+`SaveRepeat`, never decided here, because `w3f`'s `Perturbation.repeat`
+names the same member (#35). A success removes the effect; the imposer passed
+to the save is its caster as the roster finds it.
+
+### The offer, and what it charges
+
+`offers()` builds every Command in `actions/` against the roster — an Attack
+per living enemy, a Stabilize per ally, then Dodge, Disengage, Dash and the
+pick-up — and keeps those `is_legal()` accepts. `is_legal()` asks
+`ActionEconomy.can_spend()` for the Command's own `COST`, so the loop charges
+the XPHB cost of each offer by construction and an offer the economy cannot
+pay is never shown; `w0i`'s self-buff charged an Action is not a mistake this
+loop can make, because it holds no cost table of its own. The loop re-polls
+after every Command, so a granted slot is offered at once. A policy returning
+something it was not handed raises, and so does a 33rd Command in one turn:
+only a free Command that stays legal can be chosen that often.
+
+`Policy` is a one-method protocol, `choose(actor, offers)`. It is the seat
+`w2e`'s compiled APL takes; nothing here reads an APL.
+
+### Incapacitated is a filter on the economy, not a zeroing (#41)
+
+`ActionEconomy` takes a `denied` predicate, and `Creature` passes whether any
+effect it holds `INCAPACITATES`. While it answers true, `can_spend()` is false
+and `spend()` raises, whatever is in hand. A zeroing method was the
+alternative and is wrong on the rules: a creature Stunned until the start of
+the monk's next turn regains its reaction at the start of its own turn while
+still Stunned, and may use it once the stun ends; zeroing it would lose it for
+the rest of the round. Because the dispatcher's costed handlers ask the same
+`can_spend()`, a reaction feature is denied by the same filter as the turn's
+offers, with no second check. A free Command spends nothing, so
+`Action.is_legal()` also refuses an Incapacitated actor itself: "You can't
+take any action" covers the object interaction, and an Unconscious creature
+above 0 hit points was otherwise offered the weapon it had just dropped. Movement is not denied: Incapacitated does not
+say so, and the conditions that stop movement say Speed 0.
+
+`Effect.INCAPACITATES` and `Effect.SPEED_ZERO` are class attributes rather than
+an `isinstance` against `conditions/`, for the reason `Effect.CONDITION` is
+(§ The `w2b` spec correction): `creatures/` may not import upward.
+
+### Speed has an answer (#47)
+
+`Creature.speed_ft` is 0 while any held effect is `SPEED_ZERO`, and otherwise
+the stat block's Speed less each effect's `speed_reduction_ft`, floored at 0.
+The zero is checked before any reduction or, later, any increase, which is
+"Your Speed is 0 and can't increase" made structural rather than a matter of
+attachment order. Grappled, Paralyzed, Petrified, Restrained and Unconscious
+are `SPEED_ZERO`; Exhaustion takes 5 feet a level. `Dodging` now lapses on
+the real answer and its approximation is gone. Nothing raises Speed yet: the
+first feature that does adds the term, under the zero.
+
+### A third creature is found on the roster (#30)
+
+`apply_pending()` matches a queued target against the event's participants and,
+failing that, asks the first participant's store for its roster. `World` is the
+roster: seating a creature sets it. Outside an encounter there is no roster, so
+the old refusal stands for a creature nothing seats.
+
+### Every writer is handed the log (#50)
+
+The kinds stay with their writers (§ w1i): `RESOURCE_SPENT` in
+`creatures/resources.py`, `EFFECT_APPLIED` and `EFFECT_ENDED` in
+`creatures/effects.py`, `SAVE` in `engine/saves.py`, `DAMAGE` in
+`engine/damage.py`, `INITIATIVE`, `TURN_START`, `TURN_END` and `DEATH_SAVE` in
+`engine/turn.py`, `ROUND_START` and `ROUND_END` in `engine/encounter.py`,
+`HEAL` in `engine/healing.py` and `DROPPED` in `engine/dying.py` — the two
+§ w1j handed to #50. All are written at every level: each is what happened,
+not a roll under it. `HEAL` and `DROPPED` are written to the log the
+creature's store holds, as `INITIATIVE` is, so a drop an attack causes is
+recorded although the attack pipeline hands `resolve_damage()` no log. The
+store and the resources hold the log as a field `World.seat()` sets, since
+they are reached from every hook drain and threading a parameter through each
+would touch every caller; saves and damage take `log=` as `resolve_attack()`
+does. **The attack pipeline does not hand its log to `resolve_damage()`**: its
+`ATTACK` record already carries the damage dealt, and a reporter summing both
+would count every hit twice. A refresh absorbed by an incumbent writes nothing,
+because nothing attached.
+
+### What it cost the benchmark
+
+Priced as sequencing principle 10 asks, the branch before this task against
+this one, each in a sibling worktree on one container.
+
+- **The witness**: the fixed 200-encounter profiled run at seed 0 closes on the
+  same hit points (hero 55, enemies 207, 1,000, 1,000), 6,000 resolutions and
+  the same next draw on both arms, in **1,740,552 calls before and 1,715,734
+  after**: the sweeps of the enemy stores, which never hold anything, are gone,
+  net of what `speed_ft` and the economy's `denied()` now read.
+- **The rate**: eight rounds, the order alternated, `measure(1000, 3)` each:
+  26,104 before and 26,073 after, paired ratio **0.995** (0.964–1.023) —
+  noise. The spike's single-side loop sweeps one store that holds Rage, so the
+  sweep count was never where its time went; the multiplier #55 named is the
+  real loop's, at every creature of a larger roster, and the clock pays it
+  once a boundary.
+
+### Which verdicts count toward the round cap
+
+Only a verdict that reviewed the head it names counts. A push made while the
+previous push's review is still running cancels that review, and the sticky
+comment then says the review did not run on the superseded commit; that is not
+a round, and not a pass either. PR #62's rounds were therefore `35e072a`,
+`421bfd2`, `126b01c` and `0335bd9`; the "did not run" notices on `bc99d9c` and
+`1823c5b` were each superseded within a minute by their own session's next
+push. This was `docs/questions.md` #18 until the human's answers moved process
+choices out of that file.
+
+### What this task deliberately did not do
+
+- **No movement.** The walk, the per-step charge and the opportunity attack are
+  `w2c2`'s; `Dash` is offered and grants feet nothing spends yet.
+- **No APL.** `Policy` is the seat `w2e` fills.
+- **No side but a label.** Two creatures on one `side` string are allies; a
+  charmed creature fighting for the other side is a feature's question.
+- **No surprise.** Incapacitated imposes its Disadvantage on the roll, and that
+  is all an encounter knows of surprise; who is surprised is `w2f`'s scenario.
+
+Sources: `ROADMAP.md` `w2c`, § The W0 debt register #29, #30, #35, #41, #47,
+#50, #55; § The `w2c` spec correction; § w0d, § w1a, § w1c, § w1g, § w1h,
+§ w1i, § w1j, § w1k, § w2b; DESIGN.md § Initiative is a key, not an index,
+§ The APL; XPHB "Combat", "Initiative", Rules Glossary "Incapacitated",
+"Speed".
+
+## The `w2c` merge conflict
+
+PR #62 sat for hours with no CI and no review after its hold was cleared
+(`b1f9c0a`, 2026-11-03), and the watchdog reported it as stalled. The cause was
+not in the PR: `main` had been merged into `milestone/m1-w2` at `739b190`
+earlier that day, carrying the human's answers and the dashboard's restating
+of `docs/questions.md`, and that merge and the PR both edited
+`docs/progress.md`, `docs/questions.md` and `docs/decisions.md`. GitHub runs no
+`pull_request` workflow on a PR it cannot merge, so the reviewer never posted,
+no event reached the task session, and the watchdog's step 5 only ever saw a
+task in flight. Every party followed its procedure; the procedure had no owner
+for a conflict made by a merge into M after a task PR opened.
+
+The fix gives it three, each cheap where it sits (`docs/workflow.md` § The
+milestone branch): whoever merges into M checks the open PRs into M; the task
+session reads its own PR's mergeable state after every push, since no event
+will report a conflict to it (`/next-task` step 5); and the watchdog's step 5
+merges M into a conflicting task PR's head on every firing, the backstop that
+does not depend on either of the other two remembering. The Routine's prompt
+lives in the claude.ai Routines UI, which only the human can edit; the copy in
+`docs/workflow.md` § The chain is the one to paste there.
+
+The resolution itself took the milestone branch's side wherever the human's
+answers had changed a file, and the task's additions on top: the ⏸ row keeps
+its budget-revision name; `docs/questions.md` keeps its plain-wording layout,
+with #17 restated in it; #18 was a process choice, which that file no longer
+holds, and moved to § w2c › Which verdicts count toward the round cap; and
+both new `docs/decisions.md` sections stand, in the order they landed.
+
+The human's ruling on it: **an agent resolves what makes it stuck.** The
+conflict sat for hours because every party that saw it — the task session, the
+watchdog's two-hour notice — was written to report, and the human does not
+watch the loop. `docs/workflow.md` § When the loop is stuck makes resolving
+the general rule: the human is reached only for what § Merge authority and
+§ Plan reviews already reserve to them, and the watchdog's two exceptions
+adopt a dead session's PR or milestone review instead of naming it. Adopting
+is safe against a double start for the same reason the checks were: two hours
+without activity is longer than any live session goes between pushes, and the
+round cap counts the PR's verdicts, so an adopter cannot reset it.
+
 ## w2d — the target dummy
 
 `creatures/dummy.py`: a frozen `DummySpec` holding every knob DESIGN.md § The
@@ -4765,7 +5000,7 @@ register alone.
   cost is that the Dexterity save bonus is also the dummy's initiative
   modifier; AC is unaffected, being `Armour.natural()` (§ w1a).
 - **Legendary Resistance is spent on every failed save** while a use is left
-  — the control spends it the first time it can (`docs/questions.md` #17).
+  — the control spends it the first time it can (`docs/questions.md` #18).
 - **`count` dummies stand in a row along +x, one footprint apart**, from
   `position`. A layout knob is one field when a scenario needs another.
 - **`ThreatProfile` has two members**, `nearest` and `lowest_hp`; a third is

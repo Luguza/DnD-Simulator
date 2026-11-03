@@ -868,3 +868,93 @@ class ConditionWatcher(HookSource):
     def lost(self, ctx: ConditionContext) -> R:
         self.seen.append(f"lost:{ctx.condition.value}")
         return R.APPLIED
+
+
+# --- Speed and incapacitation (`docs/decisions.md` § w2c) -----------------------------
+
+
+@pytest.mark.parametrize(
+    "condition", [Grappled, Paralyzed, Petrified, Restrained, Unconscious]
+)
+def test_a_speed_zero_condition_sets_speed_to_zero(condition: type[Condition]) -> None:
+    """ "Your Speed is 0 and can't increase." — on a Speed of 30."""
+    victim, grappler = combatant("victim"), combatant("grappler", cell=EAST)
+    assert victim.speed_ft == 30
+    if issubclass(condition, SourcedCondition):
+        worn = impose(victim, condition(victim, caster=grappler))
+    else:
+        worn = impose(victim, condition(victim))
+    assert victim.speed_ft == 0
+    victim.effects.remove(worn)
+    assert victim.speed_ft == 30
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [Blinded, Deafened, Incapacitated, Invisible, Poisoned, Prone, Stunned],
+)
+def test_the_other_conditions_leave_speed_alone(condition: type[Condition]) -> None:
+    victim = combatant("victim")
+    impose(victim, condition(victim))
+    assert victim.speed_ft == 30
+
+
+@pytest.mark.parametrize(("levels", "speed"), [(1, 25), (2, 20), (3, 15), (5, 5)])
+def test_exhaustion_reduces_speed_by_five_feet_a_level(levels: int, speed: int) -> None:
+    """ "Your Speed is reduced by a number of feet equal to 5 times your
+    Exhaustion level." 30 - 5 x level."""
+    victim = combatant("victim")
+    for _ in range(levels):
+        victim.effects.apply(Exhaustion(victim))
+    assert victim.speed_ft == speed
+
+
+def test_exhaustion_cannot_take_speed_below_zero() -> None:
+    """Speed 10 at Exhaustion 3: 10 - 15 floors at 0."""
+    victim = Creature(
+        name="slow",
+        stats=StatBlock(abilities=SCORES, max_hp=HP, speed_ft=10),
+        position=ORIGIN,
+    )
+    for _ in range(3):
+        victim.effects.apply(Exhaustion(victim))
+    assert victim.speed_ft == 0
+
+
+def test_speed_zero_wins_over_a_reduction() -> None:
+    victim, grappler = combatant("victim"), combatant("grappler", cell=EAST)
+    victim.effects.apply(Exhaustion(victim))
+    impose(victim, Grappled(victim, caster=grappler))
+    assert victim.speed_ft == 0
+
+
+@pytest.mark.parametrize(
+    ("condition", "incapacitates"),
+    [
+        (Incapacitated, True),
+        (Paralyzed, True),
+        (Petrified, True),
+        (Stunned, True),
+        (Unconscious, True),
+        (Blinded, False),
+        (Poisoned, False),
+        (Prone, False),
+        (Restrained, False),
+    ],
+)
+def test_incapacitated_and_the_four_that_include_it_incapacitate(
+    condition: type[Condition], incapacitates: bool
+) -> None:
+    victim = combatant("victim")
+    worn = impose(victim, condition(victim))
+    assert victim.incapacitated is incapacitates
+    victim.effects.remove(worn)
+    assert not victim.incapacitated
+
+
+def test_the_speed_and_incapacitation_gaps_are_no_longer_declared() -> None:
+    """No condition names the Speed or incapacitation gaps `docs/decisions.md`
+    § w2c closed."""
+    for condition in CONDITIONS.values():
+        for entry in condition.NEEDS_HOOK + condition.APPROXIMATED:
+            assert "#41" not in entry and "#47" not in entry, (condition, entry)

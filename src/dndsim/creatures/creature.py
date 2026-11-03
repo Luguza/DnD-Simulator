@@ -114,11 +114,12 @@ class Creature:
         # it sets it here (`docs/decisions.md` § w1a).
         self.crit_threshold = CRITICAL_HIT_THRESHOLD
         self._armour_class = self._derive_armour_class()
-        self.economy = ActionEconomy()
+        self.economy = ActionEconomy(denied=self._is_incapacitated)
         self.dispatcher = Dispatcher(economy=self.economy)
         # Trap: `UNSEATED` is a seat in the order, not a position ahead of it,
-        # so a duration anchored to a creature that sorts before it already
-        # reads as begun (debt #29).
+        # so until a sweep or a shared clock moves this store, a duration
+        # anchored to a creature that sorts before it already reads as begun
+        # (`docs/decisions.md` § w2c).
         self.effects = EffectStore(self, now=TimeKey(1, UNSEATED, TurnPhase.START))
         # Empty until the build or a feature adds pools.
         self.resources = Resources(self, stats)
@@ -147,11 +148,27 @@ class Creature:
 
     @property
     def speed_ft(self) -> int:
-        return self._stats.speed_ft
+        """Speed now: 0 while an effect sets it so, otherwise the stat block's
+        less what effects take off it, never below 0 (`docs/decisions.md`
+        § w2c)."""
+        speed = self._stats.speed_ft
+        for effect in self.effects:
+            if effect.SPEED_ZERO:
+                return 0
+            speed -= effect.speed_reduction_ft
+        return max(speed, 0)
+
+    @property
+    def incapacitated(self) -> bool:
+        """Whether an effect denies every Action, Bonus Action and Reaction."""
+        return any(effect.INCAPACITATES for effect in self.effects)
 
     @property
     def size(self) -> Size:
         return self._stats.size
+
+    def _is_incapacitated(self) -> bool:
+        return self.incapacitated
 
     def modifier(self, ability: Ability) -> int:
         """The modifier for one ability score."""
