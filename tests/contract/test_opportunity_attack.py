@@ -198,9 +198,7 @@ def test_one_reaction_is_one_opportunity_attack() -> None:
     runner = creature("runner", Cell(0, 0))
     seated.seat(runner, "heroes")
 
-    walk_provoking(
-        runner, (Cell(1, 0), Cell(0, 0), Cell(1, 0)), seated, charge=False
-    )
+    walk_provoking(runner, (Cell(1, 0), Cell(0, 0), Cell(1, 0)), seated, charge=False)
 
     assert len(attacks(seated.log)) == 1
     assert gate.asked == [OpportunityAttack.ID]
@@ -279,7 +277,7 @@ class Takes:
             return None
         for action_id in self.wanted:
             for offer in offers:
-                if offer.ID == action_id:
+                if action_id == offer.ID:
                     return offer
         return None
 
@@ -298,7 +296,9 @@ def _skirmish(
         seated,
         rng=rng,
         initiative=reactor,
-        contexts=PooledContexts(creature("a", Cell(0, 0)), creature("b", Cell(1, 0)), GREATSWORD),
+        contexts=PooledContexts(
+            creature("a", Cell(0, 0)), creature("b", Cell(1, 0)), GREATSWORD
+        ),
     )
     decoy = creature("decoy", Cell(12, 1), initiative=1)
     seated.seat(decoy, "monsters")
