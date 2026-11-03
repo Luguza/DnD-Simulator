@@ -32,9 +32,14 @@ testpaths = ["tests"]
 # on noise gets turned off (DESIGN.md § The benchmark gate). Ask the M0
 # question deliberately with `uv run pytest -m bench`; `w3i` is the task that
 # turns it into a CI gate against a same-run baseline.
-addopts = ["-ra", "--strict-markers", "--strict-config", "-m", "not bench"]
+# `content` needs the gitignored 5etools data (`python -m dndsim.content.fetch`)
+# and is asked the same way: `uv run pytest -m content`.
+addopts = [
+    "-ra", "--strict-markers", "--strict-config", "-m", "not bench and not content"
+]
 markers = [
     "bench: wall-clock performance measurements (roadmap w0i, w3i)",
+    "content: the importer against the fetched 5etools data (roadmap w2a)",
 ]
 
 [tool.ruff]

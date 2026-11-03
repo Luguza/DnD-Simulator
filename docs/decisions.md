@@ -5236,3 +5236,86 @@ The Blowgun's damage is a flat 1 with no die, and `Weapon.damage` is dice only.
 A d1 would double to 2 on a Critical Hit, so `w2a` declares it instead of
 importing it (#63, `w2f`). The row's "38 weapons" stands, as 37 imported plus
 one declared. "`species.json`" is 5etools' `races.json`.
+
+## w2a — the content ACL
+
+### The fields on `Weapon` and `Armour`
+
+The engine halves of the row went to `w2f` (§ The `w2a` spec correction).
+An importer that cannot put the range or the Strength requirement on the
+value it returns would have to drop them, so both are fields now. They are
+additive and default to `None`, so no caller changes, and the `Weapon` protocol stays at six members (§ w1f) until the
+branch that reads the range exists. `versatile_damage` is in for the same
+reason: the Weapon table prints the two-handed die, and an importer that
+dropped it would leave a later task re-reading the source.
+
+### What leaves the package
+
+`Weapon`, `Armour`, `Dice`, the `rules` enums, and three plain records:
+`FeatureText` (a name, a level, prose with every `{@tag}` reduced to what the
+page prints), `ClassTable` and `Species`. No 5etools code (`dmg1`, `2H`, `HA`,
+`casterProgression`) appears in any of them, and the `content`-marked test
+checks every class, subclass and species prose block for a leftover `{@`.
+`ContentError` is defined in `content/loader.py` rather than `core/errors.py`,
+which content work may not touch, and subclasses `DndSimError` like every
+other deliberate raise.
+
+### The Shield is checked, not returned
+
+Holding a shield is `Creature.shield`, worth `SHIELD_AC_BONUS` (§ w1a). The
+importer therefore returns no Shield value. It checks the printed +2 against
+the constant and raises if the two disagree, which is how § w0b asked the
+spell-slot tables to be treated: two copies of one number, checked at the ACL
+rather than one picked as the winner.
+
+### Spell slots, the same way
+
+A caster's `rowsSpellProgression` is compared with `rules.constants.spell_slots`
+and never returned as a column. 5etools labels the 2024 half-caster row
+`artificer`, since the Paladin and Ranger now cast from level 1; it maps to
+`CasterProgression.HALF`, and the check passing on the real data is what shows
+that `HALF_CASTER_SLOTS` is the 2024 row. Pact Magic's "Spell Slots" and
+"Slot Level" columns are checked against `PACT_MAGIC_SLOTS` the same way, and
+are kept as columns too because the Warlock table prints them as columns.
+
+### The Blowgun is declared, not approximated
+
+Its damage is a flat 1 with no die. A `Dice(1, 1)` would import it, and would
+deal 2 on a Critical Hit where the rules deal 1, which is the crit trap
+DESIGN.md § Structural prevention exists to make unwritable. It is listed in
+`weapons.NOT_IMPORTED` with the reason (debt #63). The list is
+checked against the data in both directions: any other weapon without a die
+raises, and an entry the data no longer holds raises too.
+
+### Reference resolution flattens
+
+A `refClassFeature`, `refSubclassFeature` or `refOptionalfeature` inside a
+feature's entries becomes a `FeatureText` of its own, placed right after the
+feature that referenced it. The referencing feature's prose keeps only the
+name. Inlining the text instead would bury Frenzy inside "Path of the
+Berserker", where a W4 author looking for Frenzy would not find it. A
+referenced optional feature, such as an invocation, has no level of its own, so
+it takes the level of the feature that offered it. A reference that names
+nothing raises.
+
+### The tests and the data
+
+`data/` is gitignored, so the contract tests run on hand-built fixtures shaped
+like the 5etools files, one per translation and per refusal. The real data is
+tested under a `content` marker, deselected by default the way `bench` is, and
+asked deliberately with `uv run pytest -m content` after
+`python -m dndsim.content.fetch`. Run without the data, it raises in
+`Dataset()` rather than skipping, so it cannot pass on nothing. CI does not
+fetch the data, and giving it a fetch step is a `.github/workflows/` edit, which
+is the human's to make (`docs/workflow.md` § Merge authority).
+
+### Fetch
+
+`git ls-remote` names the upstream HEAD commit, and a SHA passed in must be a
+full 40-hex commit: a branch or tag name moves, so a `VERSION` holding one
+would cite a tree nobody can fetch again. Every file is then read from
+`raw.githubusercontent.com/…/<sha>/data/`, never from `main`, so the SHA in
+`VERSION` is the tree that was actually read. The files go into a staging
+directory beside the target, and the target is replaced only after the last
+file has arrived. `python -m dndsim.content.fetch [sha]` is the entry point
+until the CLI lands in `w2h`, which wires `dndsim content fetch` to it.

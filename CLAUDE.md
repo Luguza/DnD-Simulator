@@ -269,6 +269,7 @@ there is local to a module.
 | `actions/`, a Command, legality, dropping and picking up a weapon | § w2b, § w2c2 |
 | `creatures/dummy.py`, the target dummy | § w2d |
 | `engine/turn.py`, `encounter.py`, `world.py`, `query.py`, the shared `Clock`, Speed, incapacitation | § w2c, § w2c2 (`Move`) |
+| `content/`, the 5etools import, `table_value()` | § w2a |
 | `creatures/resources.py`, pools, slots, `transaction()` | § w1b, § w2i |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k, § w2i, § w2c2 |
