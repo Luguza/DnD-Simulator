@@ -304,8 +304,9 @@ def _stands(actor: Creature, target: Creature, blocked: frozenset[Cell]) -> list
     reach_cells = actor.reach_ft // CELL_SIZE_FT
     anchor = target.position
     target_width = SIZE_WIDTH_CELLS[target.size]
-    # The box no footprint in reach can lie outside: its far edge within
-    # `reach_cells` of the target's near one, on each axis.
+    # Exactly the anchors whose footprint has the target in reach: its far
+    # edge within `reach_cells` of the target's near one, on each axis, which
+    # is `distance_ft`'s gap between footprints (`docs/decisions.md` § w1d).
     low_x = anchor.x - reach_cells - width + 1
     high_x = anchor.x + target_width - 1 + reach_cells
     low_y = anchor.y - reach_cells - width + 1
@@ -315,14 +316,7 @@ def _stands(actor: Creature, target: Creature, blocked: frozenset[Cell]) -> list
         Cell(x, y)
         for y in range(low_y, high_y + 1)
         for x in range(low_x, high_x + 1)
-        if in_reach(
-            Cell(x, y),
-            anchor,
-            actor.reach_ft,
-            origin_size=actor.size,
-            destination_size=target.size,
-        )
-        and not any(cell in blocked for cell in footprint(Cell(x, y), actor.size))
+        if not any(cell in blocked for cell in footprint(Cell(x, y), actor.size))
     ]
     found.sort(key=lambda cell: (distance_ft(origin, cell), cell.y, cell.x))
     return found
