@@ -20,6 +20,7 @@ from typing import Any, Final
 import pytest
 
 from dndsim.actions.base import Action
+from dndsim.actions.dash import Dash
 from dndsim.actions.dodge import Dodge
 from dndsim.conditions.exhaustion import Exhaustion
 from dndsim.conditions.grappled import Grappled
@@ -29,7 +30,7 @@ from dndsim.conditions.petrified import Petrified
 from dndsim.conditions.stunned import Stunned
 from dndsim.conditions.unconscious import Unconscious
 from dndsim.core.errors import EngineAssemblyError
-from dndsim.core.geometry import Cell
+from dndsim.core.geometry import Cell, in_reach
 from dndsim.core.log import EventLog, LogLevel
 from dndsim.core.rng import ScriptedRng
 from dndsim.core.timeline import Duration, InitiativeKey, Reset, TimeKey, TurnPhase
@@ -45,6 +46,7 @@ from dndsim.engine.turn import (
     INITIATIVE,
     TURN_END,
     TURN_START,
+    Move,
     offers,
     roll_initiative,
     take_turn,
@@ -54,6 +56,7 @@ from dndsim.hooks.contexts import (
     DamageBag,
     HitContext,
     InitiativeContext,
+    MoveContext,
     SavingThrowContext,
     TurnContext,
 )
@@ -283,7 +286,10 @@ def test_a_dead_enemy_and_one_out_of_reach_are_not_offered() -> None:
     seated = world((fighter, "heroes"), (dead, "monsters"), (distant, "monsters"))
     dead.die()
     fighter.economy.turn_started(fighter.speed_ft)
-    assert ids(offers(seated, fighter)) == ["dodge", "disengage", "dash"]
+    offered = offers(seated, fighter)
+    # The distant enemy is offered as somewhere to walk to, not to swing at.
+    assert ids(offered) == ["dodge", "disengage", "dash", "move"]
+    assert getattr(offered[-1], "target", None) is distant
 
 
 def test_a_dying_ally_in_reach_is_offered_a_stabilize() -> None:
@@ -912,3 +918,238 @@ def test_a_heal_is_written_to_the_seated_creatures_log() -> None:
     goblin = next(one for one in seated if one is not pc)
     assert heal(pc, rng=ScriptedRng([6]), dice="1d8", healer=goblin) == 6
     assert kinds(log, HEAL) == [(HEAL, "goblin", "pc", 6)]
+
+
+# --- Move: closing on an enemy (ROADMAP w2c2) ----------------------------------
+
+
+class Held(Effect):
+    """Speed 0 and nothing else."""
+
+    __slots__ = ()
+
+    ID = "test.held"
+    SPEED_ZERO = True
+
+
+class Footsteps(HookSource):
+    """Writes down every `on_move` its owner makes."""
+
+    __slots__ = ("moves",)
+
+    ID = "test.footsteps"
+
+    def __init__(self, owner: Creature) -> None:
+        super().__init__(owner)
+        self.moves: list[tuple[tuple[Cell, ...], int]] = []
+
+    @hook("on_move")
+    def note(self, ctx: MoveContext) -> R:
+        self.moves.append((tuple(Cell(c.x, c.y) for c in ctx.route), ctx.distance_ft))
+        return R.APPLIED
+
+
+def closing(goblin_at: Cell) -> tuple[World, Creature, Creature]:
+    """A fighter at the origin with its turn's 30 feet, and a goblin."""
+    fighter = creature("fighter")
+    goblin = creature("goblin", cell=goblin_at, initiative=SECOND)
+    seated = world((fighter, "heroes"), (goblin, "monsters"))
+    fighter.economy.turn_started(fighter.speed_ft)
+    return seated, fighter, goblin
+
+
+DIAGONAL: Final = (Cell(1, 1), Cell(2, 2), Cell(3, 3))
+"""Three diagonal steps from the origin, five feet each."""
+
+
+def reaches(actor: Creature, target: Creature) -> bool:
+    return in_reach(
+        actor.position,
+        target.position,
+        actor.reach_ft,
+        origin_size=actor.size,
+        destination_size=target.size,
+    )
+
+
+def test_move_is_a_free_command_named_move() -> None:
+    assert Move.ID == "move"
+    assert Move.COST is None
+
+
+def test_a_move_closes_to_reach_and_stops_there() -> None:
+    """Goblin at (4, 4): the one nearest square in reach is (3, 3), three
+    diagonal steps away; 30 - 15 = 15 feet are left."""
+    seated, fighter, goblin = closing(Cell(4, 4))
+
+    walked = Move(fighter, goblin, world=seated).execute(rng=no_dice())
+
+    assert walked == DIAGONAL
+    assert fighter.position == Cell(3, 3)
+    assert fighter.economy.movement_ft == 15
+    assert fighter.economy.actions == 1, "a move spent the Action"
+    assert reaches(fighter, goblin)
+    assert not Move(fighter, goblin, world=seated).is_legal()
+
+
+def test_a_move_is_cut_short_by_the_movement_left() -> None:
+    """Goblin at (10, 10): six diagonal steps of 30 feet reach (6, 6), out of
+    reach, and with nothing left to walk another Move is not legal."""
+    seated, fighter, goblin = closing(Cell(10, 10))
+
+    walked = Move(fighter, goblin, world=seated).execute(rng=no_dice())
+
+    assert len(walked) == 6
+    assert fighter.position == Cell(6, 6)
+    assert fighter.economy.movement_ft == 0
+    assert not reaches(fighter, goblin)
+    assert not Move(fighter, goblin, world=seated).is_legal()
+
+
+def test_a_move_walks_what_is_left_after_an_earlier_one() -> None:
+    """20 feet spent already: four steps, to (4, 0)."""
+    seated, fighter, goblin = closing(Cell(10, 10))
+    fighter.economy.move(10)
+
+    walked = Move(fighter, goblin, world=seated).execute(rng=no_dice())
+
+    assert walked == (Cell(1, 1), Cell(2, 2), Cell(3, 3), Cell(4, 4))
+    assert fighter.economy.movement_ft == 0
+
+
+def test_a_move_ends_on_a_free_square_when_the_nearest_is_taken() -> None:
+    """The fighter's ally stands on (3, 3), the one square in reach of the
+    goblin at (4, 4) that is three steps away. The next nearest, (3, 4) and
+    (4, 3), are four: the move takes four steps, never enters the ally's
+    square, and ends in reach of the goblin."""
+    seated, fighter, goblin = closing(Cell(4, 4))
+    ally = creature("ally", cell=Cell(3, 3))
+    seated.seat(ally, "heroes")
+
+    walked = Move(fighter, goblin, world=seated).execute(rng=no_dice())
+
+    assert len(walked) == 4
+    assert Cell(3, 3) not in walked
+    assert fighter.position in (Cell(3, 4), Cell(4, 3))
+    assert reaches(fighter, goblin)
+
+
+def test_a_target_with_no_free_square_around_it_is_not_moved_toward() -> None:
+    """Every square around the goblin at (5, 0) is filled by its friends."""
+    seated, fighter, goblin = closing(Cell(5, 0))
+    ring = [
+        Cell(5 + dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx, dy) != (0, 0)
+    ]
+    for index, cell in enumerate(ring):
+        seated.seat(creature(f"wall{index}", cell=cell), "monsters")
+
+    assert not Move(fighter, goblin, world=seated).is_legal()
+
+
+@pytest.mark.parametrize(
+    "spoil",
+    ["in-reach", "dead-target", "speed-zero", "no-movement", "itself", "dead-actor"],
+)
+def test_a_move_that_cannot_go_anywhere_useful_is_not_legal(spoil: str) -> None:
+    seated, fighter, goblin = closing(Cell(4, 0))
+    target = goblin
+    if spoil == "in-reach":
+        goblin.position = EAST
+    elif spoil == "dead-target":
+        goblin.die()
+    elif spoil == "speed-zero":
+        fighter.effects.apply(Held(fighter))
+    elif spoil == "no-movement":
+        fighter.economy.move(30)
+    elif spoil == "itself":
+        target = fighter
+    else:
+        fighter.die()
+
+    assert not Move(fighter, target, world=seated).is_legal()
+
+
+def test_a_move_with_less_than_a_square_left_is_not_legal() -> None:
+    seated, fighter, goblin = closing(Cell(4, 0))
+    fighter.economy.move(26)
+
+    assert not Move(fighter, goblin, world=seated).is_legal()
+
+
+def test_an_incapacitated_creature_can_still_move() -> None:
+    """Incapacitated takes Actions, Bonus Actions and Reactions, not
+    movement: the walk is offered and taken."""
+    seated, fighter, goblin = closing(Cell(4, 4))
+    fighter.effects.apply(Incapacitated(fighter))
+
+    offered = offers(seated, fighter)
+
+    assert ids(offered) == ["move"]
+    offered[0].execute(rng=no_dice())
+    assert fighter.position == Cell(3, 3)
+
+
+def test_a_move_dispatches_on_move_with_the_squares_walked() -> None:
+    seated, fighter, goblin = closing(Cell(4, 4))
+    steps = Footsteps(fighter)
+    fighter.attach(steps)
+
+    Move(fighter, goblin, world=seated).execute(rng=no_dice())
+
+    assert steps.moves == [(DIAGONAL, 15)]
+
+
+def test_dash_then_move_walks_twice_the_speed() -> None:
+    """30 + 30 = 60 feet: twelve diagonal steps put the fighter on (12, 12), in
+    reach of the goblin at (13, 13)."""
+    seated, fighter, goblin = closing(Cell(13, 13))
+    Dash(fighter).execute(rng=no_dice())
+
+    walked = Move(fighter, goblin, world=seated).execute(rng=no_dice())
+
+    assert len(walked) == 12
+    assert fighter.position == Cell(12, 12)
+    assert fighter.economy.movement_ft == 0
+    assert reaches(fighter, goblin)
+
+
+def test_offers_end_with_a_move_toward_each_enemy_out_of_reach() -> None:
+    """Seated orc (in reach), far, ally, near-but-out: the attack on the orc,
+    the three of the six that are legal, then a move toward each enemy out of
+    reach in seating order."""
+    fighter = creature("fighter")
+    orc = creature("orc", cell=EAST)
+    far = creature("far", cell=Cell(9, 9))
+    ally = creature("ally", cell=Cell(0, 1))
+    near = creature("near", cell=Cell(-3, 0))
+    seated = world(
+        (orc, "monsters"),
+        (fighter, "heroes"),
+        (far, "monsters"),
+        (ally, "heroes"),
+        (near, "monsters"),
+    )
+    fighter.economy.turn_started(fighter.speed_ft)
+
+    offered = offers(seated, fighter)
+
+    assert ids(offered) == ["attack", "dodge", "disengage", "dash", "move", "move"]
+    assert [getattr(one, "target", None) for one in offered[-2:]] == [far, near]
+
+
+def test_a_turn_can_close_and_then_swing() -> None:
+    """The loop re-polls after the move: the goblin at (4, 4) comes into reach
+    and the Attack is offered. A natural 15 hits AC 12 for 4 + 4 + 3 = 11."""
+    seated, fighter, goblin = closing(Cell(4, 4))
+    order = iter(("move", "attack"))
+
+    def chooser(actor: Creature, offered: Sequence[Action[Any]]) -> Action[Any] | None:
+        wanted = next(order, None)
+        return next((one for one in offered if wanted == one.ID), None)
+
+    rng = ScriptedRng([15, 4, 4])
+    take_turn(seated, fighter, 1, policy=Recorder(chooser), rng=rng)
+
+    assert fighter.position == Cell(3, 3)
+    assert goblin.hp == HP - 11
+    assert rng.exhausted

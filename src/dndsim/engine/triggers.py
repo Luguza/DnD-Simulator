@@ -88,9 +88,9 @@ class MovementWatch:
                 watcher.threatening = False
                 self._offer(watcher, origin, destination)
                 pruning = pruning or watcher.spent
-                if mover.is_down:
-                    # A dropped mover ends the move; later watchers get no
-                    # offer.
+                if mover.is_down or mover.speed_ft == 0:
+                    # A dropped or halted mover never leaves; later watchers
+                    # get no offer.
                     break
             else:
                 watcher.threatening = now

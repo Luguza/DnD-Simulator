@@ -18,13 +18,17 @@ Sources: ROADMAP w0i; DESIGN.md § Performance, § The spike must be pessimistic
 § The benchmark gate; `docs/decisions.md` § w0i.
 """
 
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 
+from dndsim.actions.opportunity_attack import OpportunityAttack, OpportunityAttacks
 from dndsim.core.log import LogLevel
+from dndsim.core.rng import Rng
 from dndsim.core.timeline import Reset
-from dndsim.engine.attack import ATTACK, ATTACK_ROLL
+from dndsim.creatures.economy import ActionEconomy
+from dndsim.engine.attack import ATTACK, ATTACK_ROLL, AttackResult, resolve_attack
 from dndsim.hooks.contexts import Context, RoundContext
 from dndsim.hooks.definitions import ON_HIT
 from dndsim.hooks.source import HookSource
@@ -520,3 +524,98 @@ def test_worker_startup_is_measured_apart_from_the_rate() -> None:
     seconds = measure_startup(workers=2)
 
     assert 0.0 < seconds < 30.0
+
+
+# --- the walk and the opportunity attacks (ROADMAP w2c2) ---------------------
+
+
+class _Counts:
+    """How many attacks the spike's turns made, and how many opportunity attacks
+    the enemies made, counted at the two call sites rather than read back from
+    the spike."""
+
+    def __init__(self) -> None:
+        self.turn = 0
+        self.opportunity = 0
+
+
+def _counted(
+    spike_seed: int, encounters: int, *, provoking: bool
+) -> tuple[int, _Counts]:
+    counts = _Counts()
+    real_turn_attack = resolve_attack
+    real_reaction = OpportunityAttack.resolve
+
+    def turn_attack(*args: Any, **kwargs: Any) -> AttackResult:
+        counts.turn += 1
+        return real_turn_attack(*args, **kwargs)
+
+    def reaction(self: OpportunityAttack, *, rng: Rng) -> AttackResult:
+        counts.opportunity += 1
+        return real_reaction(self, rng=rng)
+
+    with (
+        patch("dndsim.tools.spike.resolve_attack", turn_attack),
+        patch.object(OpportunityAttack, "resolve", reaction),
+    ):
+        spike, rng = build_spike(spike_seed, provoking=provoking)
+        returned = sum(run_encounter(spike, rng) for _ in range(encounters))
+    return returned, counts
+
+
+def test_the_enemies_opportunity_attacks_fire_and_are_not_counted() -> None:
+    """With `provoking`, the hero walking after the skirmisher leaves the other
+    enemies' reach, so opportunity attacks are made; the count the encounter
+    returns is the turn attacks alone (ROADMAP w2c2)."""
+    returned, counts = _counted(0, 5, provoking=True)
+
+    assert counts.opportunity > 0, "no opportunity attack was ever made"
+    assert returned == counts.turn == 5 * _RESOLUTIONS_PER_ENCOUNTER
+
+
+def test_without_provoking_no_enemy_owns_an_opportunity_attack() -> None:
+    spike, _ = build_spike(0, provoking=False)
+    for enemy in spike.enemies:
+        assert not any(
+            isinstance(source, OpportunityAttacks)
+            for source in enemy.dispatcher.sources()
+        )
+
+    returned, counts = _counted(0, 5, provoking=False)
+
+    assert counts.opportunity == 0
+    assert returned == counts.turn == 5 * _RESOLUTIONS_PER_ENCOUNTER
+
+
+@pytest.mark.parametrize("provoking", [False, True])
+def test_either_configuration_reproduces_from_its_seed(provoking: bool) -> None:
+    first, first_rng = build_spike(5, provoking=provoking)
+    second, second_rng = build_spike(5, provoking=provoking)
+
+    for _ in range(3):
+        run_encounter(first, first_rng)
+        run_encounter(second, second_rng)
+
+        assert first.log.records == second.log.records
+        assert first.hero.hp == second.hero.hp
+        assert [e.position for e in first.enemies] == [
+            e.position for e in second.enemies
+        ]
+
+
+def test_the_spikes_walks_are_charged_to_the_economy() -> None:
+    """Debt #28: every step walked in the spike is now paid for, so the
+    benchmark includes the economy call. Counted at `ActionEconomy.move()`."""
+    charged: list[int] = []
+    real_move = ActionEconomy.move
+
+    def move(self: ActionEconomy, distance_ft: int) -> None:
+        charged.append(distance_ft)
+        real_move(self, distance_ft)
+
+    with patch.object(ActionEconomy, "move", move):
+        spike, rng = build_spike(0)
+        run_encounter(spike, rng)
+
+    assert charged, "no step was charged"
+    assert all(feet > 0 and feet % 5 == 0 for feet in charged)

@@ -5060,7 +5060,9 @@ refusal's message, which now names where the second pool lives.
   with the watcher and the mover as participants, so an effect on a third
   creature is found on the roster `w2c` built for #30.
 - **#19.** After each offer the walk stops if the mover is down **or at
-  Speed 0**, on the square it was leaving and with that step uncharged. A
+  Speed 0**, on the square it was leaving and with that step uncharged, and a
+  later watcher left by the same step is not offered it: a held mover leaves
+  nobody's reach. The independent test pass found the second half missing. A
   speed-to-zero reaction (2024 Sentinel) lands through #18 and is read
   through `Creature.speed_ft` (#47).
 - **#20.** `Move` passes `provokes=not disengaged(mover)`. Forced movement and
@@ -5112,7 +5114,8 @@ now the default:
   charged.
 
 `run_encounter()` counts the attacks made on a turn, as before; the 1,600
-opportunity attacks are not in the numerator. `provoking=False`
+opportunity attacks are not in the numerator, and the spike's `World` holds no
+log, so they are not in `spike.log` either. `provoking=False`
 (`--no-provoking`) is the configuration before this task.
 
 **The witness**, the fixed 200-encounter profiled run at seed 0:
@@ -5121,7 +5124,7 @@ opportunity attacks are not in the numerator. `provoking=False`
 |---|---|---|---|---|
 | `w2c`, `78adf99` | 1,740,518 | 55; 207, 1,000, 1,000 | 6,000 | 108454 |
 | this task, `provoking=False` | 1,761,875 | 55; 207, 1,000, 1,000 | 6,000 | 108454 |
-| this task, `provoking=True` | 3,050,291 | 49; 180, 1,000, 1,000 | 6,000 | 401888 |
+| this task, `provoking=True` | 3,055,291 | 49; 180, 1,000, 1,000 | 6,000 | 401888 |
 
 The first two are the same fights; the 21k calls between them are the
 enemies' economies handed back each turn, the per-step charge and the Speed
