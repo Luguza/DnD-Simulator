@@ -5841,12 +5841,15 @@ is the approximation-into-silence § w1h forbids. A melee attack never asks.
 **An opportunity attack is a melee attack.** XPHB "Opportunity Attacks" lets
 the reacting creature "make one melee attack with a weapon or an Unarmed
 Strike". Once `Weapon` can be ranged, `OpportunityAttack` would otherwise
-resolve a Longbow shot as one. It is refused with a ranged weapon, and a thrown
-melee weapon is swung. The Unarmed Strike a Longbow wielder may make instead is
-`w2j`'s, which is why `Creature.reach_ft` stays 5 for that wielder: the reach
+resolve a Longbow shot as one. `OpportunityAttack.is_legal()` refuses it with
+a ranged weapon, rather than the trigger skipping the offer, so the movement
+observer is untouched; a thrown melee weapon is swung. The Unarmed Strike a
+Longbow wielder may make instead is `w2j`'s, and its row now says so, which is
+why `Creature.reach_ft` stays 5 for that wielder: the reach
 is the Unarmed Strike's, and the route search keeps avoiding it.
 
 Ammunition and Loading are not counted; nothing here spends an attack that
 could be refused for lack of ammunition, and Loading binds only with Extra
-Attack, which is not modelled (§ w2b, Attack is one attack). `w2f2` files them as a debt rather than
-leaving them silent.
+Attack, which is not modelled (§ w2b, Attack is one attack). They are debt
+#68, which the next `⏸` plan review places once `w2f` has said what a build
+carries.
