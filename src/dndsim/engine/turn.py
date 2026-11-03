@@ -124,7 +124,10 @@ class Move(Action[tuple[Cell, ...]]):
 
     Paid in feet rather than an economy slot, so `COST` is `None`; legal while
     Incapacitated, which stops no movement. Every other living creature's
-    space is impassable and no destination is inside one
+    space is impassable and no destination is inside one. An actor holding a
+    `CRAWLS` effect pays ten feet a square, and one holding a `NO_APPROACH`
+    effect walks no step that ends closer to its caster than the square it
+    left
     (`docs/decisions.md` § w2c2). `execute()` returns the squares walked.
 
     The route is planned once for the positions the two creatures hold, so
@@ -154,19 +157,18 @@ class Move(Action[tuple[Cell, ...]]):
         actor, target = self.actor, self.target
         if target is actor or target.dead or actor.speed_ft == 0:
             return False
-        if not actor.economy.can_move(CELL_SIZE_FT):
+        if not actor.economy.can_move(_step_ft(actor)):
             return False
-        return bool(self._route())
+        return bool(self._walkable())
 
     def _perform(self, rng: Rng) -> tuple[Cell, ...]:
         actor = self.actor
-        planned = self._route()
-        squares = actor.economy.movement_ft // CELL_SIZE_FT
         walked = walk_provoking(
             actor,
-            planned[:squares],
+            self._walkable(),
             self.world,
             provokes=not disengaged(actor),
+            step_ft=_step_ft(actor),
         )
         if walked:
             moved = MoveContext(
@@ -181,6 +183,35 @@ class Move(Action[tuple[Cell, ...]]):
             )
             moved.close()
         return walked
+
+    def _walkable(self) -> tuple[Cell, ...]:
+        """The route as far as this turn's movement pays for it and fear
+        allows."""
+        actor = self.actor
+        planned = self._route()[: actor.economy.movement_ft // _step_ft(actor)]
+        sources = _sources_of_fear(self.world, actor)
+        if not sources:
+            return planned
+        here = actor.position
+        size = actor.size
+        for index, square in enumerate(planned):
+            for source in sources:
+                before = distance_ft(
+                    here,
+                    source.position,
+                    origin_size=size,
+                    destination_size=source.size,
+                )
+                after = distance_ft(
+                    square,
+                    source.position,
+                    origin_size=size,
+                    destination_size=source.size,
+                )
+                if after < before:
+                    return planned[:index]
+            here = square
+        return planned
 
     def _route(self) -> tuple[Cell, ...]:
         """The shortest legal route to the nearest square from which the
@@ -216,6 +247,26 @@ class Move(Action[tuple[Cell, ...]]):
             if walked and walked[-1] == destination:
                 return walked
         return ()
+
+
+def _step_ft(actor: Creature) -> int:
+    """What one square costs `actor`: double while an effect it holds
+    `CRAWLS`."""
+    for effect in actor.effects:
+        if effect.CRAWLS:
+            return 2 * CELL_SIZE_FT
+    return CELL_SIZE_FT
+
+
+def _sources_of_fear(world: World, actor: Creature) -> tuple[Creature, ...]:
+    """The seated casters of the `NO_APPROACH` effects `actor` holds."""
+    sources: list[Creature] = []
+    for effect in actor.effects:
+        if effect.NO_APPROACH and effect.caster is not None:
+            source = world.holder(effect.caster)
+            if source is not None:
+                sources.append(source)
+    return tuple(sources)
 
 
 def _occupied(world: World, mover: Creature) -> frozenset[Cell]:

@@ -14,17 +14,13 @@ __all__ = ["Frightened"]
 
 class Frightened(SourcedCondition):
     """Afraid of this effect's `caster`: Disadvantage while it is in sight, and
-    no approach."""
+    no approach — refused by the turn loop's `Move` (`docs/decisions.md`
+    § w2c2)."""
 
     __slots__ = ()
 
     CONDITION = enums.Condition.FRIGHTENED
-    NEEDS_HOOK = (
-        "the APL chooses where a creature moves and no route is refused for "
-        "where it ends: \"You can't willingly move closer to the source of "
-        'fear." '
-        "(ROADMAP.md § The W0 debt register #28)",
-    )
+    NO_APPROACH = True
     APPROXIMATED = (
         "the line-of-sight test is not made, because no context carries a "
         "position and nothing can be asked what it sees, so Disadvantage is "

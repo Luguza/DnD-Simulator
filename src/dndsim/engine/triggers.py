@@ -139,7 +139,8 @@ def watch_movement(
 
     `bystanders` is the roster; the mover is skipped, and hostility is not
     asked about (`docs/decisions.md` § w0g3). `provokes=False` returns `None`:
-    the valve for movement that does not provoke (debt #20).
+    the valve for movement that does not provoke: forced movement and
+    teleportation (`docs/decisions.md` § w2c2).
     """
     if not provokes:
         return None
@@ -196,6 +197,7 @@ def walk_provoking(
     *,
     provokes: bool = True,
     charge: bool = True,
+    step_ft: int = CELL_SIZE_FT,
 ) -> tuple[Cell, ...]:
     """Walk `mover` along `route` square by square, provoking on the way out.
 
@@ -205,7 +207,8 @@ def walk_provoking(
 
     Each offer is made while the mover is still on the square it is leaving,
     and the position moves afterwards (`docs/decisions.md` § w0g3). With
-    `charge`, each step walked spends five feet of the mover's movement;
+    `charge`, each step walked spends `step_ft` of the mover's movement — ten
+    for a creature crawling;
     raises `EconomyError` before anything moves when the route costs more
     than the mover has left, or when it is at Speed 0.
     """
@@ -215,11 +218,11 @@ def walk_provoking(
             f"{mover.name} has a Speed of 0 and cannot move; ask `speed_ft` "
             "before walking it"
         )
-    if charge and not economy.can_move(len(route) * CELL_SIZE_FT):
+    if charge and not economy.can_move(len(route) * step_ft):
         raise EconomyError(
             f"{mover.name} has {economy.movement_ft} ft of movement left and "
-            f"the route is {len(route) * CELL_SIZE_FT} ft; truncate it with "
-            "`steps_within()` before walking it"
+            f"the route costs {len(route) * step_ft} ft; truncate it before "
+            "walking it"
         )
     watch = watch_movement(mover, bystanders, squares=len(route), provokes=provokes)
     if watch is None:
@@ -228,7 +231,7 @@ def walk_provoking(
         if not route:
             return ()
         if charge:
-            economy.move(len(route) * CELL_SIZE_FT)
+            economy.move(len(route) * step_ft)
         mover.position = route[-1]
         return tuple(route)
     walked = []
@@ -237,7 +240,7 @@ def walk_provoking(
         if mover.is_down or mover.speed_ft == 0:
             break
         if charge:
-            economy.move(CELL_SIZE_FT)
+            economy.move(step_ft)
         mover.position = square
         walked.append(square)
     return tuple(walked)

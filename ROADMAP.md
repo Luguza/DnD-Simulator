@@ -291,7 +291,7 @@ then retired two (#33, #52), re-owned five and left one at its round cap
 #48), and the `w2c` spec correction left one at its round cap (#58), and
 `w2c` has retired seven (#29, #30, #35, #41, #47, #50, #55), and `w2d` has
 opened one (#59), and `w2c2` has retired five (#18, #19, #20, #26, #28) and
-opened two (#60, #61), so the table stands at thirty-three.
+opened three (#60–#62), so the table stands at thirty-four.
 Every one of them was the right thing to write — a hostile spike needs real
 machinery now, not finished machinery later — and every one of them is invisible
 six months from now, when the file around it has grown and the paragraph
@@ -345,6 +345,7 @@ M0 / W1 milestone review).
 | 59 | The dummy's turn knobs are data nothing acts on: `movement_profile`, `threat_profile`, `damage_per_round`, `regeneration` and `save_dc` | `creatures/dummy.py` (the data), read by `apl/` and `engine/turn.py` | `w2e` for `movement_profile` and `threat_profile`; `w2g` for `damage_per_round`, `regeneration` and `save_dc` | `w2d` depends only on `w1a`, and each of these acts on the dummy's turn: moving needs `w2c2`'s walk, picking a target is the APL's `target:` clause, a scripted attack needs the turn to make it in and an attack bonus `engine/attack.py` does not take as a number, and Regeneration fires at the start of a turn `w2c` dispatches with no generator to hand `engine/healing.py`'s `heal()`. So `w2d` holds them on `DummySpec`, validated, and nothing reads them (`docs/decisions.md` § w2d). **`w2d`'s done-when clause "a dummy that closes to melee provokes and is provoked" moves with `movement_profile` to `w2e`**: its `move:` clause is where positioning is decided and it is the first row that has the walk; it maps `static` to no movement, `closes_to_melee` to its own default, and `kites_at(r)` to a retreat to `r` feet, and owes that test. `w2g` is the first row that runs a dummy in an encounter, so the attack routine and Regeneration become behaviour there |
 | 60 | `Move` treats every other creature's space as impassable | `engine/turn.py` | `w2e`, with the `move:` clause | XPHB "Moving Around Other Creatures" lets a mover pass through an ally's space, an Incapacitated creature's, a Tiny one's or one two sizes from its own, each as Difficult Terrain. Blocking them is never illegal movement, but a creature walled in by its own side takes a longer route or none, and Difficult Terrain is charged nowhere (`docs/decisions.md` § w2c2) |
 | 61 | An Unconscious creature keeps its Shield's +2 AC | `creatures/creature.py`, `conditions/unconscious.py` | **the plan review after `w2c2`**, to place | the owner's answer to `docs/questions.md` #15: the shield stays held, but its bonus needs a conscious block, so an Unconscious creature's AC is 2 too high while it holds one (`docs/decisions.md` § w2c2) |
+| 62 | No creature can right itself from Prone | `conditions/prone.py`, a Command when a row owns it | **the plan review after `w2c2`**, to place | XPHB Prone: "spend an amount of movement equal to half your Speed (round down) to right yourself and thereby end the condition". Crawling is charged (`docs/decisions.md` § w2c2); standing up is not offered, so a creature knocked Prone — today only one waking from Unconscious — crawls at double cost for the rest of the fight |
 
 ### What the W1 critical-path gate changed
 

@@ -149,6 +149,12 @@ class Effect(HookSource):
     SPEED_ZERO: ClassVar[bool] = False
     """Whether holding it sets Speed to 0, ahead of every adjustment."""
 
+    CRAWLS: ClassVar[bool] = False
+    """Whether holding it makes every foot of movement cost an extra foot."""
+
+    NO_APPROACH: ClassVar[bool] = False
+    """Whether holding it forbids moving willingly closer to its `caster`."""
+
     def __init__(
         self,
         owner: Combatant,

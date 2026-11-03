@@ -5095,6 +5095,25 @@ which never produces illegal movement but forbids passing through an ally:
 `is_legal()` then `execute()` plans once rather than three times — the spike's
 witness was 3.99M calls before that and 3.03M after.
 
+### Fear and crawling, which a walk that costs something has to ask
+
+Two conditions declared their movement clauses unwritable while nothing spent
+movement and nothing chose a walk (#28 was their owner), and this task makes
+both writable, so `Move` asks them. Following `INCAPACITATES` and `SPEED_ZERO`
+(§ w2c), `Effect` gained two flags, so `engine/` names no condition:
+
+- **`CRAWLS`** (Prone): each square costs ten feet, so `walk_provoking()` takes
+  a `step_ft` and `Move` truncates the route by it. Righting oneself is a
+  separate choice nothing offers yet: #62.
+- **`NO_APPROACH`** (Frightened): "You can't willingly move closer to the
+  source of fear." `Move` walks the route only up to the first step that ends
+  nearer the effect's caster than the square it left, and is not offered when
+  that is the first step. A detour around the source is not searched for; a
+  Frightened creature that cannot close without approaching stays put.
+
+Grappled's dragging clause is a Grapple's, and now cites #57, which owns it.
+The review of this PR found both.
+
 ### What it cost the benchmark
 
 `tools/spike.py` was a configuration in which no offer could fire: the hero
@@ -5124,14 +5143,15 @@ log, so they are not in `spike.log` either. `provoking=False`
 |---|---|---|---|---|
 | `w2c`, `78adf99` | 1,740,518 | 55; 207, 1,000, 1,000 | 6,000 | 108454 |
 | this task, `provoking=False` | 1,761,875 | 55; 207, 1,000, 1,000 | 6,000 | 108454 |
-| this task, `provoking=True` | 3,055,291 | 49; 180, 1,000, 1,000 | 6,000 | 401888 |
+| this task, `provoking=True` | 3,125,261 | 49; 180, 1,000, 1,000 | 6,000 | 401888 |
 
 The first two are the same fights; the 21k calls between them are the
 enemies' economies handed back each turn, the per-step charge and the Speed
 read before each walk. The third is new work, attributed by cumulative time
 in the same profile: the 1,600 opportunity attacks 0.26 s (inside
 `MovementWatch._offer()`'s 0.31 s), the enemies' `Move` planning 0.44 s over
-3,000 plans, `walk_provoking()` 0.54 s in all, against `resolve_attack()`'s
+3,000 plans (70k calls more since, the `CRAWLS` and `NO_APPROACH` scans of
+each mover's effects), `walk_provoking()` 0.54 s in all, against `resolve_attack()`'s
 1.50 s for the 7,600 attacks made. The hero's lowest closing HP over the run
 is 19, so it never drops and Uncanny Dodge's gate still answers.
 
@@ -5172,6 +5192,7 @@ row asked to be re-run.
 - **No attachment of `OpportunityAttacks` at seating.** `w2f`'s loader.
 
 Sources: `ROADMAP.md` `w2c2`, § The W0 debt register #18–#22, #26, #28, #34,
-#60, #61; § Sequencing principles 10; § w0g3, § w1f, § w2b, § w2c; DESIGN.md
+#57, #60–#62; § Sequencing principles 10; § w0g3, § w1f, § w2b, § w2c; DESIGN.md
 § Reactions in the APL, § The APL, § Module layout; XPHB "Combat" ->
-Opportunity Attacks, "Movement and Position", "Actions" -> Disengage.
+Opportunity Attacks, "Movement and Position", "Actions" -> Disengage; Rules
+Glossary "Frightened", "Prone".
