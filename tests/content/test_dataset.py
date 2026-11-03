@@ -4,6 +4,8 @@ Needs `python -m dndsim.content.fetch` first; run with `pytest -m content`.
 Without the data, `Dataset()` raises rather than the test passing on nothing.
 """
 
+import re
+
 import pytest
 
 from dndsim.content.loader import Dataset
@@ -15,6 +17,9 @@ from dndsim.core.dice import Dice
 from dndsim.rules.enums import Mastery
 
 pytestmark = pytest.mark.content
+
+SOURCE_CODE = re.compile(r"\b(?:X?PHB|EFA|XMM|XDMG)\b")
+"""A source abbreviation, which a tag read at the wrong segment prints."""
 
 CLASSES = (
     "Barbarian",
@@ -86,6 +91,10 @@ def test_no_5etools_markup_escapes_a_feature(data: Dataset) -> None:
     texts = [f for cls in CLASSES for f in class_features(data, cls)]
     texts += subclass_features(data, "Barbarian", "Berserker")
     texts += [t for s in species(data).values() for t in s.traits]
-    leaked = [f.name for f in texts if "{@" in f.text or "{@" in f.name]
+    leaked = [
+        f.name
+        for f in texts
+        if "{@" in f.text + f.name or SOURCE_CODE.search(f.text + f.name)
+    ]
     assert texts
     assert leaked == []

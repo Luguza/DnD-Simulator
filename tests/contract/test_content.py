@@ -352,6 +352,11 @@ def test_a_missing_file_is_a_content_error(tmp_path: Path) -> None:
         ("{@filter Cantrips|spells|level=0}", "Cantrips"),
         ("{@quickref Cover||3||cover}", "cover"),
         ("{@i {@spell Shield|XPHB}}", "Shield"),
+        ("{@classFeature Rage|Barbarian|XPHB|1}", "Rage"),
+        ("{@classFeature Rage|Barbarian|XPHB|1|XPHB|raging}", "raging"),
+        ("{@subclassFeature Frenzy|Barbarian|XPHB|Berserker|XPHB|3}", "Frenzy"),
+        ("{@subclass Armorer|Artificer|EFA|EFA}", "Armorer"),
+        ("{@deity Bane|Faerûnian|FRHoF}", "Bane"),
         ("no tags", "no tags"),
     ],
 )

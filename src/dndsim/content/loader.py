@@ -83,6 +83,14 @@ _FIRST_SEGMENT_TAGS: Final = frozenset(
     {"5etools", "book", "damage", "dice", "filter", "i", "b", "link", "note"}
 )
 
+# Tags whose display text follows a key longer than `name|source`.
+_DISPLAY_SEGMENT: Final = {
+    "classFeature": 5,
+    "deity": 3,
+    "subclass": 4,
+    "subclassFeature": 7,
+}
+
 
 def _display(match: re.Match[str]) -> str:
     tag, body = match[1], match[2] or ""
@@ -93,6 +101,9 @@ def _display(match: re.Match[str]) -> str:
         return f"+{parts[0]}" if not parts[0].startswith(("+", "-")) else parts[0]
     if tag == "quickref":
         return parts[4] if len(parts) > 4 and parts[4] else parts[0]
+    if tag in _DISPLAY_SEGMENT:
+        at = _DISPLAY_SEGMENT[tag]
+        return parts[at] if len(parts) > at and parts[at] else parts[0]
     if tag not in _FIRST_SEGMENT_TAGS and len(parts) > 2 and parts[2]:
         return parts[2]
     return parts[0]
