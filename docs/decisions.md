@@ -5319,3 +5319,7 @@ would cite a tree nobody can fetch again. Every file is then read from
 directory beside the target, and the target is replaced only after the last
 file has arrived. `python -m dndsim.content.fetch [sha]` is the entry point
 until the CLI lands in `w2h`, which wires `dndsim content fetch` to it.
+
+## The W2 mid-wave review (w2c, w2c2, w2d, w2a) and the M0 budget revision
+
+In progress.
