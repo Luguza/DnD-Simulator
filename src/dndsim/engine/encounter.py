@@ -80,14 +80,18 @@ class Encounter:
         when the fight has begun, with everyone else otherwise — unless
         `initiative` places it, a summon's `sharing_turn()`; no other
         creature's key moves. Raises `ValueError` for a key another seated
-        creature holds: the order would have no place for one of the two; and
-        for a key taken from a creature not yet rolled for, which `run()`
-        would never move off `UNSEATED`."""
-        if initiative is not None and _unrolled(initiative):
+        creature holds: the order would have no place for one of the two; and,
+        before the start, for `UNSEATED` or a `sharing_turn()` key, since the
+        creature it was taken from has yet to roll."""
+        if (
+            initiative is not None
+            and not self._started
+            and (initiative.after or _unrolled(initiative))
+        ):
             raise ValueError(
-                f"{creature.name} was placed at {initiative}, a key taken from a "
-                "creature nobody has rolled initiative for; join it once the "
-                "fight has begun"
+                f"{creature.name} was placed at {initiative} before the fight "
+                "began, but the creature whose turn it shares has yet to roll "
+                "initiative; join it once the fight has begun"
             )
         if initiative is not None and any(
             other.initiative == initiative for other in self.world

@@ -861,3 +861,38 @@ def test_a_placement_before_the_start_with_a_real_key_is_kept() -> None:
     assert beast in world
     assert beast.initiative == key
     assert turns(log) == [(1, "a"), (1, "beast"), (1, "b")]
+
+
+@pytest.mark.parametrize(
+    "order",
+    [(0,), (1, 0)],
+    ids=["sharing-turn", "nested-chain"],
+)
+def test_a_placement_before_the_start_sharing_a_real_key_is_refused(
+    order: tuple[int, ...],
+) -> None:
+    """Before `run()`, a key shared off a summoner holding a real key raises
+    `ValueError` and seats nobody."""
+    world, _, _ = two_sides()
+    summoner = Creature(
+        name="summoner",
+        stats=StatBlock(abilities=scores(), max_hp=HP),
+        position=ORIGIN,
+        weapon=GREATSWORD,
+        initiative=InitiativeKey(15, 14, False, 0.5),
+    )
+    beast = creature("beast")
+    encounter = Encounter(
+        world, policy=Passive(), rng=ScriptedRng(A_THEN_B), max_rounds=1
+    )
+    encounter.join(summoner, "x")
+    roster = list(world)
+    key = summoner.initiative
+    for step in order:
+        key = key.sharing_turn(step)
+
+    with pytest.raises(ValueError):
+        encounter.join(beast, "x", initiative=key)
+
+    assert beast not in world
+    assert list(world) == roster

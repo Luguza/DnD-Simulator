@@ -111,7 +111,7 @@ def offers(world: World, actor: Creature) -> list[Action[Any]]:
     """Every Command `actor` could take now and pay for, in a fixed order.
 
     Built from the six in `actions/` against the roster, then filtered by
-    `is_legal()`, which charges each its XPHB cost against the economy.
+    `is_legal()`. Spends nothing.
     """
     log = world.log
     candidates: list[Action[Any]] = [

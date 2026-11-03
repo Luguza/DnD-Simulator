@@ -4739,9 +4739,9 @@ initiative, one independent tiebreak draw, or takes a key it is handed — a
 summon's `sharing_turn()`. A key another seated creature holds is refused,
 since "the least key greater than the last" has a place for only one of two
 equal keys; a second summon sharing a turn takes `sharing_turn(1)`. A key
-handed to `join()` before the start is kept, not re-rolled, unless it was
-taken from a creature nobody has rolled for: `UNSEATED.sharing_turn()` would
-act at initiative 0 every round, so `join()` refuses it. A dead creature takes no turns, and one that dies
+handed to `join()` before the start is kept, not re-rolled. A shared-turn key
+is refused before the start: the creature it was taken from has yet to roll,
+so the summon would keep a turn its summoner no longer has. A dead creature takes no turns, and one that dies
 on its own start-of-turn death save takes nothing after it — no economy, no
 offers, no end-of-turn repeat saves, neither turn hook — while the clock still
 passes both of its boundaries. It stays seated, so
