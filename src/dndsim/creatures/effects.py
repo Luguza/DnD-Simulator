@@ -253,19 +253,24 @@ class Clock:
     """The time a set of stores reads, and which of them hold anything.
 
     `expire_before()` and `expire_after()` set the time and sweep only the
-    stores holding an effect (`docs/decisions.md` § w2c).
+    stores holding an effect (`docs/decisions.md` § w2c). Nothing else moves
+    the time.
     """
 
-    __slots__ = ("_holding", "now")
+    __slots__ = ("_holding", "_now")
 
     def __init__(self, now: TimeKey) -> None:
-        self.now = now
+        self._now = now
         self._holding: list[EffectStore] = []
+
+    @property
+    def now(self) -> TimeKey:
+        return self._now
 
     def expire_before(self, now: TimeKey) -> None:
         """Set the time to `now`, and drop from every store what is due to end
         before `now`'s handlers run."""
-        self.now = now
+        self._now = now
         if self._holding:
             for store in tuple(self._holding):
                 store._sweep(now, through=False)
@@ -273,7 +278,7 @@ class Clock:
     def expire_after(self, now: TimeKey) -> None:
         """Set the time to `now`, and drop from every store what is due to end
         once `now`'s handlers have run."""
-        self.now = now
+        self._now = now
         if self._holding:
             for store in tuple(self._holding):
                 store._sweep(now, through=True)
@@ -389,16 +394,14 @@ class EffectStore:
             self._announce_condition(ON_CONDITION_LOST, condition)
 
     def expire_before(self, now: TimeKey) -> None:
-        """Drop everything due to end *before* `now`'s handlers run, and set
-        the store's clock to `now`."""
-        self._clock.now = now
-        self._sweep(now, through=False)
+        """`Clock.expire_before()` on the clock this store reads, which sweeps
+        every store reading it, not this one alone."""
+        self._clock.expire_before(now)
 
     def expire_after(self, now: TimeKey) -> None:
-        """Drop everything due to end once `now`'s handlers have run, and set
-        the store's clock to `now`."""
-        self._clock.now = now
-        self._sweep(now, through=True)
+        """`Clock.expire_after()` on the clock this store reads, which sweeps
+        every store reading it, not this one alone."""
+        self._clock.expire_after(now)
 
     def _sweep(self, now: TimeKey, *, through: bool) -> None:
         if not self._held:

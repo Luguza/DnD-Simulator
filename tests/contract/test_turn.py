@@ -32,11 +32,13 @@ from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.geometry import Cell
 from dndsim.core.log import EventLog, LogLevel
 from dndsim.core.rng import ScriptedRng
-from dndsim.core.timeline import InitiativeKey, Reset
+from dndsim.core.timeline import Duration, InitiativeKey, Reset, TimeKey, TurnPhase
 from dndsim.creatures.creature import UNSEATED, Creature
 from dndsim.creatures.effects import Effect, RepeatSave
 from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
 from dndsim.engine.damage import resolve_damage
+from dndsim.engine.dying import DROPPED
+from dndsim.engine.healing import HEAL, heal
 from dndsim.engine.saves import SAVE, saving_throw
 from dndsim.engine.turn import (
     DEATH_SAVE,
@@ -814,3 +816,99 @@ def test_once_per_turn_budgets_are_back_before_the_starts_repeat_save() -> None:
     assert steady.fired == 2
     assert not goblin.incapacitated
     assert rng.exhausted
+
+
+# --- A death on the turn's own death save (hold findings, PR #62) -------------
+
+
+class Boundaries(HookSource):
+    """Counts the turn hooks that reach its owner."""
+
+    __slots__ = ("seen",)
+    ID = "test.boundaries"
+
+    def __init__(self, owner: Creature) -> None:
+        super().__init__(owner)
+        self.seen: list[str] = []
+
+    @hook("on_turn_start")
+    def started(self, ctx: TurnContext) -> R:
+        self.seen.append("start")
+        return R.APPLIED
+
+    @hook("on_turn_end")
+    def ended(self, ctx: TurnContext) -> R:
+        self.seen.append("end")
+        return R.APPLIED
+
+
+def test_a_character_that_dies_on_its_own_death_save_takes_nothing_after_it() -> None:
+    """Two failures already; a natural 1 counts two more, a third: dead (XPHB
+    "Death Saving Throws"). The turn then rolls no end-of-turn repeat save
+    (no `SAVE` record, no second draw), fires neither turn hook and asks the
+    policy nothing, but its boundaries are still written."""
+    seated, pc, log = downed()
+    pc.fail_death_save(2)
+    pc.effects.apply(
+        Stunned(pc, repeat_save=RepeatSave(Ability.WISDOM, DC, SaveRepeat.TURN_END))
+    )
+    boundaries = Boundaries(pc)
+    pc.attach(boundaries)
+    policy = Recorder()
+    rng = ScriptedRng([1])
+
+    assert take_turn(seated, pc, 1, policy=policy, rng=rng) == 0
+
+    assert pc.dead
+    assert rng.exhausted
+    assert kinds(log, SAVE) == []
+    assert boundaries.seen == []
+    assert policy.calls == []
+    assert kinds(log, TURN_START, TURN_END) == [
+        (TURN_START, 1, "pc"),
+        (TURN_END, 1, "pc"),
+    ]
+
+
+# --- One clock moves every seated store (hold findings, PR #62) ---------------
+
+
+def test_a_seated_stores_own_sweep_sweeps_every_store_on_the_clock() -> None:
+    """The goblin's Stun ends at the end of its next turn, round 1 at the
+    latest. Sweeping the fighter's store through the end of round 3 moves the
+    encounter's clock, so it sweeps the goblin's store too."""
+    seated, fighter, goblin = duel()
+    goblin.effects.apply(
+        Stunned(goblin, duration=Duration.until_end_of_next_turn_of(SECOND))
+    )
+    later = TimeKey(3, FIRST, TurnPhase.END)
+
+    fighter.effects.expire_after(later)
+
+    assert seated.clock.now == later
+    assert goblin.effects.now == later
+    assert not goblin.incapacitated
+
+
+def test_the_clocks_time_cannot_be_set_except_by_a_sweep() -> None:
+    seated, _, _ = duel()
+    with pytest.raises(AttributeError):
+        seated.clock.now = TimeKey(3, FIRST, TurnPhase.END)  # type: ignore[misc]
+
+
+# --- Heals and drops are written (hold findings, PR #62) -----------------------
+
+
+def test_a_drop_to_zero_is_written_to_the_seated_creatures_log() -> None:
+    """`(DROPPED, attacker, creature, dead)`: 20 damage on 20 hit points,
+    overflow 0, so a dying pc, not a dead one."""
+    _, _, log = downed()
+    assert kinds(log, DROPPED) == [(DROPPED, None, "pc", False)]
+
+
+def test_a_heal_is_written_to_the_seated_creatures_log() -> None:
+    """`(HEAL, healer, creature, regained)`: 1d8 rolls 6 on a pc at 0."""
+    seated, pc, log = downed()
+    goblin = next(one for one in seated if one is not pc)
+    assert heal(pc, rng=ScriptedRng([6]), dice="1d8", healer=goblin) == 6
+    assert kinds(log, HEAL) == [(HEAL, "goblin", "pc", 6)]

@@ -36,6 +36,7 @@ from dndsim.rules.constants import (
 from dndsim.rules.enums import Ability
 
 __all__ = [
+    "DROPPED",
     "MEDICINE",
     "STABILIZE_DC",
     "DeathSaveResult",
@@ -45,6 +46,11 @@ __all__ = [
     "dying",
     "stabilize",
 ]
+
+DROPPED: Final = "dropped"
+"""`(DROPPED, attacker, creature, dead)`, at every level: damage reduced
+`creature` to 0 hit points and nothing prevented it, `dead` whether it died
+outright; written to the log the creature's effect store holds."""
 
 MEDICINE: Final = "medicine"
 """The skill a stabilising check is made with, as `AbilityCheckContext.skill`
@@ -107,6 +113,16 @@ def dropped_to_zero(
         creature.die()
     else:
         creature.effects.apply(Downed(creature))
+    log = creature.effects.log
+    if log is not None:
+        log.write(
+            (
+                DROPPED,
+                None if attacker is None else attacker.name,
+                creature.name,
+                creature.dead,
+            )
+        )
 
     if attacker is not None:
         kill = KillContext(killer=attacker, victim=creature)

@@ -259,7 +259,8 @@ def resolve_damage(
     `critical` is whether the damage is a Critical Hit's (XPHB, "Dropping to 0
     Hit Points" -> Damage at 0 Hit Points; `docs/decisions.md` § w1j).
 
-    `log`, when given, is written a `DAMAGE` record for damage that landed.
+    `log`, when given, is written a `DAMAGE` record of the total after every
+    defence, temporary hit points included, whenever that total is above zero.
     """
     incoming = contexts.incoming(defender=defender, attacker=attacker, amounts=amounts)
     if halved_by is not None:

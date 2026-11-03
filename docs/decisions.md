@@ -4711,7 +4711,10 @@ initiative, one independent tiebreak draw, or takes a key it is handed — a
 summon's `sharing_turn()`. A key another seated creature holds is refused,
 since "the least key greater than the last" has a place for only one of two
 equal keys; a second summon sharing a turn takes `sharing_turn(1)`. A key
-handed to `join()` before the start is kept, not re-rolled. A dead creature takes no turns and stays seated, so
+handed to `join()` before the start is kept, not re-rolled. A dead creature takes no turns, and one that dies
+on its own start-of-turn death save takes nothing after it — no economy, no
+offers, no end-of-turn repeat saves, neither turn hook — while the clock still
+passes both of its boundaries. It stays seated, so
 a revival needs no re-seat; `leave()` is for a creature the fight no longer
 holds at all, and gives its store a clock of its own again.
 
@@ -4726,8 +4729,10 @@ hold an effect — a store registers on its first effect and leaves on its last
 only those. A store nobody visits still reads the right time, which is what a
 per-store clock could not offer: skipping an empty store left its time stale
 for the first effect applied to it. `EffectStore.expire_before()` and
-`expire_after()` keep their meaning, setting the clock they read and sweeping
-themselves, for a store outside an encounter. Such a store starts at
+`expire_after()` call the same methods on the clock the store reads, so on a
+store seated in an encounter they sweep every store in it, and on one outside
+an encounter they sweep it alone; `Clock.now` is read-only, so nothing else
+moves the time. Such a store starts at
 `TimeKey(1, UNSEATED, START)`, and `UNSEATED` is a seat (`initiative=0`), not a
 position ahead of the order: a duration anchored at or above it reads its turn
 as begun and ends in round 2, one anchored below it in round 1. That is the
@@ -4819,8 +4824,12 @@ The kinds stay with their writers (§ w1i): `RESOURCE_SPENT` in
 `creatures/resources.py`, `EFFECT_APPLIED` and `EFFECT_ENDED` in
 `creatures/effects.py`, `SAVE` in `engine/saves.py`, `DAMAGE` in
 `engine/damage.py`, `INITIATIVE`, `TURN_START`, `TURN_END` and `DEATH_SAVE` in
-`engine/turn.py`, `ROUND_START` and `ROUND_END` in `engine/encounter.py`. All
-are written at every level: each is what happened, not a roll under it. The
+`engine/turn.py`, `ROUND_START` and `ROUND_END` in `engine/encounter.py`,
+`HEAL` in `engine/healing.py` and `DROPPED` in `engine/dying.py` — the two
+§ w1j handed to #50. All are written at every level: each is what happened,
+not a roll under it. `HEAL` and `DROPPED` are written to the log the
+creature's store holds, as `INITIATIVE` is, so a drop an attack causes is
+recorded although the attack pipeline hands `resolve_damage()` no log. The
 store and the resources hold the log as a field `World.seat()` sets, since
 they are reached from every hook drain and threading a parameter through each
 would touch every caller; saves and damage take `log=` as `resolve_attack()`

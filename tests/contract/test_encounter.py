@@ -37,6 +37,7 @@ from dndsim.creatures.resources import RESOURCE_SPENT, Recovery, ResourceSpec
 from dndsim.creatures.stats import GREATSWORD, StatBlock
 from dndsim.engine.attack import ATTACK
 from dndsim.engine.damage import DAMAGE, resolve_damage
+from dndsim.engine.dying import DROPPED
 from dndsim.engine.encounter import (
     ROUND_END,
     ROUND_START,
@@ -260,7 +261,8 @@ def test_a_short_scripted_fight_is_logged_in_order() -> None:
     Round 1: the fighter rolls 2, 2 + 5 = 7 against AC 12, a miss; the goblin
     rolls 2, a miss. Round 2: the fighter rolls 15, 15 + 5 = 20, a hit; 2d6 3
     and 4, + 3 = 10 on 5 hit points. A monster at 0 dies, so heroes win in the
-    middle of round 2 and the goblin takes no second turn.
+    middle of round 2 and the goblin takes no second turn. The drop is written
+    from inside the damage, before the `ATTACK` record that carries it.
     """
     log = summary()
     world = World(log=log)
@@ -288,6 +290,7 @@ def test_a_short_scripted_fight_is_logged_in_order() -> None:
         (ROUND_END, 1),
         (ROUND_START, 2),
         (TURN_START, 2, "fighter"),
+        (DROPPED, "fighter", "goblin", True),
         (ATTACK, "fighter", "goblin", sword, Outcome.HIT, 10),
         (TURN_END, 2, "fighter"),
         (ROUND_END, 2),

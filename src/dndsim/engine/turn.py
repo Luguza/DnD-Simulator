@@ -160,6 +160,14 @@ def take_turn(
                     result.failures,
                 )
             )
+        if creature.dead:
+            # A dead creature takes no turn, but the clock still passes it.
+            clock.expire_after(start)
+            clock.expire_before(end)
+            if log is not None:
+                log.write((TURN_END, round_number, creature.name))
+            clock.expire_after(end)
+            return 0
     creature.economy.turn_started(creature.speed_ft)
     _announce(ON_TURN_START, creature, start)
     clock.expire_after(start)
