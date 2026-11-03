@@ -5062,7 +5062,11 @@ refusal's message, which now names where the second pool lives.
 - **#19.** After each offer the walk stops if the mover is down **or at
   Speed 0**, on the square it was leaving and with that step uncharged, and a
   later watcher left by the same step is not offered it: a held mover leaves
-  nobody's reach. The independent test pass found the second half missing. A
+  nobody's reach. The independent test pass found the second half missing. The Speed half applies only to a walk the mover pays for
+  (`charge`): a creature moved without paying — a shove, a drag — is not
+  stopped by a Speed of 0 it may have had all along, whoever is watching.
+  The review found the walk stopping such a mover only when a watcher stood
+  near. A
   speed-to-zero reaction (2024 Sentinel) lands through #18 and is read
   through `Creature.speed_ft` (#47).
 - **#20.** `Move` passes `provokes=not disengaged(mover)`. Forced movement and

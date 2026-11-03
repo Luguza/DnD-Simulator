@@ -47,14 +47,18 @@ class MovementWatch:
     """The audience for one creature's move, narrowed as the move goes on.
 
     Built by `watch_movement()` and driven by `walk_provoking()`, one call to
-    `leaving()` per five-foot step. Valid for one move only.
+    `leaving()` per five-foot step. Valid for one move only. With `halts`, a
+    mover at Speed 0 after an offer is offered to nobody else on that step.
     """
 
-    __slots__ = ("_context", "_mover", "_watchers")
+    __slots__ = ("_context", "_halts", "_mover", "_watchers")
 
-    def __init__(self, mover: Creature, watchers: list[_Watcher]) -> None:
+    def __init__(
+        self, mover: Creature, watchers: list[_Watcher], *, halts: bool = True
+    ) -> None:
         self._mover = mover
         self._watchers = watchers
+        self._halts = halts
         # Allocated on the first offer and rebound after: most moves make none.
         self._context: LeaveReachContext | None = None
 
@@ -88,7 +92,7 @@ class MovementWatch:
                 watcher.threatening = False
                 self._offer(watcher, origin, destination)
                 pruning = pruning or watcher.spent
-                if mover.is_down or mover.speed_ft == 0:
+                if mover.is_down or (self._halts and mover.speed_ft == 0):
                     # A dropped or halted mover never leaves; later watchers
                     # get no offer.
                     break
@@ -130,6 +134,7 @@ def watch_movement(
     *,
     squares: int,
     provokes: bool = True,
+    halts: bool = True,
 ) -> MovementWatch | None:
     """The audience for `mover`'s next `squares` steps, or `None` for nobody.
 
@@ -187,7 +192,7 @@ def watch_movement(
     if not watchers:
         return None
     watchers.sort(key=_seat)
-    return MovementWatch(mover, watchers)
+    return MovementWatch(mover, watchers, halts=halts)
 
 
 def walk_provoking(
@@ -202,15 +207,16 @@ def walk_provoking(
     """Walk `mover` along `route` square by square, provoking on the way out.
 
     Returns the part of the route actually walked: the whole of it unless a
-    reaction dropped the mover or brought its Speed to 0 partway. It does not
-    choose the route or dispatch `on_move`.
+    reaction dropped the mover or, on a walk it pays for, brought its Speed
+    to 0 partway. It does not choose the route or dispatch `on_move`.
 
     Each offer is made while the mover is still on the square it is leaving,
     and the position moves afterwards (`docs/decisions.md` § w0g3). With
-    `charge`, each step walked spends `step_ft` of the mover's movement — ten
-    for a creature crawling;
-    raises `EconomyError` before anything moves when the route costs more
-    than the mover has left, or when it is at Speed 0.
+    `charge` the walk is the mover's own: each step walked spends `step_ft`
+    of its movement, and it raises `EconomyError` before anything moves when
+    the route costs more than the mover has left, or when it is at Speed 0.
+    Without it nothing is spent and Speed is not asked (`docs/decisions.md`
+    § w2c2).
     """
     economy = mover.economy
     if charge and route and mover.speed_ft == 0:
@@ -224,7 +230,9 @@ def walk_provoking(
             f"the route costs {len(route) * step_ft} ft; truncate it before "
             "walking it"
         )
-    watch = watch_movement(mover, bystanders, squares=len(route), provokes=provokes)
+    watch = watch_movement(
+        mover, bystanders, squares=len(route), provokes=provokes, halts=charge
+    )
     if watch is None:
         # Nobody can react, so nothing can stop the walk: one assignment and one
         # charge for the whole route (`docs/decisions.md` § w2c2).
@@ -237,7 +245,7 @@ def walk_provoking(
     walked = []
     for square in route:
         watch.leaving(square)
-        if mover.is_down or mover.speed_ft == 0:
+        if mover.is_down or (charge and mover.speed_ft == 0):
             break
         if charge:
             economy.move(step_ft)

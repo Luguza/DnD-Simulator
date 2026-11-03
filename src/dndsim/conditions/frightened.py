@@ -14,8 +14,7 @@ __all__ = ["Frightened"]
 
 class Frightened(SourcedCondition):
     """Afraid of this effect's `caster`: Disadvantage while it is in sight, and
-    no approach — refused by the turn loop's `Move` (`docs/decisions.md`
-    § w2c2)."""
+    no approach, which `NO_APPROACH` declares (`docs/decisions.md` § w2c2)."""
 
     __slots__ = ()
 
