@@ -5219,7 +5219,9 @@ departed from it to make up lost time. They ran `w2a`, `w2c2` and `w2d` at
 once, each told to flip only its own row and to stay inside its Produces cell,
 so the queue file still shows the serial order. While the three run, `w2c2`
 holds `engine/attack.py` and `tools/spike.py`. The skeleton is nobody's, but it
-is the other caller of the constant #13 removes, so it goes with the spike.
+calls the constant #13 removes, so it goes with the spike; the contract tests
+that import it keep the weapon as a fixture, since they must run without
+fetched data.
 Both halves therefore go to `w2f`, the first task after the parallel ones that assembles a creature from
 its equipment. The next `⏸` plan review may re-own them. What `w2a` owes both
 is the data: the normal/long pair on `Weapon` and the Strength requirement on
