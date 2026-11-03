@@ -5090,10 +5090,14 @@ DESIGN.md § The APL's `move:` clause, `toward <enemy> until in_reach`, which
 the default policy needs ("a build with no `move:` clause closes to its nearest
 enemy"); `away_from` and `hold` are `w2e`'s, with the selector.
 
-The destination is the nearest square, by steps, whose footprint has the
-target in the actor's reach (`in_reach`, between footprints, so #34 does not
-apply here) and stands in nobody's space; ties go to lowest `y`, then `x`, so
-a seed reproduces the walk. Every other living creature's space is impassable,
+The destination is the square with the shortest route whose footprint has
+the target in the actor's reach (`in_reach`, between footprints, so #34 does
+not apply here) and stands in nobody's space; ties go to the nearest by
+Chebyshev, then lowest `y`, then `x`, so a seed reproduces the walk. Squares
+are tried in Chebyshev order and the search stops once that floor reaches the
+best route found, since no route is shorter than it. The review found the first
+cut taking the first square it could reach in that order, which a detour can
+make the longer walk. Every other living creature's space is impassable,
 which never produces illegal movement but forbids passing through an ally:
 #60. The route is planned once for the positions the two creatures hold, so
 `is_legal()` then `execute()` plans once rather than three times — the spike's
@@ -5137,8 +5141,12 @@ now the default:
   charged.
 
 `run_encounter()` counts the attacks made on a turn, as before; the 1,600
-opportunity attacks are not in the numerator, and the spike's `World` holds no
-log, so they are not in `spike.log` either. `provoking=False`
+opportunity attacks are not in the numerator. They are in the log: with
+`provoking`, the spike's `World` holds its `EventLog`, so an opportunity attack
+pays for its records as every counted attack does, and the effect and resource
+writers `w2c` wired (#50) pay for theirs. The review found the first cut
+seating the world without it, which left the provoking arm cheaper than it
+should be. `provoking=False`
 (`--no-provoking`) is the configuration before this task.
 
 **The witness**, the fixed 200-encounter profiled run at seed 0:
@@ -5147,15 +5155,15 @@ log, so they are not in `spike.log` either. `provoking=False`
 |---|---|---|---|---|
 | `w2c`, `78adf99` | 1,740,518 | 55; 207, 1,000, 1,000 | 6,000 | 108454 |
 | this task, `provoking=False` | 1,761,875 | 55; 207, 1,000, 1,000 | 6,000 | 108454 |
-| this task, `provoking=True` | 3,125,261 | 49; 180, 1,000, 1,000 | 6,000 | 401888 |
+| this task, `provoking=True` | 3,116,414 | 49; 180, 1,000, 1,000 | 6,000 | 401888 |
 
 The first two are the same fights; the 21k calls between them are the
 enemies' economies handed back each turn, the per-step charge and the Speed
 read before each walk. The third is new work, attributed by cumulative time
 in the same profile: the 1,600 opportunity attacks 0.26 s (inside
 `MovementWatch._offer()`'s 0.31 s), the enemies' `Move` planning 0.44 s over
-3,000 plans (70k calls more since, the `CRAWLS` and `NO_APPROACH` scans of
-each mover's effects), `walk_provoking()` 0.54 s in all, against `resolve_attack()`'s
+3,000 plans (the `CRAWLS` and `NO_APPROACH` scans of each mover's effects added
+since, and the shortest-route search's early stop taken back off), `walk_provoking()` 0.54 s in all, against `resolve_attack()`'s
 1.50 s for the 7,600 attacks made. The hero's lowest closing HP over the run
 is 19, so it never drops and Uncanny Dodge's gate still answers.
 
@@ -5165,17 +5173,17 @@ body each:
 
 | Arm | Median | Ratio to `w2c`, median (span) |
 |---|---|---|
-| `w2c`, `78adf99` | 15,177 | — |
-| this task, `provoking=False` | 15,616 | **1.019** (0.921–1.175) |
-| this task, `provoking=True` | 8,852 | **0.584** (0.498–0.677) |
+| `w2c`, `78adf99` | 15,785 | — |
+| this task, `provoking=False` | 15,985 | **0.994** (0.910–1.118) |
+| this task, `provoking=True` | 8,883 | **0.562** (0.534–0.593) |
 
 The first ratio is noise, as the witness says it should be: the wiring costs
 the old configuration nothing measurable. The second is not a slowdown of
 anything the old configuration did; it is the configuration doing more per
 counted resolution. Counting the uncounted opportunity attacks too would read
-11.2k attacks a second, 0.74 of `w2c`, and the rest is the walking: the
+11.3k attacks a second, 0.71 of `w2c`, and the rest is the walking: the
 enemies now plan routes around each other every turn, and the hero walks every
-round. A second agent's test run shared the container throughout, which is why
+round. A second agent's test runs shared the container for part of it, and
 every arm reads below `w2i`'s figures; only the ratios travel.
 
 **For the `⏸` gate that revises the budget** (`docs/questions.md` #10): the

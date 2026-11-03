@@ -18,6 +18,8 @@ Sources: ROADMAP w0i; DESIGN.md § Performance, § The spike must be pessimistic
 § The benchmark gate; `docs/decisions.md` § w0i.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 from unittest.mock import patch
 
@@ -346,26 +348,65 @@ def test_pooling_contexts_does_not_change_the_fight() -> None:
 
 def test_every_attack_writes_its_records_to_the_log() -> None:
     """The log is inside the measurement (ROADMAP w1i): one `ATTACK` record per
-    resolution at both levels, and one `ATTACK_ROLL` under each at `full`."""
+    resolution at both levels, and one `ATTACK_ROLL` under each at `full`.
+    Without `provoking`, the configuration before `w2c2`, those are exactly the
+    turn attacks."""
     for level, rolls in ((LogLevel.FULL, True), (LogLevel.SUMMARY, False)):
-        spike, rng = build_spike(0, log_level=level)
+        spike, rng = build_spike(0, log_level=level, provoking=False)
 
         resolutions = run_encounter(spike, rng)
 
         kinds = [record[0] for record in spike.log]
+        assert resolutions == _RESOLUTIONS_PER_ENCOUNTER
         assert kinds.count(ATTACK) == resolutions
         assert kinds.count(ATTACK_ROLL) == (resolutions if rolls else 0)
 
 
+def test_opportunity_attacks_write_their_records_too() -> None:
+    """With `provoking`, the world holds the spike's log, so each opportunity
+    attack writes its records beside the turn attacks: the `ATTACK` records are
+    the turn attacks plus the opportunity attacks, counted at their call
+    sites."""
+    for level, rolls in ((LogLevel.FULL, True), (LogLevel.SUMMARY, False)):
+        with _counting() as counts:
+            spike, rng = build_spike(0, log_level=level)
+            resolutions = run_encounter(spike, rng)
+
+        made = counts.turn + counts.opportunity
+        kinds = [record[0] for record in spike.log]
+        assert counts.opportunity > 0, "no opportunity attack was made"
+        assert resolutions == counts.turn == _RESOLUTIONS_PER_ENCOUNTER
+        assert kinds.count(ATTACK) == made
+        assert kinds.count(ATTACK_ROLL) == (made if rolls else 0)
+
+
 def test_the_log_holds_one_encounter_at_a_time() -> None:
     """Cleared by `reset()`, like the hit points, so a thousand-encounter run
-    does not measure a list growing to a hundred thousand records."""
-    spike, rng = build_spike(0, log_level=LogLevel.SUMMARY)
+    does not measure a list growing to a hundred thousand records. Without
+    `provoking` the only records are the turn attacks'."""
+    spike, rng = build_spike(0, log_level=LogLevel.SUMMARY, provoking=False)
 
     run_encounter(spike, rng)
     resolutions = run_encounter(spike, rng)
 
-    assert len(spike.log) == resolutions
+    assert len(spike.log) == resolutions == _RESOLUTIONS_PER_ENCOUNTER
+
+
+def test_the_provoking_log_holds_one_encounter_at_a_time() -> None:
+    """With `provoking` the log also holds opportunity attacks and the effect
+    and resource writers' records; after the second encounter it holds only
+    the second's attacks, and none of the first's records lead it."""
+    spike, rng = build_spike(0, log_level=LogLevel.SUMMARY)
+    run_encounter(spike, rng)
+    first = spike.log.records
+    assert first
+
+    with _counting() as counts:
+        run_encounter(spike, rng)
+
+    kinds = [record[0] for record in spike.log]
+    assert kinds.count(ATTACK) == counts.turn + counts.opportunity
+    assert spike.log.records[: len(first)] != first
 
 
 def test_the_same_seed_writes_the_same_log() -> None:
@@ -539,9 +580,9 @@ class _Counts:
         self.opportunity = 0
 
 
-def _counted(
-    spike_seed: int, encounters: int, *, provoking: bool
-) -> tuple[int, _Counts]:
+@contextmanager
+def _counting() -> Iterator[_Counts]:
+    """Counts turn attacks and opportunity attacks made inside the block."""
     counts = _Counts()
     real_turn_attack = resolve_attack
     real_reaction = OpportunityAttack.resolve
@@ -558,6 +599,13 @@ def _counted(
         patch("dndsim.tools.spike.resolve_attack", turn_attack),
         patch.object(OpportunityAttack, "resolve", reaction),
     ):
+        yield counts
+
+
+def _counted(
+    spike_seed: int, encounters: int, *, provoking: bool
+) -> tuple[int, _Counts]:
+    with _counting() as counts:
         spike, rng = build_spike(spike_seed, provoking=provoking)
         returned = sum(run_encounter(spike, rng) for _ in range(encounters))
     return returned, counts

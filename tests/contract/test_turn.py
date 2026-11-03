@@ -1277,3 +1277,39 @@ def test_fear_of_a_creature_outside_the_encounter_does_not_hold_a_move_back() ->
     fighter.effects.apply(Frightened(fighter, caster=absent))
 
     assert Move(fighter, goblin, world=seated).execute(rng=no_dice()) == DIAGONAL
+
+
+# --- Move takes the shortest route, not the first square (review round 3) -----
+
+
+def test_a_move_takes_the_shortest_route_among_the_squares_in_reach() -> None:
+    """Goblin at (5, 0); creatures on (3, -2), (3, -1) and (3, 0). The three
+    stands (4, -1), (4, 0) and (4, 1) are all 20 feet away, but (4, -1) is
+    five steps round the wall and the other two four. Four steps are walked
+    and 30 - 20 = 10 feet are left."""
+    seated, fighter, goblin = closing(Cell(5, 0))
+    for index, cell in enumerate((Cell(3, -2), Cell(3, -1), Cell(3, 0))):
+        seated.seat(creature(f"post{index}", cell=cell), "monsters")
+
+    walked = Move(fighter, goblin, world=seated).execute(rng=no_dice())
+
+    assert len(walked) == 4
+    assert fighter.position in (Cell(4, 0), Cell(4, 1))
+    assert fighter.economy.movement_ft == 10
+    assert reaches(fighter, goblin)
+
+
+def test_a_square_earlier_in_the_tie_order_loses_to_a_shorter_route() -> None:
+    """Goblin at (4, 0): the stands (3, -1), (3, 0) and (3, 1) are 15 feet away.
+    With (2, -2), (2, -1) and (2, 0) taken, (3, -1) — lowest y — needs four
+    steps, while (3, 0) is three, by (2, 1). Shortest route first, then lowest
+    y: the walk ends on (3, 0) with 15 feet left."""
+    seated, fighter, goblin = closing(Cell(4, 0))
+    for index, cell in enumerate((Cell(2, -2), Cell(2, -1), Cell(2, 0))):
+        seated.seat(creature(f"post{index}", cell=cell), "heroes")
+
+    walked = Move(fighter, goblin, world=seated).execute(rng=no_dice())
+
+    assert len(walked) == 3
+    assert walked[-1] == fighter.position == Cell(3, 0)
+    assert fighter.economy.movement_ft == 15
