@@ -59,6 +59,7 @@ def _species(entry: Any) -> Species:
     try:
         sizes = frozenset(_SIZES[code] for code in entry["size"])
         walk = int(speed)
+        darkvision = int(entry.get("darkvision", 0))
     except (KeyError, TypeError, ValueError) as error:
         raise ContentError(f"species {name!r} is not shaped as read") from error
     traits = tuple(
@@ -66,7 +67,7 @@ def _species(entry: Any) -> Species:
         for e in entry.get("entries", [])
         if isinstance(e, dict) and "name" in e
     )
-    return Species(name, sizes, walk, int(entry.get("darkvision", 0)), traits)
+    return Species(name, sizes, walk, darkvision, traits)
 
 
 def species(data: Dataset) -> Mapping[str, Species]:

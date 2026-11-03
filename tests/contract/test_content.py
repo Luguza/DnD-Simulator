@@ -592,6 +592,16 @@ def test_a_copied_species_is_refused(tmp_path: Path) -> None:
         species(_dataset(tmp_path, **{"races.json": races}))
 
 
+def test_a_darkvision_that_is_not_an_integer_is_refused(tmp_path: Path) -> None:
+    sighted = {"race": [{**ORC, "darkvision": 60}, HUMAN]}
+    table = species(_dataset(tmp_path / "sighted", **{"races.json": sighted}))
+    assert table["Orc"].darkvision_ft == 60
+    assert table["Human"].darkvision_ft == 0
+    printed = {"race": [{**ORC, "darkvision": "60 ft."}]}
+    with pytest.raises(ContentError):
+        species(_dataset(tmp_path / "printed", **{"races.json": printed}))
+
+
 # -- fetch -----------------------------------------------------------------------
 
 
