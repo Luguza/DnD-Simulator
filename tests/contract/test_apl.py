@@ -28,7 +28,7 @@ import pytest
 from dndsim import actions
 from dndsim.actions.attack import Attack
 from dndsim.actions.base import Action
-from dndsim.actions.move import Move, Retreat, Walk
+from dndsim.actions.move import Move, Retreat, Walk, _stands
 from dndsim.actions.opportunity_attack import OpportunityAttack, OpportunityAttacks
 from dndsim.apl.apl import (
     BEST_SCORED,
@@ -68,6 +68,7 @@ from dndsim.engine.world import World
 from dndsim.hooks.contexts import Context, LeaveReachContext
 from dndsim.hooks.dispatch import Gate
 from dndsim.hooks.source import HookSource
+from dndsim.rules.constants import SIZE_WIDTH_CELLS
 from dndsim.rules.enums import Ability, DamageType, Outcome, Size
 from dndsim.tools.spike import SPIKE_APL, compile_spike_apl
 
@@ -263,6 +264,16 @@ def test_an_unknown_action_id_fails_at_load_with_a_suggestion() -> None:
 
     assert "attak" in str(raised.value)
     assert "did you mean 'attack'?" in str(raised.value)
+
+
+def test_an_entry_naming_a_with_param_twice_is_refused_at_load() -> None:
+    """Only the programmatic form can carry the duplicate: `yaml.safe_load`
+    keeps the last of two equal keys, so a YAML row never reaches the
+    compiler with both."""
+    with pytest.raises(AplLoadError) as raised:
+        Apl([Entry("attack", with_=(("n", "1"), ("n", "2")))])
+
+    assert "with:" in str(raised.value)
 
 
 def test_a_misspelt_entry_key_fails_at_load_with_a_suggestion() -> None:
@@ -1715,3 +1726,39 @@ def test_toward_a_group_with_nobody_in_reach_walks_toward_the_first() -> None:
 
     assert isinstance(choice, Move)
     assert choice.target is first
+
+
+@pytest.mark.parametrize("reach", [5, 10, 15])
+@pytest.mark.parametrize("target_size", list(SIZE_WIDTH_CELLS))
+@pytest.mark.parametrize("actor_size", list(SIZE_WIDTH_CELLS))
+def test_the_stand_search_is_exactly_the_anchors_in_reach(
+    actor_size: Size, target_size: Size, reach: int
+) -> None:
+    """`_stands` derives its box from `distance_ft`'s gap without asking
+    `in_reach`; a brute-force scan asks it (`docs/decisions.md` § w2e)."""
+    polearm = Weapon(
+        name="Polearm",
+        damage=Dice(1, 10),
+        damage_type=DamageType.PIERCING,
+        reach_ft=reach,
+    )
+    target = creature("target", Cell(20, 20), size=target_size)
+    actor = creature("actor", Cell(0, 0), weapon=polearm, size=actor_size)
+    scan = range(20 - 16, 20 + 17)
+
+    expected = {
+        Cell(x, y)
+        for x in scan
+        for y in scan
+        if in_reach(
+            Cell(x, y),
+            target.position,
+            actor.reach_ft,
+            origin_size=actor.size,
+            destination_size=target.size,
+        )
+    }
+
+    found = _stands(actor, target, frozenset())
+    assert len(found) == len(set(found))
+    assert set(found) == expected

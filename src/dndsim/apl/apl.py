@@ -39,7 +39,7 @@ from dndsim.apl.expr import (
 from dndsim.apl.namespace import Namespace, TriggerProxy, build_namespace
 from dndsim.apl.schema import Kind, NamespaceSchema
 from dndsim.core.errors import EngineAssemblyError
-from dndsim.core.geometry import distance_ft
+from dndsim.core.geometry import distance_ft, in_reach
 from dndsim.creatures.creature import Creature
 from dndsim.engine.world import World
 from dndsim.hooks.contexts import Context, LeaveReachContext
@@ -56,8 +56,8 @@ __all__ = [
 ]
 
 BEST_SCORED: Final = "best_scored"
-"""Reserved: take the highest-scoring offered action. Nothing offers it yet
-(DESIGN.md § `best_scored`; `docs/decisions.md` § w2e)."""
+"""Reserved: take the highest-scoring offered action (DESIGN.md
+§ `best_scored`; `docs/decisions.md` § w2e)."""
 
 COMMAND_IDS: Final = frozenset(
     command.ID
@@ -414,6 +414,9 @@ def _compile_entry(
     condition = None if entry.if_ is None else compile_condition(entry.if_, schema)
     target = None if entry.target is None else compile_selector(entry.target, schema)
     move = None if entry.move is None else compile_move(entry.move, schema)
+    names = [name for name, _ in entry.with_]
+    if len(set(names)) != len(names):
+        raise AplLoadError(f"APL entry {action!r} names a with: param twice: {names}")
     params = tuple((name, compile_param(text, schema)) for name, text in entry.with_)
     return CompiledEntry(
         action=action,
@@ -443,7 +446,13 @@ def _walk(clause: MoveClause, namespace: Namespace, actor: Creature) -> Walk | N
     for creature in _candidates(selector.fn(namespace), selector.kind):
         walk: Walk
         if clause.mode is MoveMode.TOWARD:
-            if _distance(actor, creature) <= actor.reach_ft:
+            if in_reach(
+                actor.position,
+                creature.position,
+                actor.reach_ft,
+                origin_size=actor.size,
+                destination_size=creature.size,
+            ):
                 # Arrived: walking on toward a later pick would leave this one.
                 return None
             walk = Move(actor, creature, world=world)
