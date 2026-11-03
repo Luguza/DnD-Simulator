@@ -602,6 +602,27 @@ def test_a_darkvision_that_is_not_an_integer_is_refused(tmp_path: Path) -> None:
         species(_dataset(tmp_path / "printed", **{"races.json": printed}))
 
 
+def test_a_trait_keeps_the_text_of_its_table(tmp_path: Path) -> None:
+    lead = "Choose a dragon from the Draconic Ancestors table."
+    ancestry = {
+        "type": "entries",
+        "name": "Draconic Ancestry",
+        "entries": [
+            lead,
+            {
+                "type": "table",
+                "colLabels": ["Dragon", "Damage Type"],
+                "rows": [["Red", "Fire"], ["Blue", "Lightning"]],
+            },
+        ],
+    }
+    races = {"race": [{**HUMAN, "name": "Dragonborn", "entries": [ancestry]}]}
+    (trait,) = species(_dataset(tmp_path, **{"races.json": races}))["Dragonborn"].traits
+    assert trait.name == "Draconic Ancestry"
+    for printed in (lead, "Dragon", "Damage Type", "Red", "Fire", "Blue", "Lightning"):
+        assert printed in trait.text
+
+
 # -- fetch -----------------------------------------------------------------------
 
 

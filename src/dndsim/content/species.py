@@ -9,6 +9,7 @@ from types import MappingProxyType
 from typing import Any, Final
 
 from dndsim.content.loader import SOURCE, ContentError, Dataset, FeatureText, plain
+from dndsim.content.refs import prose
 from dndsim.rules.enums import Size
 
 __all__ = ["Species", "species"]
@@ -39,18 +40,6 @@ class Species:
     traits: tuple[FeatureText, ...]
 
 
-def _text(node: Any) -> str:
-    if isinstance(node, str):
-        return plain(node)
-    if isinstance(node, list):
-        return "\n".join(t for t in map(_text, node) if t)
-    if isinstance(node, dict):
-        head = f"{plain(node['name'])}." if "name" in node else ""
-        body = [_text(node[k]) for k in ("entry", "entries", "items") if k in node]
-        return " ".join(p for p in (head, *body) if p)
-    return str(node)
-
-
 def _species(entry: Any) -> Species:
     name = entry["name"]
     speed = entry.get("speed")
@@ -63,7 +52,7 @@ def _species(entry: Any) -> Species:
     except (KeyError, TypeError, ValueError) as error:
         raise ContentError(f"species {name!r} is not shaped as read") from error
     traits = tuple(
-        FeatureText(plain(e["name"]), None, _text(e.get("entries", [])))
+        FeatureText(plain(e["name"]), None, prose(e.get("entries", [])))
         for e in entry.get("entries", [])
         if isinstance(e, dict) and "name" in e
     )

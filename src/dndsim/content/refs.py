@@ -12,7 +12,13 @@ from typing import Any, Final
 
 from dndsim.content.loader import SOURCE, ContentError, Dataset, FeatureText, plain
 
-__all__ = ["class_features", "class_files", "optional_feature", "subclass_features"]
+__all__ = [
+    "class_features",
+    "class_files",
+    "optional_feature",
+    "prose",
+    "subclass_features",
+]
 
 CLASS_INDEX: Final = "class/index.json"
 OPTIONAL: Final = "optionalfeatures.json"
@@ -97,7 +103,13 @@ class _Index:
             raise ContentError(f"reference {ref!r} names no feature") from None
 
 
-def _render(node: Any, index: _Index, found: list[Any]) -> str:
+def prose(node: Any) -> str:
+    """`node` as plain text, tables included. Raises `ContentError` for a
+    reference node, which has no feature index to be followed against."""
+    return _render(node, None, [])
+
+
+def _render(node: Any, index: _Index | None, found: list[Any]) -> str:
     """`node` as plain text; each reference met is appended to `found`."""
     if isinstance(node, str):
         return plain(node)
@@ -108,6 +120,8 @@ def _render(node: Any, index: _Index, found: list[Any]) -> str:
     kind = node.get("type")
     if kind in _REF_KEYS:
         ref = node[_REF_KEYS[kind]]
+        if index is None:
+            raise ContentError(f"reference {ref!r} where none can be followed")
         target = index.get(_key(_REF_KEYS[kind], ref), ref)
         found.append(target)
         return plain(target["name"])
