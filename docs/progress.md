@@ -45,10 +45,10 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 15 | w2c — turn loop, initiative, the turn-boundary debts 🔒 | done | #62 |
 | 16 | w2c2 — opportunity attacks and the walk 🔒 | done | #66 |
 | — | ⏸ plan review — and the M0 budget revision (`docs/questions.md` #10) | done | #70 |
-| 17 | w2e — the APL compiler 🔒 | done | #71 |
+| 17 | w2e — the APL compiler 🔒 | held | #71 |
 | 18 | w2a — content ACL | done | #67 |
 | 19 | w2d — `TargetDummy` | done | #65 |
-| 20 | w2f2 — the imported weapons in the engine 🔒 | next | |
+| 20 | w2f2 — the imported weapons in the engine 🔒 | queued | |
 | 21 | w2f — build schema and `Character` | queued | |
 | — | ⏸ plan review | queued | |
 | 22 | w2j — Unarmed Strike, Shove, Grapple, standing up, passing through | queued | |
