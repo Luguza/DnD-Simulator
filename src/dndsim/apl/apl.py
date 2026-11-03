@@ -13,6 +13,7 @@ import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
+from weakref import WeakKeyDictionary
 
 import yaml
 
@@ -35,7 +36,7 @@ from dndsim.apl.expr import (
     compile_param,
     compile_selector,
 )
-from dndsim.apl.namespace import Namespace, build_namespace
+from dndsim.apl.namespace import Namespace, TriggerProxy, build_namespace
 from dndsim.apl.schema import Kind, NamespaceSchema
 from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.geometry import distance_ft
@@ -226,6 +227,10 @@ class Apl:
     def canonical_hash(self) -> str:
         """SHA-256 of the entries in a canonical JSON form."""
         rows = [entry.to_mapping() for entry in self._entries]
+        for row in rows:
+            if "with" in row:
+                # Ordered pairs, as `==` compares them; a mapping would sort.
+                row["with"] = [list(pair) for pair in row["with"].items()]
         canonical = json.dumps(rows, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(canonical.encode()).hexdigest()
 
@@ -274,6 +279,7 @@ class Apl:
         bound._default_move = self._default_move
         bound._namespace = build_namespace(self._schema, owner, world)
         bound._owner = owner
+        _ROOTS[owner] = bound._namespace.trigger
         return bound
 
     def _actor(self) -> Creature:
@@ -437,6 +443,9 @@ def _walk(clause: MoveClause, namespace: Namespace, actor: Creature) -> Walk | N
     for creature in _candidates(selector.fn(namespace), selector.kind):
         walk: Walk
         if clause.mode is MoveMode.TOWARD:
+            if _distance(actor, creature) <= actor.reach_ft:
+                # Arrived: walking on toward a later pick would leave this one.
+                return None
             walk = Move(actor, creature, world=world)
         else:
             walk = Retreat(actor, creature, world=world, keep_ft=_keep(clause, actor))
@@ -508,9 +517,31 @@ def _pick(
     if chosen is not None:
         namespace.target.bind(_target_of(chosen))
         if isinstance(chosen, Attack) and chosen.trigger is None:
-            # The attack rebinds this root, so a gated rider reads this attack.
-            chosen.trigger = namespace.trigger
+            # The attack rebinds these roots, so a gated rider or reaction on
+            # either side reads this attack (`docs/decisions.md` § w2e).
+            defender = _ROOTS.get(chosen.target)
+            mine = namespace.trigger
+            chosen.trigger = mine if defender is None else _Both(mine, defender)
     return chosen
+
+
+_ROOTS: "WeakKeyDictionary[Creature, TriggerProxy]" = WeakKeyDictionary()
+"""Each creature's `trigger.*` root, from the last `bind()` of an APL to it."""
+
+
+class _Both:
+    """Two `trigger.*` roots told the same offer: the attacker's and the
+    defender's."""
+
+    __slots__ = ("_first", "_second")
+
+    def __init__(self, first: TriggerProxy, second: TriggerProxy) -> None:
+        self._first = first
+        self._second = second
+
+    def bind(self, *, crit: bool = False, damage_estimate: int = 0) -> None:
+        self._first.bind(crit=crit, damage_estimate=damage_estimate)
+        self._second.bind(crit=crit, damage_estimate=damage_estimate)
 
 
 def _distance(actor: Creature, target: Creature | None) -> int:

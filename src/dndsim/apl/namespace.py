@@ -159,12 +159,17 @@ class TriggerProxy:
         self.destination: CellLike | None = None
 
     def bind(self, *, crit: bool = False, damage_estimate: int = 0) -> None:
+        """An attack is on offer: replaces the whole offer."""
         self.crit = crit
         self.damage_estimate = damage_estimate
+        self.mover = self.origin = self.destination = None
 
     def offer_movement(
         self, mover: Creature, origin: "CellLike", destination: "CellLike"
     ) -> None:
+        """A creature is leaving reach: replaces the whole offer."""
+        self.crit = False
+        self.damage_estimate = 0
         self.mover = mover
         self.origin = origin
         self.destination = destination

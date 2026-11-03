@@ -540,11 +540,15 @@ def test_a_list_that_never_names_the_opportunity_attack_never_swings() -> None:
 
 def test_the_trigger_root_carries_the_mover_and_the_squares_being_left() -> None:
     """One five-foot step, not the whole move: `origin` is the square the
-    mover still stands on and `destination` the one it is stepping into."""
-    world, runner, quarry, apl, rng = chase(mover_hp=9, watcher_apl=WOUNDED_RUNNER)
+    mover still stands on and `destination` the one it is stepping into. The
+    runner is at full hit points, so the `if:` declines and no attack follows
+    to replace the offer on the root."""
+    world, runner, quarry, apl, _ = chase(mover_hp=HP, watcher_apl=WOUNDED_RUNNER)
 
-    Move(runner, quarry, world=world).execute(rng=rng)
+    Move(runner, quarry, world=world).execute(rng=no_dice())
 
+    assert attacks(world.log) == []
+    assert runner.position == Cell(7, -1)
     trigger = apl.namespace.trigger
     assert trigger.mover is runner
     assert trigger.origin == Cell(1, 0)
@@ -1553,3 +1557,161 @@ def test_not_a_group_is_true_only_when_it_is_empty(
     compiled = compile_condition("not enemies.in_reach", NamespaceSchema())
 
     assert compiled.fn(apl.namespace) is expected
+
+
+# --- an offer on the `trigger` root replaces the one before it whole ---------
+
+
+def test_an_attack_offer_clears_a_movement_offer() -> None:
+    runner = creature("runner", Cell(1, 0))
+    trigger = TriggerProxy()
+    trigger.offer_movement(runner, Cell(1, 0), Cell(2, 0))
+
+    trigger.bind(crit=True, damage_estimate=9)
+
+    assert trigger.crit is True
+    assert trigger.damage_estimate == 9
+    assert trigger.mover is None
+    assert trigger.origin is None
+    assert trigger.destination is None
+
+
+def test_a_movement_offer_clears_an_attack_offer() -> None:
+    runner = creature("runner", Cell(1, 0))
+    trigger = TriggerProxy()
+    trigger.bind(crit=True, damage_estimate=9)
+
+    trigger.offer_movement(runner, Cell(1, 0), Cell(2, 0))
+
+    assert trigger.crit is False
+    assert trigger.damage_estimate == 0
+    assert trigger.mover is runner
+    assert trigger.origin == Cell(1, 0)
+    assert trigger.destination == Cell(2, 0)
+
+
+def test_a_movement_offer_after_a_crit_does_not_read_the_crit() -> None:
+    guard = creature("guard", Cell(0, 0))
+    runner = creature("runner", Cell(1, 0))
+    world = seated((guard, "monsters"), (runner, "heroes"))
+    apl = Apl([Entry(OpportunityAttack.ID, if_="not trigger.crit")]).bind(guard, world)
+    apl.namespace.trigger.bind(crit=True, damage_estimate=9)
+
+    assert apl.allows(OpportunityAttack.ID, Marker(guard), leaving(guard, runner))
+    assert apl.namespace.trigger.damage_estimate == 0
+
+
+# --- an attack an APL picks tells the defender's `trigger` root too ----------
+
+
+def stale(trigger: TriggerProxy, *, mover: Creature) -> None:
+    """Both offers at once, which neither `bind()` nor `offer_movement()`
+    leaves: a crit for 99 and a mover."""
+    trigger.crit = True
+    trigger.damage_estimate = 99
+    trigger.mover = mover
+
+
+def test_a_turn_s_attack_rebinds_the_defender_s_stale_trigger_root() -> None:
+    """The goblin's root is left as an earlier crit while the hero moved would
+    leave it; the hero's natural 15 is a hit, not a crit, for 4 + 4 + 3 =
+    11."""
+    hero = creature("hero", Cell(0, 0), initiative=20)
+    goblin = creature("goblin", Cell(1, 0))
+    log = EventLog()
+    world = seated((hero, "heroes"), (goblin, "monsters"), log=log)
+    apl = Apl([Entry("attack")]).bind(hero, world)
+    theirs = Apl([Entry("attack")]).bind(goblin, world).namespace.trigger
+    stale(theirs, mover=hero)
+    rng = ScriptedRng(list(ELEVEN))
+
+    taken = take_turn(world, hero, 1, policy=apl, rng=rng)
+
+    assert taken == 1
+    assert attacks(log) == [(ATTACK, "hero", "goblin", "Greatsword", Outcome.HIT, 11)]
+    assert goblin.hp == HP - 11 == 9
+    assert theirs.crit is False
+    assert theirs.damage_estimate == 11
+    assert theirs.mover is None
+    assert apl.namespace.trigger.crit is False
+    assert apl.namespace.trigger.damage_estimate == 11
+    assert rng.exhausted
+
+
+# --- `==` and the canonical hash agree on the order of `with:` --------------
+
+
+def with_pairs(*pairs: tuple[str, str]) -> Apl:
+    return Apl([Entry("attack", with_=pairs)])
+
+
+def test_with_pairs_in_another_order_are_unequal_and_hash_apart() -> None:
+    written = with_pairs(("a", "1"), ("b", "2"))
+    swapped = with_pairs(("b", "2"), ("a", "1"))
+
+    assert written != swapped
+    assert written.canonical_hash != swapped.canonical_hash
+
+
+def test_equal_with_pairs_hash_alike() -> None:
+    first = with_pairs(("a", "1"), ("b", "2"))
+    second = with_pairs(("a", "1"), ("b", "2"))
+
+    assert first == second
+    assert first.canonical_hash == second.canonical_hash
+
+
+# --- `toward <group>` stops at an enemy already in reach ---------------------
+
+
+TOWARD_ENEMIES: Final = '- { action: attack, move: "toward enemies until in_reach" }'
+
+
+def test_toward_a_group_attacks_the_enemy_already_in_reach() -> None:
+    """`near` is beside the hero and seated first, so the walk does not set
+    off toward `far`: the hero stays and swings at `near` for 11."""
+    hero = creature("hero", Cell(0, 0), initiative=20)
+    near = creature("near", Cell(1, 0))
+    far = creature("far", Cell(7, 0))
+    log = EventLog()
+    world = seated((hero, "heroes"), (near, "monsters"), (far, "monsters"), log=log)
+    apl = bound(TOWARD_ENEMIES, hero, world)
+    rng = ScriptedRng(list(ELEVEN))
+
+    taken = take_turn(world, hero, 1, policy=apl, rng=rng)
+
+    assert taken == 1
+    assert attacks(log) == [(ATTACK, "hero", "near", "Greatsword", Outcome.HIT, 11)]
+    assert hero.position == Cell(0, 0)
+    assert hero.economy.movement_ft == 30
+    assert near.hp == 9
+    assert far.hp == HP
+    assert rng.exhausted
+
+
+def test_toward_a_group_with_an_enemy_in_reach_offers_no_walk() -> None:
+    hero = creature("hero", Cell(0, 0))
+    near = creature("near", Cell(1, 0))
+    far = creature("far", Cell(7, 0))
+    world = seated((hero, "heroes"), (near, "monsters"), (far, "monsters"))
+    apl = Apl.from_yaml(TOWARD_ENEMIES).bind(hero, world)
+    hero.economy.turn_started(hero.speed_ft)
+
+    choice = apl.choose(hero, [Attack(hero, near), Attack(hero, far)])
+
+    assert isinstance(choice, Attack)
+    assert choice.target is near
+
+
+def test_toward_a_group_with_nobody_in_reach_walks_toward_the_first() -> None:
+    hero = creature("hero", Cell(0, 0))
+    first = creature("first", Cell(3, 0))
+    second = creature("second", Cell(7, 0))
+    world = seated((hero, "heroes"), (first, "monsters"), (second, "monsters"))
+    apl = Apl.from_yaml(TOWARD_ENEMIES).bind(hero, world)
+    hero.economy.turn_started(hero.speed_ft)
+
+    choice = apl.choose(hero, [])
+
+    assert isinstance(choice, Move)
+    assert choice.target is first

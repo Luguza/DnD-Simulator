@@ -5707,6 +5707,26 @@ scripted attack and Regeneration become behaviour.
   `Move` in both configurations, so a `Move` change is priced on both), the
   debt register's count, and `Retreat`'s tie-break order.
 
+### The hold, and how it was cleared
+
+The final verdict at the round cap left four findings open, and the row was
+held. The owner said to fix everything and merge, which cleared it:
+
+- **Each `trigger.*` offer replaces the whole root.** `bind()` (an attack)
+  clears the mover and squares, and `offer_movement()` clears `crit` and the
+  estimate, so neither kind of offer reads the other's leftovers.
+- **An attack an APL picks tells the defender's root too.** Each `bind()` of
+  an APL records its creature's root, and the `Attack` the APL picks carries
+  both roots, so the defender's gated reaction reads this attack, not its
+  own last one. An attacker driven by no APL still tells only the root its
+  caller passes, as the spike's does.
+- **`canonical_hash` keeps `with:` in written order**, as `==` does.
+- **A `toward` move over a group ends at a pick already in reach**: walking
+  on toward a later pick would leave the first one's reach.
+
+The performance done-when stays missed (debt #67), merged with the owner's
+instruction rather than met.
+
 ### What it cost the benchmark
 
 The spike's hero now runs on the real compiler, and its `move:` clause goes
