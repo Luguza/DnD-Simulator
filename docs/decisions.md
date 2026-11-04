@@ -6043,7 +6043,8 @@ forms are inexpressible rather than unchecked.
 
 Not a gap: `pydantic` is not yet a dependency. DESIGN.md § Libraries before
 reimplementing names it for exactly this schema, and the row says so; `w2f`
-adds it with its `uv lock`.
+adds it with its `uv lock`, and its Produces cell now names `pyproject.toml`
+and `uv.lock`.
 
 Sources: `ROADMAP.md` `w2a`, `w2a2`, `w2f`; § The W0 debt register #25, #27,
 #36; DESIGN.md § Failing loudly, § Module layout.
