@@ -6021,7 +6021,7 @@ disagrees with. So the import is its own 👥 row, **`w2a2`**, on `w2a` alone,
 ahead of `w2f`, which now depends on it. That is the split `w2f` already had
 once (§ The W2 mid-wave review, `w2f` splits): the content half needs no
 engine file and no benchmark, and `w2f` keeps the schema, the `Character`, the
-binding and the five debts.
+binding (#12) and debts #25, #27 and #36.
 
 `w2a2` lands one field on `Weapon` and none on its protocol, because the engine
 never asks a weapon its category: the build is checked against it when it
@@ -6033,7 +6033,10 @@ test, as `w2f2`'s weapon fixtures are (§ The `w2f2` spec correction).
 **Spells, Eldritch Invocations and Metamagic are the exception to "every
 choice".** Their catalogues are W5's (`w5a`, `w5d`, `w5e`), and a choice the
 loader cannot check against anything is the silent acceptance § Failing
-loudly forbids. `w5a` adds them to the schema.
+loudly forbids. The row that creates each catalogue adds it to the schema:
+`w5a` the spells, `w5d` Metamagic, `w5e` Eldritch Invocations. `w5a` comes
+before the other two, so it cannot add choices from catalogues they have not
+written yet.
 
 Not a gap: `pydantic` is not yet a dependency. DESIGN.md § Libraries before
 reimplementing names it for exactly this schema, and the row says so; `w2f`
