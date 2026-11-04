@@ -171,8 +171,8 @@ review notifies the human
 once, naming the PR and which of the two it is, and stops. Any other red CI or
 a conflict on the milestone PR is the milestone review's to fix before it
 merges — red CI through a reviewed PR into M, never a commit pushed to M, since
-the reviewer skips the milestone PR; a conflict by merging `main` into M; if the session dies first, the watchdog's two-hour
-notice is what reports it. While the milestone PR is ready and unmerged the
+the reviewer skips the milestone PR; a conflict by merging `main` into M; if the session dies first, the watchdog
+takes the milestone PR over after two hours without activity (§ The chain). While the milestone PR is ready and unmerged the
 watchdog starts nothing: the queue on M already names the next milestone's
 first task, and running it on the closed milestone's branch is the thing that
 check exists to stop. The next firing after the merge picks the chain up again.
@@ -198,7 +198,14 @@ worker, and both paths below drive the Routine rather than spawn around it.
   ahead, and opening the draft milestone PR once it has commits of its own),
   then runs its checks and, only if all of them hold, works the task itself in
   that same session: no milestone PR is ready, the queue has a `next`
-  row, no `claude/task-*` PR is open, and nothing is `held`. The checks are what
+  row, no other PR into the milestone branch is open, and nothing is `held`.
+  A PR that blocks a check but has had no activity for two hours is **stuck**,
+  and the watchdog takes it over rather than reporting it: it archives the
+  owning session unless that session is still working, which releases the PR
+  subscription the dead session holds, claims the PR with one comment, and
+  drives it to a merge from where it stopped. Only what is the human's to
+  decide — a `held` row, a workflow edit, a refused permission — is reported
+  instead. The checks are what
   stop it double-starting a task or starting the next milestone on a branch
   whose merge is waiting (§ Plan reviews); firing no more often than the slowest
   task reaches its PR is the other half of that guard.
@@ -216,6 +223,8 @@ worker, and both paths below drive the Routine rather than spawn around it.
   ```text
   Watchdog for the DnD-Simulator task loop. Be brief and cheap in the
   checks below: do not read DESIGN.md, ROADMAP.md or docs/decisions.md for them.
+  "Stale" means the pull request's last activity (push, comment, review or
+  check run) is over two hours old.
 
   1. Read docs/progress.md on main. If it does not exist there, stop silently.
      Its `Milestone branch:` line names the milestone branch M.
@@ -223,22 +232,41 @@ worker, and both paths below drive the Routine rather than spawn around it.
      commits M lacks, merge main into M and push. If M has commits main lacks
      and no pull request from M into main exists, open one as a draft, titled
      after the milestone.
-  3. If the pull request from M into main is open and not a draft, stop
-     silently — the milestone is closing, and its merge is waiting.
-     Exception: if its last activity is over two hours old, say so in one
-     sentence naming the PR and what it waits on.
-  4. Read docs/progress.md on M. Find the row whose status is `next`. If there
-     is none, or any row is `held`: stop, notifying the user in one sentence
-     for a `held` row.
-  5. If a pull request with a `claude/task-*` head branch is open, stop
-     silently — a task is in flight. Exception: if its last activity is over
-     two hours old, say so in one sentence naming the PR and what it waits on.
+  3. If the pull request from M into main is open and not a draft: stop
+     silently unless it is stale. If it is stale, take it over (below) and
+     finish closing the milestone per .claude/commands/plan-review.md, the
+     milestone step 2 onward.
+  4. Read docs/progress.md on M. Find the row whose status is `next`. If any
+     row is `held`, stop and notify the user in one sentence naming it. If no
+     row is `next`, stop silently.
+  5. If any pull request other than the milestone PR is open with base M:
+     stop silently unless it is stale. If it is stale, take it over (below)
+     and drive it from .claude/commands/next-task.md step 5 (step 4 if it is
+     still a draft) to a merge into M, then do step 6 there.
 
-  Only if all of these pass: run `/next-task` yourself, in this session, on M,
-  and drive it to a PR merged into M. Never call `create_session` — a Routine
-  session has no permission mode, so that call is always refused. Never stop
-  to ask the user a question: docs/workflow.md § Questions for the human says
-  what to do instead.
+  Taking over a stale PR:
+  a. Find the session that owns it: the `Claude-Session:` trailer on the
+     PR's latest commit. If get_session says that session is working, stop
+     and notify the user in one sentence naming the PR. Otherwise archive
+     that session, so its PR subscription is released.
+  b. Post one comment on the PR saying the watchdog has taken it over. That
+     comment is fresh activity, so the next firing will not take it over a
+     second time.
+  c. Check out the PR's head branch and subscribe_pr_activity on the PR.
+  d. Work out what it is stuck on and fix it: CI red or a merge conflict is
+     work now; if the latest push has no reviewer verdict, re-run the
+     latest Claude Code Review workflow run for it (never push an empty
+     commit, never close and reopen); otherwise answer the verdict. The
+     round cap counts the PR's verdicts, not this session's.
+  e. If what it is stuck on is the human's — a `held` row, a
+     `.github/workflows/` edit, a merge refused for a permission you do not
+     have — notify the user in one sentence naming the PR and stop.
+
+  Only if all of checks 1-5 pass: run `/next-task` yourself, in this session,
+  on M, and drive it to a PR merged into M. Never call `create_session` — a
+  Routine session has no permission mode, so that call is always refused.
+  Never stop to ask the user a question: docs/workflow.md § Questions for the
+  human says what to do instead.
   ```
 
 Neither path ever passes a `held` row, or a milestone PR that is ready and
@@ -250,4 +278,5 @@ The loop is designed to be cheap, and the design is load-bearing, not incidental
 the reviewer cancels superseded runs and routes prose-only diffs to the cheaper
 pass; sessions grep `DESIGN.md`, `ROADMAP.md` and `docs/decisions.md` for the one
 claim they need and never read them end to end; the round cap bounds the worst
-case at four reviews per task; and the watchdog's prompt is five checks long.
+case at four reviews per task; and the watchdog's prompt is five checks long, reading only the queue and
+the open PRs unless one of them is stuck.
