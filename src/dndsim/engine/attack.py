@@ -17,10 +17,11 @@ Sources:
 - long range and close combat — XPHB, "Combat" -> Ranged Attacks, "Ranged
   Attacks in Close Combat"
 
-Two gaps, declared: close combat counts every enemy within 5 feet that is not
-Incapacitated, because nothing can yet be asked whether it can see the
-attacker (debt #39); and the proficiency bonus is added to every attack (debt
-#25).
+Three gaps, declared: close combat counts every enemy within 5 feet that is
+not Incapacitated, because nothing can yet be asked whether it can see the
+attacker (debt #39); a thrown weapon stays in the thrower's hand, because
+nothing says how many a build carries (debt #69); and the proficiency bonus is
+added to every attack (debt #25).
 """
 
 from collections.abc import Mapping

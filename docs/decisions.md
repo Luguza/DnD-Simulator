@@ -5973,7 +5973,12 @@ says why: one builtin call per hit.
 ### What this task deliberately did not do
 
 - **Ammunition and Loading** are not counted (#68, placed by the next `⏸`
-  review).
+  review), and **a thrown weapon stays in the hand** (#69, placed with it).
+  Dropping it at the target after each throw would strand a creature carrying
+  five Javelins after one; keeping it lets a creature with one Handaxe throw it
+  every turn. Which is wrong depends on how many it carries, which `w2f`'s
+  equipment is the first thing to say, so the row waits on the same answer
+  #68 does.
 - **The Unarmed Strike** a ranged-weapon wielder makes in place of an
   opportunity attack is `w2j`'s.
 - **Cover** is not modelled anywhere, ranged or melee; nothing here makes it
