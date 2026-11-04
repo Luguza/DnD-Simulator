@@ -6030,13 +6030,16 @@ default suite runs without fetched data, so `w2f`'s tests take class,
 background and feat fixtures, each bound to its imported entry by a `content`
 test, as `w2f2`'s weapon fixtures are (§ The `w2f2` spec correction).
 
-**Spells, Eldritch Invocations and Metamagic are the exception to "every
-choice".** Their catalogues are W5's (`w5a`, `w5d`, `w5e`), and a choice the
-loader cannot check against anything is the silent acceptance § Failing
-loudly forbids. The row that creates each catalogue adds it to the schema:
-`w5a` the spells, `w5d` Metamagic, `w5e` Eldritch Invocations. `w5a` comes
-before the other two, so it cannot add choices from catalogues they have not
-written yet.
+**Five choices are the exception to "every choice"**: spells, Battle Master
+maneuvers, Metamagic, Eldritch Invocations and the Beast forms a Druid knows
+for Wild Shape. A later row creates each catalogue, and a choice the loader
+cannot check against anything is the silent acceptance § Failing loudly
+forbids. The row that creates each catalogue adds it to the schema: `w4d2` the
+maneuvers, `w5a` the spells, `w5d` Metamagic, `w5e` Eldritch Invocations,
+`w7b` the Beast forms. `w5a` comes before `w5d` and `w5e`, so it cannot add
+choices from catalogues they have not written yet; and the Beasts are the
+bestiary's, which lands after the Druid (`w5c`), so until `w7b` a Druid's
+forms are inexpressible rather than unchecked.
 
 Not a gap: `pydantic` is not yet a dependency. DESIGN.md § Libraries before
 reimplementing names it for exactly this schema, and the row says so; `w2f`
