@@ -5964,7 +5964,11 @@ read both modifiers on every attack, where the old one read them only for a
 Finesse weapon (+12,000 `modifier()` calls and the enum hashes under them), and
 the double reach question above. Both were put back before the paired runs.
 
-**The rate.** PAIRED_RATE_PLACEHOLDER
+**The rate agrees.** Eight pairs per configuration, alternating arm order,
+both arms in sibling worktrees (§ w1j): `provoking=False` median −0.9% (ratios
+−5.2% to +2.7%, baseline 23.0k–24.0k), the default median +0.4% (−2.5% to
++2.3%, baseline 13.5k–14.1k). Not distinguishable from zero, and the witness
+says why: one builtin call per hit.
 
 ### What this task deliberately did not do
 
