@@ -5985,3 +5985,59 @@ says why: one builtin call per hit.
   more wrong than it was.
 - **Nothing walks an archer to range.** `offers()` offers a shot at every enemy
   in range and a `Move` toward each, and choosing between them is the policy's.
+
+## The `w2f` spec correction — the content a build is checked against
+
+`w2f`'s done-when asks the loader to refuse what a build cannot hold, and every
+refusal it names needs a fact no package imports. Checked against the upstream
+files at the head of `5etools-src` on 2026-11-04:
+
+- **#36: "a class grants proficiency in two saving throws".** The two are
+  `proficiency` on each class entry in `class/class-*.json`. `content/` reads
+  those files for their tables and their feature text and drops the field.
+- **#25: "a build holding what it is not proficient with".** A class's weapon
+  training is `startingProficiencies.weapons`: `simple`, `martial`, or for the
+  Rogue "Martial weapons that have the {@filter Finesse or Light|...}
+  property". Deciding it needs each weapon's Simple or Martial category, which
+  is `weaponCategory` on the item and is not on `Weapon`. Without it the
+  schema can neither refuse nor price the weapon, which is the debt's text.
+- **"Every choice a level 1–12 character makes", and AC from equipment.** The
+  levels that grant an Ability Score Improvement, a subclass, a Fighting Style
+  and Weapon Mastery are the class's `classFeatures` names; hit points need its
+  hit die (`hd`); armour a class is not trained in is its armour training. A
+  background's three abilities, its +2/+1 and +1/+1/+1 patterns and its Origin
+  feat are `backgrounds.json`; a feat's category and level prerequisite (a
+  General feat from level 4, a Fighting Style feat only through the Fighting
+  Style feature) are `feats.json`. `fetch.py` fetches neither file.
+- **"Unknown feature id fails with difflib suggestions"** needs a list of known
+  ids. No feature exists before W3, so the list is the imported names of the
+  feats, the classes and their subclasses.
+
+The Produces cell named `builds/`, `creatures/character.py` and four engine and
+stats files, and `content/` is not one of them. Writing those facts into
+`builds/` instead would be the second copy of the dataset that § w2a's
+boundary exists to prevent, and is what a later content version silently
+disagrees with. So the import is its own 👥 row, **`w2a2`**, on `w2a` alone,
+ahead of `w2f`, which now depends on it. That is the split `w2f` already had
+once (§ The W2 mid-wave review, `w2f` splits): the content half needs no
+engine file and no benchmark, and `w2f` keeps the schema, the `Character`, the
+binding and the five debts.
+
+`w2a2` lands one field on `Weapon` and none on its protocol, because the engine
+never asks a weapon its category: the build is checked against it when it
+loads, and what `engine/attack.py` reads for #25 is `w2f`'s to settle. The
+default suite runs without fetched data, so `w2f`'s tests take class,
+background and feat fixtures, each bound to its imported entry by a `content`
+test, as `w2f2`'s weapon fixtures are (§ The `w2f2` spec correction).
+
+**Spells, Eldritch Invocations and Metamagic are the exception to "every
+choice".** Their catalogues are W5's (`w5a`, `w5d`, `w5e`), and a choice the
+loader cannot check against anything is the silent acceptance § Failing
+loudly forbids. `w5a` adds them to the schema.
+
+Not a gap: `pydantic` is not yet a dependency. DESIGN.md § Libraries before
+reimplementing names it for exactly this schema, and the row says so; `w2f`
+adds it with its `uv lock`.
+
+Sources: `ROADMAP.md` `w2a`, `w2a2`, `w2f`; § The W0 debt register #25, #27,
+#36; DESIGN.md § Failing loudly, § Module layout.
