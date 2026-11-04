@@ -20,7 +20,7 @@ from dndsim.core.timeline import InitiativeKey
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.economy import ActionEconomy
 from dndsim.creatures.effects import Effect
-from dndsim.creatures.stats import GREATSWORD, StatBlock
+from dndsim.creatures.stats import StatBlock
 from dndsim.engine.triggers import walk_provoking, watch_movement
 from dndsim.engine.world import World
 from dndsim.hooks.contexts import Cell as CellRef
@@ -28,6 +28,7 @@ from dndsim.hooks.contexts import Context, LeaveReachContext
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.source import HookSource
 from dndsim.rules.enums import Ability, ActionCost, Size
+from weapon_fixtures import GREATSWORD
 
 SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 10))
 

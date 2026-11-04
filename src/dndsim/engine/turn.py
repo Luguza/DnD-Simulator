@@ -124,7 +124,9 @@ def offers(world: World, actor: Creature) -> list[Action[Any]]:
     """
     log = world.log
     enemies = enemies_of(world, actor)
-    candidates: list[Action[Any]] = [Attack(actor, enemy, log=log) for enemy in enemies]
+    candidates: list[Action[Any]] = [
+        Attack(actor, enemy, log=log, world=world) for enemy in enemies
+    ]
     candidates.extend(Stabilize(actor, ally) for ally in allies_of(world, actor))
     candidates.extend(
         (Dodge(actor), Disengage(actor), Dash(actor), PickUpWeapon(actor))

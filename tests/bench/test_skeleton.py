@@ -30,10 +30,12 @@ from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.source import HookSource
 from dndsim.rules.enums import Ability, Outcome
 from dndsim.tools.skeleton import build_dummy, build_fighter, run_fight
+from weapon_fixtures import GREATSWORD
 
-# The fighter built by `build_fighter()` swings at +6 (str +3, prof +3) and the
-# dummy from `build_dummy()` is AC 15, so a natural 15 hits (21 >= 15) without
-# being a crit, and a natural 2 misses (8 < 15) without being a fumble.
+# The fighter `build_fighter()` builds swings a greatsword at +6 (str +3, prof
+# +3) and the dummy from `build_dummy()` is AC 15, so a natural 15 hits
+# (21 >= 15) without being a crit, and a natural 2 misses (8 < 15) without
+# being a fumble.
 _HIT_ROLL: Final = 15
 _MISS_ROLL: Final = 2
 
@@ -105,7 +107,7 @@ class DefenderProbe(HookSource):
 
 
 def _rig() -> tuple[Creature, Creature, AttackerProbe, DefenderProbe]:
-    attacker = build_fighter()
+    attacker = build_fighter(GREATSWORD)
     defender = build_dummy()
     attacker_probe = AttackerProbe(attacker)
     defender_probe = DefenderProbe(defender)
@@ -160,7 +162,7 @@ def test_a_miss_never_reaches_the_damage_hooks() -> None:
 
 
 def test_a_natural_1_always_misses_even_against_a_total_that_would_hit() -> None:
-    attacker = build_fighter()
+    attacker = build_fighter(GREATSWORD)
     # AC 5: the fighter's total of 7 (natural 1 + modifier 6) would otherwise
     # be a hit, so this isolates the unconditional rule from an ordinary miss.
     frail = Creature(
@@ -181,7 +183,7 @@ def test_a_natural_1_always_misses_even_against_a_total_that_would_hit() -> None
 
 
 def test_a_natural_20_always_hits_and_crits() -> None:
-    attacker, defender = build_fighter(), build_dummy()
+    attacker, defender = build_fighter(GREATSWORD), build_dummy()
     # d20, then the doubled 4d6 a crit rolls.
     rng = ScriptedRng([20, 1, 2, 3, 4])
 
@@ -193,15 +195,19 @@ def test_a_natural_20_always_hits_and_crits() -> None:
 
 
 def test_a_fight_is_reproducible_from_the_same_seed() -> None:
-    first_rounds = run_fight(build_fighter(), build_dummy(), MersenneRng(12345))
-    second_rounds = run_fight(build_fighter(), build_dummy(), MersenneRng(12345))
+    first_rounds = run_fight(
+        build_fighter(GREATSWORD), build_dummy(), MersenneRng(12345)
+    )
+    second_rounds = run_fight(
+        build_fighter(GREATSWORD), build_dummy(), MersenneRng(12345)
+    )
 
     assert first_rounds == second_rounds
     assert 0 < first_rounds < 50
 
 
 def test_a_fight_ends_with_the_dummy_dead() -> None:
-    attacker = build_fighter()
+    attacker = build_fighter(GREATSWORD)
     defender = build_dummy()
 
     run_fight(attacker, defender, MersenneRng(1))

@@ -46,7 +46,7 @@ here:
   a mixed-type hit in proportion (§ w1e).
 - A Critical Hit below 20 still has to hit; a veto is honoured at the
   declaration and raises after it; damage on a miss does not fire
-  `on_damage_roll`; `Weapon` has six members (§ w1f).
+  `on_damage_roll`; `Weapon` has eight members (§ w1f, § w2f2).
 - A queued effect lands only on the event's own participants, and an
   `EffectStore` keeps the clock it was last told (§ w1c).
 - A transaction announces only on the commit; an overdrawn pool raises

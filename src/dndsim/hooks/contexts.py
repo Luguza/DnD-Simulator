@@ -111,15 +111,17 @@ class Combatant(Protocol):
 
 
 class Weapon(Protocol):
-    """The weapon an attack is made with: its damage, mastery, reach, and
-    `has()` for one weapon property. No range yet (debt #24;
-    `docs/decisions.md` § w1f)."""
+    """The weapon an attack is made with: its damage, mastery, reach, range,
+    whether it is a Ranged weapon, and `has()` for one weapon property.
+
+    `damage` is a die, or an `int` for a flat amount with no die
+    (`docs/decisions.md` § w1f, § w2f2)."""
 
     @property
     def name(self) -> str: ...
 
     @property
-    def damage(self) -> Dice: ...
+    def damage(self) -> Dice | int: ...
 
     @property
     def damage_type(self) -> DamageType: ...
@@ -129,6 +131,12 @@ class Weapon(Protocol):
 
     @property
     def reach_ft(self) -> int: ...
+
+    @property
+    def range_ft(self) -> tuple[int, int] | None: ...
+
+    @property
+    def ranged(self) -> bool: ...
 
     def has(self, prop: WeaponProperty) -> bool: ...
 

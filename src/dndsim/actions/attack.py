@@ -13,8 +13,9 @@ from dndsim.engine.attack import (
     AttackResult,
     Trigger,
     resolve_attack,
-    within_reach,
+    within_range,
 )
+from dndsim.engine.world import World
 from dndsim.rules.enums import ActionCost
 
 __all__ = ["Attack"]
@@ -25,10 +26,12 @@ class Attack(Action[AttackResult]):
 
     One attack per action; Extra Attack is not modelled. A named weapon is
     refused while it lies where the actor dropped it (`docs/decisions.md`
-    § w2b). `contexts`, `trigger` and `log` are handed to `resolve_attack()`.
+    § w2b). `contexts`, `trigger`, `log` and `world` are handed to
+    `resolve_attack()`, which a ranged attack cannot be resolved without a
+    `world` for (`docs/decisions.md` § w2f2).
     """
 
-    __slots__ = ("contexts", "log", "target", "trigger", "weapon")
+    __slots__ = ("contexts", "log", "target", "trigger", "weapon", "world")
 
     ID: ClassVar[str] = "attack"
     COST: ClassVar[ActionCost | None] = ActionCost.ACTION
@@ -42,6 +45,7 @@ class Attack(Action[AttackResult]):
         contexts: AttackContexts = FRESH,
         trigger: Trigger | None = None,
         log: EventLog | None = None,
+        world: World | None = None,
     ) -> None:
         super().__init__(actor)
         self.target = target
@@ -49,6 +53,7 @@ class Attack(Action[AttackResult]):
         self.contexts = contexts
         self.trigger = trigger
         self.log = log
+        self.world = world
 
     def _permits(self) -> bool:
         actor, target = self.actor, self.target
@@ -58,7 +63,7 @@ class Attack(Action[AttackResult]):
             and weapon is not actor.dropped_weapon
             and target is not actor
             and not target.dead
-            and within_reach(actor, target, weapon)
+            and within_range(actor, target, weapon)
         )
 
     def _perform(self, rng: Rng) -> AttackResult:
@@ -70,4 +75,5 @@ class Attack(Action[AttackResult]):
             contexts=self.contexts,
             trigger=self.trigger,
             log=self.log,
+            world=self.world,
         )

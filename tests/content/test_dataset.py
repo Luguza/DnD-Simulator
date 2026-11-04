@@ -14,7 +14,17 @@ from dndsim.content.species import species
 from dndsim.content.tables import class_tables, table_value
 from dndsim.content.weapons import NOT_IMPORTED, armour, masteries, weapons
 from dndsim.core.dice import Dice
+from dndsim.creatures.stats import Weapon
 from dndsim.rules.enums import Mastery
+from weapon_fixtures import (
+    BLOWGUN,
+    DAGGER,
+    DART,
+    GREATSWORD,
+    HANDAXE,
+    LONGBOW,
+    MAUL,
+)
 
 pytestmark = pytest.mark.content
 
@@ -53,6 +63,27 @@ def test_all_38_xphb_weapons_are_imported_or_declared(data: Dataset) -> None:
     assert table["Greatsword"].damage == Dice(2, 6)
     assert table["Longbow"].range_ft == (150, 600)
     assert table["Whip"].reach_ft == 10
+    assert table["Blowgun"].damage == 1
+
+
+def test_the_melee_ranged_column_parts_a_dart_from_a_dagger(data: Dataset) -> None:
+    """Both are Finesse, Thrown and 20/60; only the column differs."""
+    table = weapons(data)
+    assert table["Dart"].ranged
+    assert not table["Dagger"].ranged
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    [GREATSWORD, MAUL, LONGBOW, DAGGER, DART, HANDAXE, BLOWGUN],
+    ids=lambda weapon: weapon.name,
+)
+def test_each_weapon_fixture_is_its_imported_entry(
+    data: Dataset, fixture: Weapon
+) -> None:
+    """The default suite and `-m bench` stand on hand-written copies; this is
+    what keeps them the table's (`docs/decisions.md` § w2f2)."""
+    assert weapons(data)[fixture.name] == fixture
 
 
 def test_heavy_armour_carries_the_printed_strength(data: Dataset) -> None:

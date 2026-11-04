@@ -61,7 +61,7 @@ from dndsim.creatures.dummy import (
     ThreatProfile,
     build_dummies,
 )
-from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
+from dndsim.creatures.stats import StatBlock, Weapon
 from dndsim.engine.attack import ATTACK, resolve_attack
 from dndsim.engine.turn import Policy, take_turn
 from dndsim.engine.world import World
@@ -77,6 +77,7 @@ from dndsim.hooks.source import HookSource
 from dndsim.rules.constants import SIZE_WIDTH_CELLS
 from dndsim.rules.enums import Ability, DamageType, Outcome, Size
 from dndsim.tools.spike import SPIKE_APL, compile_spike_apl
+from weapon_fixtures import GREATSWORD
 
 SCORES: Final = MappingProxyType(
     {

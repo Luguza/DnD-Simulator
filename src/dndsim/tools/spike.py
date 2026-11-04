@@ -11,7 +11,9 @@ before `w2c2`: no fall-back and no opportunity attacks, the enemies closing by
 the spike's own stepping rather than `Move`, and a `World` holding no log, so a
 change to the world's log is priced on the default only. The hero walks by
 `Move` in both, so a change to `Move` is priced on both.
-`measure_startup()` times a spawned worker separately.
+`measure_startup()` times a spawned worker separately. The hero's greatsword
+and the enemies' maul are parameters, read off the imported table only in
+`main()` (`docs/decisions.md` § w2f2).
 
 `docs/decisions.md` § w0i has the configuration's reasoning and the
 measurements, § w1k what the completed W1 substrate added to them, and § w2c2
@@ -24,6 +26,7 @@ DESIGN.md § Performance, § The spike must be pessimistic.
 """
 
 import argparse
+import pickle
 import subprocess
 import sys
 import time
@@ -38,7 +41,8 @@ from dndsim.actions.move import Move
 from dndsim.actions.opportunity_attack import OpportunityAttacks
 from dndsim.apl.apl import Apl, CompiledEntry
 from dndsim.apl.schema import Kind, NamespaceSchema
-from dndsim.core.dice import Dice
+from dndsim.content.loader import Dataset
+from dndsim.content.weapons import weapons
 from dndsim.core.geometry import Cell, distance_ft, in_reach, route, steps_within
 from dndsim.core.log import EventLog, LogLevel
 from dndsim.core.rng import MersenneRng, Rng, mix
@@ -47,7 +51,7 @@ from dndsim.creatures.creature import Creature
 from dndsim.creatures.economy import ActionEconomy
 from dndsim.creatures.effects import Clock
 from dndsim.creatures.resources import spell_slot_specs
-from dndsim.creatures.stats import GREATSWORD, Armour, StatBlock, Weapon
+from dndsim.creatures.stats import Armour, StatBlock, Weapon
 from dndsim.engine.attack import FRESH, AttackContexts, PooledContexts, resolve_attack
 from dndsim.engine.triggers import walk_provoking
 from dndsim.engine.world import World
@@ -59,7 +63,6 @@ from dndsim.rules.enums import (
     Ability,
     ActionCost,
     CasterProgression,
-    DamageType,
     RecoveryTrigger,
 )
 from dndsim.tools.spike_features import (
@@ -137,11 +140,6 @@ _RAGE_LASTS: Final = Duration.until_end_of_next_turn_of(_HERO_SEAT)
 
 _SLOTS: Final = CasterProgression.FULL
 """Trap: sized so the smite's gate never runs dry (`docs/decisions.md` § w1k)."""
-
-_MAUL: Final = Weapon(
-    name="Maul", damage=Dice(2, 6), damage_type=DamageType.BLUDGEONING
-)
-"""What the enemies swing, sized with `_HERO_HP` (`docs/decisions.md` § w0i)."""
 
 _PLATE: Final = Armour.heavy("Plate", 18)
 
@@ -232,11 +230,16 @@ class _Swing:
 def build_spike(
     seed: int = 0,
     *,
+    greatsword: Weapon,
+    maul: Weapon,
     pooled: bool = True,
     log_level: LogLevel = LogLevel.FULL,
     provoking: bool = True,
 ) -> tuple[Spike, Rng]:
     """Assemble the hostile creature, its three enemies and its compiled APL.
+
+    The hero swings `greatsword` and the enemies `maul`, whose dice are sized
+    with `_HERO_HP` (`docs/decisions.md` § w0i).
 
     Everything built once per encounter is built here (DESIGN.md § Levers).
     `pooled` reuses each side's attack contexts rather than allocating them per
@@ -250,7 +253,7 @@ def build_spike(
         name="Spike",
         stats=StatBlock(abilities=_HERO_SCORES, max_hp=_HERO_HP, level=12),
         position=_HERO_START,
-        weapon=GREATSWORD,
+        weapon=greatsword,
         armour=_PLATE,
         initiative=_HERO_SEAT,
     )
@@ -261,7 +264,7 @@ def build_spike(
             stats=StatBlock(abilities=_ENEMY_SCORES, max_hp=_ENEMY_HP, level=5),
             position=start,
             armour=Armour.natural(16),
-            weapon=_MAUL,
+            weapon=maul,
             initiative=_SEATS[index + 1],
         )
         for index, start in enumerate(_ENEMY_STARTS)
@@ -294,7 +297,7 @@ def build_spike(
                     enemy,
                     world=world,
                     rng=rng,
-                    contexts=PooledContexts(enemy, hero, _MAUL) if pooled else FRESH,
+                    contexts=PooledContexts(enemy, hero, maul) if pooled else FRESH,
                     trigger=namespace.trigger,
                 )
             )
@@ -307,9 +310,9 @@ def build_spike(
         apl=apl,
         state=state,
         economy=hero.economy,
-        contexts=PooledContexts(hero, enemies[0], GREATSWORD) if pooled else FRESH,
+        contexts=PooledContexts(hero, enemies[0], greatsword) if pooled else FRESH,
         enemy_contexts=tuple(
-            PooledContexts(enemy, hero, _MAUL) if pooled else FRESH for enemy in enemies
+            PooledContexts(enemy, hero, maul) if pooled else FRESH for enemy in enemies
         ),
         sources=sources,
         log=log,
@@ -574,6 +577,8 @@ def measure(
     repeats: int = 5,
     seed: int = 0,
     *,
+    greatsword: Weapon,
+    maul: Weapon,
     pooled: bool = True,
     log_level: LogLevel = LogLevel.FULL,
     provoking: bool = True,
@@ -582,10 +587,15 @@ def measure(
 
     Returns the rate and the resolutions in one repeat. The default of a
     thousand encounters is a floor, not a number to trim (`docs/decisions.md`
-    § w0i). `provoking` is `build_spike()`'s.
+    § w0i). The weapons and `provoking` are `build_spike()`'s.
     """
     spike, rng = build_spike(
-        seed, pooled=pooled, log_level=log_level, provoking=provoking
+        seed,
+        greatsword=greatsword,
+        maul=maul,
+        pooled=pooled,
+        log_level=log_level,
+        provoking=provoking,
     )
     _burn(spike, rng, max(encounters // 10, 1))
 
@@ -606,21 +616,24 @@ def _burn(spike: Spike, rng: Rng, encounters: int) -> int:
     return resolutions
 
 
-def measure_startup(workers: int = 4) -> float:
+def measure_startup(workers: int = 4, *, greatsword: Weapon, maul: Weapon) -> float:
     """Seconds to bring one `spawn`ed worker to the point of simulating.
 
-    A fresh interpreter, a fresh import of the package and the spike rebuilt,
-    averaged over `workers` subprocesses. Trap: a subprocess, never
-    `multiprocessing.Pool` (`docs/decisions.md` § w0i).
+    A fresh interpreter, a fresh import of the package and the spike rebuilt
+    with the two weapons, which are handed to it pickled, averaged over
+    `workers` subprocesses. Trap: a subprocess, never `multiprocessing.Pool`
+    (`docs/decisions.md` § w0i).
     """
     command = [
         sys.executable,
         "-c",
-        "from dndsim.tools.spike import build_spike; build_spike(0)",
+        "import pickle, sys; from dndsim.tools.spike import build_spike; "
+        "g, m = pickle.load(sys.stdin.buffer); build_spike(0, greatsword=g, maul=m)",
     ]
+    weapons_pickled = pickle.dumps((greatsword, maul))
     started = time.perf_counter()
     for _ in range(workers):
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, input=weapons_pickled, check=True, capture_output=True)
     return (time.perf_counter() - started) / workers
 
 
@@ -657,10 +670,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    table = weapons(Dataset())
+    greatsword, maul = table["Greatsword"], table["Maul"]
     rate, resolutions = measure(
         args.encounters,
         args.repeats,
         args.seed,
+        greatsword=greatsword,
+        maul=maul,
         pooled=not args.fresh,
         log_level=LogLevel(args.log_level),
         provoking=not args.no_provoking,
@@ -677,7 +694,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         budget = "the budget is quoted on --no-provoking)"
     print(f"{rate:,.0f} attack resolutions/sec/core  ({budget}")
     if args.startup:
-        print(f"{measure_startup():.3f} s per spawn worker (startup, measured apart)")
+        seconds = measure_startup(greatsword=greatsword, maul=maul)
+        print(f"{seconds:.3f} s per spawn worker (startup, measured apart)")
     return 0 if verdict == "PASS" else 1
 
 
