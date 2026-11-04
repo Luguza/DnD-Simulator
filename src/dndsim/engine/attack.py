@@ -12,17 +12,24 @@ Sources:
   modifier is `docs/decisions.md` § w1f
 - damage on a miss is rolled without `on_damage_roll` — `docs/decisions.md`
   § w1f
+- the ability, range and Thrown — XPHB, "Equipment" -> Weapon Properties,
+  Range and Thrown; "Combat" -> Making an Attack; `docs/decisions.md` § w2f2
+- long range and close combat — XPHB, "Combat" -> Ranged Attacks, "Ranged
+  Attacks in Close Combat"
 
-Two first cuts: every attack resolves at the weapon's reach with no ranged
-branch (debt #24), and the proficiency bonus is added to every attack (debt
-#25).
+Three gaps, declared: close combat counts every enemy within 5 feet that is
+not Incapacitated, because nothing can yet be asked whether it can see the
+attacker (debt #39); a thrown weapon stays in the thrower's hand, because
+nothing says how many a build carries (debt #69); and the proficiency bonus is
+added to every attack (debt #25).
 """
 
 from collections.abc import Mapping
 from typing import Final, NamedTuple, Protocol
 
+from dndsim.core.dice import Dice
 from dndsim.core.errors import EngineAssemblyError, FeatureContractError
-from dndsim.core.geometry import in_reach
+from dndsim.core.geometry import distance_ft, in_reach
 from dndsim.core.log import EventLog
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
@@ -34,6 +41,8 @@ from dndsim.engine.damage import (
     resolve_damage,
     roll_damage,
 )
+from dndsim.engine.query import enemies_of
+from dndsim.engine.world import World
 from dndsim.hooks.contexts import (
     AttackDeclaredContext,
     AttackResolvedContext,
@@ -56,7 +65,7 @@ from dndsim.hooks.definitions import (
     ON_INCOMING_ATTACK_DECLARED,
     ON_MISS,
 )
-from dndsim.rules.constants import NATURAL_ONE, NATURAL_TWENTY
+from dndsim.rules.constants import CELL_SIZE_FT, NATURAL_ONE, NATURAL_TWENTY
 from dndsim.rules.enums import Ability, DamageType, Outcome, WeaponProperty
 
 __all__ = [
@@ -72,6 +81,7 @@ __all__ = [
     "Trigger",
     "attack_ability",
     "resolve_attack",
+    "within_range",
     "within_reach",
 ]
 
@@ -320,8 +330,9 @@ class PooledContexts:
     rebinds every field.
 
     **One pool resolves one attack at a time**: `declared()` raises
-    `EngineAssemblyError` on re-entry until `release()` (debt #26,
-    `docs/decisions.md` § w1f).
+    `EngineAssemblyError` on re-entry until `release()`. An attack made from
+    inside another one is given a second pool, never this one again
+    (`docs/decisions.md` § w1f, § w2c2).
     """
 
     __slots__ = (
@@ -408,7 +419,8 @@ class PooledContexts:
                 "another attack sharing this context pool. The outer attack's "
                 "contexts are live; rebinding them here would resolve it against "
                 "the inner attack's numbers. Give the nested attack its own "
-                "PooledContexts (w2c) or resolve it through FRESH."
+                "PooledContexts — a reaction's is the one its "
+                "OpportunityAttacks source holds — or resolve it through FRESH."
             )
         self._live = True
         ctx = self._declared
@@ -565,15 +577,15 @@ FRESH: Final[AttackContexts] = FreshContexts()
 def attack_ability(attacker: Creature, weapon: Weapon) -> Ability:
     """Which ability score this attack is made with.
 
-    Strength, or Dexterity for a Finesse weapon when Dexterity is the better of
-    the two (XPHB, "Equipment" -> Weapon Properties, Finesse; `docs/decisions.md`
-    § w1f). There is no ranged branch: debt #24.
+    Strength for a Melee weapon and Dexterity for a Ranged one, or the better
+    of the two for a Finesse weapon. A Thrown melee weapon keeps its melee
+    ability when thrown (`docs/decisions.md` § w1f, § w2f2).
     """
-    if weapon.has(WeaponProperty.FINESSE) and attacker.modifier(
-        Ability.DEXTERITY
-    ) > attacker.modifier(Ability.STRENGTH):
-        return Ability.DEXTERITY
-    return Ability.STRENGTH
+    if weapon.has(WeaponProperty.FINESSE):
+        dexterity = attacker.modifier(Ability.DEXTERITY)
+        strength = attacker.modifier(Ability.STRENGTH)
+        return Ability.DEXTERITY if dexterity > strength else Ability.STRENGTH
+    return Ability.DEXTERITY if weapon.ranged else Ability.STRENGTH
 
 
 def within_reach(attacker: Creature, defender: Creature, weapon: Weapon) -> bool:
@@ -590,6 +602,70 @@ def within_reach(attacker: Creature, defender: Creature, weapon: Weapon) -> bool
         origin_size=attacker.size,
         destination_size=defender.size,
     )
+
+
+def _thrown_or_shot(attacker: Creature, defender: Creature, weapon: Weapon) -> bool:
+    """Whether attacking `defender` with `weapon` is a ranged attack: always
+    with a Ranged weapon, and with a Thrown melee weapon only at a target out
+    of its reach (`docs/decisions.md` § w2f2)."""
+    return weapon.ranged or (
+        weapon.has(WeaponProperty.THROWN)
+        and not within_reach(attacker, defender, weapon)
+    )
+
+
+def _distance(attacker: Creature, defender: Creature) -> int:
+    return distance_ft(
+        attacker.position,
+        defender.position,
+        origin_size=attacker.size,
+        destination_size=defender.size,
+    )
+
+
+def within_range(attacker: Creature, defender: Creature, weapon: Weapon) -> bool:
+    """Whether `attacker` can attack `defender` with `weapon` at all: within its
+    reach for a melee attack, within its long range for a ranged one."""
+    if not _thrown_or_shot(attacker, defender, weapon):
+        return within_reach(attacker, defender, weapon)
+    range_ft = weapon.range_ft
+    return range_ft is not None and _distance(attacker, defender) <= range_ft[1]
+
+
+def _ranged_disadvantage(
+    attacker: Creature, defender: Creature, weapon: Weapon, world: World | None
+) -> str | None:
+    """Why a ranged attack has Disadvantage, or `None`.
+
+    Raises `ValueError` past the long range, and `EngineAssemblyError` with no
+    `world` to find the enemies close combat asks about.
+    """
+    range_ft = weapon.range_ft
+    distance = _distance(attacker, defender)
+    if range_ft is None or distance > range_ft[1]:
+        raise ValueError(
+            f"{attacker.name} at {attacker.position} cannot reach {defender.name} "
+            f"at {defender.position}, {distance} ft away, with {weapon.name}"
+        )
+    if world is None:
+        raise EngineAssemblyError(
+            f"{attacker.name} made a ranged attack with {weapon.name} and no "
+            "world: close combat asks for the enemies around the attacker, and "
+            "skipping the question would drop its Disadvantage. Pass the World."
+        )
+    for enemy in enemies_of(world, attacker):
+        # The flag, not the condition: `engine/` names none (§ w2c).
+        if not any(effect.INCAPACITATES for effect in enemy.effects) and in_reach(
+            attacker.position,
+            enemy.position,
+            CELL_SIZE_FT,
+            origin_size=attacker.size,
+            destination_size=enemy.size,
+        ):
+            return f"ranged attack within 5 feet of {enemy.name}"
+    if distance > range_ft[0]:
+        return "long range"
+    return None
 
 
 def _seal(ctx: Context, stage: str, attacker: Creature, defender: Creature) -> None:
@@ -622,6 +698,7 @@ def resolve_attack(
     contexts: AttackContexts = FRESH,
     trigger: Trigger | None = None,
     log: EventLog | None = None,
+    world: World | None = None,
 ) -> AttackResult:
     """Resolve one attack by `attacker` against `defender`.
 
@@ -630,16 +707,24 @@ def resolve_attack(
     come from; `trigger` is the APL's `trigger.*` root, told what is being
     offered immediately before each dispatch that can carry gated handlers.
     `log`, when given, is written the `ATTACK`, `ATTACK_ROLL` and `DAMAGE_ROLL`
-    records above.
+    records above. `world` holds the enemies a ranged attack's close-combat
+    Disadvantage is asked about; a melee attack never reads it.
 
     Raises `ValueError` when there is no weapon or the target is out of its
-    reach. Legality and cost are not asked.
+    reach or range, and `EngineAssemblyError` for a ranged attack with no
+    `world`. Legality and cost are not asked.
     """
     if weapon is None:
         weapon = attacker.weapon
         if weapon is None:
             raise ValueError(f"{attacker.name} has no weapon to attack with")
-    if not within_reach(attacker, defender, weapon):
+    if weapon.ranged:
+        disadvantage = _ranged_disadvantage(attacker, defender, weapon, world)
+    elif within_reach(attacker, defender, weapon):
+        disadvantage = None
+    elif weapon.has(WeaponProperty.THROWN):
+        disadvantage = _ranged_disadvantage(attacker, defender, weapon, world)
+    else:
         raise ValueError(
             f"{attacker.name} at {attacker.position} cannot reach {defender.name} "
             f"at {defender.position} with {weapon.reach_ft} ft of {weapon.name}"
@@ -656,6 +741,9 @@ def resolve_attack(
     declared = contexts.declared(
         attacker=attacker, defender=defender, weapon=weapon, ability=ability
     )
+    if disadvantage is not None:
+        declared.stamp("engine.attack", None)
+        declared.impose_disadvantage(disadvantage)
     strike(ON_DECLARE_ATTACK, declared)
     parry(ON_INCOMING_ATTACK_DECLARED, declared)
     if declared._pending:
@@ -735,11 +823,20 @@ def resolve_attack(
         hit.stamp("engine.attack", None)
         # The ability modifier goes in `flat`, which a crit never doubles
         # (DESIGN.md § Structural prevention).
-        bag.add(
-            dice=weapon.damage,
-            flat=attacker.modifier(ability),
-            damage_type=weapon.damage_type,
-        )
+        damage = weapon.damage
+        if isinstance(damage, Dice):
+            bag.add(
+                dice=damage,
+                flat=attacker.modifier(ability),
+                damage_type=weapon.damage_type,
+            )
+        else:
+            # Two parts: one flat of weapon and modifier could sum to 0, an
+            # empty contribution `add()` refuses (`docs/decisions.md` § w2f2).
+            bag.add(flat=damage, damage_type=weapon.damage_type)
+            modifier = attacker.modifier(ability)
+            if modifier:
+                bag.add(flat=modifier, damage_type=weapon.damage_type)
         strike(ON_HIT, hit)
         parry(ON_HIT_TAKEN, hit)
         _seal(hit, "on_hit or on_hit_taken", attacker, defender)

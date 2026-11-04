@@ -1,5 +1,4 @@
-"""What a creature is made of: its numbers, its armour and the one weapon the
-spike swings.
+"""What a creature is made of: its numbers, its armour and its weapon.
 
 All three are frozen, slotted value objects shared by every creature that has
 them. AC is derived from an `Armour`, never typed into a `StatBlock`; a stat
@@ -29,27 +28,47 @@ from dndsim.rules.enums import (
     WeaponProperty,
 )
 
-__all__ = ["GREATSWORD", "UNARMOURED", "Armour", "StatBlock", "Weapon"]
+__all__ = ["UNARMOURED", "Armour", "StatBlock", "Weapon"]
 
 _DEX: Final = Ability.DEXTERITY
 
 
 @dataclass(frozen=True, slots=True)
 class Weapon:
-    """A weapon as the engine needs it: a name, a die, a type, and its reach.
+    """A weapon as the engine needs it: a name, its damage, a type, its reach
+    and range, and whether it is a Melee or a Ranged weapon.
 
-    `damage` is dice only: the wielder's modifier is a `flat` contribution the
-    attack adds, so it never doubles on a crit (DESIGN.md § Structural
-    prevention). `mastery` names the weapon's mastery property and implements
-    nothing.
+    `damage` is a die, or an `int` for a weapon that deals a flat amount with no
+    die, which a Critical Hit never doubles; the wielder's modifier is a `flat`
+    contribution the attack adds (DESIGN.md § Structural prevention).
+    `mastery` names the weapon's mastery property and implements nothing.
+    `range_ft` is the printed normal/long pair, `None` for a weapon with no
+    range; `ranged` is the table's Melee/Ranged column; `versatile_damage` is
+    the two-handed die of a Versatile weapon (`docs/decisions.md` § w2a,
+    § w2f2).
+
+    Raises `ValueError` for a flat damage below 1, and for a Ranged or Thrown
+    weapon with no range.
     """
 
     name: str
-    damage: Dice
+    damage: Dice | int
     damage_type: DamageType
     properties: frozenset[WeaponProperty] = frozenset()
     mastery: Mastery | None = None
     reach_ft: int = 5
+    range_ft: tuple[int, int] | None = None
+    ranged: bool = False
+    versatile_damage: Dice | None = None
+
+    def __post_init__(self) -> None:
+        damage = self.damage
+        if not isinstance(damage, Dice) and damage < 1:
+            raise ValueError(f"{self.name} deals {damage} damage; a flat is at least 1")
+        if self.range_ft is None and (
+            self.ranged or WeaponProperty.THROWN in self.properties
+        ):
+            raise ValueError(f"{self.name} is ranged or thrown and has no range")
 
     def has(self, prop: WeaponProperty) -> bool:
         """Whether this weapon has a property."""
@@ -57,18 +76,6 @@ class Weapon:
 
     def __str__(self) -> str:
         return self.name
-
-
-GREATSWORD: Final = Weapon(
-    name="Greatsword",
-    damage=Dice(2, 6),
-    damage_type=DamageType.SLASHING,
-    properties=frozenset({WeaponProperty.HEAVY, WeaponProperty.TWO_HANDED}),
-    mastery=Mastery.GRAZE,
-    reach_ft=5,
-)
-"""The spike's one weapon: 2d6 slashing, Heavy, Two-Handed, Graze. Hand-written
-until weapons are imported (`docs/decisions.md` § w0g2)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +147,8 @@ class Armour:
     abilities: tuple[tuple[Ability, int | None], ...] = ()
     """Which ability modifiers this armour adds, each with its cap or `None` for
     no cap."""
+    strength_requirement: int | None = None
+    """The Strength score the Armor table prints for heavy armour, or `None`."""
 
     @classmethod
     def light(cls, name: str, base_ac: int) -> "Armour":
@@ -154,9 +163,13 @@ class Armour:
         )
 
     @classmethod
-    def heavy(cls, name: str, base_ac: int) -> "Armour":
+    def heavy(
+        cls, name: str, base_ac: int, strength_requirement: int | None = None
+    ) -> "Armour":
         """Heavy armour: the printed number, and no Dexterity at all."""
-        return cls(name=name, base_ac=base_ac)
+        return cls(
+            name=name, base_ac=base_ac, strength_requirement=strength_requirement
+        )
 
     @classmethod
     def natural(cls, base_ac: int, name: str = "Natural Armor") -> "Armour":

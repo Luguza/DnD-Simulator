@@ -17,6 +17,7 @@ from typing import Final
 
 import pytest
 
+from dndsim.conditions.incapacitated import Incapacitated
 from dndsim.core.dice import Dice
 from dndsim.core.errors import EngineAssemblyError, FeatureContractError
 from dndsim.core.geometry import Cell
@@ -24,7 +25,7 @@ from dndsim.core.log import EventLog, LogLevel
 from dndsim.core.rng import MersenneRng, Rng, ScriptedRng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.effects import Effect
-from dndsim.creatures.stats import GREATSWORD, Armour, StatBlock, Weapon
+from dndsim.creatures.stats import Armour, StatBlock, Weapon
 from dndsim.engine.attack import (
     ATTACK,
     ATTACK_ROLL,
@@ -36,8 +37,10 @@ from dndsim.engine.attack import (
     PooledContexts,
     attack_ability,
     resolve_attack,
+    within_range,
     within_reach,
 )
+from dndsim.engine.world import World
 from dndsim.hooks.contexts import (
     AttackDeclaredContext,
     AttackResolvedContext,
@@ -52,6 +55,7 @@ from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.registry import Phase
 from dndsim.hooks.source import HookSource
 from dndsim.rules.enums import Ability, DamageType, Mastery, Outcome, WeaponProperty
+from weapon_fixtures import BLOWGUN, DAGGER, DART, GREATSWORD, HANDAXE, LONGBOW
 
 # --- The two creatures every case below is derived from ---------------------
 
@@ -1417,3 +1421,213 @@ def test_logging_does_not_change_the_fight() -> None:
 
     assert fight(EventLog(LogLevel.FULL)) == unlogged
     assert fight(EventLog(LogLevel.SUMMARY)) == unlogged
+
+
+# --- The ranged branch (`docs/decisions.md` § w2f2) --------------------------
+#
+# The archer below is `_NIMBLE` at level 5: Dexterity +4 and proficiency +3, so
+# a natural 10 shoots for 17 against AC 15 and a natural 3 for 10.
+
+
+def _field(shooter: Creature, target: Creature, *others: tuple[Creature, str]) -> World:
+    """`shooter` on one side and `target` on the other, then `others`."""
+    world = World()
+    world.seat(shooter, "archers")
+    world.seat(target, "dummies")
+    for creature, side in others:
+        world.seat(creature, side)
+    return world
+
+
+def archer(weapon: Weapon = LONGBOW) -> Creature:
+    return attacker(scores=_NIMBLE, weapon=weapon)
+
+
+_EVEN: Final = MappingProxyType(dict.fromkeys(Ability, 10))
+
+
+class Probe(HookSource):
+    """Records the Disadvantage an attack was declared with."""
+
+    __slots__ = ("disadvantage_sources",)
+
+    ID = "test.probe"
+
+    def __init__(self, owner: Creature) -> None:
+        super().__init__(owner)
+        self.disadvantage_sources: tuple[str, ...] = ()
+
+    @hook("on_declare_attack")
+    def look(self, ctx: AttackDeclaredContext) -> R:
+        self.disadvantage_sources = ctx.disadvantage_sources
+        return R.SKIPPED
+
+
+@pytest.mark.parametrize(
+    ("scores", "weapon", "ability"),
+    [
+        (_STRONG, LONGBOW, Ability.DEXTERITY),
+        (_NIMBLE, HANDAXE, Ability.STRENGTH),
+        (_STRONG, DART, Ability.STRENGTH),
+        (_NIMBLE, DAGGER, Ability.DEXTERITY),
+    ],
+    ids=["ranged", "thrown-melee", "finesse-ranged", "finesse-melee"],
+)
+def test_the_ability_follows_the_column_and_finesse(
+    scores: MappingProxyType[Ability, int], weapon: Weapon, ability: Ability
+) -> None:
+    """XPHB "Making an Attack": Strength for a melee weapon, Dexterity for a
+    ranged one; Finesse takes the better; Thrown keeps the melee ability."""
+    assert attack_ability(attacker(scores=scores, weapon=weapon), weapon) is ability
+
+
+def test_a_shot_at_normal_range_rolls_once_off_dexterity() -> None:
+    """Thirty feet, inside the Longbow's 150: 10 + 4 + 3 = 17 hits, for 1d8
+    (5) + 4 = 9."""
+    shooter, target = archer(), defender(cells=6)
+    rng = ScriptedRng([_HIT, 5])
+
+    result = resolve_attack(shooter, target, rng=rng, world=_field(shooter, target))
+
+    assert result == AttackResult(Outcome.HIT, 9)
+    assert rng.exhausted
+
+
+def test_a_shot_at_long_range_has_disadvantage() -> None:
+    """155 feet, past the normal 150: 17 then 3 resolves on 3, for 10 and a
+    miss."""
+    shooter, target = archer(), defender(cells=31)
+    rng = ScriptedRng([17, 3])
+
+    result = resolve_attack(shooter, target, rng=rng, world=_field(shooter, target))
+
+    assert result == AttackResult(Outcome.MISS, 0)
+    assert rng.exhausted
+
+
+def test_nothing_past_the_long_range_can_be_shot() -> None:
+    shooter = archer()
+    at_long, past_long = defender(cells=120), defender(cells=121)
+
+    assert within_range(shooter, at_long, LONGBOW)
+    assert not within_range(shooter, past_long, LONGBOW)
+    with pytest.raises(ValueError, match="605 ft"):
+        resolve_attack(
+            shooter,
+            past_long,
+            rng=no_dice(),
+            world=_field(shooter, past_long),
+        )
+
+
+def test_a_shot_beside_an_enemy_has_disadvantage() -> None:
+    """XPHB "Ranged Attacks in Close Combat": the target is the enemy within
+    5 feet. 17 then 3 resolves on 3, for a miss."""
+    shooter, target = archer(), defender(cells=1)
+    rng = ScriptedRng([17, 3])
+
+    result = resolve_attack(shooter, target, rng=rng, world=_field(shooter, target))
+
+    assert result == AttackResult(Outcome.MISS, 0)
+
+
+def test_an_enemy_beside_the_shooter_imposes_it_on_a_distant_shot() -> None:
+    shooter, target = archer(), defender(cells=6)
+    beside = defender(cells=-1)
+    rng = ScriptedRng([17, 3])
+
+    result = resolve_attack(
+        shooter,
+        target,
+        rng=rng,
+        world=_field(shooter, target, (beside, "dummies")),
+    )
+
+    assert result == AttackResult(Outcome.MISS, 0)
+
+
+@pytest.mark.parametrize("incapacitate", [False, True], ids=["ally", "incapacitated"])
+def test_an_ally_or_an_incapacitated_enemy_beside_imposes_nothing(
+    incapacitate: bool,
+) -> None:
+    """Only an enemy that is not Incapacitated counts: one d20, 10 for 17 and
+    a hit for 1d8 (5) + 4 = 9."""
+    shooter, target = archer(), defender(cells=6)
+    beside = defender(cells=-1)
+    side = "dummies" if incapacitate else "archers"
+    if incapacitate:
+        assert beside.effects.apply(Incapacitated(beside)) is not None
+    rng = ScriptedRng([_HIT, 5])
+
+    result = resolve_attack(
+        shooter, target, rng=rng, world=_field(shooter, target, (beside, side))
+    )
+
+    assert result == AttackResult(Outcome.HIT, 9)
+    assert rng.exhausted
+
+
+def test_the_engine_names_the_disadvantage_it_imposed() -> None:
+    shooter, target = archer(), defender(cells=31)
+    seen = Probe(shooter)
+    shooter.attach(seen)
+
+    resolve_attack(
+        shooter, target, rng=ScriptedRng([3, 3]), world=_field(shooter, target)
+    )
+
+    assert seen.disadvantage_sources == ("engine.attack: long range",)
+
+
+def test_a_ranged_attack_with_no_world_raises_rather_than_skip_close_combat() -> None:
+    shooter, target = archer(), defender(cells=6)
+
+    with pytest.raises(EngineAssemblyError, match="World"):
+        resolve_attack(shooter, target, rng=no_dice())
+
+
+def test_a_thrown_melee_weapon_within_reach_is_a_melee_attack() -> None:
+    """No world needed and no close-combat Disadvantage beside the target, and
+    Strength: 10 + 2 + 3 = 15 meets AC 15, for 1d6 (3) + 2 = 5."""
+    thrower, target = attacker(scores=_NIMBLE, weapon=HANDAXE), defender()
+    rng = ScriptedRng([_HIT, 3])
+
+    assert resolve_attack(thrower, target, rng=rng) == AttackResult(Outcome.HIT, 5)
+    assert rng.exhausted
+
+
+def test_a_thrown_melee_weapon_out_of_reach_is_thrown() -> None:
+    """Fifteen feet: a ranged attack, still off Strength — 15 + 2 + 3 = 20,
+    for 1d6 (3) + 2 = 5 — and past the long range of 60 it is refused."""
+    thrower, target = attacker(scores=_NIMBLE, weapon=HANDAXE), defender(cells=3)
+    rng = ScriptedRng([15, 3])
+
+    with pytest.raises(EngineAssemblyError):
+        resolve_attack(thrower, target, rng=no_dice())
+    result = resolve_attack(thrower, target, rng=rng, world=_field(thrower, target))
+
+    assert result == AttackResult(Outcome.HIT, 5)
+    assert not within_range(thrower, defender(cells=13), HANDAXE)
+
+
+@pytest.mark.parametrize(
+    ("scores", "natural", "damage"),
+    [(_NIMBLE, 20, 1 + 4), (_NIMBLE, _HIT, 1 + 4), (_EVEN, 20, 1)],
+    ids=["critical", "hit", "no-modifier"],
+)
+def test_a_flat_damage_never_doubles(
+    scores: MappingProxyType[Ability, int], natural: int, damage: int
+) -> None:
+    """The Blowgun deals 1 plus the modifier, Critical Hit or not, and draws no
+    die; with a +0 modifier the hit still lands for 1 (XPHB "Weapons";
+    "Critical Hits" doubles dice only)."""
+    shooter, target = attacker(scores=scores, weapon=BLOWGUN), defender(cells=4)
+    rng = ScriptedRng([natural])
+
+    outcome, dealt = resolve_attack(
+        shooter, target, rng=rng, world=_field(shooter, target)
+    )
+
+    assert outcome is not None and outcome.is_hit
+    assert dealt == damage
+    assert rng.exhausted

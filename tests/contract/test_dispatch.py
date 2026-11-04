@@ -281,6 +281,62 @@ def test_order_then_attachment_sequence_break_ties_within_a_band() -> None:
     assert log == ["first_attached", "second_attached", "ordered_last"]
 
 
+def test_detaching_and_attaching_again_keeps_the_order_a_fresh_sort_gives() -> None:
+    """A source attached again goes behind its ties, and a source's own two
+    handlers on one hook keep their declared order."""
+    log: list[str] = []
+
+    def source(label: str, phase: Phase, order: int) -> HookSource:
+        class Ordered(Recorder):
+            @hook("on_hit", phase=phase, order=order)
+            def first(self, ctx: HitContext) -> R:
+                self.log.append(label)
+                return R.SKIPPED
+
+            @hook("on_hit", phase=phase, order=order)
+            def second(self, ctx: HitContext) -> R:
+                self.log.append(label + "'")
+                return R.SKIPPED
+
+        return Ordered(ATTACKER, log)
+
+    late = source("late", Phase.LATE, 0)
+    a = source("a", Phase.NORMAL, 0)
+    b = source("b", Phase.NORMAL, 0)
+    ordered = source("ordered", Phase.NORMAL, 5)
+    dispatcher = Dispatcher()
+    for each in (late, a, ordered, b):
+        dispatcher.attach(each)
+    dispatcher.detach(a)
+    dispatcher.attach(a)
+    dispatcher.dispatch(ON_HIT, hit_context())
+    assert log == ["b", "b'", "a", "a'", "ordered", "ordered'", "late", "late'"]
+
+
+def test_detaching_touches_only_its_own_hooks_and_no_tuple_in_flight() -> None:
+    class Hits(HookSource):
+        @hook("on_hit")
+        def handler(self, ctx: HitContext) -> R:  # pragma: no cover
+            return R.SKIPPED
+
+    class Turns(HookSource):
+        @hook("on_turn_start")
+        def handler(self, ctx: TurnContext) -> R:  # pragma: no cover
+            return R.SKIPPED
+
+    hits = Hits(ATTACKER)
+    dispatcher = Dispatcher()
+    dispatcher.attach(hits)
+    dispatcher.attach(Turns(ATTACKER))
+    in_flight = dispatcher.handlers(ON_HIT)
+    turns = dispatcher.handlers(ON_TURN_START)
+    dispatcher.detach(hits)
+    assert [bound.source for bound in in_flight] == [hits]
+    assert dispatcher.handlers(ON_HIT) == ()
+    assert not dispatcher.responsive(ON_HIT)
+    assert dispatcher.handlers(ON_TURN_START) is turns
+
+
 def test_a_hook_nobody_listens_to_is_a_lookup_and_a_return() -> None:
     dispatcher = Dispatcher()
     ctx = turn_context()

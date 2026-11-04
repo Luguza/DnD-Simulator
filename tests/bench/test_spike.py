@@ -18,13 +18,20 @@ Sources: ROADMAP w0i; DESIGN.md § Performance, § The spike must be pessimistic
 § The benchmark gate; `docs/decisions.md` § w0i.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 
+from dndsim.actions.opportunity_attack import OpportunityAttack, OpportunityAttacks
+from dndsim.apl.apl import Apl
 from dndsim.core.log import LogLevel
+from dndsim.core.rng import Rng
 from dndsim.core.timeline import Reset
-from dndsim.engine.attack import ATTACK, ATTACK_ROLL
+from dndsim.creatures.economy import ActionEconomy
+from dndsim.engine.attack import ATTACK, ATTACK_ROLL, AttackResult, resolve_attack
 from dndsim.hooks.contexts import Context, RoundContext
 from dndsim.hooks.definitions import ON_HIT
 from dndsim.hooks.source import HookSource
@@ -45,7 +52,6 @@ from dndsim.tools.spike import (
     measure_startup,
     run_encounter,
 )
-from dndsim.tools.spike_apl import Apl
 from dndsim.tools.spike_features import (
     ON_HIT_SOURCES,
     RAGE,
@@ -53,6 +59,7 @@ from dndsim.tools.spike_features import (
     SpikeRage,
     raging,
 )
+from weapon_fixtures import GREATSWORD, MAUL
 
 _RESOLUTIONS_PER_ENCOUNTER = ROUNDS_PER_ENCOUNTER * (ATTACKS_PER_TURN + ENEMIES)
 """Five rounds of three hero swings and one swing from each of three enemies."""
@@ -67,7 +74,7 @@ def _fought(encounters: int = 10) -> Spike:
     six guarded handlers: Uncanny Dodge needs the enemies to roll a swing worth
     a quarter of the hero's remaining hit points, which happens about twice in
     ten on the leanest of the seeds tried."""
-    spike, rng = build_spike(0)
+    spike, rng = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
     for _ in range(encounters):
         run_encounter(spike, rng)
     return spike
@@ -77,22 +84,22 @@ def _fought(encounters: int = 10) -> Spike:
 
 
 def test_the_hostile_creature_carries_twenty_five_sources() -> None:
-    spike, _ = build_spike(0)
+    spike, _ = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
 
     assert len(SOURCES) == 25
     assert len(spike.hero.dispatcher.sources()) == 25
 
 
 def test_fifteen_of_them_are_on_the_busiest_hook() -> None:
-    spike, _ = build_spike(0)
+    spike, _ = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
 
     assert len(ON_HIT_SOURCES) == 15
     assert len(spike.hero.dispatcher.handlers(ON_HIT)) == 15
 
 
 def test_the_apl_has_eight_conditions_a_target_and_a_move() -> None:
-    spike, _ = build_spike(0)
-    entries = spike.apl.entries
+    spike, _ = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
+    entries = spike.apl.compiled
 
     assert len(entries) == 8
     assert [e.action for e in entries] == [
@@ -110,9 +117,9 @@ def test_the_apl_has_eight_conditions_a_target_and_a_move() -> None:
 
 
 def test_three_entries_are_answered_inside_an_attack() -> None:
-    spike, _ = build_spike(0)
+    spike, _ = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
 
-    assert {e.gate for e in spike.apl.entries if e.gate is not None} == {
+    assert {e.gate for e in spike.apl.compiled} >= {
         "barbarian.reckless_attack",
         "paladin.divine_smite",
         "rogue.uncanny_dodge",
@@ -184,7 +191,7 @@ def test_the_observational_riders_never_apply_and_that_is_the_point() -> None:
 
 
 def test_an_encounter_resolves_attacks_in_both_directions() -> None:
-    spike, rng = build_spike(0)
+    spike, rng = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
 
     resolutions = run_encounter(spike, rng)
 
@@ -196,7 +203,7 @@ def test_an_encounter_resolves_attacks_in_both_directions() -> None:
 def test_a_reset_brings_a_dead_hero_and_its_enemies_back() -> None:
     """A hero that died in one encounter fights the next: the reset puts back
     what dying took, not only the hit points."""
-    spike, _ = build_spike(0)
+    spike, _ = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
     spike.hero.hp = 0
     spike.hero.die()
     spike.enemies[0].hp = 0
@@ -215,7 +222,7 @@ def test_every_encounter_resolves_the_same_number_of_attacks() -> None:
     `_TURN_COSTS`).
     """
     for seed in range(6):
-        spike, rng = build_spike(seed)
+        spike, rng = build_spike(seed, greatsword=GREATSWORD, maul=MAUL)
         counts = {run_encounter(spike, rng) for _ in range(40)}
 
         assert counts == {_RESOLUTIONS_PER_ENCOUNTER}, (
@@ -231,7 +238,7 @@ def test_a_wounded_hero_takes_second_wind_and_still_swings() -> None:
     `self.hp_pct < 0.5`, so a hero under half takes it *and* attacks. Rage, the
     other Bonus Action entry, is set so that it does not outrank this one.
     """
-    spike, rng = build_spike(0)
+    spike, rng = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
     spike.reset()
     spike.hero.effects.apply(SpikeRage(spike.hero))
     spike.hero.hp = spike.hero.max_hp // 4
@@ -247,7 +254,7 @@ def test_a_wounded_hero_takes_second_wind_and_still_swings() -> None:
 def test_the_hero_walks_to_the_target_its_policy_chose() -> None:
     """`move:` is not decoration: the hero starts five squares from its nearest
     enemy and has to close before it can swing (DESIGN.md § APL)."""
-    spike, rng = build_spike(0)
+    spike, rng = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
     start = spike.hero.position
 
     run_encounter(spike, rng)
@@ -257,7 +264,7 @@ def test_the_hero_walks_to_the_target_its_policy_chose() -> None:
 
 
 def test_the_enemies_close_on_the_hero_too() -> None:
-    spike, rng = build_spike(0)
+    spike, rng = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
     starts = [enemy.position for enemy in spike.enemies]
 
     run_encounter(spike, rng)
@@ -269,7 +276,7 @@ def test_rage_is_taken_on_the_first_turn_and_not_again() -> None:
     """The APL's first entry, and the one that proves the list is re-evaluated
     per action rather than once: `not self.raging` stops being true after it
     fires, and the loop falls through to the attack."""
-    spike, rng = build_spike(0)
+    spike, rng = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
     assert not raging(spike.hero)
 
     run_encounter(spike, rng)
@@ -283,7 +290,7 @@ def test_the_victims_gate_is_asked_about_the_swing_that_is_landing() -> None:
     hero's own last swing, whose bag carries Sneak Attack and the smite on top of
     a greatsword.
     """
-    spike, rng = build_spike(0)
+    spike, rng = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
     offered: list[int] = []
     asked = Apl.allows
 
@@ -305,7 +312,7 @@ def test_the_victims_gate_is_asked_about_the_swing_that_is_landing() -> None:
 def test_an_unmentioned_gate_is_off() -> None:
     """The Null Object default policy: attaching a gated feature no APL entry
     claims never silently changes a build's numbers (DESIGN.md § APL)."""
-    spike, _ = build_spike(0)
+    spike, _ = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
     source = spike.sources[0]
 
     # `allows()` ignores the context it is handed.
@@ -314,8 +321,8 @@ def test_an_unmentioned_gate_is_off() -> None:
 
 def test_a_run_reproduces_exactly_from_its_seed() -> None:
     """Two spikes built from one seed fight identically."""
-    first, first_rng = build_spike(7)
-    second, second_rng = build_spike(7)
+    first, first_rng = build_spike(7, greatsword=GREATSWORD, maul=MAUL)
+    second, second_rng = build_spike(7, greatsword=GREATSWORD, maul=MAUL)
 
     for _ in range(3):
         run_encounter(first, first_rng)
@@ -329,8 +336,8 @@ def test_a_run_reproduces_exactly_from_its_seed() -> None:
 def test_pooling_contexts_does_not_change_the_fight() -> None:
     """Reusing a context rather than allocating one changes nothing in the
     fight."""
-    pooled, pooled_rng = build_spike(3, pooled=True)
-    fresh, fresh_rng = build_spike(3, pooled=False)
+    pooled, pooled_rng = build_spike(3, pooled=True, greatsword=GREATSWORD, maul=MAUL)
+    fresh, fresh_rng = build_spike(3, pooled=False, greatsword=GREATSWORD, maul=MAUL)
 
     for _ in range(3):
         run_encounter(pooled, pooled_rng)
@@ -342,32 +349,79 @@ def test_pooling_contexts_does_not_change_the_fight() -> None:
 
 def test_every_attack_writes_its_records_to_the_log() -> None:
     """The log is inside the measurement (ROADMAP w1i): one `ATTACK` record per
-    resolution at both levels, and one `ATTACK_ROLL` under each at `full`."""
+    resolution at both levels, and one `ATTACK_ROLL` under each at `full`.
+    Without `provoking`, the configuration before `w2c2`, those are exactly the
+    turn attacks."""
     for level, rolls in ((LogLevel.FULL, True), (LogLevel.SUMMARY, False)):
-        spike, rng = build_spike(0, log_level=level)
+        spike, rng = build_spike(
+            0, log_level=level, provoking=False, greatsword=GREATSWORD, maul=MAUL
+        )
 
         resolutions = run_encounter(spike, rng)
 
         kinds = [record[0] for record in spike.log]
+        assert resolutions == _RESOLUTIONS_PER_ENCOUNTER
         assert kinds.count(ATTACK) == resolutions
         assert kinds.count(ATTACK_ROLL) == (resolutions if rolls else 0)
 
 
+def test_opportunity_attacks_write_their_records_too() -> None:
+    """With `provoking`, the world holds the spike's log, so each opportunity
+    attack writes its records beside the turn attacks: the `ATTACK` records are
+    the turn attacks plus the opportunity attacks, counted at their call
+    sites."""
+    for level, rolls in ((LogLevel.FULL, True), (LogLevel.SUMMARY, False)):
+        with _counting() as counts:
+            spike, rng = build_spike(
+                0, log_level=level, greatsword=GREATSWORD, maul=MAUL
+            )
+            resolutions = run_encounter(spike, rng)
+
+        made = counts.turn + counts.opportunity
+        kinds = [record[0] for record in spike.log]
+        assert counts.opportunity > 0, "no opportunity attack was made"
+        assert resolutions == counts.turn == _RESOLUTIONS_PER_ENCOUNTER
+        assert kinds.count(ATTACK) == made
+        assert kinds.count(ATTACK_ROLL) == (made if rolls else 0)
+
+
 def test_the_log_holds_one_encounter_at_a_time() -> None:
     """Cleared by `reset()`, like the hit points, so a thousand-encounter run
-    does not measure a list growing to a hundred thousand records."""
-    spike, rng = build_spike(0, log_level=LogLevel.SUMMARY)
+    does not measure a list growing to a hundred thousand records. Without
+    `provoking` the only records are the turn attacks'."""
+    spike, rng = build_spike(
+        0, log_level=LogLevel.SUMMARY, provoking=False, greatsword=GREATSWORD, maul=MAUL
+    )
 
     run_encounter(spike, rng)
     resolutions = run_encounter(spike, rng)
 
-    assert len(spike.log) == resolutions
+    assert len(spike.log) == resolutions == _RESOLUTIONS_PER_ENCOUNTER
+
+
+def test_the_provoking_log_holds_one_encounter_at_a_time() -> None:
+    """With `provoking` the log also holds opportunity attacks and the effect
+    and resource writers' records; after the second encounter it holds only
+    the second's attacks, and none of the first's records lead it."""
+    spike, rng = build_spike(
+        0, log_level=LogLevel.SUMMARY, greatsword=GREATSWORD, maul=MAUL
+    )
+    run_encounter(spike, rng)
+    first = spike.log.records
+    assert first
+
+    with _counting() as counts:
+        run_encounter(spike, rng)
+
+    kinds = [record[0] for record in spike.log]
+    assert kinds.count(ATTACK) == counts.turn + counts.opportunity
+    assert spike.log.records[: len(first)] != first
 
 
 def test_the_same_seed_writes_the_same_log() -> None:
     """Seed reproduces the event log record for record."""
-    first, first_rng = build_spike(7)
-    second, second_rng = build_spike(7)
+    first, first_rng = build_spike(7, greatsword=GREATSWORD, maul=MAUL)
+    second, second_rng = build_spike(7, greatsword=GREATSWORD, maul=MAUL)
 
     for _ in range(3):
         run_encounter(first, first_rng)
@@ -379,7 +433,9 @@ def test_the_same_seed_writes_the_same_log() -> None:
 def test_the_measurement_returns_a_rate_and_a_resolution_count() -> None:
     """The harness runs, whatever the number is. Not marked `bench`, so a broken
     harness fails the ordinary suite."""
-    rate, resolutions = measure(encounters=5, repeats=1)
+    rate, resolutions = measure(
+        encounters=5, repeats=1, greatsword=GREATSWORD, maul=MAUL
+    )
 
     assert resolutions == 5 * _RESOLUTIONS_PER_ENCOUNTER
     assert rate > 0
@@ -401,7 +457,7 @@ def test_a_rage_that_is_not_kept_up_ends_with_the_heros_next_turn() -> None:
     """The sweeps are wired: a Rage taken on turn one and not refreshed since —
     the enemies' swings are not the hero's — is still up through the hero's
     next turn and gone once it ends (`Duration.until_end_of_next_turn_of`)."""
-    spike, rng = build_spike(0)
+    spike, rng = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
     spike.reset()
     _hero_turn(spike, rng, 1)
     _enemy_turns(spike, rng, 1)
@@ -417,7 +473,7 @@ def test_a_rage_that_is_not_kept_up_ends_with_the_heros_next_turn() -> None:
 def test_a_rage_kept_up_by_swinging_lasts_the_whole_encounter() -> None:
     """One Rage, applied once and refreshed by every round's swings, so its
     deadline after the last round is the end of the hero's turn after it."""
-    spike, rng = build_spike(0)
+    spike, rng = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
     spike.reset()
 
     for number in range(1, ROUNDS_PER_ENCOUNTER + 1):
@@ -432,7 +488,7 @@ def test_a_rage_kept_up_by_swinging_lasts_the_whole_encounter() -> None:
 
 
 def test_rage_spends_one_use_an_encounter_and_the_reset_gives_it_back() -> None:
-    spike, rng = build_spike(0)
+    spike, rng = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
     pool = spike.hero.resources[RAGE.key]
 
     for _ in range(3):
@@ -444,7 +500,7 @@ def test_rage_spends_one_use_an_encounter_and_the_reset_gives_it_back() -> None:
 
 
 def test_a_reset_leaves_no_effect_on_any_creature() -> None:
-    spike, rng = build_spike(0)
+    spike, rng = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
     run_encounter(spike, rng)
     spike.enemies[0].effects.apply(SpikeRage(spike.enemies[0]))
 
@@ -455,7 +511,7 @@ def test_a_reset_leaves_no_effect_on_any_creature() -> None:
 
 def test_divine_smite_spends_a_real_slot_each_time_it_lands() -> None:
     """One slot per smite applied, and the reset puts every one of them back."""
-    spike, rng = build_spike(0)
+    spike, rng = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
     slots = spike.hero.resources.spells
     spike.reset()
     full, highest = slots.total_above(1), slots.highest()
@@ -473,7 +529,7 @@ def test_the_smites_slot_gate_never_runs_dry_within_an_encounter() -> None:
     """`self.slots.highest >= 3` must answer yes to the last swing, as the
     stand-in it replaced always did (`docs/decisions.md` § w1k)."""
     for seed in range(6):
-        spike, rng = build_spike(seed)
+        spike, rng = build_spike(seed, greatsword=GREATSWORD, maul=MAUL)
         for _ in range(10):
             run_encounter(spike, rng)
 
@@ -485,7 +541,7 @@ def test_the_smites_slot_gate_never_runs_dry_within_an_encounter() -> None:
 
 def test_the_sweeps_move_every_stores_clock() -> None:
     """The last boundary swept is the end of the last seat's last turn."""
-    spike, rng = build_spike(0)
+    spike, rng = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
 
     run_encounter(spike, rng)
 
@@ -498,14 +554,16 @@ def test_the_sweeps_move_every_stores_clock() -> None:
 
 @pytest.mark.bench
 def test_the_spike_meets_the_m0_budget() -> None:
-    """The budget, on the configuration ROADMAP w0i specifies
-    (`docs/decisions.md` § w0i)."""
-    rate, _ = measure(encounters=1000, repeats=5)
+    """The budget, on the configuration ROADMAP w0i specifies, which is the
+    spike without `provoking` (`docs/decisions.md` § The W2 mid-wave review)."""
+    rate, _ = measure(
+        encounters=1000, repeats=5, provoking=False, greatsword=GREATSWORD, maul=MAUL
+    )
 
     assert rate >= BUDGET_PER_SECOND, (
         f"{rate:,.0f} attack resolutions/sec/core against a budget of "
-        f"{BUDGET_PER_SECOND:,}. M0 is the moment to revise the dispatch "
-        "design rather than to lower this number quietly."
+        f"{BUDGET_PER_SECOND:,}. Attribute the shortfall before anything "
+        "else; this number is not lowered quietly."
     )
 
 
@@ -517,6 +575,114 @@ def test_worker_startup_is_measured_apart_from_the_rate() -> None:
     No budget is attached. What is asserted is only that it is a plausible
     interpreter start rather than a pool that silently did nothing.
     """
-    seconds = measure_startup(workers=2)
+    seconds = measure_startup(workers=2, greatsword=GREATSWORD, maul=MAUL)
 
     assert 0.0 < seconds < 30.0
+
+
+# --- the walk and the opportunity attacks (ROADMAP w2c2) ---------------------
+
+
+class _Counts:
+    """How many attacks the spike's turns made, and how many opportunity attacks
+    the enemies made, counted at the two call sites rather than read back from
+    the spike."""
+
+    def __init__(self) -> None:
+        self.turn = 0
+        self.opportunity = 0
+
+
+@contextmanager
+def _counting() -> Iterator[_Counts]:
+    """Counts turn attacks and opportunity attacks made inside the block."""
+    counts = _Counts()
+    real_turn_attack = resolve_attack
+    real_reaction = OpportunityAttack.resolve
+
+    def turn_attack(*args: Any, **kwargs: Any) -> AttackResult:
+        counts.turn += 1
+        return real_turn_attack(*args, **kwargs)
+
+    def reaction(self: OpportunityAttack, *, rng: Rng) -> AttackResult:
+        counts.opportunity += 1
+        return real_reaction(self, rng=rng)
+
+    with (
+        patch("dndsim.tools.spike.resolve_attack", turn_attack),
+        patch.object(OpportunityAttack, "resolve", reaction),
+    ):
+        yield counts
+
+
+def _counted(
+    spike_seed: int, encounters: int, *, provoking: bool
+) -> tuple[int, _Counts]:
+    with _counting() as counts:
+        spike, rng = build_spike(
+            spike_seed, provoking=provoking, greatsword=GREATSWORD, maul=MAUL
+        )
+        returned = sum(run_encounter(spike, rng) for _ in range(encounters))
+    return returned, counts
+
+
+def test_the_enemies_opportunity_attacks_fire_and_are_not_counted() -> None:
+    """With `provoking`, the hero walking after the skirmisher leaves the other
+    enemies' reach, so opportunity attacks are made; the count the encounter
+    returns is the turn attacks alone (ROADMAP w2c2)."""
+    returned, counts = _counted(0, 5, provoking=True)
+
+    assert counts.opportunity > 0, "no opportunity attack was ever made"
+    assert returned == counts.turn == 5 * _RESOLUTIONS_PER_ENCOUNTER
+
+
+def test_without_provoking_no_enemy_owns_an_opportunity_attack() -> None:
+    spike, _ = build_spike(0, provoking=False, greatsword=GREATSWORD, maul=MAUL)
+    for enemy in spike.enemies:
+        assert not any(
+            isinstance(source, OpportunityAttacks)
+            for source in enemy.dispatcher.sources()
+        )
+
+    returned, counts = _counted(0, 5, provoking=False)
+
+    assert counts.opportunity == 0
+    assert returned == counts.turn == 5 * _RESOLUTIONS_PER_ENCOUNTER
+
+
+@pytest.mark.parametrize("provoking", [False, True])
+def test_either_configuration_reproduces_from_its_seed(provoking: bool) -> None:
+    first, first_rng = build_spike(
+        5, provoking=provoking, greatsword=GREATSWORD, maul=MAUL
+    )
+    second, second_rng = build_spike(
+        5, provoking=provoking, greatsword=GREATSWORD, maul=MAUL
+    )
+
+    for _ in range(3):
+        run_encounter(first, first_rng)
+        run_encounter(second, second_rng)
+
+        assert first.log.records == second.log.records
+        assert first.hero.hp == second.hero.hp
+        assert [e.position for e in first.enemies] == [
+            e.position for e in second.enemies
+        ]
+
+
+def test_the_spikes_walks_are_charged_to_the_economy() -> None:
+    """Debt #28: every step walked in the spike is now paid for, so the
+    benchmark includes the economy call. Counted at `ActionEconomy.move()`."""
+    charged: list[int] = []
+    real_move = ActionEconomy.move
+
+    def move(self: ActionEconomy, distance_ft: int) -> None:
+        charged.append(distance_ft)
+        real_move(self, distance_ft)
+
+    with patch.object(ActionEconomy, "move", move):
+        spike, rng = build_spike(0, greatsword=GREATSWORD, maul=MAUL)
+        run_encounter(spike, rng)
+
+    assert charged, "no step was charged"
+    assert all(feet > 0 and feet % 5 == 0 for feet in charged)

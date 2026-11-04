@@ -111,15 +111,17 @@ class Combatant(Protocol):
 
 
 class Weapon(Protocol):
-    """The weapon an attack is made with: its damage, mastery, reach, and
-    `has()` for one weapon property. No range yet (debt #24;
-    `docs/decisions.md` § w1f)."""
+    """The weapon an attack is made with: its damage, mastery, reach, range,
+    whether it is a Ranged weapon, and `has()` for one weapon property.
+
+    `damage` is a die, or an `int` for a flat amount with no die
+    (`docs/decisions.md` § w1f, § w2f2)."""
 
     @property
     def name(self) -> str: ...
 
     @property
-    def damage(self) -> Dice: ...
+    def damage(self) -> Dice | int: ...
 
     @property
     def damage_type(self) -> DamageType: ...
@@ -129,6 +131,12 @@ class Weapon(Protocol):
 
     @property
     def reach_ft(self) -> int: ...
+
+    @property
+    def range_ft(self) -> tuple[int, int] | None: ...
+
+    @property
+    def ranged(self) -> bool: ...
 
     def has(self, prop: WeaponProperty) -> bool: ...
 
@@ -1247,11 +1255,26 @@ class ConditionContext(Context):
     """`on_condition_gained` / `on_condition_lost` — SELF: the owner's condition.
 
     `condition` is `rules.enums.Condition`, the condition's **name**, not the
-    `HookSource` that implements it.
+    `HookSource` that implements it. Neither hook is vetoable.
     """
 
     creature: Combatant
     condition: Condition
+    _drop: OverrideLedger = field(default_factory=OverrideLedger, repr=False)
+
+    def drop_held(self, reason: str) -> None:
+        """Queue the owner dropping whatever it is holding, once this event is
+        over (`docs/decisions.md` § w2b)."""
+        self._drop.claim("ctx.drop_held()", reason)
+
+    @property
+    def drops_held(self) -> bool:
+        """True once a handler has queued the drop."""
+        return self._drop.claimed
+
+    @property
+    def dropped_by(self) -> tuple[str, ...]:
+        return self._drop.reasons
 
 
 @_context

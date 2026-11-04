@@ -23,7 +23,7 @@ from dndsim.core.geometry import Cell
 from dndsim.core.timeline import TimeKey, TurnPhase
 from dndsim.creatures.creature import UNSEATED, Creature
 from dndsim.creatures.economy import ActionEconomy
-from dndsim.creatures.stats import GREATSWORD, UNARMOURED, Armour, StatBlock, Weapon
+from dndsim.creatures.stats import UNARMOURED, Armour, StatBlock, Weapon
 from dndsim.hooks.contexts import Combatant, TurnContext
 from dndsim.hooks.contexts import Weapon as WeaponProtocol
 from dndsim.hooks.decorator import R, hook
@@ -31,6 +31,7 @@ from dndsim.hooks.definitions import ON_TURN_END, ON_TURN_START
 from dndsim.hooks.source import HookSource
 from dndsim.rules.constants import CRITICAL_HIT_THRESHOLD
 from dndsim.rules.enums import Ability, DamageType, Mastery, Size, WeaponProperty
+from weapon_fixtures import BLOWGUN, GREATSWORD
 
 SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 10))
 """Six deliberate 10s."""
@@ -55,8 +56,12 @@ def stats(*, level: int = 1, max_hp: int = 20, **scores: int) -> StatBlock:
     )
 
 
-def creature(name: str = "fighter", *, max_hp: int = 20) -> Creature:
-    return Creature(name=name, stats=stats(max_hp=max_hp), position=Cell(0, 0))
+def creature(
+    name: str = "fighter", *, max_hp: int = 20, weapon: Weapon | None = None
+) -> Creature:
+    return Creature(
+        name=name, stats=stats(max_hp=max_hp), position=Cell(0, 0), weapon=weapon
+    )
 
 
 def protocol_members(protocol: type) -> frozenset[str]:
@@ -97,8 +102,8 @@ def test_the_defenders_hit_points_are_readable_from_inside_an_event() -> None:
 
 
 def test_a_real_weapon_is_the_weapon_a_context_carries() -> None:
-    """`creatures/stats.Weapon` satisfies the six-member `Weapon` protocol
-    (`docs/decisions.md` § w1f)."""
+    """`creatures/stats.Weapon` satisfies the eight-member `Weapon` protocol
+    (`docs/decisions.md` § w1f, § w2f2)."""
     weapon: WeaponProtocol = GREATSWORD
     assert protocol_members(WeaponProtocol) == {
         "name",
@@ -106,6 +111,8 @@ def test_a_real_weapon_is_the_weapon_a_context_carries() -> None:
         "damage_type",
         "mastery",
         "reach_ft",
+        "range_ft",
+        "ranged",
         "has",
     }
     assert weapon.name == "Greatsword"
@@ -321,6 +328,31 @@ def test_a_weapon_carries_dice_and_has_nowhere_to_put_a_modifier() -> None:
     assert not hasattr(GREATSWORD.damage, "flat")
 
 
+def test_a_flat_damage_is_an_int_with_no_die_to_double() -> None:
+    """The Blowgun's 1 (`docs/decisions.md` § w2f2); below 1 is refused."""
+    assert BLOWGUN.damage == 1
+    with pytest.raises(ValueError, match="at least 1"):
+        Weapon(name="Reed", damage=0, damage_type=DamageType.PIERCING)
+
+
+@pytest.mark.parametrize(
+    "properties, ranged",
+    [(frozenset({WeaponProperty.THROWN}), False), (frozenset(), True)],
+    ids=["thrown", "ranged"],
+)
+def test_a_weapon_that_can_be_shot_or_thrown_needs_a_range(
+    properties: frozenset[WeaponProperty], ranged: bool
+) -> None:
+    with pytest.raises(ValueError, match="no range"):
+        Weapon(
+            name="Javelin",
+            damage=Dice(1, 6),
+            damage_type=DamageType.PIERCING,
+            properties=properties,
+            ranged=ranged,
+        )
+
+
 def test_a_weapon_is_a_frozen_value_object() -> None:
     """Shared by every creature that wields one, for the life of the run."""
     assert GREATSWORD.damage_type is DamageType.SLASHING
@@ -519,6 +551,91 @@ def test_a_creature_does_not_know_how_to_take_damage() -> None:
     """`Creature` has no `take_damage()` (`docs/decisions.md` § w0g2)."""
     assert not hasattr(Creature, "take_damage")
     assert not hasattr(Creature, "heal")
+
+
+# --- Dropping and picking up what is held (debt #48) --------------------------
+
+
+def test_a_creature_starts_with_nothing_dropped() -> None:
+    subject = creature()
+    assert (subject.dropped_weapon, subject.dropped_at) == (None, None)
+
+
+def test_dropping_leaves_the_weapon_where_the_creature_stands() -> None:
+    subject = creature(weapon=GREATSWORD)
+    subject.position = Cell(3, 4)
+    subject.drop_held()
+    assert subject.weapon is None
+    assert subject.dropped_weapon is GREATSWORD
+    assert subject.dropped_at == Cell(3, 4)
+
+
+def test_the_dropped_weapon_stays_where_it_fell() -> None:
+    subject = creature()
+    subject.weapon = GREATSWORD
+    subject.drop_held()
+    subject.position = Cell(1, 1)
+    assert subject.dropped_at == Cell(0, 0)
+
+
+def test_dropping_with_empty_hands_drops_nothing() -> None:
+    subject = creature()
+    subject.drop_held()
+    assert (subject.weapon, subject.dropped_weapon, subject.dropped_at) == (
+        None,
+        None,
+        None,
+    )
+
+
+def test_a_shield_is_not_dropped() -> None:
+    """Unarmoured, Dexterity 10: 10 + 0 + 2 (Shield) = 12, before and after."""
+    subject = Creature(
+        name="guard",
+        stats=stats(),
+        position=Cell(0, 0),
+        weapon=GREATSWORD,
+        shield=True,
+    )
+    assert subject.armour_class == 12
+    subject.drop_held()
+    assert subject.shield
+    assert subject.armour_class == 12
+    assert subject.weapon is None
+
+
+def test_picking_up_undoes_the_drop() -> None:
+    subject = creature()
+    subject.weapon = PIKE
+    subject.drop_held()
+    subject.pick_up_weapon()
+    assert subject.weapon is PIKE
+    assert (subject.dropped_weapon, subject.dropped_at) == (None, None)
+    assert subject.reach_ft == 10
+
+
+def test_picking_up_with_nothing_dropped_is_refused() -> None:
+    subject = creature()
+    with pytest.raises(ValueError):
+        subject.pick_up_weapon()
+    subject.weapon = GREATSWORD
+    with pytest.raises(ValueError):
+        subject.pick_up_weapon()
+    assert subject.weapon is GREATSWORD
+
+
+def test_picking_up_while_wielding_another_is_refused_and_changes_nothing() -> None:
+    subject = creature()
+    subject.weapon = GREATSWORD
+    subject.drop_held()
+    subject.weapon = PIKE
+    with pytest.raises(ValueError):
+        subject.pick_up_weapon()
+    assert (subject.weapon, subject.dropped_weapon, subject.dropped_at) == (
+        PIKE,
+        GREATSWORD,
+        Cell(0, 0),
+    )
 
 
 def test_a_creature_is_slotted_so_a_typo_is_not_a_new_field() -> None:
