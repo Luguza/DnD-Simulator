@@ -12,6 +12,7 @@ from dndsim.actions.attack import Attack
 from dndsim.core.log import EventLog
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
+from dndsim.creatures.stats import Weapon
 from dndsim.engine.attack import (
     FRESH,
     AttackContexts,
@@ -59,17 +60,16 @@ class OpportunityAttack(Attack):
 
     def _permits(self) -> bool:
         world, actor, target = self.world, self.actor, self.target
-        weapon = actor.weapon
         return (
             world is not None
             and target in world
             and actor in world
             and world.side_of(target) != world.side_of(actor)
-            and weapon is not None
-            and not weapon.ranged
-            and within_reach(actor, target, weapon)
             and super()._permits()
         )
+
+    def _reaches(self, weapon: Weapon) -> bool:
+        return not weapon.ranged and within_reach(self.actor, self.target, weapon)
 
     def resolve(self, *, rng: Rng) -> AttackResult:
         """Make the attack with its Reaction already accounted for.

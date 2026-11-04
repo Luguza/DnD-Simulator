@@ -63,8 +63,11 @@ class Attack(Action[AttackResult]):
             and weapon is not actor.dropped_weapon
             and target is not actor
             and not target.dead
-            and within_range(actor, target, weapon)
+            and self._reaches(weapon)
         )
+
+    def _reaches(self, weapon: Weapon) -> bool:
+        return within_range(self.actor, self.target, weapon)
 
     def _perform(self, rng: Rng) -> AttackResult:
         return resolve_attack(

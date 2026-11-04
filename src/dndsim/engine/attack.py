@@ -580,9 +580,9 @@ def attack_ability(attacker: Creature, weapon: Weapon) -> Ability:
     of the two for a Finesse weapon. A Thrown melee weapon keeps its melee
     ability when thrown (`docs/decisions.md` § w1f, § w2f2).
     """
-    dexterity = attacker.modifier(Ability.DEXTERITY)
-    strength = attacker.modifier(Ability.STRENGTH)
     if weapon.has(WeaponProperty.FINESSE):
+        dexterity = attacker.modifier(Ability.DEXTERITY)
+        strength = attacker.modifier(Ability.STRENGTH)
         return Ability.DEXTERITY if dexterity > strength else Ability.STRENGTH
     return Ability.DEXTERITY if weapon.ranged else Ability.STRENGTH
 
