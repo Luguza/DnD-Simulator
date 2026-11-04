@@ -6034,12 +6034,13 @@ test, as `w2f2`'s weapon fixtures are (§ The `w2f2` spec correction).
 maneuvers, Metamagic, Eldritch Invocations and the Beast forms a Druid knows
 for Wild Shape. A later row creates each catalogue, and a choice the loader
 cannot check against anything is the silent acceptance § Failing loudly
-forbids. The row that creates each catalogue adds it to the schema: `w4d2` the
-maneuvers, `w5a` the spells, `w5d` Metamagic, `w5e` Eldritch Invocations,
-`w7b` the Beast forms. `w5a` comes before `w5d` and `w5e`, so it cannot add
-choices from catalogues they have not written yet; and the Beasts are the
-bestiary's, which lands after the Druid (`w5c`), so until `w7b` a Druid's
-forms are inexpressible rather than unchecked.
+forbids. Each key has one owner of `builds/schema.py`, so no two parallel
+batches edit it: `w4d2` adds the maneuvers; `w5a` adds the spells it imports
+and the `metamagic:` and `invocations:` keys, checked against the options
+`w5d` and `w5e` register, so that until each batch lands any choice in its key
+fails as unknown; and `w7b` adds the Beast forms, now depending on `w5c` as
+well as `w7a`, so the bestiary lands after the Druid and until it does a
+Druid's forms are inexpressible rather than unchecked.
 
 Not a gap: `pydantic` is not yet a dependency. DESIGN.md § Libraries before
 reimplementing names it for exactly this schema, and the row says so; `w2f`
