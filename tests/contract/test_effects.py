@@ -17,7 +17,7 @@ from dndsim.core.geometry import Cell
 from dndsim.core.timeline import Duration, Expiry, InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import UNSEATED, Creature
 from dndsim.creatures.effects import Clock, Effect, EffectStore, RepeatSave, Stacking
-from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
+from dndsim.creatures.stats import StatBlock, Weapon
 from dndsim.hooks.contexts import (
     Combatant,
     ConditionContext,
@@ -29,6 +29,7 @@ from dndsim.hooks.definitions import ON_TURN_START
 from dndsim.hooks.registry import Phase
 from dndsim.hooks.source import HookSource
 from dndsim.rules.enums import Ability, Condition, SaveRepeat
+from weapon_fixtures import GREATSWORD
 
 SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 10))
 

@@ -23,7 +23,7 @@ from dndsim.core.geometry import Cell
 from dndsim.core.timeline import TimeKey, TurnPhase
 from dndsim.creatures.creature import UNSEATED, Creature
 from dndsim.creatures.economy import ActionEconomy
-from dndsim.creatures.stats import GREATSWORD, UNARMOURED, Armour, StatBlock, Weapon
+from dndsim.creatures.stats import UNARMOURED, Armour, StatBlock, Weapon
 from dndsim.hooks.contexts import Combatant, TurnContext
 from dndsim.hooks.contexts import Weapon as WeaponProtocol
 from dndsim.hooks.decorator import R, hook
@@ -31,6 +31,7 @@ from dndsim.hooks.definitions import ON_TURN_END, ON_TURN_START
 from dndsim.hooks.source import HookSource
 from dndsim.rules.constants import CRITICAL_HIT_THRESHOLD
 from dndsim.rules.enums import Ability, DamageType, Mastery, Size, WeaponProperty
+from weapon_fixtures import BLOWGUN, GREATSWORD
 
 SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 10))
 """Six deliberate 10s."""
@@ -101,8 +102,8 @@ def test_the_defenders_hit_points_are_readable_from_inside_an_event() -> None:
 
 
 def test_a_real_weapon_is_the_weapon_a_context_carries() -> None:
-    """`creatures/stats.Weapon` satisfies the six-member `Weapon` protocol
-    (`docs/decisions.md` § w1f)."""
+    """`creatures/stats.Weapon` satisfies the eight-member `Weapon` protocol
+    (`docs/decisions.md` § w1f, § w2f2)."""
     weapon: WeaponProtocol = GREATSWORD
     assert protocol_members(WeaponProtocol) == {
         "name",
@@ -110,6 +111,8 @@ def test_a_real_weapon_is_the_weapon_a_context_carries() -> None:
         "damage_type",
         "mastery",
         "reach_ft",
+        "range_ft",
+        "ranged",
         "has",
     }
     assert weapon.name == "Greatsword"
@@ -323,6 +326,31 @@ def test_a_weapon_carries_dice_and_has_nowhere_to_put_a_modifier() -> None:
     assert GREATSWORD.damage == Dice(2, 6)
     assert {field.name for field in fields(Dice)} == {"count", "sides"}
     assert not hasattr(GREATSWORD.damage, "flat")
+
+
+def test_a_flat_damage_is_an_int_with_no_die_to_double() -> None:
+    """The Blowgun's 1 (`docs/decisions.md` § w2f2); below 1 is refused."""
+    assert BLOWGUN.damage == 1
+    with pytest.raises(ValueError, match="at least 1"):
+        Weapon(name="Reed", damage=0, damage_type=DamageType.PIERCING)
+
+
+@pytest.mark.parametrize(
+    "properties, ranged",
+    [(frozenset({WeaponProperty.THROWN}), False), (frozenset(), True)],
+    ids=["thrown", "ranged"],
+)
+def test_a_weapon_that_can_be_shot_or_thrown_needs_a_range(
+    properties: frozenset[WeaponProperty], ranged: bool
+) -> None:
+    with pytest.raises(ValueError, match="no range"):
+        Weapon(
+            name="Javelin",
+            damage=Dice(1, 6),
+            damage_type=DamageType.PIERCING,
+            properties=properties,
+            ranged=ranged,
+        )
 
 
 def test_a_weapon_is_a_frozen_value_object() -> None:

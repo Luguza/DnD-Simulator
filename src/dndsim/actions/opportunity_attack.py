@@ -12,7 +12,14 @@ from dndsim.actions.attack import Attack
 from dndsim.core.log import EventLog
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
-from dndsim.engine.attack import FRESH, AttackContexts, AttackResult, Trigger
+from dndsim.creatures.stats import Weapon
+from dndsim.engine.attack import (
+    FRESH,
+    AttackContexts,
+    AttackResult,
+    Trigger,
+    within_reach,
+)
 from dndsim.engine.world import World
 from dndsim.hooks.contexts import LeaveReachContext
 from dndsim.hooks.decorator import R, hook
@@ -26,12 +33,13 @@ class OpportunityAttack(Attack):
     """`actor` attacks `target`, which is leaving its reach, with what it
     wields.
 
-    Refused against a creature on `actor`'s own side of `world`. `resolve()`
-    carries it out without spending the Reaction, for the dispatcher that
-    spends it (`docs/decisions.md` § w2c2).
+    Refused against a creature on `actor`'s own side of `world`, and with a
+    Ranged weapon: it is a melee attack, so a Thrown melee weapon is swung.
+    `resolve()` carries it out without spending the Reaction, for the
+    dispatcher that spends it (`docs/decisions.md` § w2c2, § w2f2).
     """
 
-    __slots__ = ("world",)
+    __slots__ = ()
 
     ID: ClassVar[str] = "opportunity_attack"
     COST: ClassVar[ActionCost | None] = ActionCost.REACTION
@@ -46,17 +54,22 @@ class OpportunityAttack(Attack):
         trigger: Trigger | None = None,
         log: EventLog | None = None,
     ) -> None:
-        super().__init__(actor, target, contexts=contexts, trigger=trigger, log=log)
-        self.world = world
+        super().__init__(
+            actor, target, contexts=contexts, trigger=trigger, log=log, world=world
+        )
 
     def _permits(self) -> bool:
         world, actor, target = self.world, self.actor, self.target
         return (
-            target in world
+            world is not None
+            and target in world
             and actor in world
             and world.side_of(target) != world.side_of(actor)
             and super()._permits()
         )
+
+    def _reaches(self, weapon: Weapon) -> bool:
+        return not weapon.ranged and within_reach(self.actor, self.target, weapon)
 
     def resolve(self, *, rng: Rng) -> AttackResult:
         """Make the attack with its Reaction already accounted for.

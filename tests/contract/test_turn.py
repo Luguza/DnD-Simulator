@@ -39,7 +39,8 @@ from dndsim.core.rng import ScriptedRng
 from dndsim.core.timeline import Duration, InitiativeKey, Reset, TimeKey, TurnPhase
 from dndsim.creatures.creature import UNSEATED, Creature
 from dndsim.creatures.effects import Effect, RepeatSave
-from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
+from dndsim.creatures.stats import StatBlock, Weapon
+from dndsim.engine.attack import AttackResult
 from dndsim.engine.damage import resolve_damage
 from dndsim.engine.dying import DROPPED
 from dndsim.engine.healing import HEAL, heal
@@ -73,6 +74,7 @@ from dndsim.rules.enums import (
     SaveOutcome,
     SaveRepeat,
 )
+from weapon_fixtures import GREATSWORD, LONGBOW
 
 SCORES: Final = MappingProxyType(
     {
@@ -292,6 +294,22 @@ def test_a_dead_enemy_and_one_out_of_reach_are_not_offered() -> None:
     # The distant enemy is offered as somewhere to walk to, not to swing at.
     assert ids(offered) == ["dodge", "disengage", "dash", "move"]
     assert getattr(offered[-1], "target", None) is distant
+
+
+def test_an_enemy_in_range_of_a_bow_is_offered_and_shot_in_the_world() -> None:
+    """Twenty feet is out of every reach and inside a Longbow's 150. The
+    offered Attack carries the world close combat is asked of: 15 + 2 + 2 = 19
+    against AC 12, for 1d8 (4) + 2 = 6 (`docs/decisions.md` § w2f2)."""
+    archer = creature("archer", weapon=LONGBOW)
+    distant = creature("distant", cell=FAR)
+    seated = world((archer, "heroes"), (distant, "monsters"))
+    archer.economy.turn_started(archer.speed_ft)
+    offered = offers(seated, archer)
+    assert ids(offered) == ["attack", "dodge", "disengage", "dash", "move"]
+
+    rng = ScriptedRng([15, 4])
+    assert offered[0].execute(rng=rng) == AttackResult(Outcome.HIT, 6)
+    assert rng.exhausted
 
 
 def test_a_dying_ally_in_reach_is_offered_a_stabilize() -> None:

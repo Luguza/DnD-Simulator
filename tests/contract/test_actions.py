@@ -46,7 +46,7 @@ from dndsim.creatures.creature import Creature
 from dndsim.creatures.economy import ActionEconomy
 from dndsim.creatures.effects import Effect, EffectStore
 from dndsim.creatures.resources import Recovery, Resources, ResourceSpec
-from dndsim.creatures.stats import GREATSWORD, StatBlock, Weapon
+from dndsim.creatures.stats import StatBlock, Weapon
 from dndsim.engine import attack, damage, dying, healing, saves
 from dndsim.engine.damage import resolve_damage
 from dndsim.engine.dying import MEDICINE, STABILIZE_DC
@@ -65,6 +65,7 @@ from dndsim.rules.enums import (
     SaveOutcome,
     WeaponProperty,
 )
+from weapon_fixtures import GREATSWORD
 
 SCORES: Final = MappingProxyType(
     {

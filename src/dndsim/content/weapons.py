@@ -49,18 +49,13 @@ _PROPERTIES: Final = MappingProxyType(
     }
 )
 
-_WEAPON_TYPES: Final = frozenset({"M", "R"})
+_MELEE: Final = "M"
+_RANGED: Final = "R"
+_WEAPON_TYPES: Final = frozenset({_MELEE, _RANGED})
 _ARMOUR_TYPES: Final = frozenset({"LA", "MA", "HA"})
 _SHIELD_TYPE: Final = "S"
 
-NOT_IMPORTED: Final = MappingProxyType(
-    {
-        "Blowgun": (
-            "its damage is a flat 1 with no die, and `Weapon.damage` is dice "
-            "only; a d1 would double to 2 on a Critical Hit (debt #63)"
-        ),
-    }
-)
+NOT_IMPORTED: Final[Mapping[str, str]] = MappingProxyType({})
 """Weapons on the table the domain cannot yet represent, with the reason."""
 
 
@@ -84,7 +79,10 @@ def _weapon(item: Any) -> Weapon:
         properties = frozenset(_PROPERTIES[_code(p)] for p in item.get("property", []))
         damage_type = _DAMAGE_TYPES[item["dmgType"]]
         mastery = [Mastery(_code(m).lower()) for m in item.get("mastery", [])]
-        damage = Dice.parse(item["dmg1"])
+        printed = item["dmg1"]
+        # A bare number is a flat damage, which no Critical Hit doubles: the
+        # Blowgun's 1 (`docs/decisions.md` § w2f2).
+        damage = int(printed) if printed.isdigit() else Dice.parse(printed)
         versatile = Dice.parse(item["dmg2"]) if "dmg2" in item else None
         if "range" in item:
             normal, long = (int(n) for n in item["range"].split("/"))
@@ -93,16 +91,20 @@ def _weapon(item: Any) -> Weapon:
     if len(mastery) > 1:
         raise ContentError(f"weapon {name!r} names more than one mastery")
     reach = CELL_SIZE_FT * (2 if WeaponProperty.REACH in properties else 1)
-    return Weapon(
-        name=name,
-        damage=damage,
-        damage_type=damage_type,
-        properties=properties,
-        mastery=mastery[0] if mastery else None,
-        reach_ft=reach,
-        range_ft=(normal, long) if "range" in item else None,
-        versatile_damage=versatile,
-    )
+    try:
+        return Weapon(
+            name=name,
+            damage=damage,
+            damage_type=damage_type,
+            properties=properties,
+            mastery=mastery[0] if mastery else None,
+            reach_ft=reach,
+            range_ft=(normal, long) if "range" in item else None,
+            ranged=_code(item["type"]) == _RANGED,
+            versatile_damage=versatile,
+        )
+    except ValueError as error:
+        raise ContentError(f"weapon {name!r} is not a weapon: {error}") from error
 
 
 def weapons(data: Dataset) -> Mapping[str, Weapon]:

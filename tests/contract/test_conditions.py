@@ -45,7 +45,7 @@ from dndsim.core.geometry import Cell
 from dndsim.core.rng import ScriptedRng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.effects import Effect
-from dndsim.creatures.stats import GREATSWORD, Armour, StatBlock
+from dndsim.creatures.stats import Armour, StatBlock
 from dndsim.engine.attack import PREVENTED, resolve_attack
 from dndsim.engine.damage import resolve_damage
 from dndsim.engine.healing import heal
@@ -68,6 +68,7 @@ from dndsim.hooks.registry import all_hooks
 from dndsim.hooks.source import HookSource
 from dndsim.rules import enums
 from dndsim.rules.enums import Ability, DamageType, Outcome, SaveOutcome
+from weapon_fixtures import GREATSWORD
 
 SCORES: Final = MappingProxyType(
     {

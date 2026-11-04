@@ -48,8 +48,8 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 17 | w2e — the APL compiler 🔒 | done | #71 |
 | 18 | w2a — content ACL | done | #67 |
 | 19 | w2d — `TargetDummy` | done | #65 |
-| 20 | w2f2 — the imported weapons in the engine 🔒 | next | |
-| 21 | w2f — build schema and `Character` | queued | |
+| 20 | w2f2 — the imported weapons in the engine 🔒 | done | |
+| 21 | w2f — build schema and `Character` | next | |
 | — | ⏸ plan review | queued | |
 | 22 | w2j — Unarmed Strike, Shove, Grapple, standing up, passing through | queued | |
 | 23 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |

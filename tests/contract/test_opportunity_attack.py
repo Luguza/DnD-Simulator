@@ -28,7 +28,7 @@ from dndsim.core.log import EventLog
 from dndsim.core.rng import Rng, ScriptedRng
 from dndsim.core.timeline import InitiativeKey
 from dndsim.creatures.creature import Creature
-from dndsim.creatures.stats import GREATSWORD, StatBlock
+from dndsim.creatures.stats import StatBlock
 from dndsim.engine.attack import (
     ATTACK,
     FRESH,
@@ -44,6 +44,7 @@ from dndsim.hooks.contexts import AttackDeclaredContext, Context, HitContext
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.source import HookSource
 from dndsim.rules.enums import Ability, ActionCost, Outcome
+from weapon_fixtures import GREATSWORD, HANDAXE, LONGBOW
 
 SCORES: Final = MappingProxyType(
     {
@@ -248,6 +249,30 @@ def test_execute_spends_exactly_one_reaction() -> None:
 
     assert actor.economy.reactions == 1
     assert (actor.economy.actions, actor.economy.bonus_actions) == (0, 0)
+
+
+def test_an_opportunity_attack_is_never_made_with_a_ranged_weapon() -> None:
+    """XPHB "Opportunity Attacks": "one melee attack". A Longbow cannot make
+    one, even at a target within 5 feet (`docs/decisions.md` § w2f2)."""
+    seated, actor, target = _pair()
+    actor.weapon = LONGBOW
+    actor.economy.grant(ActionCost.REACTION)
+
+    assert not OpportunityAttack(actor, target, world=seated).is_legal()
+
+
+def test_a_thrown_melee_weapon_is_swung_not_thrown() -> None:
+    """A Handaxe within reach is a melee attack off Strength: 15 + 3 + 2 = 20
+    against AC 12, for 1d6 (4) + 3 = 7, with no close-combat Disadvantage
+    beside the target — one d20 drawn."""
+    seated, actor, target = _pair()
+    actor.weapon = HANDAXE
+    rng = ScriptedRng([HIT, 4])
+
+    result = OpportunityAttack(actor, target, world=seated).resolve(rng=rng)
+
+    assert result == AttackResult(Outcome.HIT, 7)
+    assert rng.exhausted
 
 
 def test_resolve_refuses_an_illegal_opportunity_attack() -> None:

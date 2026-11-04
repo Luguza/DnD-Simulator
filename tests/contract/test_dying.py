@@ -24,7 +24,7 @@ from dndsim.core.geometry import Cell
 from dndsim.core.rng import ScriptedRng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.resources import Recovery, ResourceSpec
-from dndsim.creatures.stats import GREATSWORD, StatBlock
+from dndsim.creatures.stats import StatBlock
 from dndsim.engine import attack, damage, dying, healing
 from dndsim.engine.attack import resolve_attack
 from dndsim.engine.damage import resolve_damage
@@ -47,6 +47,7 @@ from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.registry import Phase
 from dndsim.hooks.source import HookSource
 from dndsim.rules.enums import Ability, DamageType, Outcome, RecoveryTrigger
+from weapon_fixtures import GREATSWORD
 
 SCORES: Final = MappingProxyType(dict.fromkeys(Ability, 10))
 SLASHING: Final = DamageType.SLASHING

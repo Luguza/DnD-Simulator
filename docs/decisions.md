@@ -5856,3 +5856,132 @@ could be refused for lack of ammunition, and Loading binds only with Extra
 Attack, which is not modelled (§ w2b, Attack is one attack). They are debt
 #68, which the next `⏸` plan review places once `w2f` has said what a build
 carries.
+
+## w2f2 — the imported weapons in the engine
+
+The row and its spec correction (§ The `w2f2` spec correction) settled what to
+build; this records the choices the build made inside them.
+
+### A flat damage is an `int` where the die would be
+
+`Weapon.damage` is `Dice | int`. The Blowgun's 1 is an `int`, and the attack
+adds it as a `flat` part, which `DamagePart.on_crit()` never doubles — the
+same structural guarantee the wielder's modifier already had. A d1 was the
+trap #63 named: it doubles to 2. A second field (`flat_damage` beside
+`damage`) was rejected because it would be a ninth protocol member the row
+does not allow and, worse, a second place the crit path reads: an author would
+have to know that a weapon's damage is the sum of two fields, one of which
+doubles. With one field there is one answer and its type says whether it is a
+die. XPHB "Unarmed Strike"'s 1 plus Strength is `w2j`'s, built on this.
+
+The `int` branch adds two parts — the weapon's flat, then the modifier when it
+is non-zero — rather than one part of their sum, because `DamageBag.add()`
+refuses an empty contribution and a Blowgun in the hands of a creature with a
+−1 Dexterity sums to 0. That is a hit dealing no damage, not an error. The die
+branch is unchanged, so the spike's arithmetic is too.
+
+`Weapon` now refuses a flat below 1, and a Ranged or Thrown weapon with no
+range (the ranged branch would have nothing to measure against); the importer
+turns either into a `ContentError` naming the weapon. `NOT_IMPORTED` is empty
+and kept, with its stale check: it is how the next weapon the domain cannot
+represent is declared rather than approximated.
+
+### The ranged branch
+
+- **The ability follows the column, then Finesse.** A Ranged weapon attacks
+  off Dexterity and a Melee one off Strength; Finesse takes the better of the
+  two whichever column it is in, so a Dart thrown by a strong creature uses
+  Strength. A Thrown melee weapon keeps its melee ability when thrown, which
+  is why `attack_ability()` reads the weapon and not the attack.
+- **Whether an attack is ranged is decided before the declaration.** A Ranged
+  weapon always shoots; a Thrown melee weapon is thrown only at a target out of
+  its reach. Anything else out of reach is refused as before, and past the long
+  range is refused the same way: "nothing past it" is an attack that cannot be
+  described, not a miss. `within_range()` is the one question `Attack.is_legal()`
+  asks; `within_reach()` stays the melee one.
+- **The engine imposes the Disadvantage on the declaration, stamped as itself,
+  before any handler runs.** Stamping `engine.attack` with no phase is how
+  `on_hit` already seeds the weapon's damage; doing the same on
+  `on_declare_attack` puts the source in the same ledger every feature writes
+  to, so Advantage cancels it by the one rule (XPHB Rules Glossary,
+  "Advantage") and a handler reading `had_disadvantage` sees it. Close combat
+  is asked first and long range second, and the ledger records whichever
+  applies, since a second source would change nothing.
+- **Close combat reads the effect flag, not the condition.** "Doesn't have the
+  Incapacitated condition" is asked as `effect.INCAPACITATES`, not as
+  `Creature.incapacitated`, because `engine/` names no condition and a test
+  holds it to that (§ w2c, § w2c2). An ally is not an enemy and a dead creature
+  is not counted (`enemies_of()`).
+- **"Who can see you" is not asked**, because nothing can be (#39). Every
+  enemy within 5 feet that is not Incapacitated counts, so a Blinded enemy
+  beside an archer still imposes it. The module docstring declares the gap
+  and #39's row already lists it.
+
+### An opportunity attack is a melee attack, once
+
+`OpportunityAttack` overrides `Attack`'s range question with the melee one —
+not a Ranged weapon, and within reach — rather than asking both. The first cut
+asked reach in `OpportunityAttack._permits()` and range again in `Attack`'s,
+and the witness below caught it: 3,200 extra `within_range()` calls per 200
+encounters, each one a second reach measurement.
+
+### The weapons the tools swing
+
+The spike and the skeleton take their weapons as parameters and read the table
+only in `main()`. `tests/weapon_fixtures.py` holds the seven the suite needs —
+the greatsword, the maul, and one of each kind the ranged branch tells apart —
+on `pytest`'s `pythonpath`, so `tests/contract/` and `tests/bench/` import
+one copy; `tests/content/test_dataset.py` asserts each equals its imported
+entry. `measure_startup()` hands the two weapons to each spawned worker
+pickled on its standard input: a worker that loaded the table itself would make
+`-m bench` need the fetched data, which is what this row exists to avoid.
+
+**The spike's maul changed and the fights did not.** The hand-written maul had
+no properties; the imported one is Heavy, Two-Handed and Topple. Nothing the
+spike attaches reads an enemy's weapon properties, and the witness shows the
+same fights on both configurations.
+
+### What it cost the benchmark
+
+Priced as sequencing principle 10 asks, with the deterministic witness first,
+on both configurations.
+
+**The witness.** Over the fixed 200-encounter profiled run at seed 0, the same
+fights before and after on both configurations — an identical fingerprint of
+every encounter's closing hit points and an identical next draw from the
+generator afterwards, under three `PYTHONHASHSEED`s — and the per-function call
+diff accounts for every call:
+
+| Configuration | Calls before | Calls after | Diff |
+|---|---|---|---|
+| `provoking=False` | 1,926,815 | 1,930,756 | +3,941 `isinstance` — one per hit, the `Dice` or `int` question |
+| default (`provoking=True`) | 3,360,131 | 3,367,817 | +4,486 `isinstance` (one per hit) and +3,200 `OpportunityAttack._reaches()` (one per opportunity-attack legality check) |
+
+Everything else the ranged branch adds is an attribute read on the melee path
+(`weapon.ranged`) and calls only on a ranged attack, which neither
+configuration makes. The first cut cost +37,340 and +82,685: `attack_ability()`
+read both modifiers on every attack, where the old one read them only for a
+Finesse weapon (+12,000 `modifier()` calls and the enum hashes under them), and
+the double reach question above. Both were put back before the paired runs.
+
+**The rate agrees.** Eight pairs per configuration, alternating arm order,
+both arms in sibling worktrees (§ w1j): `provoking=False` median −0.9% (ratios
+−5.2% to +2.7%, baseline 23.0k–24.0k), the default median +0.4% (−2.5% to
++2.3%, baseline 13.5k–14.1k). Not distinguishable from zero, and the witness
+says why: one builtin call per hit.
+
+### What this task deliberately did not do
+
+- **Ammunition and Loading** are not counted (#68, placed by the next `⏸`
+  review), and **a thrown weapon stays in the hand** (#69, placed with it).
+  Dropping it at the target after each throw would strand a creature carrying
+  five Javelins after one; keeping it lets a creature with one Handaxe throw it
+  every turn. Which is wrong depends on how many it carries, which `w2f`'s
+  equipment is the first thing to say, so the row waits on the same answer
+  #68 does.
+- **The Unarmed Strike** a ranged-weapon wielder makes in place of an
+  opportunity attack is `w2j`'s.
+- **Cover** is not modelled anywhere, ranged or melee; nothing here makes it
+  more wrong than it was.
+- **Nothing walks an archer to range.** `offers()` offers a shot at every enemy
+  in range and a `Move` toward each, and choosing between them is the policy's.

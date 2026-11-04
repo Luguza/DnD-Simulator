@@ -34,7 +34,7 @@ from dndsim.creatures.effects import (
     EffectStore,
 )
 from dndsim.creatures.resources import RESOURCE_SPENT, Recovery, ResourceSpec
-from dndsim.creatures.stats import GREATSWORD, StatBlock
+from dndsim.creatures.stats import StatBlock
 from dndsim.engine.attack import ATTACK
 from dndsim.engine.damage import DAMAGE, resolve_damage
 from dndsim.engine.dying import DROPPED
@@ -58,6 +58,7 @@ from dndsim.rules.enums import (
     RecoveryTrigger,
     SaveOutcome,
 )
+from weapon_fixtures import GREATSWORD
 
 HP: Final = 20
 ORIGIN: Final = Cell(0, 0)

@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from dndsim.content import fetch as fetch_module
+from dndsim.content import weapons as weapons_module
 from dndsim.content.loader import ContentError, Dataset, FeatureText, plain
 from dndsim.content.refs import class_features, optional_feature, subclass_features
 from dndsim.content.species import species
@@ -394,6 +395,7 @@ def test_weapons_translate_every_field(tmp_path: Path) -> None:
 
 def test_only_simple_and_martial_weapons_import(tmp_path: Path) -> None:
     assert set(weapons(_dataset(tmp_path))) == {
+        "Blowgun",
         "Glaive",
         "Lance",
         "Longbow",
@@ -401,8 +403,39 @@ def test_only_simple_and_martial_weapons_import(tmp_path: Path) -> None:
     }
 
 
-def test_a_weapon_dropped_from_the_data_cannot_stay_declared(tmp_path: Path) -> None:
+def test_the_melee_ranged_column_is_kept(tmp_path: Path) -> None:
+    table = weapons(_dataset(tmp_path))
+    assert table["Longbow"].ranged
+    assert table["Blowgun"].ranged
+    assert not table["Glaive"].ranged
+
+
+def test_a_bare_number_imports_as_a_flat_damage(tmp_path: Path) -> None:
+    """The Blowgun's 1 is an `int`, which a Critical Hit never doubles; a d1
+    would double to 2 (`docs/decisions.md` § w2f2)."""
+    assert weapons(_dataset(tmp_path))["Blowgun"].damage == 1
+
+
+def test_a_weapon_dropped_from_the_data_cannot_stay_declared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(weapons_module, "NOT_IMPORTED", {"Blowgun": "a reason"})
     items = {"baseitem": [LONGBOW], "itemMastery": MASTERIES}
+    with pytest.raises(ContentError, match="Blowgun"):
+        weapons(_dataset(tmp_path, **{"items-base.json": items}))
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        {**BLOWGUN, "dmg1": "0"},
+        {key: value for key, value in BLOWGUN.items() if key != "range"},
+    ],
+)
+def test_a_weapon_the_domain_refuses_is_a_content_error(
+    tmp_path: Path, broken: Any
+) -> None:
+    items = {"baseitem": [broken], "itemMastery": MASTERIES}
     with pytest.raises(ContentError, match="Blowgun"):
         weapons(_dataset(tmp_path, **{"items-base.json": items}))
 
@@ -413,7 +446,7 @@ def test_a_weapon_dropped_from_the_data_cannot_stay_declared(tmp_path: Path) -> 
         {**LONGBOW, "property": ["X|XPHB"]},
         {**LONGBOW, "dmgType": "Q"},
         {**LONGBOW, "mastery": ["Smash|XPHB"]},
-        {**LONGBOW, "dmg1": "1"},
+        {**LONGBOW, "dmg1": "1d8+1"},
         {**LONGBOW, "mastery": ["Slow|XPHB", "Vex|XPHB"]},
     ],
 )

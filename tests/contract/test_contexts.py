@@ -69,13 +69,15 @@ class FakeCreature:
 
 @dataclass(frozen=True, slots=True)
 class FakeWeapon:
-    """The narrowest thing that satisfies `Weapon`'s six members."""
+    """The narrowest thing that satisfies `Weapon`'s eight members."""
 
     name: str
     damage: Dice = Dice(1, 4)
     damage_type: DamageType = DamageType.PIERCING
     mastery: Mastery | None = Mastery.NICK
     reach_ft: int = 5
+    range_ft: tuple[int, int] | None = None
+    ranged: bool = False
     properties: frozenset[WeaponProperty] = frozenset({WeaponProperty.FINESSE})
 
     def has(self, prop: WeaponProperty) -> bool:

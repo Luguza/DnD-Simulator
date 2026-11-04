@@ -46,7 +46,7 @@ here:
   a mixed-type hit in proportion (§ w1e).
 - A Critical Hit below 20 still has to hit; a veto is honoured at the
   declaration and raises after it; damage on a miss does not fire
-  `on_damage_roll`; `Weapon` has six members (§ w1f).
+  `on_damage_roll`; `Weapon` has eight members (§ w1f, § w2f2).
 - A queued effect lands only on the event's own participants, and an
   `EffectStore` keeps the clock it was last told (§ w1c).
 - A transaction announces only on the commit; an overdrawn pool raises
@@ -261,7 +261,8 @@ there is local to a module.
 | `creatures/`, `core/geometry.py` | § w0g2 |
 | `core/geometry.py`, size, line of sight, templates | § w1d |
 | `engine/damage.py`, the resolution order | § w0g2, § w1e |
-| `engine/attack.py`, the attack sequence | § w1f |
+| `engine/attack.py`, the attack sequence | § w1f, § w2f2 |
+| `Weapon`, the ranged branch, `tests/weapon_fixtures.py` | § w2f2 |
 | `engine/saves.py`, saving throws, save-for-half | § w1g |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
 | `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c, § w2i, § w2b, § w2c |
