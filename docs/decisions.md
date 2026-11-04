@@ -5825,9 +5825,9 @@ which decides whether the attack is a melee or a ranged one and, for
 a weapon without Finesse, whether it uses Strength or Dexterity. The importer
 reads the column (`type` `M`/`R`) and drops it, so `content/weapons.py` keeps
 it and `Weapon` and its protocol carry it. With the range, the protocol grows
-from the six members § w1f fixed to eight, and `CLAUDE.md`'s ruling says so. A thrown melee weapon is thrown only
-at a target outside its reach: within reach the same attack is a melee one with
-no close-combat Disadvantage, and which to make is otherwise a policy question
+from the six members § w1f fixed to eight, and `w2f2` changes `CLAUDE.md`'s
+ruling to eight. A thrown melee weapon is thrown only at a target outside its
+reach: within reach the same attack is a melee one with no close-combat Disadvantage, and which to make is otherwise a policy question
 nothing here offers.
 
 **The close-combat rule needs the creatures around the attacker, and
