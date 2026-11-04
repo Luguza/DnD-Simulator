@@ -49,11 +49,12 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 18 | w2a — content ACL | done | #67 |
 | 19 | w2d — `TargetDummy` | done | #65 |
 | 20 | w2f2 — the imported weapons in the engine 🔒 | done | |
-| 21 | w2f — build schema and `Character` | next | |
+| 21 | w2a2 — class, background and feat facts, a weapon's category | queued | |
+| 22 | w2f — build schema and `Character` | held | #74 |
 | — | ⏸ plan review | queued | |
-| 22 | w2j — Unarmed Strike, Shove, Grapple, standing up, passing through | queued | |
-| 23 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |
-| 24 | w2h — the CLI | queued | |
+| 23 | w2j — Unarmed Strike, Shove, Grapple, standing up, passing through | queued | |
+| 24 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |
+| 25 | w2h — the CLI | queued | |
 | — | ⏸ **M1 / W2 milestone review** | queued | |
 
 Order within W1 is the critical path first (`w1e → w1f`, the two 🔒 tasks
@@ -68,4 +69,6 @@ after them runs on), then the leaves, with `w2g` and `w2h` last because they
 depend on nearly everything else. `w2g` carries the M1 golden
 (`docs/decisions.md` § The M0 / W1 milestone review). The W2 mid-wave review
 split `w2f2` off `w2f`, added `w2j`, and moved the second gate to after `w2f`
-(`docs/decisions.md` § The W2 mid-wave review).
+(`docs/decisions.md` § The W2 mid-wave review). `w2f`'s spec correction put `w2a2` ahead of it:
+the content a build is checked against (`docs/decisions.md` § The `w2f` spec
+correction).
