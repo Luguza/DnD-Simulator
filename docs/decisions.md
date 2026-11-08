@@ -6044,9 +6044,11 @@ Druid's forms are inexpressible rather than unchecked.
 The `spells:` key's owner is `w5a` whichever way `w3j` settles Eldritch
 Knight and Arcane Trickster (`ROADMAP.md` W4): pulled forward, `w5a` brings
 the key with it; stubbed behind `NEEDS_HOOK`, those two subclasses' spell
-choices are inexpressible until `w5a`, as the Druid's forms are until `w7b`.
+choices are inexpressible until `w5a`, as the Druid's forms are until `w7b`. A pulled-forward `w5a` still lands after
+`w4d2`, which it then depends on, so the file keeps one editor at a time.
 
-That edge is the second dashed exception in `ROADMAP.md`'s wave graph,
+`w5c` ships Wild Shape without forms, declared `NEEDS_HOOK` until `w7b`
+imports the Beasts it turns into. That edge is the second dashed exception in `ROADMAP.md`'s wave graph,
 `W5 -.->|"w7b only"| W7`, beside `w8l`'s; the human told the loop to decide
 (2026-11-08), and keeping the edge was the choice that leaves the dependency
 true rather than moving or deferring the key.
