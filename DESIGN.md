@@ -2384,6 +2384,7 @@ src/dndsim/
               dying.py healing.py encounter.py adventuring_day.py triggers.py
               estimate.py
   content/    fetch.py loader.py refs.py tables.py weapons.py species.py
+              classes.py backgrounds.py feats.py spells.py
   sim/        runner.py day.py compare.py sweep.py
   search/     candidates.py encoding.py evaluate.py driver.py
               ablate.py party.py emit.py objectives.py fit.py
