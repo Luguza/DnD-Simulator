@@ -6050,7 +6050,9 @@ choices are inexpressible until `w5a`, as the Druid's forms are until `w7b`. Pul
 for that window, and the two touch disjoint keys.
 
 `w5c` ships Wild Shape without forms, which wait on the Beasts `w7b`
-imports; the gap is missing content, not a missing hook, it is debt #70,
+imports; the gap is missing content, not a missing hook, so the feature
+declares it `APPROXIMATED` (the Druid does not transform) rather than
+`NEEDS_HOOK`, it is debt #70,
 and `w7b` owns finishing Wild Shape against them. A class, species or feat feature's own option — Divine Order, Primal
 Order, Rage of the Wilds, Draconic Ancestry, Resilient's ability and the
 like — is neither in `w2a2`'s import nor among
