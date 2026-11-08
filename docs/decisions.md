@@ -6053,8 +6053,9 @@ for that window, and the two touch disjoint keys.
 imports; the gap is missing content, not a missing hook, and `w7b` owns
 finishing Wild Shape against them. A feature's own option — Divine Order, Primal Order, Rage of the Wilds,
 Draconic Ancestry and the like — is neither in `w2a2`'s import nor among
-the five: the W4 row that implements the feature registers its options, as
-`w5d` and `w5e` do, and until then a choice in it fails as unknown. That edge is the second dashed exception in `ROADMAP.md`'s wave graph,
+the five: the W4 or W5 row that implements the feature (`w4c`, `w4h`, `w5c`)
+registers its options, as
+`w5d` and `w5e` do, and until then a choice in it fails as unknown. The `w7b` → `w5c` edge is the second dashed exception in `ROADMAP.md`'s wave graph,
 `W5 -.->|"w7b only"| W7`, beside `w8l`'s; the human told the loop to decide
 (2026-11-08), and keeping the edge was the choice that leaves the dependency
 true rather than moving or deferring the key.
