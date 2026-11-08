@@ -6033,7 +6033,7 @@ test, as `w2f2`'s weapon fixtures are (§ The `w2f2` spec correction).
 
 **Five choices are the exception to "every choice"**: spells, Battle Master
 maneuvers, Metamagic, Eldritch Invocations and the Beast forms a Druid knows
-for Wild Shape. A later row creates each catalogue, and a choice the loader
+for Wild Shape. A later row creates each catalogue and one row owns each key; a choice the loader
 cannot check against anything is the silent acceptance § Failing loudly
 forbids. Each key has one owner of `builds/schema.py`, so unless `w3j` pulls `w5a`
 forward (below) no two parallel batches edit it: `w4d2` adds the maneuvers; `w5a` adds the spells it imports
