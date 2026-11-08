@@ -5996,8 +5996,8 @@ files at the head of `5etools-src` on 2026-11-04:
   `proficiency` on each class entry in `class/class-*.json`. `content/` reads
   those files for their tables and their feature text and drops the field.
 - **#25: "a build holding what it is not proficient with".** A class's weapon
-  training is `startingProficiencies.weapons`: `simple`, `martial`, or for the
-  Rogue "Martial weapons that have the {@filter Finesse or Light|...}
+  training is `startingProficiencies.weapons`: a list whose entries are
+  unioned — `simple`, `martial`, and for the Rogue, beside `simple`, "Martial weapons that have the {@filter Finesse or Light|...}
   property". Deciding it needs each weapon's Simple or Martial category, which
   is `weaponCategory` on the item and is not on `Weapon`. Without it the
   schema can neither refuse nor price the weapon, which is the debt's text.
@@ -6034,8 +6034,8 @@ test, as `w2f2`'s weapon fixtures are (§ The `w2f2` spec correction).
 maneuvers, Metamagic, Eldritch Invocations and the Beast forms a Druid knows
 for Wild Shape. A later row creates each catalogue, and a choice the loader
 cannot check against anything is the silent acceptance § Failing loudly
-forbids. Each key has one owner of `builds/schema.py`, so no two parallel
-batches edit it: `w4d2` adds the maneuvers; `w5a` adds the spells it imports
+forbids. Each key has one owner of `builds/schema.py`, so unless `w3j` pulls `w5a`
+forward (below) no two parallel batches edit it: `w4d2` adds the maneuvers; `w5a` adds the spells it imports
 and the `metamagic:` and `invocations:` keys, checked against the options
 `w5d` and `w5e` register, so that until each batch lands any choice in its key
 fails as unknown; and `w7b` adds the Beast forms, now depending on `w5c` as
@@ -6049,7 +6049,8 @@ choices are inexpressible until `w5a`, as the Druid's forms are until `w7b`. Pul
 for that window, and the two touch disjoint keys.
 
 `w5c` ships Wild Shape without forms, which wait on the Beasts `w7b`
-imports; the gap is missing content, not a missing hook. That edge is the second dashed exception in `ROADMAP.md`'s wave graph,
+imports; the gap is missing content, not a missing hook, and `w7b` owns
+finishing Wild Shape against them. That edge is the second dashed exception in `ROADMAP.md`'s wave graph,
 `W5 -.->|"w7b only"| W7`, beside `w8l`'s; the human told the loop to decide
 (2026-11-08), and keeping the edge was the choice that leaves the dependency
 true rather than moving or deferring the key.
