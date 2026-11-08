@@ -6051,10 +6051,11 @@ for that window, and the two touch disjoint keys.
 
 `w5c` ships Wild Shape without forms, which wait on the Beasts `w7b`
 imports; the gap is missing content, not a missing hook, it is debt #70,
-and `w7b` owns finishing Wild Shape against them. A feature's own option — Divine Order, Primal Order, Rage of the Wilds,
-Draconic Ancestry and the like — is neither in `w2a2`'s import nor among
+and `w7b` owns finishing Wild Shape against them. A class, species or feat feature's own option — Divine Order, Primal
+Order, Rage of the Wilds, Draconic Ancestry, Resilient's ability and the
+like — is neither in `w2a2`'s import nor among
 the five: every W4 or W5 row that implements such a feature registers its options
-(`w4c`, `w4h`, `w5b`, `w5c` and `w5d` among them), as
+(`w4b`, `w4b2`, `w4c`, `w4h`, `w5b`, `w5c` and `w5d` among them), as
 `w5d` and `w5e` do, and until then a choice in it fails as unknown. The `w7b` → `w5c` edge is the second dashed exception in `ROADMAP.md`'s wave graph,
 `W5 -.->|"w7b only"| W7`, beside `w8l`'s; the human told the loop to decide
 (2026-11-08), and keeping the edge was the choice that leaves the dependency
