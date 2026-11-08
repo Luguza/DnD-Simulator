@@ -6041,6 +6041,10 @@ and the `metamagic:` and `invocations:` keys, checked against the options
 fails as unknown; and `w7b` adds the Beast forms, now depending on `w5c` as
 well as `w7a`, so the bestiary lands after the Druid and until it does a
 Druid's forms are inexpressible rather than unchecked.
+That edge is the second dashed exception in `ROADMAP.md`'s wave graph,
+`W5 -.->|"w7b only"| W7`, beside `w8l`'s; the human told the loop to decide
+(2026-11-08), and keeping the edge was the choice that leaves the dependency
+true rather than moving or deferring the key.
 
 Not a gap: `pydantic` is not yet a dependency. DESIGN.md § Libraries before
 reimplementing names it for exactly this schema, and the row says so; `w2f`

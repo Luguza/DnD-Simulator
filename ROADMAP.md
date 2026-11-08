@@ -158,6 +158,7 @@ flowchart TD
     M3 --> W7
     M4 --> W8 --> M5
     W5 -.->|"w8l only"| W8
+    W5 -.->|"w7b only"| W7
 
     classDef gate fill:#1b5e45,stroke:#123f2f,color:#ffffff;
     classDef goal fill:#7f3f12,stroke:#5c2d0d,color:#ffffff;
@@ -169,8 +170,9 @@ flowchart TD
 important scheduling constraint in the project. Once M3 lands, three branches run
 independently: **W6 depends only on W4, not on W5**, so attrition against target
 dummies — the v1 goal — is reachable with martials alone and does not wait for
-casters. W7 likewise forks from W4. Given enough agents, W5, W6 and W7 proceed
-concurrently. **W8 joins after M4**, because it needs W6's objective function to
+casters. W7 likewise forks from W4, except `w7b`, the bestiary, which waits on `w5c`
+(the Druid) because Wild Shape's forms are its consumer; that dashed edge holds
+only `w7b`. Given enough agents, W5, W6 and W7 proceed concurrently. **W8 joins after M4**, because it needs W6's objective function to
 search against and W4's features to search over (its one dashed edge from W5 is
 `w8l`, AoE placement, which is off the critical path to M5) — it is the one wave whose
 position in the order is the inverse of its importance, and the compensation for
