@@ -6017,7 +6017,8 @@ The Produces cell named `builds/`, `creatures/character.py` and four engine and
 stats files, and `content/` is not one of them. Writing those facts into
 `builds/` instead would be the second copy of the dataset that § w2a's
 boundary exists to prevent, and is what a later content version silently
-disagrees with. So the import is its own 👥 row, **`w2a2`**, on `w2a` alone,
+disagrees with. So the import is its own 👥 row, **`w2a2`**, on `w2a` and `w2f2`
+(whose weapon fixtures and `Weapon` it extends),
 ahead of `w2f`, which now depends on it. That is the split `w2f` already had
 once (§ The W2 mid-wave review, `w2f` splits): the content half needs no
 engine file and no benchmark, and `w2f` keeps the schema, the `Character`, the
@@ -6050,7 +6051,10 @@ for that window, and the two touch disjoint keys.
 
 `w5c` ships Wild Shape without forms, which wait on the Beasts `w7b`
 imports; the gap is missing content, not a missing hook, and `w7b` owns
-finishing Wild Shape against them. That edge is the second dashed exception in `ROADMAP.md`'s wave graph,
+finishing Wild Shape against them. A feature's own option — Divine Order, Primal Order, Rage of the Wilds,
+Draconic Ancestry and the like — is neither in `w2a2`'s import nor among
+the five: the W4 row that implements the feature registers its options, as
+`w5d` and `w5e` do, and until then a choice in it fails as unknown. That edge is the second dashed exception in `ROADMAP.md`'s wave graph,
 `W5 -.->|"w7b only"| W7`, beside `w8l`'s; the human told the loop to decide
 (2026-11-08), and keeping the edge was the choice that leaves the dependency
 true rather than moving or deferring the key.
