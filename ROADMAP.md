@@ -168,11 +168,12 @@ flowchart TD
 
 **Nothing in W4 or later may start before M2**, and that is the single most
 important scheduling constraint in the project. Once M3 lands, three branches run
-independently: **W6 depends only on W4, not on W5**, so attrition against target
+independently, but for one dashed edge: **W6 depends only on W4, not on W5**, so attrition against target
 dummies — the v1 goal — is reachable with martials alone and does not wait for
 casters. W7 likewise forks from W4, except `w7b`, the bestiary, which waits on `w5c`
 (the Druid) because Wild Shape's forms are its consumer; that dashed edge holds
-only `w7b`. Given enough agents, W5, W6 and W7 proceed concurrently. **W8 joins after M4**, because it needs W6's objective function to
+only `w7b`. Given enough agents, W5, W6 and the rest of W7 proceed concurrently.
+**W8 joins after M4**, because it needs W6's objective function to
 search against and W4's features to search over (its one dashed edge from W5 is
 `w8l`, AoE placement, which is off the critical path to M5) — it is the one wave whose
 position in the order is the inverse of its importance, and the compensation for
@@ -724,7 +725,7 @@ information is still free.
 
 | ID | Task | Mode | Depends | Scope |
 |---|---|---|---|---|
-| w5a | **Spell engine**: `Spell(Action)`, concentration + checks, slots/upcasting, AoE templates, save-for-half, **and the multi-round `Duration` anchor** | 🔒 | w4g | the last high-blast-radius design decision. `core/timeline.py` (w0d) deliberately shipped no multi-round anchor — every W1 duration ends one turn ahead — so "1 minute" is not expressible until an additive `turns` field lands here. It is a `core/` change made after the registry freeze, which is why it is named now rather than discovered by the first concentration spell. **The first spell that ends on a save arrives here**, so this is where debt #35 stops being theoretical: the timing enum is `w1g`'s and the roll is `w2c`'s, and a spell that re-implements either beside itself is the second ordering § Boundaries forbids. Also **debt #46**: "Your Concentration is broken" is one of Incapacitated's clauses and five conditions carry it, so the task that builds concentration is what owes them a break. **Spells become a build choice here**: the XPHB spell list is imported into `content/` and `builds/schema.py` takes the cantrips and spells a build knows or prepares, checked against it, and the `metamagic:` and `invocations:` keys, checked against the options `w5d` and `w5e` register, so that until each lands any choice in it fails as unknown and neither batch edits the schema (`docs/decisions.md` § The `w2f` spec correction) |
+| w5a | **Spell engine**: `Spell(Action)`, concentration + checks, slots/upcasting, AoE templates, save-for-half, **and the multi-round `Duration` anchor** | 🔒 | w4g | the last high-blast-radius design decision. `core/timeline.py` (w0d) deliberately shipped no multi-round anchor — every W1 duration ends one turn ahead — so "1 minute" is not expressible until an additive `turns` field lands here. It is a `core/` change made after the registry freeze, which is why it is named now rather than discovered by the first concentration spell. **The first spell that ends on a save arrives here**, so this is where debt #35 stops being theoretical: the timing enum is `w1g`'s and the roll is `w2c`'s, and a spell that re-implements either beside itself is the second ordering § Boundaries forbids. Also **debt #46**: "Your Concentration is broken" is one of Incapacitated's clauses and five conditions carry it, so the task that builds concentration is what owes them a break. **Spells become a build choice here**: the XPHB spell list is imported into `content/` and `builds/schema.py` takes the cantrips and spells a build knows or prepares, checked against it, and the `metamagic:` and `invocations:` keys, checked against the options `w5d` and `w5e` register, so that until each lands any choice in it fails as unknown and neither batch edits the schema; if `w3j` pulls this row forward for Eldritch Knight and Arcane Trickster, the `spells:` key moves forward with it and its owner is still this row (`docs/decisions.md` § The `w2f` spec correction) |
 | w5b | Paladin + Ranger | 🚀 | w5a | half-casters, martial-adjacent — the cheapest validation of w5a |
 | w5c | Cleric + Druid | 🚀 | w5b | |
 | w5d | Bard + Sorcerer | 🚀 | w5b | + 10 metamagic, registered as the options `w5a`'s `metamagic:` key is checked against; this batch does not edit `builds/schema.py` (`docs/decisions.md` § The `w2f` spec correction) |

@@ -6041,6 +6041,11 @@ and the `metamagic:` and `invocations:` keys, checked against the options
 fails as unknown; and `w7b` adds the Beast forms, now depending on `w5c` as
 well as `w7a`, so the bestiary lands after the Druid and until it does a
 Druid's forms are inexpressible rather than unchecked.
+The `spells:` key's owner is `w5a` whichever way `w3j` settles Eldritch
+Knight and Arcane Trickster (`ROADMAP.md` W4): pulled forward, `w5a` brings
+the key with it; stubbed behind `NEEDS_HOOK`, those two subclasses' spell
+choices are inexpressible until `w5a`, as the Druid's forms are until `w7b`.
+
 That edge is the second dashed exception in `ROADMAP.md`'s wave graph,
 `W5 -.->|"w7b only"| W7`, beside `w8l`'s; the human told the loop to decide
 (2026-11-08), and keeping the edge was the choice that leaves the dependency
