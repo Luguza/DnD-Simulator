@@ -5985,3 +5985,88 @@ says why: one builtin call per hit.
   more wrong than it was.
 - **Nothing walks an archer to range.** `offers()` offers a shot at every enemy
   in range and a `Move` toward each, and choosing between them is the policy's.
+
+## The `w2f` spec correction — the content a build is checked against
+
+`w2f`'s done-when asks the loader to refuse what a build cannot hold, and every
+refusal it names needs a fact no package imports. Checked against the upstream
+files at the head of `5etools-src` on 2026-11-04:
+
+- **#36: "a class grants proficiency in two saving throws".** The two are
+  `proficiency` on each class entry in `class/class-*.json`. `content/` reads
+  those files for their tables and their feature text and drops the field.
+- **#25: "a build holding what it is not proficient with".** A class's weapon
+  training is `startingProficiencies.weapons`: a list whose entries are
+  unioned — `simple`, `martial`, and for the Rogue, beside `simple`, "Martial weapons that have the {@filter Finesse or Light|...}
+  property". Deciding it needs each weapon's Simple or Martial category, which
+  is `weaponCategory` on the item and is not on `Weapon`. Without it the
+  schema can neither refuse nor price the weapon, which is the debt's text.
+- **"Every choice a level 1–12 character makes", and AC from equipment.** The
+  levels that grant an Ability Score Improvement, a subclass, a Fighting Style
+  and Weapon Mastery are the class's `classFeatures` names; hit points need its
+  hit die (`hd`); armour a class is not trained in is its armour training. A
+  background's three abilities, its +2/+1 and +1/+1/+1 patterns and its Origin
+  feat are `backgrounds.json`; a feat's category and level prerequisite (a
+  General feat from level 4, a Fighting Style feat only through the Fighting
+  Style feature) are `feats.json`. `fetch.py` fetches neither file.
+- **"Unknown feature id fails with difflib suggestions"** needs a list of known
+  ids. No feature exists before W3, so the list is the imported names of the
+  feats, the classes and their subclasses.
+
+The Produces cell named `builds/`, `creatures/character.py` and four engine and
+stats files, and `content/` is not one of them. Writing those facts into
+`builds/` instead would be the second copy of the dataset that § w2a's
+boundary exists to prevent, and is what a later content version silently
+disagrees with. So the import is its own 👥 row, **`w2a2`**, on `w2a` and `w2f2`
+(whose weapon fixtures and `Weapon` it extends),
+ahead of `w2f`, which now depends on it. That is the split `w2f` already had
+once (§ The W2 mid-wave review, `w2f` splits): the content half needs no
+engine file and no benchmark, and `w2f` keeps the schema, the `Character`, the
+binding (#12) and debts #25, #27 and #36.
+
+`w2a2` lands one field on `Weapon` and none on its protocol, because the engine
+never asks a weapon its category: the build is checked against it when it
+loads, and what `engine/attack.py` reads for #25 is `w2f`'s to settle. The
+default suite runs without fetched data, so `w2f`'s tests take class,
+background and feat fixtures, each bound to its imported entry by a `content`
+test, as `w2f2`'s weapon fixtures are (§ The `w2f2` spec correction).
+
+**Five choices are the exception to "every choice"**: spells, Battle Master
+maneuvers, Metamagic, Eldritch Invocations and the Beast forms a Druid knows
+for Wild Shape. A later row creates each catalogue and one row owns each key; a choice the loader
+cannot check against anything is the silent acceptance § Failing loudly
+forbids. Each key has one owner of `builds/schema.py`, so unless `w3j` pulls `w5a`
+forward (below) no two parallel batches edit it: `w4d2` adds the maneuvers; `w5a` adds the spells it imports
+and the `metamagic:` and `invocations:` keys, checked against the options
+`w5d` and `w5e` register, so that until each batch lands any choice in its key
+fails as unknown; and `w7b` adds the Beast forms, now depending on `w5c` as
+well as `w7a`, so the bestiary lands after the Druid and until it does a
+Druid's forms are inexpressible rather than unchecked.
+The `spells:` key's owner is `w5a` whichever way `w3j` settles Eldritch
+Knight and Arcane Trickster (`ROADMAP.md` W4): pulled forward, `w5a` brings
+the key with it; stubbed behind `NEEDS_HOOK`, those two subclasses' spell
+choices are inexpressible until `w5a`, as the Druid's forms are until `w7b`. Pulled forward, `w5a` may edit
+`builds/schema.py` while `w4d2` does: the one-editor guarantee is given up
+for that window, and the two touch disjoint keys.
+
+`w5c` ships Wild Shape without forms, which wait on the Beasts `w7b`
+imports; the gap is missing content, not a missing hook, so the feature
+declares it `APPROXIMATED` rather than `NEEDS_HOOK` and implements the
+approximation (the use is spent, the Druid keeps its own statistics), it is debt #70,
+and `w7b` owns finishing Wild Shape against them. A class, species or feat feature's own option — Divine Order, Primal
+Order, Rage of the Wilds, Draconic Ancestry, Resilient's ability and the
+like — is neither in `w2a2`'s import nor among
+the five: every W4 or W5 row that implements such a feature registers its options
+(`w4b`, `w4b2`, `w4c`, `w4h`, `w5b`, `w5c` and `w5d` among them), as
+`w5d` and `w5e` do, and until then a choice in it fails as unknown. The `w7b` → `w5c` edge is the second dashed exception in `ROADMAP.md`'s wave graph,
+`W5 -.->|"w7b only"| W7`, beside `w8l`'s; the human told the loop to decide
+(2026-11-08), and keeping the edge was the choice that leaves the dependency
+true rather than moving or deferring the key.
+
+Not a gap: `pydantic` is not yet a dependency. DESIGN.md § Libraries before
+reimplementing names it for exactly this schema, and the row says so; `w2f`
+adds it with its `uv lock`, and its Produces cell now names `pyproject.toml`
+and `uv.lock`.
+
+Sources: `ROADMAP.md` `w2a`, `w2a2`, `w2f`; § The W0 debt register #25, #27,
+#36; DESIGN.md § Failing loudly, § Module layout.

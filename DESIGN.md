@@ -2384,6 +2384,7 @@ src/dndsim/
               dying.py healing.py encounter.py adventuring_day.py triggers.py
               estimate.py
   content/    fetch.py loader.py refs.py tables.py weapons.py species.py
+              classes.py backgrounds.py feats.py spells.py
   sim/        runner.py day.py compare.py sweep.py
   search/     candidates.py encoding.py evaluate.py driver.py
               ablate.py party.py emit.py objectives.py fit.py
@@ -2569,7 +2570,7 @@ Great Weapon Master stops being worth it, exactly as a WoW sim would.
 ## Build order
 
 Nine waves, `W0`–`W8`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
-80 tasks, their dependency edges, delegation modes and the task-packet template.
+83 tasks, their dependency edges, delegation modes and the task-packet template.
 Its § The W0 debt register is the ledger of what W0 left for later waves to
 retire, and which task retires each.
 
