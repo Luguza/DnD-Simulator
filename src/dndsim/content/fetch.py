@@ -25,7 +25,14 @@ __all__ = ["FILES", "fetch", "main", "upstream_head"]
 REPOSITORY: Final = "https://github.com/5etools-mirror-3/5etools-src.git"
 RAW: Final = "https://raw.githubusercontent.com/5etools-mirror-3/5etools-src"
 
-FILES: Final = ("items-base.json", "races.json", OPTIONAL, CLASS_INDEX)
+FILES: Final = (
+    "items-base.json",
+    "races.json",
+    "backgrounds.json",
+    "feats.json",
+    OPTIONAL,
+    CLASS_INDEX,
+)
 """The files read directly; the class files are the ones `CLASS_INDEX` names."""
 
 Download = Callable[[str], bytes]

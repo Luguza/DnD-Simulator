@@ -52,6 +52,7 @@ _PROPERTIES: Final = MappingProxyType(
 _MELEE: Final = "M"
 _RANGED: Final = "R"
 _WEAPON_TYPES: Final = frozenset({_MELEE, _RANGED})
+_CATEGORIES: Final = MappingProxyType({"simple": False, "martial": True})
 _ARMOUR_TYPES: Final = frozenset({"LA", "MA", "HA"})
 _SHIELD_TYPE: Final = "S"
 
@@ -86,6 +87,7 @@ def _weapon(item: Any) -> Weapon:
         versatile = Dice.parse(item["dmg2"]) if "dmg2" in item else None
         if "range" in item:
             normal, long = (int(n) for n in item["range"].split("/"))
+        martial = _CATEGORIES[item["weaponCategory"]]
     except (KeyError, ValueError) as error:
         raise ContentError(f"weapon {name!r} is not shaped as read: {error}") from error
     if len(mastery) > 1:
@@ -102,6 +104,7 @@ def _weapon(item: Any) -> Weapon:
             range_ft=(normal, long) if "range" in item else None,
             ranged=_code(item["type"]) == _RANGED,
             versatile_damage=versatile,
+            martial=martial,
         )
     except ValueError as error:
         raise ContentError(f"weapon {name!r} is not a weapon: {error}") from error

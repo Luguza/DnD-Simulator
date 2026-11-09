@@ -12,6 +12,9 @@ import pytest
 
 from dndsim.content import fetch as fetch_module
 from dndsim.content import weapons as weapons_module
+from dndsim.content.backgrounds import backgrounds
+from dndsim.content.classes import ArmourTraining, SkillChoice, classes
+from dndsim.content.feats import FeatCategory, Prerequisite, feats
 from dndsim.content.loader import ContentError, Dataset, FeatureText, plain
 from dndsim.content.refs import class_features, optional_feature, subclass_features
 from dndsim.content.species import species
@@ -45,6 +48,7 @@ LONGBOW = _item(
     property=["A|XPHB", "H|XPHB", "2H|XPHB"],
     mastery=["Slow|XPHB"],
     range="150/600",
+    weaponCategory="martial",
 )
 GLAIVE = _item(
     "Glaive",
@@ -54,6 +58,7 @@ GLAIVE = _item(
     dmgType="S",
     property=["H|XPHB", "R|XPHB", "2H|XPHB"],
     mastery=["Graze|XPHB"],
+    weaponCategory="martial",
 )
 LONGSWORD = _item(
     "Longsword",
@@ -64,6 +69,7 @@ LONGSWORD = _item(
     dmgType="S",
     property=["V|XPHB"],
     mastery=["Sap|XPHB"],
+    weaponCategory="martial",
 )
 LANCE = _item(
     "Lance",
@@ -73,8 +79,17 @@ LANCE = _item(
     dmgType="P",
     property=["H|XPHB", "R|XPHB", {"uid": "2H|XPHB", "note": "unless mounted"}],
     mastery=["Topple|XPHB"],
+    weaponCategory="martial",
 )
-BLOWGUN = _item("Blowgun", "R", weapon=True, dmg1="1", dmgType="P", range="25/100")
+BLOWGUN = _item(
+    "Blowgun",
+    "R",
+    weapon=True,
+    weaponCategory="martial",
+    dmg1="1",
+    dmgType="P",
+    range="25/100",
+)
 STAFF = _item("Staff", "SCF", weapon=True, dmg1="1d6", dmgType="B")
 LEATHER = _item("Leather Armor", "LA", armor=True, ac=11)
 BREASTPLATE = _item("Breastplate", "MA", armor=True, ac=14)
@@ -448,6 +463,8 @@ def test_a_weapon_the_domain_refuses_is_a_content_error(
         {**LONGBOW, "mastery": ["Smash|XPHB"]},
         {**LONGBOW, "dmg1": "1d8+1"},
         {**LONGBOW, "mastery": ["Slow|XPHB", "Vex|XPHB"]},
+        {**LONGBOW, "weaponCategory": "exotic"},
+        {k: v for k, v in LONGBOW.items() if k != "weaponCategory"},
     ],
 )
 def test_a_weapon_shaped_otherwise_is_refused(tmp_path: Path, broken: Any) -> None:
@@ -656,6 +673,300 @@ def test_a_trait_keeps_the_text_of_its_table(tmp_path: Path) -> None:
         assert printed in trait.text
 
 
+def test_a_weapon_carries_its_category(tmp_path: Path) -> None:
+    dagger = {**LONGBOW, "name": "Dagger", "weaponCategory": "simple"}
+    items = {"baseitem": [dagger, LONGBOW], "itemMastery": MASTERIES}
+    table = weapons(_dataset(tmp_path, **{"items-base.json": items}))
+    assert table["Longbow"].martial
+    assert not table["Dagger"].martial
+
+
+# -- classes, backgrounds, feats ------------------------------------------------
+
+ROGUE_FILTER = (
+    "Martial weapons that have the {@filter Finesse or Light|items|"
+    "type=martial weapon|property=finesse;light} property"
+)
+
+
+def _class(name: str, **fields: Any) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "name": name,
+        "source": "XPHB",
+        "hd": {"number": 1, "faces": 8},
+        "proficiency": ["dex", "int"],
+        "startingProficiencies": {
+            "armor": ["light"],
+            "weapons": ["simple", ROGUE_FILTER],
+            "skills": [{"choose": {"from": ["stealth", "acrobatics"], "count": 1}}],
+        },
+        "classFeatures": [
+            f"Weapon Mastery|{name}|XPHB|1",
+            {"classFeature": f"{name} Subclass|{name}|XPHB|3"},
+            f"Ability Score Improvement|{name}|XPHB|4",
+            f"Ability Score Improvement|{name}|XPHB|8",
+        ],
+    }
+    entry.update(fields)
+    return entry
+
+
+def _classes(tmp_path: Path, *entries: Any) -> Dataset:
+    return _dataset(
+        tmp_path,
+        **{
+            "class/index.json": {"x": "class-x.json"},
+            "class/class-x.json": {"class": list(entries)},
+        },
+    )
+
+
+def _weapon(name: str, category: str, *properties: str) -> Any:
+    return {
+        **LONGBOW,
+        "name": name,
+        "weaponCategory": category,
+        "property": [f"{p}|XPHB" for p in properties],
+        "range": "20/60",
+    }
+
+
+def test_a_class_carries_its_core_traits(tmp_path: Path) -> None:
+    rogue = classes(_classes(tmp_path, _class("Rogue")))["Rogue"]
+    assert rogue.hit_die == Dice(1, 8)
+    assert rogue.saving_throws == {Ability.DEXTERITY, Ability.INTELLIGENCE}
+    assert rogue.armour_training == {ArmourTraining.LIGHT}
+    assert rogue.skills == SkillChoice(1, frozenset({"stealth", "acrobatics"}))
+    assert rogue.ability_score_improvement_levels == (4, 8)
+    assert rogue.subclass_level == 3
+    assert rogue.weapon_mastery_level == 1
+    assert rogue.fighting_style_level is None
+
+
+def test_weapon_training_is_a_union_of_its_entries(tmp_path: Path) -> None:
+    """XPHB Rogue "Core Traits": Simple weapons and Martial weapons that have
+    the Finesse or Light property."""
+    items = {
+        "baseitem": [
+            _weapon("Dagger", "simple", "F", "L"),
+            _weapon("Club", "simple"),
+            _weapon("Rapier", "martial", "F"),
+            _weapon("Scimitar", "martial", "L"),
+            _weapon("Longsword", "martial", "V"),
+        ],
+        "itemMastery": MASTERIES,
+    }
+    data = _dataset(
+        tmp_path,
+        **{
+            "items-base.json": items,
+            "class/index.json": {"x": "class-x.json"},
+            "class/class-x.json": {"class": [_class("Rogue")]},
+        },
+    )
+    rogue = classes(data)["Rogue"]
+    trained = {name for name, w in weapons(data).items() if rogue.trained_with(w)}
+    assert trained == {"Dagger", "Club", "Rapier", "Scimitar"}
+
+
+def test_any_skills_is_no_option_list(tmp_path: Path) -> None:
+    bard = _class(
+        "Bard",
+        startingProficiencies={"weapons": ["simple"], "skills": [{"any": 3}]},
+    )
+    assert classes(_classes(tmp_path, bard))["Bard"].skills == SkillChoice(3, None)
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        ["simple", "Martial weapons that have the Finesse property"],
+        ["simple", ROGUE_FILTER.replace("property=", "mastery=")],
+        ["simple", ROGUE_FILTER.replace("finesse;", "sharp;")],
+        ["simple", ROGUE_FILTER.replace("type=martial", "type=simple")],
+        ["exotic"],
+        [{"martial": True}],
+    ],
+)
+def test_a_weapon_training_it_cannot_parse_is_refused(
+    tmp_path: Path, broken: Any
+) -> None:
+    proficiencies = {"weapons": broken, "skills": [{"any": 1}]}
+    entry = _class("Rogue", startingProficiencies=proficiencies)
+    with pytest.raises(ContentError, match="Rogue"):
+        classes(_classes(tmp_path, entry))
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        {"hd": {"number": 2, "faces": 8}},
+        {"proficiency": ["dex"]},
+        {"proficiency": ["dex", "luck"]},
+        {"classFeatures": ["Weapon Mastery|Rogue|XPHB|1"]},
+        {
+            "startingProficiencies": {
+                "armor": ["robes"],
+                "weapons": ["simple"],
+                "skills": [{"any": 1}],
+            }
+        },
+        {
+            "startingProficiencies": {
+                "weapons": ["simple"],
+                "skills": [{"choose": {"from": ["juggling"], "count": 1}}],
+            }
+        },
+    ],
+)
+def test_a_class_shaped_otherwise_is_refused(tmp_path: Path, broken: Any) -> None:
+    with pytest.raises(ContentError, match="Rogue"):
+        classes(_classes(tmp_path, _class("Rogue", **broken)))
+
+
+def _feat(name: str, category: str, *prerequisite: Any, **fields: Any) -> Any:
+    entry = {"name": name, "source": "XPHB", "category": category, **fields}
+    if prerequisite:
+        entry["prerequisite"] = list(prerequisite)
+    return entry
+
+
+FEATS = [
+    _feat("Savage Attacker", "O"),
+    _feat(
+        "Magic Initiate",
+        "O",
+        repeatable=True,
+        _versions=[
+            {"name": "Magic Initiate; Cleric", "source": "XPHB"},
+            {"name": "Magic Initiate; Wizard", "source": "XPHB"},
+        ],
+    ),
+    _feat(
+        "Grappler",
+        "G",
+        {"level": 4, "ability": [{"str": 13}]},
+        {"level": 4, "ability": [{"dex": 13}]},
+    ),
+    _feat("War Caster", "G", {"level": 4, "spellcasting2020": True}),
+    _feat("Heavy Armor Master", "G", {"level": 4, "proficiency": [{"armor": "heavy"}]}),
+    _feat("Archery", "FS", {"feature": ["Fighting Style"]}),
+    _feat(
+        "Blessed Warrior",
+        "FS:P",
+        {"otherSummary": {"entry": "Paladin", "entrySummary": "Special"}},
+    ),
+    _feat("Boon of Speed", "EB", {"level": 19}),
+]
+
+
+def _origins(tmp_path: Path, feat_list: Any = FEATS, *background: Any) -> Dataset:
+    return _dataset(
+        tmp_path,
+        **{
+            "feats.json": {"feat": feat_list},
+            "backgrounds.json": {"background": list(background)},
+        },
+    )
+
+
+def test_feats_carry_category_and_prerequisites(tmp_path: Path) -> None:
+    table = feats(_origins(tmp_path))
+    assert table["Savage Attacker"].category is FeatCategory.ORIGIN
+    assert table["Savage Attacker"].prerequisites == ()
+    assert table["Grappler"].prerequisites == (
+        Prerequisite(level=4, abilities=((Ability.STRENGTH, 13),)),
+        Prerequisite(level=4, abilities=((Ability.DEXTERITY, 13),)),
+    )
+    assert table["War Caster"].prerequisites == (
+        Prerequisite(level=4, spellcasting=True),
+    )
+    assert table["Heavy Armor Master"].prerequisites == (
+        Prerequisite(level=4, armour_training=ArmourTraining.HEAVY),
+    )
+    assert table["Archery"].category is FeatCategory.FIGHTING_STYLE
+    assert table["Archery"].prerequisites == ()
+    assert table["Blessed Warrior"].class_name == "Paladin"
+    assert table["Boon of Speed"].category is FeatCategory.EPIC_BOON
+    assert table["Magic Initiate"].options == ("Cleric", "Wizard")
+    assert table["Magic Initiate"].repeatable
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        _feat("Odd", "X"),
+        _feat("Odd", "G", {"level": 4, "race": [{"name": "elf"}]}),
+        _feat("Odd", "G", {"level": {"level": 4, "class": "Fighter"}}),
+        _feat("Odd", "G", {"feature": ["Fighting Style"]}),
+        _feat("Odd", "G", {"otherSummary": {"entry": "?"}}),
+        _feat("Odd", "G", {"proficiency": [{"weapon": "martial"}]}),
+    ],
+)
+def test_a_feat_shaped_otherwise_is_refused(tmp_path: Path, broken: Any) -> None:
+    with pytest.raises(ContentError, match="Odd"):
+        feats(_origins(tmp_path, [broken]))
+
+
+def _background(name: str, feat: str, **fields: Any) -> Any:
+    weighted = {"from": ["str", "dex", "con"]}
+    entry = {
+        "name": name,
+        "source": "XPHB",
+        "ability": [
+            {"choose": {"weighted": {**weighted, "weights": [2, 1]}}},
+            {"choose": {"weighted": {**weighted, "weights": [1, 1, 1]}}},
+        ],
+        "feats": [{feat: True}],
+        "skillProficiencies": [{"athletics": True, "intimidation": True}],
+    }
+    entry.update(fields)
+    return entry
+
+
+def test_a_background_carries_abilities_feat_and_skills(tmp_path: Path) -> None:
+    data = _origins(
+        tmp_path,
+        FEATS,
+        _background("Soldier", "savage attacker|xphb"),
+        _background("Acolyte", "magic initiate; cleric|xphb"),
+    )
+    soldier, acolyte = (backgrounds(data)[n] for n in ("Soldier", "Acolyte"))
+    assert soldier.abilities == {
+        Ability.STRENGTH,
+        Ability.DEXTERITY,
+        Ability.CONSTITUTION,
+    }
+    assert soldier.increases == ((2, 1), (1, 1, 1))
+    assert (soldier.feat, soldier.feat_option) == ("Savage Attacker", None)
+    assert soldier.skills == {"athletics", "intimidation"}
+    assert (acolyte.feat, acolyte.feat_option) == ("Magic Initiate", "Cleric")
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        _background("Odd", "grappler|xphb"),
+        _background("Odd", "nonesuch|xphb"),
+        _background("Odd", "magic initiate; bard|xphb"),
+        _background(
+            "Odd",
+            "savage attacker|xphb",
+            ability=[{"choose": {"weighted": {"from": ["str"], "weights": [3]}}}],
+        ),
+        _background(
+            "Odd",
+            "savage attacker|xphb",
+            skillProficiencies=[{"juggling": True}],
+        ),
+        _background("Odd", "savage attacker|xphb", _copy={"name": "Soldier"}),
+    ],
+)
+def test_a_background_shaped_otherwise_is_refused(tmp_path: Path, broken: Any) -> None:
+    with pytest.raises(ContentError, match="Odd"):
+        backgrounds(_origins(tmp_path, FEATS, broken))
+
+
 # -- fetch -----------------------------------------------------------------------
 
 
@@ -673,6 +984,8 @@ def _upstream(files: dict[str, Any], seen: list[str]) -> fetch_module.Download:
 UPSTREAM = {
     "items-base.json": {},
     "races.json": {},
+    "backgrounds.json": {},
+    "feats.json": {},
     "optionalfeatures.json": {},
     "class/index.json": {"rogue": "class-rogue.json"},
     "class/class-rogue.json": {"class": []},

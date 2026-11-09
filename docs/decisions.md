@@ -6070,3 +6070,89 @@ and `uv.lock`.
 
 Sources: `ROADMAP.md` `w2a`, `w2a2`, `w2f`; § The W0 debt register #25, #27,
 #36; DESIGN.md § Failing loudly, § Module layout.
+
+## w2a2 — class, background and feat facts, and a weapon's category
+
+The row and its spec correction (§ The `w2f` spec correction) settled what to
+import; this records the shapes the import took.
+
+### A category is `Weapon.martial`, not an enum
+
+Simple and Martial are the only two, and the Produces cell names no
+`rules/` edit, so the field is a `bool` defaulting to Simple. Nothing in the
+engine reads it: a build is checked against it when it loads (`w2f`). The
+seven weapon fixtures gained it and the `content` test that binds them still
+asserts equality, so a fixture with the wrong category fails there.
+
+### Weapon training is a union of `WeaponTraining` entries
+
+Each entry is a category, optionally narrowed to weapons with *any* of a set
+of properties. The Rogue's and the Monk's narrowed entries are read from the
+`{@filter …}` tag's query (`type=martial weapon|property=finesse;light`), not
+from its display text, because the query is what 5etools itself filters the
+Items page on. The surrounding sentence is matched whole and the query must
+hold exactly `type` and `property`, with a `type` agreeing with the sentence;
+anything else raises. A sentence 5etools rewords therefore fails the import
+instead of reading as no proficiency, which is the failure the row named.
+`startingProficiencies.weaponProficiencies` holds the same fact in structured
+form; it was not read, because two sources for one fact is the disagreement
+§ w2a checks at the ACL rather than resolves, and the row asked for the
+string.
+
+### Levels are read off `classFeatures` by name
+
+`Ability Score Improvement`, `<Class> Subclass`, `Fighting Style` and
+`Weapon Mastery`. A class with no subclass feature, or a Fighting Style or
+Weapon Mastery listed twice, raises. Epic Boon (level 19) is not read: no row
+asks for it before level 12, and `w2f` covers 1–12.
+
+### Skills are lowercase names checked against `SKILLS`
+
+There is no skill enum and the row names no `rules/` edit, so the 18 XPHB
+skills are a closed `frozenset` in `content/classes.py` and every class and
+background skill is checked against it. The Bard's "any three" is
+`SkillChoice(3, None)`. Moving the names into `rules/` is for whichever row
+first needs a skill outside `content/` (#36's skill half, in `w2f`).
+
+### Feat prerequisites: all the data prints, not only level and ability
+
+The row asked for level and ability prerequisites. The data also prints
+"Spellcasting or Pact Magic Feature" (War Caster, Spell Sniper, Ritual
+Caster), armour training (Heavy Armor Master, Medium Armor Master and the
+like), and the Paladin- and Ranger-only Fighting Styles. Dropping those would
+let `w2f` accept a Wizard taking Heavy Armor Master, which is the silent
+acceptance DESIGN.md § Failing loudly forbids, so each is a field:
+`Prerequisite.spellcasting`, `Prerequisite.armour_training` and
+`Feat.class_name`. A prerequisite is a tuple of alternatives, any one of which
+suffices; 5etools' `ability` list of alternatives is expanded into one
+`Prerequisite` each. A Fighting Style feat's "Fighting Style Feature"
+prerequisite is its category, and a prose-only prerequisite (`otherSummary`)
+is accepted only on a Fighting Style feat, whose class restriction comes from
+its category code. Any other prerequisite key raises.
+
+`Feat.repeatable` is imported because a build that takes Ability Score
+Improvement twice must be told it may; `Feat.options` holds the versions
+printed under one name (Magic Initiate's Cleric, Druid, Wizard), which a
+background names. Neither implements anything.
+
+### A background's feat is checked against `feats()`
+
+The Acolyte's `magic initiate; cleric|xphb` becomes `feat="Magic Initiate"`,
+`feat_option="Cleric"`, and both are checked: the feat must be an XPHB Origin
+feat and the option one of its printed versions. The two increase patterns are
+checked against `INCREASES` (XPHB "Background Ability Scores") and a
+background printing others raises, the way § w2a checks spell slots.
+
+### The fixtures
+
+`tests/origin_fixtures.py` holds the Fighter, the Rogue, the Soldier and three
+feats — one Origin, one Fighting Style, one General with an ability
+prerequisite — beside `tests/weapon_fixtures.py`, each bound to its imported
+entry by a `content` test, as § w2f2's are. `w2f` adds the ones it needs the
+same way.
+
+### Fetch
+
+`backgrounds.json` and `feats.json` join `FILES`. A dataset fetched before
+this task lacks them, and `Dataset.read()` already raises naming the missing
+file, so the remedy is a refetch.

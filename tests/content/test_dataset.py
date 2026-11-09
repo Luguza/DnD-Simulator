@@ -8,6 +8,9 @@ import re
 
 import pytest
 
+from dndsim.content.backgrounds import Background, backgrounds
+from dndsim.content.classes import CharacterClass, classes
+from dndsim.content.feats import Feat, FeatCategory, feats
 from dndsim.content.loader import Dataset
 from dndsim.content.refs import class_features, subclass_features
 from dndsim.content.species import species
@@ -16,6 +19,14 @@ from dndsim.content.weapons import NOT_IMPORTED, armour, masteries, weapons
 from dndsim.core.dice import Dice
 from dndsim.creatures.stats import Weapon
 from dndsim.rules.enums import Mastery
+from origin_fixtures import (
+    FIGHTER,
+    GREAT_WEAPON_FIGHTING,
+    GREAT_WEAPON_MASTER,
+    ROGUE,
+    SAVAGE_ATTACKER,
+    SOLDIER,
+)
 from weapon_fixtures import (
     BLOWGUN,
     DAGGER,
@@ -129,3 +140,77 @@ def test_no_5etools_markup_escapes_a_feature(data: Dataset) -> None:
     ]
     assert texts
     assert leaked == []
+
+
+def test_every_weapon_is_simple_or_martial(data: Dataset) -> None:
+    table = weapons(data)
+    assert sum(w.martial for w in table.values()) == 24
+    assert not table["Dagger"].martial
+    assert table["Rapier"].martial
+
+
+def test_every_class_imports_its_facts(data: Dataset) -> None:
+    table = classes(data)
+    assert set(table) == set(CLASSES)
+    assert table["Barbarian"].hit_die == Dice(1, 12)
+    assert table["Paladin"].fighting_style_level == 2
+    assert table["Monk"].weapon_mastery_level is None
+    assert table["Bard"].skills.options is None
+
+
+def test_class_weapon_training_reads_the_filter(data: Dataset) -> None:
+    """XPHB Rogue and Monk "Core Traits": Martial weapons with Finesse or
+    Light, and with Light."""
+    table, arms = classes(data), weapons(data)
+    rogue = {n for n, w in arms.items() if w.martial and table["Rogue"].trained_with(w)}
+    monk = {n for n, w in arms.items() if w.martial and table["Monk"].trained_with(w)}
+    assert rogue == {"Rapier", "Scimitar", "Shortsword", "Whip", "Hand Crossbow"}
+    assert monk == {"Scimitar", "Shortsword", "Hand Crossbow"}
+    assert table["Rogue"].trained_with(arms["Dagger"])
+    assert not table["Wizard"].trained_with(arms["Longsword"])
+
+
+def test_the_sixteen_backgrounds_name_origin_feats(data: Dataset) -> None:
+    table, feat_table = backgrounds(data), feats(data)
+    assert len(table) == 16
+    for background in table.values():
+        assert feat_table[background.feat].category is FeatCategory.ORIGIN
+    assert table["Acolyte"].feat_option == "Cleric"
+
+
+def test_the_feats_import_by_category(data: Dataset) -> None:
+    table = feats(data)
+    counts = {c: sum(f.category is c for f in table.values()) for c in FeatCategory}
+    assert counts == {
+        FeatCategory.ORIGIN: 10,
+        FeatCategory.GENERAL: 43,
+        FeatCategory.FIGHTING_STYLE: 12,
+        FeatCategory.EPIC_BOON: 12,
+    }
+    assert table["Blessed Warrior"].class_name == "Paladin"
+    assert table["Ability Score Improvement"].repeatable
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        FIGHTER,
+        ROGUE,
+        SOLDIER,
+        SAVAGE_ATTACKER,
+        GREAT_WEAPON_FIGHTING,
+        GREAT_WEAPON_MASTER,
+    ],
+    ids=lambda record: record.name,
+)
+def test_each_origin_fixture_is_its_imported_entry(
+    data: Dataset, fixture: CharacterClass | Background | Feat
+) -> None:
+    """The default suite stands on hand-written copies (`docs/decisions.md`
+    § w2a2)."""
+    if isinstance(fixture, CharacterClass):
+        assert classes(data)[fixture.name] == fixture
+    elif isinstance(fixture, Background):
+        assert backgrounds(data)[fixture.name] == fixture
+    else:
+        assert feats(data)[fixture.name] == fixture

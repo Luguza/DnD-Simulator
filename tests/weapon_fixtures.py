@@ -18,6 +18,7 @@ GREATSWORD: Final = Weapon(
     damage_type=DamageType.SLASHING,
     properties=_HEAVY_TWO_HANDED,
     mastery=Mastery.GRAZE,
+    martial=True,
 )
 MAUL: Final = Weapon(
     name="Maul",
@@ -25,6 +26,7 @@ MAUL: Final = Weapon(
     damage_type=DamageType.BLUDGEONING,
     properties=_HEAVY_TWO_HANDED,
     mastery=Mastery.TOPPLE,
+    martial=True,
 )
 LONGBOW: Final = Weapon(
     name="Longbow",
@@ -36,6 +38,7 @@ LONGBOW: Final = Weapon(
     mastery=Mastery.SLOW,
     range_ft=(150, 600),
     ranged=True,
+    martial=True,
 )
 DAGGER: Final = Weapon(
     name="Dagger",
@@ -72,4 +75,5 @@ BLOWGUN: Final = Weapon(
     mastery=Mastery.VEX,
     range_ft=(25, 100),
     ranged=True,
+    martial=True,
 )
