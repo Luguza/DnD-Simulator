@@ -272,7 +272,7 @@ there is local to a module.
 | `apl/`, a clause, the namespace, the policy, the dummy's policy | § w2e |
 | `creatures/dummy.py`, the target dummy | § w2d |
 | `engine/turn.py`, `encounter.py`, `world.py`, `query.py`, the shared `Clock`, Speed, incapacitation | § w2c, § w2c2 (the walk), § w2e (the policy) |
-| `content/`, the 5etools import, `table_value()` | § w2a |
+| `content/`, the 5etools import, `table_value()` | § w2a, § w2a2 |
 | `creatures/resources.py`, pools, slots, `transaction()` | § w1b, § w2i |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k, § w2i, § w2c2, § w2e, § The W2 mid-wave review |

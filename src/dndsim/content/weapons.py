@@ -13,7 +13,7 @@ from dndsim.creatures.stats import Armour, Weapon
 from dndsim.rules.constants import CELL_SIZE_FT, SHIELD_AC_BONUS
 from dndsim.rules.enums import DamageType, Mastery, WeaponProperty
 
-__all__ = ["NOT_IMPORTED", "armour", "masteries", "weapons"]
+__all__ = ["CATEGORIES", "NOT_IMPORTED", "armour", "masteries", "weapons"]
 
 ITEMS: Final = "items-base.json"
 
@@ -52,6 +52,8 @@ _PROPERTIES: Final = MappingProxyType(
 _MELEE: Final = "M"
 _RANGED: Final = "R"
 _WEAPON_TYPES: Final = frozenset({_MELEE, _RANGED})
+CATEGORIES: Final = MappingProxyType({"simple": False, "martial": True})
+"""A weapon category by its 5etools name, as whether it is Martial."""
 _ARMOUR_TYPES: Final = frozenset({"LA", "MA", "HA"})
 _SHIELD_TYPE: Final = "S"
 
@@ -86,6 +88,7 @@ def _weapon(item: Any) -> Weapon:
         versatile = Dice.parse(item["dmg2"]) if "dmg2" in item else None
         if "range" in item:
             normal, long = (int(n) for n in item["range"].split("/"))
+        martial = CATEGORIES[item["weaponCategory"]]
     except (KeyError, ValueError) as error:
         raise ContentError(f"weapon {name!r} is not shaped as read: {error}") from error
     if len(mastery) > 1:
@@ -102,6 +105,7 @@ def _weapon(item: Any) -> Weapon:
             range_ft=(normal, long) if "range" in item else None,
             ranged=_code(item["type"]) == _RANGED,
             versatile_damage=versatile,
+            martial=martial,
         )
     except ValueError as error:
         raise ContentError(f"weapon {name!r} is not a weapon: {error}") from error

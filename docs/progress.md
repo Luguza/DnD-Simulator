@@ -49,8 +49,8 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 18 | w2a — content ACL | done | #67 |
 | 19 | w2d — `TargetDummy` | done | #65 |
 | 20 | w2f2 — the imported weapons in the engine 🔒 | done | |
-| 21 | w2a2 — class, background and feat facts, a weapon's category | next | |
-| 22 | w2f — build schema and `Character` | queued | |
+| 21 | w2a2 — class, background and feat facts, a weapon's category | done | |
+| 22 | w2f — build schema and `Character` | next | |
 | — | ⏸ plan review | queued | |
 | 23 | w2j — Unarmed Strike, Shove, Grapple, standing up, passing through | queued | |
 | 24 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |

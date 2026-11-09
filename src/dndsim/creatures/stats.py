@@ -44,8 +44,9 @@ class Weapon:
     `mastery` names the weapon's mastery property and implements nothing.
     `range_ft` is the printed normal/long pair, `None` for a weapon with no
     range; `ranged` is the table's Melee/Ranged column; `versatile_damage` is
-    the two-handed die of a Versatile weapon (`docs/decisions.md` § w2a,
-    § w2f2).
+    the two-handed die of a Versatile weapon; `martial` is whether it is a
+    Martial weapon rather than a Simple one (`docs/decisions.md` § w2a, § w2f2,
+    § w2a2).
 
     Raises `ValueError` for a flat damage below 1, and for a Ranged or Thrown
     weapon with no range.
@@ -60,6 +61,7 @@ class Weapon:
     range_ft: tuple[int, int] | None = None
     ranged: bool = False
     versatile_damage: Dice | None = None
+    martial: bool = False
 
     def __post_init__(self) -> None:
         damage = self.damage
