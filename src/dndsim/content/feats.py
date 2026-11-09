@@ -73,7 +73,7 @@ class Feat:
     class_name: str | None = None
     options: tuple[str, ...] = ()
     """The versions printed under one name, as Magic Initiate's Cleric, Druid
-    and Wizard; a background may name one."""
+    and Wizard."""
 
 
 def _alternatives(raw: Any, category: FeatCategory, where: str) -> list[Prerequisite]:

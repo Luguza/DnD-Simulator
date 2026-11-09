@@ -19,7 +19,7 @@ __all__ = ["INCREASES", "Background", "backgrounds"]
 BACKGROUNDS: Final = "backgrounds.json"
 
 INCREASES: Final = ((2, 1), (1, 1, 1))
-"""XPHB "Background Ability Scores": +2 and +1, or +1 to all three."""
+"""XPHB "Background Ability Scores"."""
 
 
 @dataclass(frozen=True, slots=True)
