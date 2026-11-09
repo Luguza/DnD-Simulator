@@ -14,6 +14,7 @@ from typing import Any, Final
 
 from dndsim.content.loader import SOURCE, ContentError, Dataset
 from dndsim.content.refs import class_files
+from dndsim.content.weapons import CATEGORIES
 from dndsim.core.dice import Dice
 from dndsim.creatures.stats import Weapon
 from dndsim.rules.enums import Ability, WeaponProperty
@@ -91,7 +92,9 @@ class CharacterClass:
 
     `weapon_training` is a union: a weapon is trained if any entry covers it.
     The `*_level(s)` fields are the class levels whose features grant the
-    choice; `None` for a class without the feature.
+    choice: `ability_score_improvement_levels` is every such level,
+    `subclass_level` always exists, and `fighting_style_level` and
+    `weapon_mastery_level` are `None` for a class without the feature.
     """
 
     name: str
@@ -109,8 +112,6 @@ class CharacterClass:
         """Whether this class's weapon training covers `weapon`."""
         return any(entry.covers(weapon) for entry in self.weapon_training)
 
-
-_CATEGORIES: Final = MappingProxyType({"simple": False, "martial": True})
 
 # "Martial weapons that have the {@filter Finesse or Light|items|type=martial
 # weapon|property=finesse;light} property": the filter's query is what is read.
@@ -153,8 +154,8 @@ def _narrowed(text: str, where: str) -> WeaponTraining:
 def _weapon_training(raw: Any, where: str) -> tuple[WeaponTraining, ...]:
     out: list[WeaponTraining] = []
     for entry in raw or ():
-        if isinstance(entry, str) and entry in _CATEGORIES:
-            out.append(WeaponTraining(_CATEGORIES[entry]))
+        if isinstance(entry, str) and entry in CATEGORIES:
+            out.append(WeaponTraining(CATEGORIES[entry]))
         elif isinstance(entry, str):
             out.append(_narrowed(entry, where))
         else:
@@ -171,9 +172,9 @@ def _armour_training(raw: Any, where: str) -> frozenset[ArmourTraining]:
 
 def skill(name: Any, where: str) -> str:
     """`name` checked against `SKILLS`. Raises `ContentError` otherwise."""
-    if name not in SKILLS:
+    if not isinstance(name, str) or name not in SKILLS:
         raise ContentError(f"{where}: no skill {name!r}")
-    return str(name)
+    return name
 
 
 def _skills(raw: Any, where: str) -> SkillChoice:
@@ -218,6 +219,9 @@ def _class(entry: Any) -> CharacterClass:
         hit_die = Dice(1, int(hd["faces"]))
         saves = frozenset(Ability(code) for code in entry["proficiency"])
         proficiencies = entry["startingProficiencies"]
+        weapon_training = _weapon_training(proficiencies.get("weapons"), where)
+        armour_training = _armour_training(proficiencies.get("armor"), where)
+        skills = _skills(proficiencies.get("skills"), where)
         levels = _grant_levels(entry, where)
     except (KeyError, TypeError, ValueError) as error:
         raise ContentError(f"{where} is not shaped as read: {error!r}") from error
@@ -230,9 +234,9 @@ def _class(entry: Any) -> CharacterClass:
         name=name,
         hit_die=hit_die,
         saving_throws=saves,
-        weapon_training=_weapon_training(proficiencies.get("weapons"), where),
-        armour_training=_armour_training(proficiencies.get("armor"), where),
-        skills=_skills(proficiencies.get("skills"), where),
+        weapon_training=weapon_training,
+        armour_training=armour_training,
+        skills=skills,
         ability_score_improvement_levels=tuple(sorted(levels.get(_ASI, []))),
         subclass_level=subclass,
         fighting_style_level=_at_most_one(levels, _FIGHTING_STYLE, where),

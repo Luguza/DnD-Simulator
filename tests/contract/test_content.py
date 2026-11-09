@@ -817,6 +817,12 @@ def test_a_weapon_training_it_cannot_parse_is_refused(
                 "skills": [{"choose": {"from": ["juggling"], "count": 1}}],
             }
         },
+        {"startingProficiencies": {"skills": [{"any": "three"}]}},
+        {
+            "startingProficiencies": {
+                "skills": [{"choose": {"from": [{"anyTool": 1}], "count": 1}}],
+            }
+        },
     ],
 )
 def test_a_class_shaped_otherwise_is_refused(tmp_path: Path, broken: Any) -> None:
