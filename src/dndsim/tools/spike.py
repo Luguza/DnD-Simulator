@@ -449,7 +449,7 @@ def _execute(spike: Spike, entry: CompiledEntry, rng: Rng) -> int:
 
     apl = spike.apl
     walk = apl.walk(entry)
-    if walk is not None and walk.is_legal():
+    if walk is not None:
         walk.execute(rng=rng)
     target = apl.target(entry)
     if target is None:
@@ -518,20 +518,22 @@ def _closing_square(spike: "Spike", mover: Creature, target: Creature) -> Cell |
     if in_reach(origin, goal, reach):
         return None
     taken = {
-        creature.position for creature in spike.combatants if creature is not mover
+        (creature.position.x, creature.position.y)
+        for creature in spike.combatants
+        if creature is not mover
     }
     steps = reach // CELL_SIZE_FT
-    candidates = [
-        square
-        for dy in range(-steps, steps + 1)
-        for dx in range(-steps, steps + 1)
-        if (square := Cell(goal.x + dx, goal.y + dy)) not in taken
-    ]
-    return min(
-        candidates,
-        key=lambda square: (distance_ft(origin, square), square.y, square.x),
-        default=None,
-    )
+    # Chebyshev squares from `origin` rank as `distance_ft()` does, and no
+    # `Cell` is built for a square that loses (`docs/decisions.md` § w2i2).
+    best: tuple[int, int, int] | None = None
+    for y in range(goal.y - steps, goal.y + steps + 1):
+        for x in range(goal.x - steps, goal.x + steps + 1):
+            if (x, y) in taken:
+                continue
+            key = (max(abs(x - origin.x), abs(y - origin.y)), y, x)
+            if best is None or key < best:
+                best = key
+    return None if best is None else Cell(best[2], best[1])
 
 
 def _away(position: Cell, threat: Cell) -> Cell:

@@ -52,8 +52,8 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 21 | w2a2 — class, background and feat facts, a weapon's category | done | |
 | 22 | w2f — build schema and `Character` | done | |
 | — | ⏸ plan review | done | |
-| 23 | w2i2 — the W2 levers 🔒 | next | |
-| 24 | w2j — Unarmed Strike, Shove, Grapple, standing up, passing through | queued | |
+| 23 | w2i2 — the W2 levers 🔒 | done | |
+| 24 | w2j — Unarmed Strike, Shove, Grapple, standing up, passing through | next | |
 | 25 | w2k — what a build carries 🔒 | queued | |
 | 26 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |
 | 27 | w2h — the CLI | queued | |

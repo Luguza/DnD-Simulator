@@ -305,7 +305,9 @@ class Apl:
     def first(self, offered: frozenset[str]) -> CompiledEntry | None:
         """The first entry whose action is in `offered` and whose `if:`
         passes."""
-        namespace = self.namespace
+        namespace = self._namespace
+        if namespace is None:
+            namespace = self.namespace
         for entry in self._compiled:
             if entry.action not in offered:
                 continue
@@ -331,7 +333,10 @@ class Apl:
         if selector is None:
             return None
         namespace = self.namespace
-        picked = next(iter(_candidates(selector.fn(namespace), selector.kind)), None)
+        chosen = selector.fn(namespace)
+        picked = (
+            (chosen[0] if chosen else None) if selector.kind is Kind.GROUP else chosen
+        )
         namespace.target.bind(picked)
         return picked
 
@@ -376,30 +381,37 @@ class Apl:
         if condition is None:
             return False
         namespace = self._namespace
-        if namespace is None:
+        owner = self._owner
+        if namespace is None or owner is None:
             namespace = self.namespace
-        if isinstance(ctx, LeaveReachContext):
+            owner = self._actor()
+        attacker = getattr(ctx, "attacker", None)
+        if attacker is owner:
+            # The owner's own attack, the commonest ask, answered without
+            # `_face()`'s call (`docs/decisions.md` § w2i2).
+            defender = ctx.defender  # type: ignore[attr-defined]
+            namespace.target.creature = (
+                defender
+                if isinstance(defender, Creature)
+                else namespace.world.holder(defender)
+            )
+        elif attacker is not None:
+            _face(namespace, owner, attacker, ctx.defender)  # type: ignore[attr-defined]
+        elif isinstance(ctx, LeaveReachContext):
             mover = namespace.world.holder(ctx.mover)
             if mover is not None:
                 namespace.trigger.offer_movement(mover, ctx.origin, ctx.destination)
                 namespace.target.bind(mover)
-        else:
-            attacker = getattr(ctx, "attacker", None)
-            if attacker is not None:
-                _face(namespace, attacker, ctx.defender)  # type: ignore[attr-defined]
         return bool(condition(namespace))
 
 
-def _face(namespace: Namespace, attacker: Combatant, defender: Combatant) -> None:
-    """Bind `target` to the other party of an attack, and give a defender's
-    root the attacker's offer when it is the newer one."""
+def _face(
+    namespace: Namespace, owner: Creature, attacker: Combatant, defender: Combatant
+) -> None:
+    """Bind `target` to the other party of an attack `owner` did not make as
+    itself, and give a defender's root the attacker's offer when it is the
+    newer one."""
     world = namespace.world
-    owner = namespace.self.creature
-    if attacker is owner:
-        namespace.target.bind(
-            defender if isinstance(defender, Creature) else world.holder(defender)
-        )
-        return
     striker = attacker if isinstance(attacker, Creature) else world.holder(attacker)
     if striker is owner:
         namespace.target.bind(world.holder(defender))

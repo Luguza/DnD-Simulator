@@ -83,7 +83,8 @@ class SelfProxy:
 
     @property
     def hp_pct(self) -> float:
-        return hp_pct(_live(self._ref))
+        creature = _live(self._ref)
+        return creature.hp / creature.max_hp
 
     @property
     def ac(self) -> int:
@@ -162,16 +163,17 @@ class TriggerProxy:
 
     def bind(self, *, crit: bool = False, damage_estimate: int = 0) -> None:
         """An attack is on offer: replaces the whole offer."""
-        self.stamp = next(_OFFERS)
+        self.stamp = _next_offer()
         self.crit = crit
         self.damage_estimate = damage_estimate
-        self.mover = self.origin = self.destination = None
+        if self.mover is not None:
+            self.mover = self.origin = self.destination = None
 
     def offer_movement(
         self, mover: Creature, origin: "CellLike", destination: "CellLike"
     ) -> None:
         """A creature is leaving reach: replaces the whole offer."""
-        self.stamp = next(_OFFERS)
+        self.stamp = _next_offer()
         self.crit = False
         self.damage_estimate = 0
         self.mover = mover
@@ -188,7 +190,7 @@ class TriggerProxy:
         self.destination = other.destination
 
 
-_OFFERS = count(1)
+_next_offer = count(1).__next__
 """Orders every offer told to any root, so the newest one can be found."""
 
 
@@ -202,12 +204,12 @@ class _Side:
         self._seated: tuple[Creature, ...] = ()
 
     def _members(self) -> tuple[Creature, ...]:
-        """The side's seated creatures that are not dead, in seating order."""
+        """The side's seated creatures, dead or not, in seating order."""
         world = self._world
         if self._seating != world.seating:
             self._seated = self._seat(_live(self._ref), world)
             self._seating = world.seating
-        return tuple(c for c in self._seated if not c.dead)
+        return self._seated
 
     def _seat(self, owner: Creature, world: World) -> tuple[Creature, ...]:
         raise NotImplementedError
@@ -215,7 +217,7 @@ class _Side:
     @property
     def alive(self) -> tuple[Creature, ...]:
         """Standing: alive and above 0 hit points, in seating order."""
-        return tuple(c for c in self._members() if not c.is_down)
+        return tuple(c for c in self._members() if not c.is_down and not c.dead)
 
     def within(self, feet: int) -> tuple[Creature, ...]:
         """Standing and within `feet` of the owner, between footprints."""
@@ -226,6 +228,7 @@ class _Side:
             c
             for c in self._members()
             if not c.is_down
+            and not c.dead
             and distance_ft(
                 origin, c.position, origin_size=size, destination_size=c.size
             )
@@ -253,6 +256,7 @@ class EnemiesProxy(_Side):
             c
             for c in self._members()
             if not c.is_down
+            and not c.dead
             and in_reach(
                 origin, c.position, reach, origin_size=size, destination_size=c.size
             )
@@ -272,7 +276,7 @@ class AlliesProxy(_Side):
     @property
     def down(self) -> tuple[Creature, ...]:
         """Alive at 0 hit points."""
-        return tuple(c for c in self._members() if c.is_down)
+        return tuple(c for c in self._members() if c.is_down and not c.dead)
 
 
 class Namespace:

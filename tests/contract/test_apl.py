@@ -1963,6 +1963,11 @@ def test_the_stand_search_is_exactly_the_anchors_in_reach(
         )
     }
 
-    found = _stands(actor, target, frozenset())
+    stands = _stands(actor, target, frozenset())
+    found = [Cell(x, y) for _, y, x in stands]
     assert len(found) == len(set(found))
     assert set(found) == expected
+    assert [steps for steps, _, _ in stands] == [
+        distance_ft(actor.position, cell) // 5 for cell in found
+    ]
+    assert stands == sorted(stands)

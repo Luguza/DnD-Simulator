@@ -6396,3 +6396,92 @@ spec PRs and in `w2e`.
   section, since it holds the latest re-measure against the floor.
 - **`w2e`'s hold** came from its performance done-when and four rounds of
   real findings in a 🔒 row, not from the environment; nothing to change.
+
+## w2i2 — the W2 levers
+
+Debt #67: the cost `w2e`'s compiled APL and real `Move` added to the spike,
+which § The W2 late-wave review measured at 0.912 of `3804f05` on
+`--no-provoking`, below the 0.94 that carries onto the owner's 22k floor.
+**The levers take it to about 0.93: short of 0.94 by about a point**, so
+this records what each lever bought and where the rest is, and
+`docs/questions.md` #27 asks the owner whether the floor comes down.
+
+### The levers
+
+Every one keeps the fights: same rolls in the same order, same answers. The
+witness is the fixed 200-encounter profiled run at seed 0; each lever's row is
+the function-level call counts it moved, milestone branch at `163c095` → this
+task, `--no-provoking` unless it says otherwise.
+
+| Lever | Where | What the witness shows |
+|---|---|---|
+| The owner's own attack is answered in `allows()` without `_face()` or the `self.creature` read; the `if:` it asks is reached through the APL's own `_owner` | `apl/apl.py` | `_face` 6,891 → 1,015; `SelfProxy.creature` 6,891 → 0, and as many `_live` and `isinstance` |
+| A side is filtered once per read: the seated tuple is kept as it was, and death and 0 hit points are asked in the same pass, not in two tuples | `apl/namespace.py` | the namespace's generators 28,205 → 13,805 |
+| An attack's offer clears the mover's fields only when one was set, and the stamp is a bound `count().__next__` | `apl/namespace.py` | builtin `next` 15,282 → 400 |
+| `self.hp_pct` reads the creature once; `first()` and `target()` skip the `namespace` property, and `target()` the candidate tuple | `apl/namespace.py`, `apl/apl.py` | `hp_pct` 9,200 → 4,600; `Apl.namespace` 6,200 → 4,000 |
+| `_stands` returns `(steps, y, x)` tuples sorted as tuples, with a set of taken squares for a one-square mover, so no `Cell`, `footprint()` or `distance_ft()` is spent on an anchor the plan never routes to; `steps` is `distance_ft()` between anchors in squares, which the contract test now asserts | `actions/move.py` | provoking, where every enemy closes by `Move`: its generators 65,994 → 11,994, `footprint` 35,994 → 8,994, `distance_ft` 71,791 → 45,791 and the sort's lambdas 23,000 → 0, against 46,000 `abs` |
+| A step's cost is asked once per legality question, not once in `_permits()` and again in `_walkable()` | `actions/move.py` | provoking: `_step_ft` 21,994 → 9,997 |
+| The fixture's own stepping ranks the free squares by integers and builds one `Cell`, the winner | `tools/spike.py` | its key lambdas 2,600 → 0 and `Cell` hashes 12,400 → 5,800, against 8,400 `abs` |
+| `_execute()` no longer asks a walk `apl.walk()` returned whether it is legal: `walk()` returns only legal ones, and `execute()` asks again | `tools/spike.py` | `is_legal` 600 → 400 |
+
+What each bought is stated in calls because no single lever is worth more
+than about a point of rate, under this container's noise (below); the rate
+is priced on all of them together.
+
+In all, 1,936,747 → 1,831,440 calls on `--no-provoking` (`3804f05`:
+1,761,675) and 3,375,250 → 2,974,874 on provoking (`3804f05`: 3,119,046).
+Every encounter's closing hit points, the resolutions and the next draw are
+identical on all three trees in both configurations (the last encounter
+55; 207, 1,000, 1,000 with next draw 108454, and 49; 180, 1,000, 1,000 with
+401888).
+
+A fourth `Move` lever was tried and taken back out: building the stand
+candidates as `(x, y)` pairs and a `Cell` only for the survivors bought
+nothing measurable, since a `Cell` is built to ask `blocked` anyway.
+
+### The rate
+
+The row's protocol: the spike's own `main()`, sibling worktrees, a fresh
+interpreter per arm, the order reversed every other pair.
+
+| Configuration | Pairs | Ratios | Median |
+|---|---|---|---|
+| `--no-provoking` | 8 | 0.921, 0.958, 0.997, 0.952, 1.008, 0.840, 0.921, 0.888 | **0.937** |
+| provoking | 6 | 0.824, 0.940, 1.019, 0.968, 0.962, 0.931 | **0.951** |
+
+The container was noisy enough that the same tree against itself spread
+±6%, so the levers were also priced on two long-lived workers, one per tree,
+asked in alternation for 300 encounters at a time (150 on provoking): 160
+rounds put the milestone branch at **0.891** of `3804f05` and this task at
+**0.922** and **0.927** on `--no-provoking`; on provoking 100 rounds put the
+branch at 0.944 and this task at **1.030**, faster than `3804f05`, because
+every enemy there closes by `Move`. Carried onto the ~23.5k of § The W2
+mid-wave review, `--no-provoking` is **~21.7k–22.0k**: at the floor on the
+protocol's median, under it on the longer measurement.
+
+### Where the rest is
+
+The same alternating workers with a timer around each part of the turn, 100
+rounds, microseconds per encounter (`3804f05` → this task, about 1,980 →
+2,060):
+
+| Part | Diff | What it is |
+|---|---|---|
+| The hero's turn outside its attacks | +43 | `Move`'s one plan an encounter (about 17 µs above the stand-in's arithmetic, half of it the stand search, the rest `_occupied()` and `route()`), and `first()`, `walk()` and `target()` reading live state each time (about 15 µs over the stand-in's) |
+| The enemies' attacks | +21 | The same calls as `3804f05` apart from the trigger stamp; see below |
+| The hero's attacks | +11 | 34 gate questions an encounter at ~0.09 µs over the stand-in's, and the same as below |
+| The enemies' turns outside their attacks | +3 | The fixture's free-square stepping |
+
+The attack rows are not this row's files. Timed alone, one enemy attack
+costs 17.1 µs on `3804f05` and 18.7–20.7 µs here with the same function calls
+to within the trigger stamp, so the difference is reads inside
+`resolve_attack()` — the ranged and Thrown branch, the weapon-training read and
+the flat-damage question `w2f2` and `w2f` added, each priced by its own task
+as indistinguishable from zero. Together they are about a point and a half,
+which is the shortfall. Taking them back is a change to `engine/attack.py`,
+the frozen hot path, and not a lever this row may pull.
+
+What is left in the APL is the price of reading live state: the stand-in held
+the hero's targets as fixed tuples, and the compiled namespace may not
+(`DESIGN.md` § Condition language). Caching a side's living members across
+reads would need a signal for a death that the namespace does not have.

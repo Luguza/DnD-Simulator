@@ -65,18 +65,20 @@ class Walk(Action[tuple[Cell, ...]]):
         actor, target = self.actor, self.target
         if target is actor or target.dead or actor.speed_ft == 0:
             return False
-        if not actor.economy.can_move(_step_ft(actor)):
+        step_ft = _step_ft(actor)
+        if not actor.economy.can_move(step_ft):
             return False
-        return bool(self._walkable())
+        return bool(self._walkable(step_ft))
 
     def _perform(self, rng: Rng) -> tuple[Cell, ...]:
         actor = self.actor
+        step_ft = _step_ft(actor)
         walked = walk_provoking(
             actor,
-            self._walkable(),
+            self._walkable(step_ft),
             self.world,
             provokes=not disengaged(actor),
-            step_ft=_step_ft(actor),
+            step_ft=step_ft,
         )
         if walked:
             moved = MoveContext(
@@ -92,11 +94,11 @@ class Walk(Action[tuple[Cell, ...]]):
             moved.close()
         return walked
 
-    def _walkable(self) -> tuple[Cell, ...]:
-        """The route as far as this turn's movement pays for it and fear
-        allows."""
+    def _walkable(self, step_ft: int) -> tuple[Cell, ...]:
+        """The route as far as this turn's movement pays for it at `step_ft` a
+        square and fear allows."""
         actor = self.actor
-        planned = self._route()[: actor.economy.movement_ft // _step_ft(actor)]
+        planned = self._route()[: actor.economy.movement_ft // step_ft]
         sources = _sources_of_fear(self.world, actor)
         if not sources:
             return planned
@@ -171,12 +173,13 @@ class Move(Walk):
             return ()
         blocked = _occupied(self.world, actor)
         best: tuple[Cell, ...] = ()
-        for destination in _stands(actor, target, blocked):
+        for steps, y, x in _stands(actor, target, blocked):
             # No route is shorter than the Chebyshev floor `_stands` sorts by,
             # so once that floor reaches the best route found, nothing later
             # can beat it.
-            if best and distance_ft(origin, destination) >= len(best) * CELL_SIZE_FT:
+            if best and steps >= len(best):
                 break
+            destination = Cell(x, y)
             walked = route(origin, destination, blocked=blocked, size=actor.size)
             reached = walked and walked[-1] == destination
             if reached and (not best or len(walked) < len(best)):
@@ -296,10 +299,15 @@ def _occupied(world: World, mover: Creature) -> frozenset[Cell]:
     )
 
 
-def _stands(actor: Creature, target: Creature, blocked: frozenset[Cell]) -> list[Cell]:
+def _stands(
+    actor: Creature, target: Creature, blocked: frozenset[Cell]
+) -> list[tuple[int, int, int]]:
     """The anchors from which `actor`'s footprint has `target` in reach and
-    stands in nobody's space, nearest to the actor first, then lowest `y`,
-    then lowest `x`."""
+    stands in nobody's space, as `(steps, y, x)`: `steps` is the Chebyshev
+    distance in squares from the actor's anchor, `distance_ft()`'s between
+    anchors, and the list is sorted on it, then lowest `y`, then lowest `x`.
+    Tuples, so that no `Cell` is built for an anchor the plan never routes to
+    (`docs/decisions.md` § w2i2)."""
     width = SIZE_WIDTH_CELLS[actor.size]
     reach_cells = actor.reach_ft // CELL_SIZE_FT
     anchor = target.position
@@ -307,16 +315,29 @@ def _stands(actor: Creature, target: Creature, blocked: frozenset[Cell]) -> list
     # Exactly the anchors whose footprint has the target in reach: its far
     # edge within `reach_cells` of the target's near one, on each axis, which
     # is `distance_ft`'s gap between footprints (`docs/decisions.md` § w1d).
-    low_x = anchor.x - reach_cells - width + 1
-    high_x = anchor.x + target_width - 1 + reach_cells
-    low_y = anchor.y - reach_cells - width + 1
-    high_y = anchor.y + target_width - 1 + reach_cells
+    xs = range(
+        anchor.x - reach_cells - width + 1, anchor.x + target_width + reach_cells
+    )
+    ys = range(
+        anchor.y - reach_cells - width + 1, anchor.y + target_width + reach_cells
+    )
     origin = actor.position
-    found = [
-        Cell(x, y)
-        for y in range(low_y, high_y + 1)
-        for x in range(low_x, high_x + 1)
-        if not any(cell in blocked for cell in footprint(Cell(x, y), actor.size))
-    ]
-    found.sort(key=lambda cell: (distance_ft(origin, cell), cell.y, cell.x))
+    origin_x, origin_y = origin.x, origin.y
+    if width == 1:
+        taken = {(cell.x, cell.y) for cell in blocked}
+        found = [
+            (max(abs(x - origin_x), abs(y - origin_y)), y, x)
+            for y in ys
+            for x in xs
+            if (x, y) not in taken
+        ]
+    else:
+        size = actor.size
+        found = [
+            (max(abs(x - origin_x), abs(y - origin_y)), y, x)
+            for y in ys
+            for x in xs
+            if not any(square in blocked for square in footprint(Cell(x, y), size))
+        ]
+    found.sort()
     return found
