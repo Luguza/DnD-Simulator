@@ -1,0 +1,20 @@
+# A level 5 Champion with a Greatsword: the build DESIGN.md's examples name.
+name: Fighter (GWM)
+class: Fighter
+level: 5
+subclass: Champion
+species: Human
+size: medium
+background: Soldier
+abilities: {strength: 15, dexterity: 13, constitution: 14, intelligence: 8, wisdom: 12, charisma: 10}
+background_increases: {strength: 2, constitution: 1}
+skills: [perception, survival]
+fighting_style: Great Weapon Fighting
+weapon_mastery: [Greatsword, Maul, Longbow]
+feats:
+  - {level: 4, feat: Great Weapon Master}
+equipment:
+  weapon: Greatsword
+  armour: Chain Mail
+apl:
+  - {action: attack, target: "lowest_hp of enemies.in_reach"}

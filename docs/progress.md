@@ -3,9 +3,10 @@
 Milestone branch: `milestone/m1-w2`
 
 The serial work queue. **Exactly one row is `next`.** A task's own pull request
-flips its row to `done` and the row below to `next`, so merging is what advances
-the queue — the ledger cannot desync from git because advancing it *is* a
-merged diff. Task PRs merge into the milestone branch named above, so the live
+flips its row to `done` and the first row below it that is not `done` to
+`next`; a row already `done` because it ran ahead of its place, as `w2a` and
+`w2d` did, is skipped. Merging is what advances the queue, so the ledger cannot
+desync from git: advancing it *is* a merged diff. Task PRs merge into the milestone branch named above, so the live
 queue is the copy on that branch; the one on `main` is the queue as of the last
 milestone (`docs/workflow.md` § The milestone branch).
 
@@ -39,17 +40,23 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 11 | w1l — docstrings cut back to their own code | done | |
 | 12 | w1k — M0 re-measure 🔒 | done | |
 | — | ⏸ **M0 / W1 milestone review** — before any W2 task | done | |
-| 13 | w2i — the M0 levers 🔒 | next | |
-| 14 | w2b — `Action` Commands and the stabilise | queued | |
-| 15 | w2c — turn loop, initiative, opportunity attacks 🔒 | queued | |
-| — | ⏸ plan review | queued | |
-| 16 | w2e — the APL compiler 🔒 | queued | |
-| 17 | w2a — content ACL | queued | |
-| 18 | w2d — `TargetDummy` | queued | |
-| — | ⏸ plan review | queued | |
-| 19 | w2f — build schema and `Character` | queued | |
-| 20 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |
-| 21 | w2h — the CLI | queued | |
+| 13 | w2i — the M0 levers 🔒 | done | |
+| 14 | w2b — `Action` Commands and the stabilise | done | |
+| 15 | w2c — turn loop, initiative, the turn-boundary debts 🔒 | done | #62 |
+| 16 | w2c2 — opportunity attacks and the walk 🔒 | done | #66 |
+| — | ⏸ plan review — and the M0 budget revision (`docs/questions.md` #10) | done | #70 |
+| 17 | w2e — the APL compiler 🔒 | done | #71 |
+| 18 | w2a — content ACL | done | #67 |
+| 19 | w2d — `TargetDummy` | done | #65 |
+| 20 | w2f2 — the imported weapons in the engine 🔒 | done | |
+| 21 | w2a2 — class, background and feat facts, a weapon's category | done | |
+| 22 | w2f — build schema and `Character` | done | |
+| — | ⏸ plan review | done | |
+| 23 | w2i2 — the W2 levers 🔒 | done | |
+| 24 | w2j — Unarmed Strike, Shove, Grapple, standing up, passing through | next | |
+| 25 | w2k — what a build carries 🔒 | queued | |
+| 26 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |
+| 27 | w2h — the CLI | queued | |
 | — | ⏸ **M1 / W2 milestone review** | queued | |
 
 Order within W1 is the critical path first (`w1e → w1f`, the two 🔒 tasks
@@ -59,7 +66,11 @@ last: every row that prices itself has to have landed before the totalling.
 
 Order within W2 is `w2i` first — the levers `w1k`'s shortfall names, so no W2
 row prices itself against a baseline already known to be under budget — then
-the critical path (`w2b → w2c → w2e`, the turn loop and the APL everything
+the critical path (`w2b → w2c → w2c2 → w2e`, the turn loop and the APL everything
 after them runs on), then the leaves, with `w2g` and `w2h` last because they
 depend on nearly everything else. `w2g` carries the M1 golden
-(`docs/decisions.md` § The M0 / W1 milestone review).
+(`docs/decisions.md` § The M0 / W1 milestone review). The W2 mid-wave review
+split `w2f2` off `w2f`, added `w2j`, and moved the second gate to after `w2f`
+(`docs/decisions.md` § The W2 mid-wave review). `w2f`'s spec correction put `w2a2` ahead of it:
+the content a build is checked against (`docs/decisions.md` § The `w2f` spec
+correction).

@@ -4,8 +4,7 @@ The rules are XPHB, "Dropping to 0 Hit Points", under its headings Instant
 Death, Falling Unconscious, Death Saving Throws, Rolling 1 or 20, Damage at 0
 Hit Points and Stabilizing a Character; that only a player character makes
 death saving throws is DESIGN.md § Context, "What 'runs dry' means".
-`docs/decisions.md` § w1j has the rulings, and the one first cut in the code
-below: the Medicine check adds the bare Wisdom modifier (debt #36).
+`docs/decisions.md` § w1j has the rulings.
 """
 
 from typing import Final, NamedTuple
@@ -36,14 +35,21 @@ from dndsim.rules.constants import (
 from dndsim.rules.enums import Ability
 
 __all__ = [
+    "DROPPED",
     "MEDICINE",
     "STABILIZE_DC",
     "DeathSaveResult",
     "damaged_at_zero",
     "death_save",
     "dropped_to_zero",
+    "dying",
     "stabilize",
 ]
+
+DROPPED: Final = "dropped"
+"""`(DROPPED, attacker, creature, dead)`, at every level: damage reduced
+`creature` to 0 hit points and nothing prevented it, `dead` whether it died
+outright; written to the log the creature's effect store holds."""
 
 MEDICINE: Final = "medicine"
 """The skill a stabilising check is made with, as `AbilityCheckContext.skill`
@@ -106,6 +112,16 @@ def dropped_to_zero(
         creature.die()
     else:
         creature.effects.apply(Downed(creature))
+    log = creature.effects.log
+    if log is not None:
+        log.write(
+            (
+                DROPPED,
+                None if attacker is None else attacker.name,
+                creature.name,
+                creature.dead,
+            )
+        )
 
     if attacker is not None:
         kill = KillContext(killer=attacker, victim=creature)
@@ -134,7 +150,7 @@ def death_save(creature: Creature, *, rng: Rng) -> DeathSaveResult:
     Raises `ValueError` for a creature that is not dying: one with hit points,
     one that is Stable or dead, or one that does not make death saving throws.
     """
-    if not _dying(creature):
+    if not dying(creature):
         raise ValueError(f"{creature!r} is not dying and makes no death saving throw")
     rolling = DeathSaveContext(creature=creature)
     creature.dispatch(ON_DEATH_SAVE, rolling)
@@ -177,7 +193,7 @@ def stabilize(helper: Creature, creature: Creature, *, rng: Rng) -> bool:
 
     Raises `ValueError` when `creature` is not dying, as `death_save()` does.
     """
-    if not _dying(creature):
+    if not dying(creature):
         raise ValueError(f"{creature!r} is not dying and cannot be stabilised")
     check = AbilityCheckContext(
         creature=helper, ability=Ability.WISDOM, skill=MEDICINE, dc=STABILIZE_DC
@@ -199,6 +215,8 @@ def stabilize(helper: Creature, creature: Creature, *, rng: Rng) -> bool:
     check.close()
 
     natural = roll_d20(rng, advantage=had_advantage, disadvantage=had_disadvantage)
+    if MEDICINE in helper.stats.skills:
+        bonus += helper.proficiency_bonus
     if natural + helper.modifier(Ability.WISDOM) + bonus < STABILIZE_DC:
         return False
     creature.stabilize()
@@ -206,7 +224,7 @@ def stabilize(helper: Creature, creature: Creature, *, rng: Rng) -> bool:
     return True
 
 
-def _dying(creature: Creature) -> bool:
+def dying(creature: Creature) -> bool:
     """At 0 hit points, neither Stable nor dead, and making death saves."""
     return (
         creature.hp <= 0

@@ -1,8 +1,9 @@
 """The walking skeleton (ROADMAP w0h): one featureless creature attacking
 another through the real dispatch path and the real attack and damage pipeline.
 
-Two creatures with no `HookSource` attached, a fixed weapon, and a loop that
-swings until the defender drops. `docs/decisions.md` § w0h, § w1f.
+Two creatures with no `HookSource` attached, a greatsword read off the imported
+table in `main()`, and a loop that swings until the defender drops.
+`docs/decisions.md` § w0h, § w1f, § w2f2.
 """
 
 import argparse
@@ -10,10 +11,12 @@ from collections.abc import Callable, Mapping
 from types import MappingProxyType
 from typing import Final
 
+from dndsim.content.loader import Dataset
+from dndsim.content.weapons import weapons
 from dndsim.core.geometry import Cell
 from dndsim.core.rng import MersenneRng, Rng
 from dndsim.creatures.creature import Creature
-from dndsim.creatures.stats import GREATSWORD, Armour, StatBlock
+from dndsim.creatures.stats import Armour, StatBlock, Weapon
 from dndsim.engine.attack import resolve_attack
 from dndsim.rules.enums import Ability, Outcome
 
@@ -45,14 +48,14 @@ _MAX_ROUNDS: Final = 50
 script (`docs/decisions.md` § w0h)."""
 
 
-def build_fighter(name: str = "Fighter") -> Creature:
-    """A featureless level-5 fighter swinging the spike's one weapon."""
+def build_fighter(weapon: Weapon, name: str = "Fighter") -> Creature:
+    """A featureless level-5 fighter swinging `weapon`."""
     stats = StatBlock(abilities=_FIGHTER_SCORES, max_hp=44, level=5)
     return Creature(
         name=name,
         stats=stats,
         position=Cell(0, 0),
-        weapon=GREATSWORD,
+        weapon=weapon,
         armour=_CHAIN_MAIL,
     )
 
@@ -93,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    attacker = build_fighter()
+    attacker = build_fighter(weapons(Dataset())["Greatsword"])
     defender = build_dummy()
     rng = MersenneRng(args.seed)
 

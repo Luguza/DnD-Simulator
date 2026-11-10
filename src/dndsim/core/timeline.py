@@ -145,27 +145,31 @@ class TimeKey:
     round: int
     initiative: InitiativeKey
     phase: TurnPhase
+    _ordinal: tuple[int, _Order, int] = field(init=False, repr=False, compare=False)
+    """Precomputed comparison form, built once rather than per comparison."""
 
     def __post_init__(self) -> None:
         if self.round < 1:
             raise ValueError(
                 f"the first round of an encounter is round 1, got {self.round}"
             )
-
-    def _ordinal(self) -> tuple[int, _Order, int]:
-        return (self.round, self.initiative._order, self.phase.value)
+        object.__setattr__(
+            self,
+            "_ordinal",
+            (self.round, self.initiative._order, self.phase.value),
+        )
 
     def __lt__(self, other: "TimeKey") -> bool:
-        return self._ordinal() < other._ordinal()
+        return self._ordinal < other._ordinal
 
     def __le__(self, other: "TimeKey") -> bool:
-        return self._ordinal() <= other._ordinal()
+        return self._ordinal <= other._ordinal
 
     def __gt__(self, other: "TimeKey") -> bool:
-        return self._ordinal() > other._ordinal()
+        return self._ordinal > other._ordinal
 
     def __ge__(self, other: "TimeKey") -> bool:
-        return self._ordinal() >= other._ordinal()
+        return self._ordinal >= other._ordinal
 
     def __str__(self) -> str:
         return f"r{self.round}:{self.initiative}:{self.phase.name.lower()}"

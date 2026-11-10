@@ -57,6 +57,8 @@ class Creature:
         "_stats",
         "crit_threshold",
         "_dead",
+        "_dropped_at",
+        "_dropped_weapon",
         "_death_save_failures",
         "_death_save_successes",
         "_stable",
@@ -88,6 +90,9 @@ class Creature:
         self.name = name
         self._stats = stats
         self.weapon = weapon
+        # Moved together, and only by `drop_held()` and `pick_up_weapon()`.
+        self._dropped_weapon: Weapon | None = None
+        self._dropped_at: Cell | None = None
         self._armour = armour
         self._shield = shield
         self.position = position
@@ -109,11 +114,12 @@ class Creature:
         # it sets it here (`docs/decisions.md` § w1a).
         self.crit_threshold = CRITICAL_HIT_THRESHOLD
         self._armour_class = self._derive_armour_class()
-        self.economy = ActionEconomy()
+        self.economy = ActionEconomy(denied=self._is_incapacitated)
         self.dispatcher = Dispatcher(economy=self.economy)
         # Trap: `UNSEATED` is a seat in the order, not a position ahead of it,
-        # so a duration anchored to a creature that sorts before it already
-        # reads as begun (debt #29).
+        # so until a sweep or a shared clock moves this store, a duration
+        # anchored to a creature that sorts before it already reads as begun
+        # (`docs/decisions.md` § w2c).
         self.effects = EffectStore(self, now=TimeKey(1, UNSEATED, TurnPhase.START))
         # Empty until the build or a feature adds pools.
         self.resources = Resources(self, stats)
@@ -142,11 +148,27 @@ class Creature:
 
     @property
     def speed_ft(self) -> int:
-        return self._stats.speed_ft
+        """Speed now: 0 while an effect sets it so, otherwise the stat block's
+        less what effects take off it, never below 0 (`docs/decisions.md`
+        § w2c)."""
+        speed = self._stats.speed_ft
+        for effect in self.effects:
+            if effect.SPEED_ZERO:
+                return 0
+            speed -= effect.speed_reduction_ft
+        return max(speed, 0)
+
+    @property
+    def incapacitated(self) -> bool:
+        """Whether an effect denies every Action, Bonus Action and Reaction."""
+        return any(effect.INCAPACITATES for effect in self.effects)
 
     @property
     def size(self) -> Size:
         return self._stats.size
+
+    def _is_incapacitated(self) -> bool:
+        return self.incapacitated
 
     def modifier(self, ability: Ability) -> int:
         """The modifier for one ability score."""
@@ -194,6 +216,45 @@ class Creature:
         (`docs/decisions.md` § w1d).
         """
         return 5 if self.weapon is None else self.weapon.reach_ft
+
+    @property
+    def dropped_weapon(self) -> Weapon | None:
+        """What `drop_held()` let go of, until `pick_up_weapon()` takes it
+        back."""
+        return self._dropped_weapon
+
+    @property
+    def dropped_at(self) -> Cell | None:
+        """The square `dropped_weapon` fell in."""
+        return self._dropped_at
+
+    def drop_held(self) -> None:
+        """Drop the wielded weapon where this creature stands. Holding nothing
+        drops nothing; a Shield is worn, not held (`docs/decisions.md` § w2b).
+        """
+        weapon = self.weapon
+        if weapon is None:
+            return
+        self._dropped_weapon = weapon
+        self._dropped_at = self.position
+        self.weapon = None
+
+    def pick_up_weapon(self) -> None:
+        """Wield the weapon this creature dropped again.
+
+        Raises `ValueError` when it dropped nothing or is wielding another.
+        """
+        weapon = self._dropped_weapon
+        if weapon is None:
+            raise ValueError(f"{self.name} has dropped nothing to pick up")
+        if self.weapon is not None:
+            raise ValueError(
+                f"{self.name} is wielding {self.weapon.name} and cannot pick up "
+                f"{weapon.name} as well"
+            )
+        self.weapon = weapon
+        self._dropped_weapon = None
+        self._dropped_at = None
 
     @property
     def is_alive(self) -> bool:
