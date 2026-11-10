@@ -313,7 +313,7 @@ turns what the reviews found into checks, standards and plan edits.
 
 ## Sequencing rules
 
-`ROADMAP.md` has 85 tasks across waves W0–W8 with explicit dependency edges;
+`ROADMAP.md` has 86 tasks across waves W0–W8 with explicit dependency edges;
 `tests/contract/test_roadmap.py` checks each names a task and each cross-wave
 edge is drawn in its wave graph.
 Three constraints dominate:
