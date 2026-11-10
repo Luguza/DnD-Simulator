@@ -80,11 +80,12 @@ def save_dc(creature: Creature, ability: Ability) -> int:
 
 
 def save_bonus(creature: Creature, ability: Ability) -> int:
-    """What `creature` adds to a saving throw of `ability` before any handler.
-
-    The ability modifier, and nothing else: debt #36. Why this is a function is
-    `docs/decisions.md` § w1g.
+    """What `creature` adds to a saving throw of `ability` before any handler:
+    the ability modifier, and the proficiency bonus for a save it is
+    proficient in. Why this is a function is `docs/decisions.md` § w1g.
     """
+    if ability in creature.stats.saving_throws:
+        return creature.modifier(ability) + creature.proficiency_bonus
     return creature.modifier(ability)
 
 

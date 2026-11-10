@@ -89,6 +89,10 @@ class StatBlock:
     `__post_init__`. There is no AC field: AC comes from the `Armour` the
     creature wears (`docs/decisions.md` § w1a).
 
+    `saving_throws` and `skills` are the ones the creature is proficient in,
+    skills by lowercase name. `trained_weapons` names the weapons it is
+    proficient with, `None` for every weapon (`docs/decisions.md` § w2f).
+
     Raises `ValueError` for a missing ability score or `max_hp` below 1.
     """
 
@@ -97,6 +101,9 @@ class StatBlock:
     level: int = 1
     speed_ft: int = 30
     size: Size = Size.MEDIUM
+    saving_throws: frozenset[Ability] = frozenset()
+    skills: frozenset[str] = frozenset()
+    trained_weapons: frozenset[str] | None = None
     modifiers: Mapping[Ability, int] = field(init=False, repr=False)
     proficiency_bonus: int = field(init=False)
 

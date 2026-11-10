@@ -261,7 +261,7 @@ there is local to a module.
 | `creatures/`, `core/geometry.py` | § w0g2 |
 | `core/geometry.py`, size, line of sight, templates | § w1d |
 | `engine/damage.py`, the resolution order | § w0g2, § w1e |
-| `engine/attack.py`, the attack sequence | § w1f, § w2f2 |
+| `engine/attack.py`, the attack sequence | § w1f, § w2f2, § w2f |
 | `Weapon`, the ranged branch, `tests/weapon_fixtures.py` | § w2f2 |
 | `engine/saves.py`, saving throws, save-for-half | § w1g |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
@@ -281,6 +281,7 @@ there is local to a module.
 | `engine/triggers.py`, `Dispatcher.responsive()`, the opportunity attack, the walk | § w0g3, § w2c2 |
 | `core/log.py`, the event log, its records and levels | § w1i |
 | `engine/dying.py`, `engine/healing.py`, `engine/d20.py`, `is_alive` | § w1j |
+| `builds/`, `creatures/character.py`, proficiencies, a build's equipment | § w2f |
 | `.claude/skills/`, `CODING_STANDARDS.md`, the review loop | § The PR, review and retro skills |
 
 Add a section there when a task lands, rather than growing this file.

@@ -1,7 +1,10 @@
-"""The imported classes, backgrounds and feats the default suite stands on.
+"""The imported classes, species, backgrounds and feats the default suite
+stands on.
 
 CI holds no fetched data, so these are hand-written; `tests/content/` asserts
-each equals its imported entry (`docs/decisions.md` § w2a2).
+each equals its imported entry (`docs/decisions.md` § w2a2). A species
+fixture carries no traits: the loader reads none, and the test compares the
+rest.
 """
 
 from typing import Final
@@ -14,8 +17,9 @@ from dndsim.content.classes import (
     WeaponTraining,
 )
 from dndsim.content.feats import Feat, FeatCategory, Prerequisite
+from dndsim.content.species import Species
 from dndsim.core.dice import Dice
-from dndsim.rules.enums import Ability, WeaponProperty
+from dndsim.rules.enums import Ability, Size, WeaponProperty
 
 _SIMPLE: Final = WeaponTraining(martial=False)
 
@@ -45,6 +49,9 @@ FIGHTER: Final = CharacterClass(
     subclass_level=3,
     fighting_style_level=1,
     weapon_mastery_level=1,
+    subclasses=frozenset(
+        {"Battle Master", "Champion", "Eldritch Knight", "Psi Warrior"}
+    ),
 )
 ROGUE: Final = CharacterClass(
     name="Rogue",
@@ -79,6 +86,7 @@ ROGUE: Final = CharacterClass(
     subclass_level=3,
     fighting_style_level=None,
     weapon_mastery_level=1,
+    subclasses=frozenset({"Arcane Trickster", "Assassin", "Soulknife", "Thief"}),
 )
 SOLDIER: Final = Background(
     name="Soldier",
@@ -105,4 +113,43 @@ GREAT_WEAPON_MASTER: Final = Feat(
     category=FeatCategory.GENERAL,
     prerequisites=(Prerequisite(level=4, abilities=((Ability.STRENGTH, 13),)),),
     repeatable=False,
+)
+ABILITY_SCORE_IMPROVEMENT: Final = Feat(
+    name="Ability Score Improvement",
+    category=FeatCategory.GENERAL,
+    prerequisites=(Prerequisite(level=4),),
+    repeatable=True,
+)
+HEAVY_ARMOR_MASTER: Final = Feat(
+    name="Heavy Armor Master",
+    category=FeatCategory.GENERAL,
+    prerequisites=(Prerequisite(level=4, armour_training=ArmourTraining.HEAVY),),
+    repeatable=False,
+)
+WAR_CASTER: Final = Feat(
+    name="War Caster",
+    category=FeatCategory.GENERAL,
+    prerequisites=(Prerequisite(level=4, spellcasting=True),),
+    repeatable=False,
+)
+BLESSED_WARRIOR: Final = Feat(
+    name="Blessed Warrior",
+    category=FeatCategory.FIGHTING_STYLE,
+    prerequisites=(),
+    repeatable=False,
+    class_name="Paladin",
+)
+HUMAN: Final = Species(
+    name="Human",
+    sizes=frozenset({Size.SMALL, Size.MEDIUM}),
+    speed_ft=30,
+    darkvision_ft=0,
+    traits=(),
+)
+GOLIATH: Final = Species(
+    name="Goliath",
+    sizes=frozenset({Size.MEDIUM}),
+    speed_ft=35,
+    darkvision_ft=0,
+    traits=(),
 )

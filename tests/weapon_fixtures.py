@@ -1,4 +1,4 @@
-"""The imported weapons the default suite and `-m bench` stand on.
+"""The imported weapons and armour the default suite and `-m bench` stand on.
 
 CI holds no fetched data, so these are hand-written; `tests/content/` asserts
 each equals its imported entry (`docs/decisions.md` § w2f2).
@@ -7,7 +7,7 @@ each equals its imported entry (`docs/decisions.md` § w2f2).
 from typing import Final
 
 from dndsim.core.dice import Dice
-from dndsim.creatures.stats import Weapon
+from dndsim.creatures.stats import Armour, Weapon
 from dndsim.rules.enums import DamageType, Mastery, WeaponProperty
 
 _HEAVY_TWO_HANDED: Final = frozenset({WeaponProperty.HEAVY, WeaponProperty.TWO_HANDED})
@@ -77,3 +77,24 @@ BLOWGUN: Final = Weapon(
     ranged=True,
     martial=True,
 )
+LONGSWORD: Final = Weapon(
+    name="Longsword",
+    damage=Dice(1, 8),
+    damage_type=DamageType.SLASHING,
+    properties=frozenset({WeaponProperty.VERSATILE}),
+    mastery=Mastery.SAP,
+    versatile_damage=Dice(1, 10),
+    martial=True,
+)
+RAPIER: Final = Weapon(
+    name="Rapier",
+    damage=Dice(1, 8),
+    damage_type=DamageType.PIERCING,
+    properties=frozenset({WeaponProperty.FINESSE}),
+    mastery=Mastery.VEX,
+    martial=True,
+)
+CHAIN_MAIL: Final = Armour.heavy("Chain Mail", 16, strength_requirement=13)
+PLATE_ARMOR: Final = Armour.heavy("Plate Armor", 18, strength_requirement=15)
+BREASTPLATE: Final = Armour.medium("Breastplate", 14)
+LEATHER_ARMOR: Final = Armour.light("Leather Armor", 11)

@@ -5,36 +5,52 @@ Without the data, `Dataset()` raises rather than the test passing on nothing.
 """
 
 import re
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
+from dndsim.builds.loader import Catalogue, load_party
 from dndsim.content.backgrounds import Background, backgrounds
 from dndsim.content.classes import CharacterClass, classes
 from dndsim.content.feats import Feat, FeatCategory, feats
 from dndsim.content.loader import Dataset
 from dndsim.content.refs import class_features, subclass_features
-from dndsim.content.species import species
+from dndsim.content.species import Species, species
 from dndsim.content.tables import class_tables, table_value
 from dndsim.content.weapons import NOT_IMPORTED, armour, masteries, weapons
 from dndsim.core.dice import Dice
-from dndsim.creatures.stats import Weapon
+from dndsim.core.geometry import Cell
+from dndsim.creatures.stats import Armour, Weapon
 from dndsim.rules.enums import Mastery
 from origin_fixtures import (
+    ABILITY_SCORE_IMPROVEMENT,
+    BLESSED_WARRIOR,
     FIGHTER,
+    GOLIATH,
     GREAT_WEAPON_FIGHTING,
     GREAT_WEAPON_MASTER,
+    HEAVY_ARMOR_MASTER,
+    HUMAN,
     ROGUE,
     SAVAGE_ATTACKER,
     SOLDIER,
+    WAR_CASTER,
 )
 from weapon_fixtures import (
     BLOWGUN,
+    BREASTPLATE,
+    CHAIN_MAIL,
     DAGGER,
     DART,
     GREATSWORD,
     HANDAXE,
+    LEATHER_ARMOR,
     LONGBOW,
+    LONGSWORD,
     MAUL,
+    PLATE_ARMOR,
+    RAPIER,
 )
 
 pytestmark = pytest.mark.content
@@ -86,7 +102,7 @@ def test_the_melee_ranged_column_parts_a_dart_from_a_dagger(data: Dataset) -> No
 
 @pytest.mark.parametrize(
     "fixture",
-    [GREATSWORD, MAUL, LONGBOW, DAGGER, DART, HANDAXE, BLOWGUN],
+    [GREATSWORD, MAUL, LONGBOW, DAGGER, DART, HANDAXE, BLOWGUN, LONGSWORD, RAPIER],
     ids=lambda weapon: weapon.name,
 )
 def test_each_weapon_fixture_is_its_imported_entry(
@@ -95,6 +111,17 @@ def test_each_weapon_fixture_is_its_imported_entry(
     """The default suite and `-m bench` stand on hand-written copies; this is
     what keeps them the table's (`docs/decisions.md` § w2f2)."""
     assert weapons(data)[fixture.name] == fixture
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    [CHAIN_MAIL, PLATE_ARMOR, BREASTPLATE, LEATHER_ARMOR],
+    ids=lambda armour: armour.name,
+)
+def test_each_armour_fixture_is_its_imported_entry(
+    data: Dataset, fixture: Armour
+) -> None:
+    assert armour(data)[fixture.name] == fixture
 
 
 def test_heavy_armour_carries_the_printed_strength(data: Dataset) -> None:
@@ -200,17 +227,35 @@ def test_the_feats_import_by_category(data: Dataset) -> None:
         SAVAGE_ATTACKER,
         GREAT_WEAPON_FIGHTING,
         GREAT_WEAPON_MASTER,
+        ABILITY_SCORE_IMPROVEMENT,
+        HEAVY_ARMOR_MASTER,
+        WAR_CASTER,
+        BLESSED_WARRIOR,
+        HUMAN,
+        GOLIATH,
     ],
     ids=lambda record: record.name,
 )
 def test_each_origin_fixture_is_its_imported_entry(
-    data: Dataset, fixture: CharacterClass | Background | Feat
+    data: Dataset, fixture: CharacterClass | Background | Feat | Species
 ) -> None:
     """The default suite stands on hand-written copies (`docs/decisions.md`
-    § w2a2)."""
-    if isinstance(fixture, CharacterClass):
+    § w2a2, § w2f)."""
+    if isinstance(fixture, Species):
+        assert replace(species(data)[fixture.name], traits=()) == fixture
+    elif isinstance(fixture, CharacterClass):
         assert classes(data)[fixture.name] == fixture
     elif isinstance(fixture, Background):
         assert backgrounds(data)[fixture.name] == fixture
     else:
         assert feats(data)[fixture.name] == fixture
+
+
+def test_the_example_builds_load_against_the_import(data: Dataset) -> None:
+    """The AC falls out of the imported equipment (`docs/decisions.md` § w2f):
+    Chain Mail 16; Leather Armor 11 + Dexterity 17's +3."""
+    builds = Path(__file__).parents[2] / "builds"
+    party = load_party(builds / "party.yaml", Catalogue.from_dataset(data))
+    fighter, rogue = (build.character(Cell(0, 0)) for build in party.members)
+    assert (fighter.armour_class, fighter.max_hp, fighter.speed_ft) == (16, 44, 30)
+    assert (rogue.armour_class, rogue.max_hp) == (14, 24)

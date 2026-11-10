@@ -6156,3 +6156,132 @@ same way.
 `backgrounds.json` and `feats.json` join `FILES`. A dataset fetched before
 this task lacks them, and `Dataset.read()` already raises naming the missing
 file, so the remedy is a refetch.
+
+## w2f — build schema and `Character`
+
+The row and its spec correction (§ The `w2f` spec correction) settled what a
+build may say; this records how it is checked and what the engine reads.
+
+### Three layers, each with one job
+
+`builds/schema.py` is shape only: pydantic models, strict and closed, so a
+misspelt key or a string where a number goes fails before any name is read.
+`builds/loader.py` resolves every name against a `Catalogue` of the imported
+tables, with `difflib` suggestions, and compiles the `apl:`. The rules a
+choice is checked against — prerequisites, increase patterns, the score cap,
+hands, training — live in `CharacterBuilder`, which takes only records and
+never a name. So the rules can be tested with fixtures and no YAML, and a
+name never reaches the domain unresolved. The loader builds the character
+once at load so that a choice the level owes and the file omits fails there
+rather than at the first fight.
+
+`Character` is a `Creature` that keeps its class, subclass, species,
+background and feats, and always makes death saving throws. `content/`'s
+records cross into `creatures/character.py` as records, which is what
+`content/`'s boundary allows (§ w2a).
+
+The subclass names are imported onto `CharacterClass.subclasses`: "unknown
+feature id" covers subclasses, and no table held their names. It is a
+`content/` edit the Produces cell does not name, made for the same reason as
+the spec correction's: a list written into `builds/` would be the second copy.
+
+### What a build says, and what it may not yet
+
+Every choice of a single-classed level 1–12 character outside the five
+catalogues is a key: base scores (3–18, what any creation method produces),
+the background's increases checked against its three abilities and two
+patterns, the class's skills, the subclass, the Fighting Style feat, Weapon
+Mastery's weapons, one feat per Ability Score Improvement level, and the
+equipment. Every one the level owes is required: an absent choice is not a
+default somebody picked.
+
+The Ability Score Improvement feat's increases are this row's; any other
+feat's own choice is refused as unknown until the row implementing it
+registers it (§ The `w2f` spec correction). That includes a General feat's
++1, which `feats.json` prints under `ability` and nothing imports — debt #71,
+owned by `w4b` and `w4b2`. Weapon Mastery's weapons are checked for a
+mastery and for training; their count is not, because the Rogue's, Paladin's
+and Ranger's is prose (#72, `w4a`). A Spellcasting prerequisite is refused for
+everyone, since nothing imported says who casts (#73, `w5a`).
+
+An Origin feat may be taken at an Ability Score Improvement level: the
+feature reads "another feat of your choice for which you qualify" and an
+Origin feat has no prerequisite. A Fighting Style feat may be taken there by
+a class with the Fighting Style feature, which is its prerequisite (§ w2a2).
+
+Hit points are the fixed value per level after the first's maximum (XPHB
+"Hit Points"), never rolled: a build is a fixed character, and a rolled one
+would make two runs of one build two characters (`docs/questions.md` #26).
+
+### Weapons are priced, armour is refused (#25)
+
+XPHB lets anyone attack with a weapon they are not proficient with, without
+the bonus; armour they are not trained with imposes Disadvantage on Strength
+and Dexterity tests and stops spellcasting, which no effect here can yet
+impose. So an untrained weapon is held and priced, and untrained armour or a
+Shield is refused (`docs/questions.md` #25).
+
+`StatBlock.trained_weapons` names the weapons the creature is proficient with
+— every weapon in the catalogue its class trains — or is `None` for every
+weapon, which is what a monster's printed bonus and the dummy mean.
+`engine/attack.py` adds the bonus when the wielded weapon's name is in it.
+Names rather than `Weapon`s because a name's hash is cached and a frozen
+dataclass's is recomputed field by field on every attack.
+
+### Saves and skills (#36)
+
+`StatBlock.saving_throws` and `StatBlock.skills` are the proficient ones, and
+the one function each engine read goes through adds the bonus: `save_bonus()`
+for every save, and `stabilize()` for the Medicine check. A skill is a
+lowercase name, checked against `content`'s `SKILLS` by the builder; the
+engine compares strings and needs no enum, so `rules/` gained none.
+
+### Equipment (#27)
+
+The speed is settled at construction: the species' speed, 10 feet less in
+heavy armour whose Strength the character lacks. `StatBlock.speed_ft` is that
+number, as AC is the armour's; nothing changes armour mid-fight. Which
+training an `Armour` needs is read off the shape its named constructor gave it
+(no abilities is heavy, an uncapped Dexterity light, a capped one medium),
+since `Armour` carries no category and `content/` builds each through one of
+the three constructors.
+
+A Versatile weapon held in two hands is wielded as a copy whose `damage` is
+its `versatile_damage`; the engine never learns how it is held. A Two-Handed
+weapon is always held in two, and either refuses a Shield. A build wields one
+weapon: what a build *carries* — the count #68 and #69 wait on — is not a key
+yet, and the next `⏸` review places those two rows knowing that.
+
+### Arming (#12)
+
+`arm_character()` binds the build's policy to the character in a world, makes
+it the dispatcher's gate and attaches `OpportunityAttacks`, as `arm_dummy()`
+does for a dummy (§ w2c2, § w2e). It is a separate call from loading because
+the namespace is built over the world the character fights in. A build with
+no `apl:` takes `DEFAULT_APL`, `[{action: best_scored}]`.
+
+A party file lists its members' build files and compiles `retreat_when` at
+load against the default namespace; nothing evaluates it before `w2g`.
+
+### What it cost the benchmark
+
+The witness first: over the fixed 200-encounter profiled run at seed 0 the
+fights are the same before and after on both configurations (an identical
+next draw from the generator afterwards), and the only call added is the
+`Creature.stats` property read once per attack: +6,000 calls on
+`--no-provoking` (1,934,330 to 1,938,448 overall) and +7,600 on the default
+(3,406,045 to 3,412,273); the remaining difference is the generated
+`reopen()`s, which cProfile files under one `<string>` name. The rate: six
+pairs on `--no-provoking`, alternating arm order, the base in a sibling
+worktree, ratios −5.7% to +9.1% with a median of −0.4% on a container whose
+baseline ran 16.8k–18.1k. Not distinguishable from zero, and the witness says
+why: one property read per attack.
+
+### What this task deliberately did not do
+
+- Multiclassing is out (DESIGN.md § Settled decisions), so `class:` is one
+  name and `level:` one number.
+- Species traits with a choice (Draconic Ancestry, a Human's Versatile feat)
+  are `w4h`'s to register; until then a build cannot name one.
+- Ammunition and a thrower's stack (#68, #69) wait on a key for what a build
+  carries, which the next `⏸` review places.
