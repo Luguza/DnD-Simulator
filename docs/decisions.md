@@ -6485,3 +6485,82 @@ What is left in the APL is the price of reading live state: the stand-in held
 the hero's targets as fixed tuples, and the compiled namespace may not
 (`DESIGN.md` § Condition language). Caching a side's living members across
 reads would need a signal for a death that the namespace does not have.
+
+## The `w2j` spec correction — the files the row needs, the glossary, and a split
+
+`w2j` as the W2 mid-wave review wrote it held four debts (#57, #60, #61, #62)
+in six named places. Read against the code its done-when has to change, it
+named too few, misquoted one rule, and carried the walk — a hot-path change —
+inside a 👥 row of new Commands.
+
+### What the Produces cell left out
+
+- **`engine/turn.py`'s `offers()` and `apl/apl.py`.** "Standing up from Prone
+  is offered" and the Unarmed Strike Commands are offered by `offers()`, and an
+  APL can name an action only if its id is in `COMMAND_IDS` (§ w2e); `_target_of`
+  is what binds `target` to an offer. Neither file was in the cell. `w2k`'s row
+  names `apl/`'s closed vocabulary for its one new id; `w2j` adds seven.
+- **`creatures/creature.py`** for #61, which the register row itself names: the
+  Armor Class is derived and cached at construction and on a Shield change
+  (§ w1a), so a bonus that lapses while Unconscious has to reach that cache. The
+  cell named `hooks/contexts.py`'s `Combatant` instead, which reads AC and
+  derives nothing.
+- **`engine/triggers.py`'s `walk_provoking()`**, which charges one `step_ft` for
+  every square. Difficult Terrain charges some squares and not others, and the
+  drag moves a second creature with the mover; neither fits without changing it.
+
+### What the row misstated
+
+The row had a mover pass through "an ally's, an Incapacitated creature's, a
+Tiny creature's or a two-sizes-different creature's space as Difficult
+Terrain". XPHB "Difficult Terrain" lists "A creature that isn't Tiny or your
+ally": passing an ally or a Tiny creature costs nothing extra. A misstated rule
+is the implementer's to correct in its own diff (`docs/workflow.md` § When the
+spec is wrong), and it is corrected here only because the row is being
+rewritten anyway. #60's register text said the same and is corrected with it.
+
+### What the row did not say
+
+Each is the conservative reading, so the implementer does not choose:
+
+- **The options are Commands, one id each**: `unarmed_strike`, `grapple`,
+  `shove_prone`, `shove_push`. A `with:` parameter compiles (§ w2e) but nothing
+  hands one to a Command, and the choice between pushing and knocking Prone is
+  the policy's, which is what an id is for. Each costs the Action, as `Attack`
+  does: Extra Attack is not modelled, and the Attack action's one attack is
+  where the rules put an Unarmed Strike.
+- **Ending a grapple** is XPHB "Grappling" -> Ending a Grapple, which the row
+  called "the escape": `escape_grapple`, the Grappled creature's Action, and the
+  two endings nobody chooses — the grappler Incapacitated, the two more than
+  5 feet apart. The grappler's release ("no action required") is a free
+  `release_grapple`, without which a grappler could never walk undragging once
+  `w2j2` lands.
+- **A free hand** (XPHB "Grappling", One Grapple per Hand) is counted from what
+  `Creature` holds today. `w2k` widens what it holds, not the count.
+- **The push square** is 5 feet directly away from the shover and must be
+  empty; with none, the push is not offered rather than turned into a Prone.
+- **The target's choice of save** and **whether a default policy stands up**
+  are D&D questions, taken and recorded as `docs/questions.md` #28 and #29.
+- **An opportunity attack's fallback** is the Damage option. A Grapple as an
+  opportunity attack is legal by the text and a known tactic, but an offer is
+  answered under one gate id (§ w2c2) and choosing among three options there is
+  a policy surface no row has designed; it is declared, not offered.
+
+### The split
+
+`w2f` was split for carrying a hot-path widening beside work that needed none
+(§ The W2 mid-wave review), and `w1j`, `w2c` and `w2a` each reached the round
+cap at this size. The seam is the walk: #60 and Grappled's Movable clause both
+change `route()`, `Move` and `walk_provoking()`, which `w2c2` measured at a
+third of `resolve_attack()`'s time, and both need a cost per square. They go to
+**`w2j2`**, 🔒, after `w2j` (the drag needs the grapple). `w2j` keeps the
+Commands, the conditions and the Shield, stays 👥, and is still priced, since
+`offers()` builds its candidates before every Command a turn takes. `w2g`
+depends on `w2j2`: its M1 golden runs the walk, and a route search changed
+after the golden would move it. The nominal days are unchanged; the work is
+the same, in two rows.
+
+Sources: `ROADMAP.md` `w2j`, `w2j2`, `w2k`, `w2g`, § The W0 debt register #20,
+#57, #60–#62; § w1a, § w2c2, § w2e, § The W2 mid-wave review; XPHB "Unarmed
+Strike", "Grappling", "Difficult Terrain", "Opportunity Attacks", Rules Glossary
+"Grappled", "Prone"; `docs/questions.md` #15, #28, #29.
