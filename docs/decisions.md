@@ -6489,7 +6489,7 @@ reads would need a signal for a death that the namespace does not have.
 ## The `w2j` spec correction — the files the row needs, the glossary, and a split
 
 `w2j` as the W2 mid-wave review wrote it held four debts (#57, #60, #61, #62)
-in six named places. Read against the code its done-when has to change, it
+in seven named places. Read against the code its done-when has to change, it
 named too few, misquoted one rule, and carried the walk — a hot-path change —
 inside a 👥 row of new Commands.
 
@@ -6512,8 +6512,8 @@ inside a 👥 row of new Commands.
   and `resolve_attack()` adds it only for a weapon `trained_weapons` names.
   `StatBlock` names the Unarmed Strike in every training set instead, so
   `engine/attack.py`, a hot-path file, is not edited.
-- **`actions/move.py`**, for the grapple's range, checked after a walk; `w2j2`
-  changes the same file afterwards, in sequence.
+- **`actions/move.py`** was named for `Move`, but not for the grapple's range,
+  checked after a walk; `w2j2` changes the same file afterwards, in sequence.
 
 ### What the row misstated
 

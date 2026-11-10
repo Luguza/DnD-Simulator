@@ -310,8 +310,8 @@ narrowed two (#24, #27), and the W2 mid-wave review re-owned seven (#13, #24,
 correction has opened one (#68), and `w2f2` has retired three (#13, #24,
 #63) and opened one (#69), and the `w2f` spec correction opened one (#70),
 and `w2f` has retired four (#12, #25, #27, #36), opened four (#71–#74) and
-left one at its round cap (#75), and `w2i2` has narrowed one (#67), so the
-table stands at thirty-seven.
+left one at its round cap (#75), and `w2i2` has narrowed one (#67), and the
+`w2j` spec correction re-owned one (#60), so the table stands at thirty-seven.
 Every one of them was the right thing to write — a hostile spike needs real
 machinery now, not finished machinery later — and every one of them is invisible
 six months from now, when the file around it has grown and the paragraph
