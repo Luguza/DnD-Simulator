@@ -1,9 +1,9 @@
 """Loading a build file into a `Character` and its policy, and arming the two
 together in a world.
 
-Every name is checked against a `Catalogue` of the imported content and an
-unknown one fails with suggestions (DESIGN.md § Failing loudly). `docs/
-decisions.md` § w2f.
+Every name is checked against the imported content — a `Catalogue`, and the
+skills and ability names — and an unknown one fails with suggestions
+(DESIGN.md § Failing loudly). `docs/decisions.md` § w2f.
 """
 
 import difflib
@@ -21,7 +21,7 @@ from dndsim.apl.expr import Compiled, compile_condition
 from dndsim.apl.schema import NamespaceSchema
 from dndsim.builds.schema import BuildSpec, PartySpec
 from dndsim.content.backgrounds import Background, backgrounds
-from dndsim.content.classes import CharacterClass, classes
+from dndsim.content.classes import SKILLS, CharacterClass, classes
 from dndsim.content.feats import Feat, feats
 from dndsim.content.loader import Dataset
 from dndsim.content.species import Species, species
@@ -135,7 +135,7 @@ def load_build(spec: BuildSpec, catalogue: Catalogue) -> Build:
         _lookup(catalogue.backgrounds, spec.background, "background"),
         _abilities(spec.background_increases, "ability"),
     )
-    builder.skills(spec.skills)
+    builder.skills(_lookup(SKILLS, name, "skill") for name in spec.skills)
     if spec.subclass is not None:
         builder.subclass(_lookup(cls.subclasses, spec.subclass, "subclass"))
     if spec.fighting_style is not None:

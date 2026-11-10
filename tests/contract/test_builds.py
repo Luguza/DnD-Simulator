@@ -260,7 +260,7 @@ def test_background_increases_may_be_one_one_one() -> None:
         (["perception", "perception"], "chooses 2 different skills"),
         (["perception", "stealth"], "cannot choose ['stealth']"),
         (["perception", "athletics"], "already grants ['athletics']"),
-        (["perception", "lockpicking"], "no skills ['lockpicking']"),
+        (["perception", "perceptoin"], "did you mean 'perception'"),
     ],
 )
 def test_class_skills_are_checked(skills: list[str], fragment: str) -> None:
@@ -337,7 +337,7 @@ def test_armour_training_prerequisite() -> None:
 
 
 def test_a_spellcasting_prerequisite_waits_on_w5a() -> None:
-    refused(spec(feats=[{"level": 4, "feat": "War Caster"}]), "until w5a")
+    refused(spec(feats=[{"level": 4, "feat": "War Caster"}]), "cannot be checked yet")
 
 
 def test_a_feat_is_not_taken_twice_unless_repeatable() -> None:
@@ -354,7 +354,7 @@ def test_a_feat_is_not_taken_twice_unless_repeatable() -> None:
 
 def test_another_feats_own_choice_is_unknown_until_registered() -> None:
     feats = [{"level": 4, "feat": "Great Weapon Master", "increases": {"strength": 1}}]
-    refused(spec(feats=feats), "registers them")
+    refused(spec(feats=feats), "registers no choices")
 
 
 # -- equipment ---------------------------------------------------------------

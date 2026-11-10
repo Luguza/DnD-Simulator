@@ -30,9 +30,8 @@ from dndsim.rules.enums import Ability, Size, WeaponProperty
 __all__ = ["ABILITY_SCORE_IMPROVEMENT", "BuildError", "Character", "CharacterBuilder"]
 
 ABILITY_SCORE_IMPROVEMENT: Final = "Ability Score Improvement"
-"""The feat whose increases a build chooses here; every other feat's own
-choices are registered by the row implementing it (`docs/decisions.md`
-§ The `w2f` spec correction)."""
+"""The one feat whose own choice `CharacterBuilder.feat()` takes
+(`docs/decisions.md` § w2f)."""
 
 MAX_ABILITY_SCORE: Final = 20
 """XPHB "Feats" -> Ability Score Improvement: "can't increase an ability
@@ -276,8 +275,8 @@ class CharacterBuilder:
             self._increase(chosen, f"level {level} {feat.name}")
         elif increases:
             raise self._fail(
-                f"{feat.name}'s own choices are unknown until the row "
-                "implementing it registers them (docs/decisions.md § w2f)"
+                f"{feat.name} registers no choices, so {_named(increases)} is "
+                "unknown (docs/decisions.md § w2f)"
             )
         self._feats.append((level, feat))
         return self
@@ -300,11 +299,10 @@ class CharacterBuilder:
 
     def _meets(self, level: int, prerequisite: Prerequisite) -> bool:
         if prerequisite.spellcasting:
-            # Nothing imported says which classes cast before `w5a`
-            # (`docs/decisions.md` § w2f).
+            # Refused for every class (`docs/decisions.md` § w2f).
             raise self._fail(
                 "a feat requiring the Spellcasting or Pact Magic feature cannot "
-                "be checked until w5a"
+                "be checked yet (docs/decisions.md § w2f)"
             )
         if prerequisite.level is not None and level < prerequisite.level:
             return False

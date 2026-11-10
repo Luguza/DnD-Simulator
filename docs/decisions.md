@@ -6184,6 +6184,10 @@ The subclass names are imported onto `CharacterClass.subclasses`: "unknown
 feature id" covers subclasses, and no table held their names. It is a
 `content/` edit the Produces cell does not name, made for the same reason as
 the spec correction's: a list written into `builds/` would be the second copy.
+The row's Produces cell names it since the second review.
+
+Skill names go through the same lookup as every other name, against
+`content`'s `SKILLS`, so a misspelt skill is suggested too.
 
 ### What a build says, and what it may not yet
 
@@ -6249,8 +6253,9 @@ the three constructors.
 A Versatile weapon held in two hands is wielded as a copy whose `damage` is
 its `versatile_damage`; the engine never learns how it is held. A Two-Handed
 weapon is always held in two, and either refuses a Shield. A build wields one
-weapon: what a build *carries* — the count #68 and #69 wait on — is not a key
-yet, and the next `⏸` review places those two rows knowing that.
+weapon, because `Creature` holds one: an off-hand weapon, a second to switch
+to, and what a build *carries* — the count #68 and #69 wait on — are not keys
+yet (#74), and the next `⏸` review places the three rows together.
 
 ### Arming (#12)
 
