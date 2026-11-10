@@ -277,7 +277,7 @@ there is local to a module.
 | `creatures/resources.py`, pools, slots, `transaction()` | § w1b, § w2i |
 | `tools/skeleton.py`, `tests/bench/test_skeleton.py` | § w0h, § w1f |
 | `tools/spike*.py`, `tests/bench/test_spike.py`, the hot path | § w0i, § w1k, § w2i, § w2c2, § w2e, § The W2 mid-wave review |
-| `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § The M0 / W1 milestone review, § The W2 mid-wave review |
+| `ROADMAP.md`, `DESIGN.md`, planning a wave | § The W0 plan review, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § The M0 / W1 milestone review, § The W2 mid-wave review, § The W2 late-wave review |
 | the performance budget, pricing a change | § w0i, § The W1 critical-path review, § The W1 mid-wave review, § The W1 late-wave review, § w1k, § The M0 / W1 milestone review, § w2i, § The W2 mid-wave review |
 | `engine/triggers.py`, `Dispatcher.responsive()`, the opportunity attack, the walk | § w0g3, § w2c2 |
 | `core/log.py`, the event log, its records and levels | § w1i |
@@ -313,7 +313,9 @@ turns what the reviews found into checks, standards and plan edits.
 
 ## Sequencing rules
 
-`ROADMAP.md` has 83 tasks across waves W0–W8 with explicit dependency edges.
+`ROADMAP.md` has 85 tasks across waves W0–W8 with explicit dependency edges;
+`tests/contract/test_roadmap.py` checks each names a task and each cross-wave
+edge is drawn in its wave graph.
 Three constraints dominate:
 
 - **Nothing in W4 or later may start before M2** (API frozen, authoring skill
