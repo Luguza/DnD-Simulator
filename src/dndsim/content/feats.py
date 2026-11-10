@@ -10,8 +10,9 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Final
 
-from dndsim.content.classes import ArmourTraining
+from dndsim.content.classes import ArmourTraining, WeaponTraining
 from dndsim.content.loader import SOURCE, ContentError, Dataset
+from dndsim.content.weapons import CATEGORIES
 from dndsim.rules.enums import Ability
 
 __all__ = ["Feat", "FeatCategory", "Prerequisite", "feats"]
@@ -74,6 +75,30 @@ class Feat:
     options: tuple[str, ...] = ()
     """The versions printed under one name, as Magic Initiate's Cleric, Druid
     and Wizard."""
+    armour_training: frozenset[ArmourTraining] = frozenset()
+    """The armour training the feat grants outright."""
+    weapon_training: tuple[WeaponTraining, ...] = ()
+    """The weapon categories the feat grants proficiency with outright."""
+
+
+# Tavern Brawler's improvised weapons: no imported `Weapon` is one.
+_UNREAD_WEAPON_GRANTS: Final = frozenset({"improvised"})
+
+
+def _granted(raw: Any, where: str) -> list[str]:
+    """The keys of a fixed grant; a grant the player chooses is the feat's
+    own option, which this import does not read (`docs/decisions.md`
+    § w2f)."""
+    keys: list[str] = []
+    for entry in raw or ():
+        if not isinstance(entry, dict):
+            raise ContentError(f"{where}: cannot read the grant {entry!r}")
+        if "choose" in entry or "any" in entry:
+            continue
+        if not all(value is True for value in entry.values()):
+            raise ContentError(f"{where}: cannot read the grant {entry!r}")
+        keys.extend(entry)
+    return keys
 
 
 def _alternatives(raw: Any, category: FeatCategory, where: str) -> list[Prerequisite]:
@@ -135,6 +160,15 @@ def _feat(entry: Any) -> Feat:
             for p in _alternatives(raw, category, where)
         )
         options = tuple(_option(v, name, where) for v in entry.get("_versions", ()))
+        armour = frozenset(
+            ArmourTraining(key)
+            for key in _granted(entry.get("armorProficiencies"), where)
+        )
+        weapon_training = tuple(
+            WeaponTraining(CATEGORIES[key])
+            for key in _granted(entry.get("weaponProficiencies"), where)
+            if key not in _UNREAD_WEAPON_GRANTS
+        )
     except (KeyError, TypeError, ValueError) as error:
         raise ContentError(f"{where} is not shaped as read: {error!r}") from error
     return Feat(
@@ -144,6 +178,8 @@ def _feat(entry: Any) -> Feat:
         repeatable=bool(entry.get("repeatable", False)),
         class_name=class_name,
         options=options,
+        armour_training=armour,
+        weapon_training=weapon_training,
     )
 
 

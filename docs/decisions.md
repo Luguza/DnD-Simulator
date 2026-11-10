@@ -6232,6 +6232,21 @@ weapon, which is what a monster's printed bonus and the dummy mean.
 Names rather than `Weapon`s because a name's hash is cached and a frozen
 dataclass's is recomputed field by field on every attack.
 
+### A feat's training counts, a feat's choice does not
+
+Lightly, Moderately and Heavily Armored grant armour training outright, and
+Martial Weapon Training proficiency with Martial weapons. That is a fixed
+benefit, not a feat's own option, so it is imported onto `Feat` from
+`feats.json`'s `armorProficiencies` and `weaponProficiencies`, and the builder
+reads its training as the class's together with every feat taken so far. A
+feat's prerequisite sees the feats taken before it, which is how Moderately
+Armored at 4 opens Heavily Armored at 8. Armour, Shield and mastery training
+are checked in `build()`, against every feat, so that the order of the
+Builder's calls cannot change the answer. A grant the player chooses
+(Resilient's save, Skilled's skills) is skipped by the import, since it is
+the feat's own option; Tavern Brawler's improvised weapons are skipped
+because no imported weapon is one. Found by the third review.
+
 ### Saves and skills (#36)
 
 `StatBlock.saving_throws` and `StatBlock.skills` are the proficient ones, and

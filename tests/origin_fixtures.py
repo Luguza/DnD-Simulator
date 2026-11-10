@@ -139,6 +139,34 @@ BLESSED_WARRIOR: Final = Feat(
     repeatable=False,
     class_name="Paladin",
 )
+LIGHTLY_ARMORED: Final = Feat(
+    name="Lightly Armored",
+    category=FeatCategory.GENERAL,
+    prerequisites=(Prerequisite(level=4),),
+    repeatable=False,
+    armour_training=frozenset({ArmourTraining.LIGHT, ArmourTraining.SHIELD}),
+)
+MODERATELY_ARMORED: Final = Feat(
+    name="Moderately Armored",
+    category=FeatCategory.GENERAL,
+    prerequisites=(Prerequisite(level=4, armour_training=ArmourTraining.LIGHT),),
+    repeatable=False,
+    armour_training=frozenset({ArmourTraining.MEDIUM}),
+)
+HEAVILY_ARMORED: Final = Feat(
+    name="Heavily Armored",
+    category=FeatCategory.GENERAL,
+    prerequisites=(Prerequisite(level=4, armour_training=ArmourTraining.MEDIUM),),
+    repeatable=False,
+    armour_training=frozenset({ArmourTraining.HEAVY}),
+)
+MARTIAL_WEAPON_TRAINING: Final = Feat(
+    name="Martial Weapon Training",
+    category=FeatCategory.GENERAL,
+    prerequisites=(Prerequisite(level=4),),
+    repeatable=False,
+    weapon_training=(WeaponTraining(martial=True),),
+)
 HUMAN: Final = Species(
     name="Human",
     sizes=frozenset({Size.SMALL, Size.MEDIUM}),

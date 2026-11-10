@@ -42,8 +42,12 @@ from origin_fixtures import (
     GOLIATH,
     GREAT_WEAPON_FIGHTING,
     GREAT_WEAPON_MASTER,
+    HEAVILY_ARMORED,
     HEAVY_ARMOR_MASTER,
     HUMAN,
+    LIGHTLY_ARMORED,
+    MARTIAL_WEAPON_TRAINING,
+    MODERATELY_ARMORED,
     ROGUE,
     SAVAGE_ATTACKER,
     SOLDIER,
@@ -76,6 +80,10 @@ CATALOGUE = Catalogue(
             GREAT_WEAPON_FIGHTING,
             GREAT_WEAPON_MASTER,
             HEAVY_ARMOR_MASTER,
+            HEAVILY_ARMORED,
+            LIGHTLY_ARMORED,
+            MARTIAL_WEAPON_TRAINING,
+            MODERATELY_ARMORED,
             SAVAGE_ATTACKER,
             WAR_CASTER,
         )
@@ -403,6 +411,46 @@ def test_hands_are_counted(kit: dict[str, Any], fragment: str) -> None:
 def test_untrained_armour_and_shields_are_refused() -> None:
     refused({**ROGUE_L3, "equipment": {"armour": "Chain Mail"}}, "not trained")
     refused({**ROGUE_L3, "equipment": {"shield": True}}, "Shields")
+
+
+def test_a_feats_armour_training_counts_for_armour_and_later_feats() -> None:
+    """A Rogue is trained with Light armour only. Moderately Armored at 4
+    lets it wear a Breastplate (14 + Dexterity 17's +2 cap) and meets
+    Heavily Armored's Medium prerequisite at 8."""
+    breastplate = {"weapon": "Rapier", "armour": "Breastplate"}
+    refused({**ROGUE_L3, "equipment": breastplate}, "not trained with Breastplate")
+    moderately = {"level": 4, "feat": "Moderately Armored"}
+    character = rogue(level=4, feats=[moderately], equipment=breastplate)
+    assert character.armour_class == 16
+    heavily = {"level": 8, "feat": "Heavily Armored"}
+    plated = rogue(
+        level=8,
+        feats=[moderately, heavily],
+        equipment={"weapon": "Rapier", "armour": "Chain Mail"},
+    )
+    assert plated.armour_class == 16
+    refused(
+        {**ROGUE_L3, "level": 4, "feats": [{**heavily, "level": 4}]},
+        "Heavily Armored's prerequisite",
+    )
+
+
+def test_lightly_armored_grants_shields() -> None:
+    lightly = {"level": 4, "feat": "Lightly Armored"}
+    kit = {"weapon": "Rapier", "armour": "Leather Armor", "shield": True}
+    assert rogue(level=4, feats=[lightly], equipment=kit).armour_class == 16
+
+
+def test_a_feats_weapon_training_counts_for_proficiency_and_mastery() -> None:
+    training = {"level": 4, "feat": "Martial Weapon Training"}
+    character = rogue(
+        level=4,
+        feats=[training],
+        weapon_mastery=["Greatsword", "Dagger"],
+        equipment={"weapon": "Greatsword"},
+    )
+    assert character.stats.trained_weapons is not None
+    assert "Greatsword" in character.stats.trained_weapons
 
 
 # -- the engine reads what the build says ------------------------------------

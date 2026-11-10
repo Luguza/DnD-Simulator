@@ -3,8 +3,8 @@ the imported class, species, background and feats.
 
 The Builder holds every rule a build's choices are checked against and
 derives the numbers: ability scores, hit points, speed, size, proficiencies
-and the equipment's AC. Names are resolved before it is called, by
-`builds/loader.py`. `docs/decisions.md` § w2f.
+and the equipment's AC. It takes records, never names. `docs/decisions.md`
+§ w2f.
 
 XPHB (2024) "Creating a Character" (Steps 2-5), "Hit Points" (Fixed Hit
 Points by Class), "Equipment" (Armor Training, Weapon Proficiency, Versatile),
@@ -135,11 +135,11 @@ class CharacterBuilder:
         self._subclass: str | None = None
         self._feats: list[tuple[int, Feat]] = []
         self._fighting_style: Feat | None = None
-        self._masteries: frozenset[str] | None = None
+        self._masteries: tuple[Weapon, ...] = ()
         self._weapon: Weapon | None = None
         self._armour: Armour = UNARMOURED
         self._shield = False
-        self._trained: frozenset[str] = frozenset()
+        self._armoury: tuple[Weapon, ...] = ()
 
     def _fail(self, message: str) -> BuildError:
         return BuildError(f"{self._name}: {message}")
@@ -309,7 +309,19 @@ class CharacterBuilder:
         if any(self._scores[a] < score for a, score in prerequisite.abilities):
             return False
         training = prerequisite.armour_training
-        return training is None or training in self._class.armour_training
+        return training is None or training in self._armour_training()
+
+    def _armour_training(self) -> frozenset[ArmourTraining]:
+        """The class's armour training and every feat's taken so far."""
+        granted = [feat.armour_training for _, feat in self._feats]
+        return self._class.armour_training.union(*granted)
+
+    def _trained_with(self, weapon: Weapon) -> bool:
+        return self._class.trained_with(weapon) or any(
+            entry.covers(weapon)
+            for _, feat in self._feats
+            for entry in feat.weapon_training
+        )
 
     def _taken(self) -> list[str]:
         names = [] if self._background is None else [self._background.feat]
@@ -318,25 +330,22 @@ class CharacterBuilder:
         return names + [feat.name for _, feat in self._feats]
 
     def masteries(self, weapons: Iterable[Weapon]) -> Self:
-        """The kinds of weapon the Weapon Mastery feature is used with."""
+        """The kinds of weapon the Weapon Mastery feature is used with.
+        Proficiency with each is checked by `build()`."""
         level = self._class.weapon_mastery_level
         if level is None or self._level < level:
             raise self._fail(
                 f"a level {self._level} {self._class.name} has no "
                 "Weapon Mastery feature"
             )
-        names: list[str] = []
-        for weapon in weapons:
+        chosen = tuple(weapons)
+        for weapon in chosen:
             if weapon.mastery is None:
                 raise self._fail(f"{weapon.name} has no mastery property")
-            if not self._class.trained_with(weapon):
-                raise self._fail(
-                    f"a {self._class.name} is not proficient with {weapon.name}"
-                )
-            names.append(weapon.name)
+        names = [weapon.name for weapon in chosen]
         if not names or len(set(names)) != len(names):
             raise self._fail(f"Weapon Mastery names different weapons, got {names}")
-        self._masteries = frozenset(names)
+        self._masteries = chosen
         return self
 
     # -- equipment ------------------------------------------------------------
@@ -352,14 +361,11 @@ class CharacterBuilder:
     ) -> Self:
         """What the character wields, wears and carries on its arm.
 
-        `armoury` is every weapon the class's training is read against. A
-        weapon it is not proficient with is held without the proficiency
-        bonus; armour or a Shield it is not trained with is refused.
-        `two_handed` holds a Versatile weapon in two hands.
+        `armoury` is every weapon its proficiencies are read against.
+        `two_handed` holds a Versatile weapon in two hands. Training with the
+        armour and Shield is checked by `build()`, against every feat taken.
         """
-        self._trained = frozenset(
-            w.name for w in armoury if self._class.trained_with(w)
-        )
+        self._armoury = tuple(armoury)
         if weapon is not None:
             if weapon.has(WeaponProperty.TWO_HANDED):
                 two_handed = True
@@ -371,11 +377,6 @@ class CharacterBuilder:
             raise self._fail("nothing is held in two hands")
         if shield and two_handed:
             raise self._fail("a Shield leaves one hand for the weapon")
-        training = self._class.armour_training
-        if armour is not None and _training(armour) not in training:
-            raise self._fail(f"a {self._class.name} is not trained with {armour.name}")
-        if shield and ArmourTraining.SHIELD not in training:
-            raise self._fail(f"a {self._class.name} is not trained with Shields")
         self._weapon = weapon
         self._armour = UNARMOURED if armour is None else armour
         self._shield = shield
@@ -405,6 +406,15 @@ class CharacterBuilder:
         if taken != owed:
             raise self._fail(f"a level {self._level} {cls.name} takes a feat at {owed}")
 
+        training = self._armour_training()
+        if self._armour is not UNARMOURED and _training(self._armour) not in training:
+            raise self._fail(f"{self._name} is not trained with {self._armour.name}")
+        if self._shield and ArmourTraining.SHIELD not in training:
+            raise self._fail(f"{self._name} is not trained with Shields")
+        for weapon in self._masteries:
+            if not self._trained_with(weapon):
+                raise self._fail(f"{self._name} is not proficient with {weapon.name}")
+
         scores = MappingProxyType(dict(self._scores))
         constitution = ability_modifier(scores[Ability.CONSTITUTION])
         faces = cls.hit_die.sides
@@ -424,7 +434,9 @@ class CharacterBuilder:
             size=size,
             saving_throws=cls.saving_throws,
             skills=background.skills | self._skills,
-            trained_weapons=self._trained,
+            trained_weapons=frozenset(
+                w.name for w in self._armoury if self._trained_with(w)
+            ),
         )
         feats = [background.feat]
         if self._fighting_style is not None:
