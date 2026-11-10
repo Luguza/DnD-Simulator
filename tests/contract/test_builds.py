@@ -405,7 +405,7 @@ def test_untrained_armour_and_shields_are_refused() -> None:
     refused({**ROGUE_L3, "equipment": {"shield": True}}, "Shields")
 
 
-# -- the engine reads what the build says (#25, #36) -------------------------
+# -- the engine reads what the build says ------------------------------------
 
 
 def test_the_proficiency_bonus_is_added_only_with_a_trained_weapon() -> None:

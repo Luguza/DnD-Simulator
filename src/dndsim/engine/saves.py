@@ -13,8 +13,8 @@ Sources:
   own — the same entry (`docs/decisions.md` § w1g)
 - half damage on a successful save, in the halvings step of `engine/damage.py`
   — `docs/decisions.md` § w1g
-
-One first cut: a saving throw adds the bare ability modifier (debt #36).
+- the proficiency bonus on a save the creature is proficient in — XPHB, "D20
+  Tests" -> Saving Throws; `docs/decisions.md` § w2f
 """
 
 from collections.abc import Mapping, Sequence
