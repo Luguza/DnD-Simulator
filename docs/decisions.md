@@ -6332,7 +6332,7 @@ The median is **0.912**, against `w2e`'s own 0.919: `w2f2` and `w2f` added
 the little their records measured, and #67 is nearly all of it. The absolute
 numbers are a slow container's; only the ratio travels. Carried onto the
 ~23.5k § The W2 mid-wave review set the floor from, it is **~21.4k**
-(0.886–0.927: 20.8k–21.8k), under the 22k the owner accepted as the floor
+(0.832–0.927: 19.6k–21.8k), under the 22k the owner accepted as the floor
 (`docs/questions.md` #10). `w2e` merged with its own miss at the owner's
 instruction (§ w2e, The hold), which accepted that row's done-when going
 unmet, not the floor.
