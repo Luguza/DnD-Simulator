@@ -4,8 +4,7 @@ The rules are XPHB, "Dropping to 0 Hit Points", under its headings Instant
 Death, Falling Unconscious, Death Saving Throws, Rolling 1 or 20, Damage at 0
 Hit Points and Stabilizing a Character; that only a player character makes
 death saving throws is DESIGN.md § Context, "What 'runs dry' means".
-`docs/decisions.md` § w1j has the rulings, and the one first cut in the code
-below: the Medicine check adds the bare Wisdom modifier (debt #36).
+`docs/decisions.md` § w1j has the rulings.
 """
 
 from typing import Final, NamedTuple
@@ -216,6 +215,8 @@ def stabilize(helper: Creature, creature: Creature, *, rng: Rng) -> bool:
     check.close()
 
     natural = roll_d20(rng, advantage=had_advantage, disadvantage=had_disadvantage)
+    if MEDICINE in helper.stats.skills:
+        bonus += helper.proficiency_bonus
     if natural + helper.modifier(Ability.WISDOM) + bonus < STABILIZE_DC:
         return False
     creature.stabilize()

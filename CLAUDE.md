@@ -19,8 +19,9 @@ turn loop (`engine/encounter.py`, `turn.py`, `world.py`, `query.py`), and
 `w2c2` the walk and the opportunity attack (`actions/opportunity_attack.py`,
 the walk), `w2d` the target dummy (`creatures/dummy.py`), `w2a` the 5etools
 import (`content/`) and `w2e` the APL and its compiler (`apl/`, and
-`actions/move.py`, where the walk now lives). There is no build loader, runner
-or CLI yet — those are W2.
+`actions/move.py`, where the walk now lives), and `w2f` the build schema and
+loader (`builds/`) and the `Character` Builder (`creatures/character.py`).
+There is no runner or CLI yet — those are W2.
 
 **W0 and W1 are complete; work is at W2.** The M0 performance budget is **≥22k
 attack resolutions/sec/core** on `w0i`'s hostile configuration, which since
@@ -261,7 +262,7 @@ there is local to a module.
 | `creatures/`, `core/geometry.py` | § w0g2 |
 | `core/geometry.py`, size, line of sight, templates | § w1d |
 | `engine/damage.py`, the resolution order | § w0g2, § w1e |
-| `engine/attack.py`, the attack sequence | § w1f, § w2f2 |
+| `engine/attack.py`, the attack sequence | § w1f, § w2f2, § w2f |
 | `Weapon`, the ranged branch, `tests/weapon_fixtures.py` | § w2f2 |
 | `engine/saves.py`, saving throws, save-for-half | § w1g |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
@@ -281,6 +282,7 @@ there is local to a module.
 | `engine/triggers.py`, `Dispatcher.responsive()`, the opportunity attack, the walk | § w0g3, § w2c2 |
 | `core/log.py`, the event log, its records and levels | § w1i |
 | `engine/dying.py`, `engine/healing.py`, `engine/d20.py`, `is_alive` | § w1j |
+| `builds/`, `creatures/character.py`, proficiencies, a build's equipment | § w2f |
 | `.claude/skills/`, `CODING_STANDARDS.md`, the review loop | § The PR, review and retro skills |
 
 Add a section there when a task lands, rather than growing this file.

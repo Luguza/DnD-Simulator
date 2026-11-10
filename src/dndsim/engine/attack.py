@@ -17,11 +17,13 @@ Sources:
 - long range and close combat — XPHB, "Combat" -> Ranged Attacks, "Ranged
   Attacks in Close Combat"
 
-Three gaps, declared: close combat counts every enemy within 5 feet that is
+- the proficiency bonus only with a weapon the attacker is proficient with —
+  XPHB, "Equipment" -> Weapon Proficiency; `docs/decisions.md` § w2f
+
+Two gaps, declared: close combat counts every enemy within 5 feet that is
 not Incapacitated, because nothing can yet be asked whether it can see the
-attacker (debt #39); a thrown weapon stays in the thrower's hand, because
-nothing says how many a build carries (debt #69); and the proficiency bonus is
-added to every attack (debt #25).
+attacker (debt #39); and a thrown weapon stays in the thrower's hand, because
+nothing says how many a build carries (debt #69).
 """
 
 from collections.abc import Mapping
@@ -769,9 +771,10 @@ def resolve_attack(
         natural = min(rng.roll(20), rng.roll(20))
     else:
         natural = rng.roll(20)
-    total = (
-        natural + attacker.modifier(ability) + attacker.proficiency_bonus + attack_bonus
-    )
+    trained = attacker.stats.trained_weapons
+    if trained is None or weapon.name in trained:
+        attack_bonus += attacker.proficiency_bonus
+    total = natural + attacker.modifier(ability) + attack_bonus
 
     rolled = contexts.rolled(
         attacker=attacker,

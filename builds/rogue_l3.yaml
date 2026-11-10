@@ -1,0 +1,15 @@
+# A level 3 Thief with a Rapier, and no `apl:`: the default policy.
+name: Rogue
+class: Rogue
+level: 3
+subclass: Thief
+species: Human
+size: small
+background: Soldier
+abilities: {strength: 8, dexterity: 15, constitution: 14, intelligence: 12, wisdom: 13, charisma: 10}
+background_increases: {dexterity: 2, constitution: 1}
+skills: [acrobatics, perception, stealth, insight]
+weapon_mastery: [Rapier, Dagger]
+equipment:
+  weapon: Rapier
+  armour: Leather Armor

@@ -95,6 +95,7 @@ class CharacterClass:
     choice: `ability_score_improvement_levels` is every such level,
     `subclass_level` always exists, and `fighting_style_level` and
     `weapon_mastery_level` are `None` for a class without the feature.
+    `subclasses` holds the XPHB subclasses' names as printed.
     """
 
     name: str
@@ -107,6 +108,7 @@ class CharacterClass:
     subclass_level: int
     fighting_style_level: int | None
     weapon_mastery_level: int | None
+    subclasses: frozenset[str] = frozenset()
 
     def trained_with(self, weapon: Weapon) -> bool:
         """Whether this class's weapon training covers `weapon`."""
@@ -209,7 +211,7 @@ def _at_most_one(levels: dict[str, list[int]], name: str, where: str) -> int | N
     return found[0] if found else None
 
 
-def _class(entry: Any) -> CharacterClass:
+def _class(entry: Any, subclasses: frozenset[str]) -> CharacterClass:
     name = entry["name"]
     where = f"class {name!r}"
     try:
@@ -241,6 +243,7 @@ def _class(entry: Any) -> CharacterClass:
         subclass_level=subclass,
         fighting_style_level=_at_most_one(levels, _FIGHTING_STYLE, where),
         weapon_mastery_level=_at_most_one(levels, _WEAPON_MASTERY, where),
+        subclasses=subclasses,
     )
 
 
@@ -249,7 +252,12 @@ def classes(data: Dataset) -> Mapping[str, CharacterClass]:
     otherwise than read, including a weapon training it cannot parse."""
     table: dict[str, CharacterClass] = {}
     for file in class_files(data):
+        subclasses = frozenset(
+            entry["name"]
+            for entry in file.get("subclass", [])
+            if entry.get("source") == SOURCE and entry.get("classSource") == SOURCE
+        )
         for entry in file.get("class", []):
             if entry.get("source") == SOURCE:
-                table[entry["name"]] = _class(entry)
+                table[entry["name"]] = _class(entry, subclasses)
     return MappingProxyType(dict(sorted(table.items())))

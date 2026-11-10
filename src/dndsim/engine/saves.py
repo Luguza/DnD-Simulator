@@ -13,8 +13,8 @@ Sources:
   own — the same entry (`docs/decisions.md` § w1g)
 - half damage on a successful save, in the halvings step of `engine/damage.py`
   — `docs/decisions.md` § w1g
-
-One first cut: a saving throw adds the bare ability modifier (debt #36).
+- the proficiency bonus on a save the creature is proficient in — XPHB, "D20
+  Tests" -> Saving Throws; `docs/decisions.md` § w2f
 """
 
 from collections.abc import Mapping, Sequence
@@ -80,11 +80,12 @@ def save_dc(creature: Creature, ability: Ability) -> int:
 
 
 def save_bonus(creature: Creature, ability: Ability) -> int:
-    """What `creature` adds to a saving throw of `ability` before any handler.
-
-    The ability modifier, and nothing else: debt #36. Why this is a function is
-    `docs/decisions.md` § w1g.
+    """What `creature` adds to a saving throw of `ability` before any handler:
+    the ability modifier, and the proficiency bonus for a save it is
+    proficient in. Why this is a function is `docs/decisions.md` § w1g.
     """
+    if ability in creature.stats.saving_throws:
+        return creature.modifier(ability) + creature.proficiency_bonus
     return creature.modifier(ability)
 
 
