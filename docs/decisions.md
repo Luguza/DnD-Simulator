@@ -6532,7 +6532,9 @@ Each is the conservative reading, so the implementer does not choose:
 - **Ending a grapple** is XPHB "Grappling" -> Ending a Grapple, which the row
   called "the escape": `escape_grapple`, the Grappled creature's Action, and the
   two endings nobody chooses — the grappler Incapacitated, the two more than
-  5 feet apart. The grappler's release ("no action required") is a free
+  5 feet apart, asked after every walk and push, so before `w2j2`'s drag a
+  grappler that walks away lets go rather than holding at range. The
+  grappler's release ("no action required") is a free
   `release_grapple`, without which a grappler could never walk undragging once
   `w2j2` lands.
 - **A free hand** (XPHB "Grappling", One Grapple per Hand) is counted from what
