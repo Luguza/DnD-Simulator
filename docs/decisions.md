@@ -6508,6 +6508,12 @@ inside a 👥 row of new Commands.
 - **`engine/triggers.py`'s `walk_provoking()`**, which charges one `step_ft` for
   every square. Difficult Terrain charges some squares and not others, and the
   drag moves a second creature with the mover; neither fits without changing it.
+- **`creatures/stats.py`**: the Damage option adds the Proficiency Bonus,
+  and `resolve_attack()` adds it only for a weapon `trained_weapons` names.
+  `StatBlock` names the Unarmed Strike in every training set instead, so
+  `engine/attack.py`, a hot-path file, is not edited.
+- **`actions/move.py`**, for the grapple's range, checked after a walk; `w2j2`
+  changes the same file afterwards, in sequence.
 
 ### What the row misstated
 
@@ -6518,13 +6524,6 @@ ally": passing an ally or a Tiny creature costs nothing extra. A misstated rule
 is the implementer's to correct in its own diff (`docs/workflow.md` § When the
 spec is wrong), and it is corrected here only because the row is being
 rewritten anyway. #60's register text said the same and is corrected with it.
-
-- **`creatures/stats.py`**: the Damage option adds the Proficiency Bonus,
-  and `resolve_attack()` adds it only for a weapon `trained_weapons` names.
-  `StatBlock` names the Unarmed Strike in every training set instead, so
-  `engine/attack.py`, a hot-path file, is not edited.
-- **`actions/move.py`**, for the grapple's range, checked after a walk; `w2j2`
-  changes the same file afterwards, in sequence.
 
 ### What the row did not say
 
