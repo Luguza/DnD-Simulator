@@ -2570,7 +2570,7 @@ Great Weapon Master stops being worth it, exactly as a WoW sim would.
 ## Build order
 
 Nine waves, `W0`–`W8`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
-83 tasks, their dependency edges, delegation modes and the task-packet template.
+85 tasks, their dependency edges, delegation modes and the task-packet template.
 Its § The W0 debt register is the ledger of what W0 left for later waves to
 retire, and which task retires each.
 
@@ -2736,7 +2736,7 @@ more dangerous failure than a check that fails.
    with a confidence column, human triage of the low-confidence and gap rows
    only, and the additive-vs-structural split that makes the hook-gap budget
    honest.
-6. **Review capacity, not agent throughput, is the constraint.** Roughly 176
+6. **Review capacity, not agent throughput, is the constraint.** Roughly 179
    nominal agent-days funnel through one person; every parallelism gain lands on
    the same desk. *Mitigated by:* designing artefacts to be reviewable in minutes
    — disposition tables, quoted citations, arithmetic in goldens, the file-size

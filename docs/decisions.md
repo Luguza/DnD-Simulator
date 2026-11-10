@@ -6305,3 +6305,94 @@ why: one property read per attack.
   are `w4h`'s to register; until then a build cannot name one.
 - Ammunition and a thrower's stack (#68, #69) wait on a key for what a build
   carries, which the next `⏸` review places.
+
+## The W2 late-wave review (w2e, w2f2, w2a2, w2f)
+
+`w2e`, the `w2f2` spec correction and `w2f2`, the `w2f` spec correction,
+`w2a2` and `w2f` landed since § The W2 mid-wave review. This gate owned four
+debt rows: #67, which it found has carried the spike below the owner's floor,
+and #68, #69 and #74, which `w2f` left for it to place together.
+
+### The spike is below 22k again (#67)
+
+The milestone branch at `c0f8fad` against `3804f05`, the branch before
+`w2e`, on `--no-provoking`: six pairs, sibling worktrees, the order reversed
+every other pair, the spike's own `main()` each time.
+
+| Pair | `3804f05` | `c0f8fad` | Ratio |
+|---|---|---|---|
+| 1 | 18,432 | 15,332 | 0.832 |
+| 2 | 17,197 | 15,943 | 0.927 |
+| 3 | 17,529 | 15,538 | 0.886 |
+| 4 | 17,430 | 15,943 | 0.915 |
+| 5 | 17,504 | 15,981 | 0.913 |
+| 6 | 17,975 | 16,399 | 0.912 |
+
+The median is **0.912**, against `w2e`'s own 0.919: `w2f2` and `w2f` added
+the little their records measured, and #67 is nearly all of it. The absolute
+numbers are a slow container's; only the ratio travels. Carried onto the
+~23.5k § The W2 mid-wave review set the floor from, it is **~21.4k**
+(0.832–0.927: 19.6k–21.8k), under the 22k the owner accepted as the floor
+(`docs/questions.md` #10). `w2e` merged with its own miss at the owner's
+instruction (§ w2e, The hold), which accepted that row's done-when going
+unmet, not the floor.
+
+The shortfall is attributed — § w2e, What it cost the benchmark, names the
+`Move` footprint search and the namespace's live reads — so this gate does not
+revise the budget, which is the owner's in any case. It places #67 in a new
+🔒 row, **`w2i2`**, ahead of `w2j`: `w2j` widens the route search that is
+half of #67, so it should be priced against a branch that has already taken
+the levers. The done-when is a ratio against `3804f05` of 0.94, which is 22k
+carried the same way, and if the levers cannot reach it the row asks the
+owner rather than landing short a second time unasked.
+
+### What a build carries (#68, #69, #74)
+
+All three wait on one fact, what a build carries beside the weapon it
+wields, and all three must exist before W4: `w4b`'s Dual Wielder,
+Two-Weapon Fighting and Crossbow Expert read them, content may not touch
+`engine/` or `creatures/`, and W3's paper pass reads the action vocabulary
+the Light property's Bonus Action attack adds to. So **`w2k`** is a new 🔒
+row after `w2j` (both edit `actions/`) and before `w2g`, which then counts
+actions over the full W2 vocabulary. 🔒 because `engine/attack.py` is on the
+hot path. Recovering ammunition after a fight is `w6a`'s, which owns what
+happens between fights.
+
+### Produces cells
+
+- **`w2j`** named `engine/turn.py` for the route search "wherever `w2e`
+  leaves it". It is in `core/geometry.py`'s `route()`, which `Move` calls, and
+  nothing charges Difficult Terrain anywhere: #60's passing through as
+  Difficult Terrain changes `route()`. The cell now says so.
+- **`w2g`**'s done-when retires #59, #65 and #66, filed against
+  `engine/encounter.py` and the dummy's turn; its cell named only `sim/`,
+  `reporting/` and `api.py`. It now names them.
+
+`w2h`'s cell is right. No seam W8 needs is uncut: `best_scored` is reserved
+and is `DEFAULT_APL`, and `w2g` still carries the seed list, the override and
+the per-seed vector. Nothing that landed contradicts `DESIGN.md`.
+
+### Retro
+
+Six PRs merged into the milestone branch since the last gate: #71 (`w2e`,
+16 commits, held at the round cap and merged on the owner's instruction), #72
+(the `w2f2` spec correction, 9), #73 (`w2f2`, 5), #74 (the `w2f` spec
+correction, 19, held about four days), #82 (`w2a2`, 3) and #83 (`w2f`, 5).
+The two task rows after the spec corrections were cheap; the cost was in the
+spec PRs and in `w2e`.
+
+- **A check for the hold on #74.** Its fourth-round fix added a `w5c` →
+  `w7b` dependency the wave graph and its prose did not allow, and the final
+  verdict held the row on it. Whether a Depends cell's edge is drawn is
+  mechanical, so `tests/contract/test_roadmap.py` checks that every
+  dependency names a task and every cross-wave edge is reachable in the
+  graph or drawn as a named dashed exception. A mutation (the `w7b` dashed
+  edge removed) fails it.
+- **Counts that drift.** The same test checks that the task count
+  `ROADMAP.md`, `DESIGN.md` and `CLAUDE.md` state is the tables', and that the
+  nominal-day total both state is the sum of the wave graph's nodes: this
+  gate's two rows moved both, and the first review found the copies behind.
+- **Navigation.** CLAUDE.md's table points planning and pricing at this
+  section, since it holds the latest re-measure against the floor.
+- **`w2e`'s hold** came from its performance done-when and four rounds of
+  real findings in a 🔒 row, not from the environment; nothing to change.
