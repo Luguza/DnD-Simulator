@@ -8,7 +8,15 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-ROADMAP = Path(__file__).resolve().parents[2] / "ROADMAP.md"
+ROOT = Path(__file__).resolve().parents[2]
+ROADMAP = ROOT / "ROADMAP.md"
+
+_COUNTS = (
+    ("ROADMAP.md", r"^(\d+) tasks across"),
+    ("DESIGN.md", r"^(\d+) tasks, their dependency edges"),
+    ("CLAUDE.md", r"has (\d+) tasks across"),
+)
+_TOTALS = ("ROADMAP.md", "DESIGN.md")
 
 _TASK_ID = re.compile(r"\bw\d[a-z]+\d*\b")
 _SOLID = re.compile(r"\b([WM]\d)\s*-->\s*")
@@ -79,3 +87,28 @@ def test_every_cross_wave_edge_is_drawn() -> None:
             if (frm, task, to) not in dashed:
                 undrawn.append(f"{task} depends on {dep}: no {frm} -> {to} edge")
     assert not undrawn
+
+
+def test_every_stated_task_count_is_the_tables() -> None:
+    count = len(_tasks(ROADMAP.read_text(encoding="utf-8")))
+    stated = {
+        name: int(m.group(1))
+        for name, pattern in _COUNTS
+        if (m := re.search(pattern, (ROOT / name).read_text(encoding="utf-8"), re.M))
+    }
+    assert stated == dict.fromkeys(stated, count)
+    assert len(stated) == len(_COUNTS)
+
+
+def test_every_stated_day_total_is_the_graphs() -> None:
+    text = ROADMAP.read_text(encoding="utf-8")
+    chart = text.split("```mermaid", 1)[1].split("```", 1)[0]
+    total = sum(int(days) for days in re.findall(r"~(\d+) nominal days", chart))
+    stated = [
+        int(m.group(1))
+        for name in _TOTALS
+        for m in re.finditer(
+            r"Roughly (\d+)\s+nominal", (ROOT / name).read_text(encoding="utf-8")
+        )
+    ]
+    assert stated == [total] * len(_TOTALS)

@@ -4,7 +4,7 @@ Companion to [DESIGN.md](DESIGN.md). This document sequences the build so that
 **decisions with the widest blast radius are made first**, and every interface a
 later agent depends on exists — in code, not prose — before that agent starts.
 
-83 tasks across 9 waves, `W0`–`W8`. DESIGN.md § Build order is the one-table
+85 tasks across 9 waves, `W0`–`W8`. DESIGN.md § Build order is the one-table
 summary; this is the operational detail.
 
 ## Sequencing principles
@@ -62,7 +62,7 @@ summary; this is the operational detail.
    generalises: when a later wave's requirement is *known* and costs a signature
    rather than a design, it goes in now — but only the signature. Speculative
    generality is still the enemy; a known consumer is not speculation.
-9. **The reviewer is the bottleneck, not the agents.** Roughly 176 nominal
+9. **The reviewer is the bottleneck, not the agents.** Roughly 179 nominal
    agent-days funnel through one person, so every deliverable is designed to be
    *reviewable in minutes* — disposition tables, quoted citations, arithmetic
    written out in goldens, a hard file-size cap. Batches are sized for a review

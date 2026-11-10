@@ -6388,8 +6388,11 @@ spec PRs and in `w2e`.
   dependency names a task and every cross-wave edge is reachable in the
   graph or drawn as a named dashed exception. A mutation (the `w7b` dashed
   edge removed) fails it.
-- **Navigation.** CLAUDE.md's table points planning at this section, and
-  task count names the test, so the count and the graph are checked in one
-  place.
+- **Counts that drift.** The same test checks that the task count
+  `ROADMAP.md`, `DESIGN.md` and `CLAUDE.md` state is the tables', and that the
+  nominal-day total both state is the sum of the wave graph's nodes: this
+  gate's two rows moved both, and the first review found the copies behind.
+- **Navigation.** CLAUDE.md's table points planning and pricing at this
+  section, since it holds the latest re-measure against the floor.
 - **`w2e`'s hold** came from its performance done-when and four rounds of
   real findings in a 🔒 row, not from the environment; nothing to change.
