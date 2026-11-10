@@ -309,8 +309,8 @@ narrowed two (#24, #27), and the W2 mid-wave review re-owned seven (#13, #24,
 #34), narrowed a fourth (#59) and opened two (#66, #67), and the `w2f2` spec
 correction has opened one (#68), and `w2f2` has retired three (#13, #24,
 #63) and opened one (#69), and the `w2f` spec correction opened one (#70),
-and `w2f` has retired four (#12, #25, #27, #36) and opened four (#71–#74),
-so the table stands at thirty-six.
+and `w2f` has retired four (#12, #25, #27, #36), opened four (#71–#74) and
+left one at its round cap (#75), so the table stands at thirty-seven.
 Every one of them was the right thing to write — a hostile spike needs real
 machinery now, not finished machinery later — and every one of them is invisible
 six months from now, when the file around it has grown and the paragraph
@@ -370,6 +370,7 @@ review, § w2b, § w2c, § w2c2, § w2e, § w2f2, § w2f).
 | 72 | Weapon Mastery's count is not checked: a build may name more kinds of weapon than its class grants | `creatures/character.py` | `w4a` | harmless while a mastery implements nothing. The Fighter and Barbarian print the count as a table column, the Rogue, Paladin and Ranger only in the feature's prose ("two kinds"), which nothing imports; `w4a` makes the masteries act, and is the first place an extra one is worth anything (`docs/decisions.md` § w2f) |
 | 73 | A feat requiring the Spellcasting or Pact Magic feature is refused for every class | `creatures/character.py` | `w5a` | War Caster, Spell Sniper and Ritual Caster cannot be taken by anyone: nothing imported says which classes cast, and refusing is the loud failure. A caster's build is not expressible before `w5a`'s `spells:` key in any case (`docs/decisions.md` § w2f) |
 | 74 | A build wields one weapon and carries nothing else: no off-hand weapon, no second weapon to switch to | `builds/schema.py`, `creatures/creature.py` (`Creature.weapon`) | the next `⏸` plan review, with #68 and #69, once it places what a build carries | a dual-wielder cannot be written: the Light property's extra attack and the Two-Weapon Fighting style it feeds have nothing to attack with, and an archer cannot draw a melee weapon when an enemy closes. Exact for every build that fights with one weapon; `Creature` holds one, which is why the schema says one (`docs/decisions.md` § w2f) |
+| 75 | Left at PR #83's round cap: `w2f`'s Produces cell names `content/classes.py` but not `content/feats.py`, which the task edited | `ROADMAP.md`'s `w2f` row | the M1 / W2 milestone review | none in play: `content/feats.py` imports the armour and weapon training a feat grants, which the third review's CONFIRMED finding required (`docs/decisions.md` § w2f). The row's text is behind what landed, so a reader auditing the Produces cell against the diff finds one file unnamed |
 
 ### What the W1 critical-path gate changed
 

@@ -27,7 +27,7 @@ from dndsim.core.dice import Dice
 from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.geometry import Cell
 from dndsim.core.rng import ScriptedRng
-from dndsim.creatures.character import BuildError, Character
+from dndsim.creatures.character import BuildError, Character, CharacterBuilder
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.stats import StatBlock
 from dndsim.engine.attack import resolve_attack
@@ -358,6 +358,20 @@ def test_a_feat_is_not_taken_twice_unless_repeatable() -> None:
         spec(feats=[{"level": 4, "feat": "Savage Attacker"}]),
         "Savage Attacker is taken twice",
     )
+
+
+def test_a_fighting_style_is_not_taken_again_in_either_order() -> None:
+    """Great Weapon Fighting as the style and again at 4, either way round."""
+    again = [{"level": 4, "feat": "Great Weapon Fighting"}]
+    refused(spec(feats=again), "taken twice and is not repeatable")
+    builder = CharacterBuilder("f", FIGHTER, 4, dict.fromkeys(Ability, 13))
+    builder.species(HUMAN, Size.MEDIUM)
+    builder.background(SOLDIER, {Ability.STRENGTH: 2, Ability.CONSTITUTION: 1})
+    builder.skills(["perception", "survival"])
+    builder.subclass("Champion").masteries([GREATSWORD])
+    builder.feat(4, GREAT_WEAPON_FIGHTING).fighting_style(GREAT_WEAPON_FIGHTING)
+    with pytest.raises(BuildError, match="taken twice"):
+        builder.build(Cell(0, 0))
 
 
 def test_another_feats_own_choice_is_unknown_until_registered() -> None:

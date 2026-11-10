@@ -438,10 +438,13 @@ class CharacterBuilder:
                 w.name for w in self._armoury if self._trained_with(w)
             ),
         )
-        feats = [background.feat]
+        feats = self._taken()
+        records = [feat for _, feat in self._feats]
         if self._fighting_style is not None:
-            feats.append(self._fighting_style.name)
-        feats.extend(feat.name for _, feat in self._feats)
+            records.append(self._fighting_style)
+        for record in records:
+            if not record.repeatable and feats.count(record.name) > 1:
+                raise self._fail(f"{record.name} is taken twice and is not repeatable")
         return Character(
             name=self._name,
             stats=stats,
