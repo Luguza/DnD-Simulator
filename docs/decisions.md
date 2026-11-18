@@ -6552,7 +6552,8 @@ Each is the conservative reading, so the implementer does not choose:
 - **An opportunity attack's fallback** is the Damage option. A Grapple as an
   opportunity attack is legal by the text and a known tactic, but an offer is
   answered under one gate id (§ w2c2) and choosing among three options there is
-  a policy surface no row has designed; it is declared, not offered.
+  a policy surface no row has designed; it is declared, not offered, and register
+  row #76 holds it.
 
 ### The split
 
