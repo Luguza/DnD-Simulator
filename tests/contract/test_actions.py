@@ -58,7 +58,7 @@ from dndsim.creatures.economy import ActionEconomy
 from dndsim.creatures.effects import Effect, EffectStore
 from dndsim.creatures.resources import Recovery, Resources, ResourceSpec
 from dndsim.creatures.stats import StatBlock, Weapon
-from dndsim.engine import attack, damage, dying, healing, saves
+from dndsim.engine import attack, d20, damage, dying, healing, saves
 from dndsim.engine.damage import resolve_damage
 from dndsim.engine.dying import MEDICINE, STABILIZE_DC
 from dndsim.engine.saves import saving_throw
@@ -1243,6 +1243,7 @@ dispatch is among them: handlers spend from the economy."""
 
 ENGINE_CALLS: Final = (
     attack.resolve_attack,
+    d20.ability_check,
     damage.resolve_damage,
     dying.stabilize,
     dying.death_save,

@@ -22,13 +22,12 @@ from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.effects import Effect, Stacking
 from dndsim.creatures.stats import UNARMED_STRIKE
-from dndsim.engine.d20 import modifier_total, roll_d20, settle
+from dndsim.engine.d20 import ability_check
 from dndsim.engine.saves import save_bonus, save_dc, saving_throw
 from dndsim.engine.triggers import walk_provoking
 from dndsim.engine.world import World
-from dndsim.hooks.contexts import AbilityCheckContext, ConditionContext
+from dndsim.hooks.contexts import ConditionContext
 from dndsim.hooks.decorator import R, hook
-from dndsim.hooks.definitions import ON_ABILITY_CHECK
 from dndsim.rules.constants import CELL_SIZE_FT, SIZE_ORDER, SIZE_WIDTH_CELLS
 from dndsim.rules.enums import Ability, ActionCost, SaveOutcome
 
@@ -258,7 +257,10 @@ class EscapeGrapple(Action[bool]):
         ability, skill = max(
             _ESCAPE_SKILLS, key=lambda pair: _check_bonus(actor, *pair)
         )
-        escaped = _ability_check(actor, ability, skill, dc, rng) >= dc
+        total = ability_check(
+            actor, ability, skill=skill, dc=dc, rng=rng, among=(grappler,)
+        )
+        escaped = total >= dc
         if escaped:
             end_grapple(grappler, actor)
         return escaped
@@ -412,26 +414,3 @@ def _check_bonus(creature: Creature, ability: Ability, skill: str) -> int:
     if skill in creature.stats.skills:
         bonus += creature.proficiency_bonus
     return bonus
-
-
-def _ability_check(
-    creature: Creature, ability: Ability, skill: str, dc: int, rng: Rng
-) -> int:
-    """Roll one ability check after `on_ability_check`, and return its total."""
-    checking = AbilityCheckContext(
-        creature=creature, ability=ability, skill=skill, dc=dc
-    )
-    creature.dispatch(ON_ABILITY_CHECK, checking)
-    settle(
-        checking,
-        "vetoed at on_ability_check, which cannot be called off: the check is "
-        "being made. A feature that means to change it grants advantage or adds "
-        "to the total through ctx.bonus.",
-        creature,
-    )
-    advantage = checking.had_advantage
-    disadvantage = checking.had_disadvantage
-    bonus = modifier_total(checking.bonus, rng)
-    checking.close()
-    natural = roll_d20(rng, advantage=advantage, disadvantage=disadvantage)
-    return natural + _check_bonus(creature, ability, skill) + bonus

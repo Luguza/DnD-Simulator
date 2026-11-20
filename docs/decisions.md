@@ -6654,11 +6654,13 @@ at Disadvantage that should not have it.
 
 ### The escape's ability check
 
-No engine function makes an ability check: the stabilise's Medicine check is
-written inline in `engine/dying.py`. `EscapeGrapple` writes the same sequence
-privately — `on_ability_check`, then the d20, then the modifier and the
-Proficiency Bonus for a skill the creature has — rather than adding an engine
-entry point to a 👥 row. A third caller is the time to extract it.
+The stabilise's Medicine check was the only ability check, written inline in
+`engine/dying.py`. The escape is the second, so the sequence moved to
+`engine/d20.py`'s `ability_check()`, beside what D20 Tests already share
+(§ w1j), and both call it: one copy, so a fix to the participants it settles
+among reaches both. Its `among` is the event's other party — the creature
+being stabilised, the grappler being escaped — so a handler's queued effect
+lands on it (§ w1c).
 
 ### Standing up, and the default policy
 

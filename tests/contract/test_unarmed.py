@@ -50,6 +50,9 @@ from dndsim.engine.attack import AttackResult
 from dndsim.engine.saves import SAVE
 from dndsim.engine.turn import offers, take_turn
 from dndsim.engine.world import World
+from dndsim.hooks.contexts import AbilityCheckContext
+from dndsim.hooks.decorator import R, hook
+from dndsim.hooks.source import HookSource
 from dndsim.rules import enums
 from dndsim.rules.enums import Ability, Outcome, SaveOutcome
 from weapon_fixtures import GREATSWORD
@@ -589,3 +592,33 @@ def test_unarmed_options_are_exactly_the_legal_ones(state: str) -> None:
     got = unarmed_options(world, hero, (near, side))
 
     assert [(type(o), o.target) for o in got] == [(type(o), o.target) for o in expected]
+
+
+class Wriggle(HookSource):
+    """Queues the Prone condition onto the grappler of the escape it hears."""
+
+    __slots__ = ("grappler",)
+
+    ID = "test.wriggle"
+
+    def __init__(self, owner: Creature, grappler: Creature) -> None:
+        super().__init__(owner)
+        self.grappler = grappler
+
+    @hook("on_ability_check")
+    def trip(self, ctx: AbilityCheckContext) -> R:
+        ctx.apply_effect(self.grappler, Prone(self.grappler))
+        return R.APPLIED
+
+
+def test_an_escape_check_settles_among_the_grappler_too() -> None:
+    """The grappler is a participant of the escape, so an effect queued onto
+    it lands, with no world to find it in."""
+    hero, foe = creature("hero"), creature("foe", cell=EAST)
+    grappled(hero, foe)
+    foe.attach(Wriggle(foe, hero))
+    ready(foe)
+
+    EscapeGrapple(foe, hero).execute(rng=ScriptedRng([1]))
+
+    assert any(isinstance(effect, Prone) for effect in hero.effects)
