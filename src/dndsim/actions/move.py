@@ -13,6 +13,7 @@ from typing import ClassVar
 
 from dndsim.actions.base import Action
 from dndsim.actions.disengage import disengaged
+from dndsim.actions.unarmed import loosen_grapples
 from dndsim.core.geometry import Cell, distance_ft, footprint, in_reach, route
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
@@ -81,6 +82,7 @@ class Walk(Action[tuple[Cell, ...]]):
             step_ft=step_ft,
         )
         if walked:
+            loosen_grapples(self.world, actor)
             moved = MoveContext(
                 creature=actor, route=walked, distance_ft=len(walked) * CELL_SIZE_FT
             )

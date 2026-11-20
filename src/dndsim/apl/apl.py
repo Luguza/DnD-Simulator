@@ -26,6 +26,15 @@ from dndsim.actions.move import Move, Retreat, Walk
 from dndsim.actions.opportunity_attack import OpportunityAttack
 from dndsim.actions.pick_up import PickUpWeapon
 from dndsim.actions.stabilize import Stabilize
+from dndsim.actions.stand_up import StandUp
+from dndsim.actions.unarmed import (
+    EscapeGrapple,
+    Grapple,
+    ReleaseGrapple,
+    ShoveDown,
+    ShovePush,
+    UnarmedStrike,
+)
 from dndsim.apl.expr import (
     AplLoadError,
     Compiled,
@@ -70,6 +79,13 @@ COMMAND_IDS: Final = frozenset(
         Stabilize,
         OpportunityAttack,
         Walk,
+        UnarmedStrike,
+        Grapple,
+        ShoveDown,
+        ShovePush,
+        EscapeGrapple,
+        ReleaseGrapple,
+        StandUp,
     )
 )
 """The ids of the Commands in `actions/`, which no feature has to provide."""
@@ -347,13 +363,19 @@ class Apl:
 
         Each entry whose `if:` passes walks first when its `move:` finds a
         walk, then takes its action on the offer its `target:` picks. A list
-        with no `move:` closes on its nearest enemy when no entry is taken.
+        with no `move:` stands up from Prone before anything else, when it is
+        offered, and closes on its nearest enemy when no entry is taken
+        (`docs/questions.md` #29).
         """
         namespace = self.namespace
         if actor is not self._actor():
             raise EngineAssemblyError(
                 f"{actor.name} was asked through an APL bound to another creature"
             )
+        if self._default_move is not None:
+            stand = next((offer for offer in offers if offer.ID == StandUp.ID), None)
+            if stand is not None:
+                return stand
         for entry in self._compiled:
             if entry.reads_target:
                 _aim(entry, namespace, offers)
@@ -514,7 +536,17 @@ def _keep(clause: MoveClause, actor: Creature) -> int | None:
 
 
 def _target_of(command: Action[Any]) -> Creature | None:
-    if isinstance(command, Attack | Stabilize | Walk):
+    if isinstance(
+        command,
+        Attack
+        | Stabilize
+        | Walk
+        | Grapple
+        | ShoveDown
+        | ShovePush
+        | EscapeGrapple
+        | ReleaseGrapple,
+    ):
         return command.target
     return None
 

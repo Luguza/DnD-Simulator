@@ -251,14 +251,24 @@ def test_execute_spends_exactly_one_reaction() -> None:
     assert (actor.economy.actions, actor.economy.bonus_actions) == (0, 0)
 
 
-def test_an_opportunity_attack_is_never_made_with_a_ranged_weapon() -> None:
-    """XPHB "Opportunity Attacks": "one melee attack". A Longbow cannot make
-    one, even at a target within 5 feet (`docs/decisions.md` § w2f2)."""
+@pytest.mark.parametrize("wielding", ["longbow", "nothing"])
+def test_an_opportunity_attack_without_a_melee_weapon_is_an_unarmed_strike(
+    wielding: str,
+) -> None:
+    """XPHB "Opportunity Attacks": "one melee attack with a weapon or an
+    Unarmed Strike". A Longbow cannot make one, so its wielder strikes
+    unarmed, as does a creature holding nothing: 15 + 3 + 2 = 20 against
+    AC 12, for 1 + 3 = 4 and no die, leaving 20 - 4 = 16 (`docs/decisions.md`
+    § w2j)."""
     seated, actor, target = _pair()
-    actor.weapon = LONGBOW
-    actor.economy.grant(ActionCost.REACTION)
+    actor.weapon = LONGBOW if wielding == "longbow" else None
+    rng = ScriptedRng([HIT])
 
-    assert not OpportunityAttack(actor, target, world=seated).is_legal()
+    result = OpportunityAttack(actor, target, world=seated).resolve(rng=rng)
+
+    assert result == AttackResult(Outcome.HIT, 4)
+    assert target.hp == HP - 4
+    assert rng.exhausted
 
 
 def test_a_thrown_melee_weapon_is_swung_not_thrown() -> None:

@@ -12,7 +12,7 @@ from dndsim.actions.attack import Attack
 from dndsim.core.log import EventLog
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
-from dndsim.creatures.stats import Weapon
+from dndsim.creatures.stats import UNARMED_STRIKE, Weapon
 from dndsim.engine.attack import (
     FRESH,
     AttackContexts,
@@ -30,11 +30,12 @@ __all__ = ["OpportunityAttack", "OpportunityAttacks"]
 
 
 class OpportunityAttack(Attack):
-    """`actor` attacks `target`, which is leaving its reach, with what it
-    wields.
+    """`actor` attacks `target`, which is leaving its reach, with the melee
+    weapon it wields, or with an Unarmed Strike when it wields none.
 
-    Refused against a creature on `actor`'s own side of `world`, and with a
-    Ranged weapon: it is a melee attack, so a Thrown melee weapon is swung.
+    Refused against a creature on `actor`'s own side of `world`. It is a melee
+    attack, so a Thrown melee weapon is swung and a Ranged weapon's wielder
+    strikes unarmed (`docs/decisions.md` § w2j).
     `resolve()` carries it out without spending the Reaction, for the
     dispatcher that spends it (`docs/decisions.md` § w2c2, § w2f2).
     """
@@ -54,8 +55,15 @@ class OpportunityAttack(Attack):
         trigger: Trigger | None = None,
         log: EventLog | None = None,
     ) -> None:
+        wielded = actor.weapon
         super().__init__(
-            actor, target, contexts=contexts, trigger=trigger, log=log, world=world
+            actor,
+            target,
+            weapon=UNARMED_STRIKE if wielded is None or wielded.ranged else wielded,
+            contexts=contexts,
+            trigger=trigger,
+            log=log,
+            world=world,
         )
 
     def _permits(self) -> bool:
