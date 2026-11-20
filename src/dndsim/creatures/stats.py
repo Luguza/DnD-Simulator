@@ -83,8 +83,8 @@ class Weapon:
 UNARMED_STRIKE: Final = Weapon(
     name="Unarmed Strike", damage=1, damage_type=DamageType.BLUDGEONING
 )
-"""XPHB "Unarmed Strike", the Damage option: 1 Bludgeoning damage, a flat a
-Critical Hit never doubles, plus the Strength modifier the attack adds."""
+"""The weapon of XPHB "Unarmed Strike"'s Damage option (`docs/decisions.md`
+§ w2j)."""
 
 
 @dataclass(frozen=True, slots=True)

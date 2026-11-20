@@ -314,8 +314,8 @@ def unarmed_options(
     for enemy in enemies:
         if enemy is actor or enemy.dead or not _adjacent(actor, enemy):
             continue
-        # Alive and within 5 feet is all `Attack` asks of a target for a weapon
-        # that is never dropped.
+        # Trap: added without asking `is_legal()`;
+        # `test_unarmed_options_are_exactly_the_legal_ones` holds the two equal.
         options.append(UnarmedStrike(actor, enemy, log=log, world=world))
         if SIZE_ORDER[enemy.size] > reach:
             continue
