@@ -27,6 +27,9 @@ PER_LEVEL_D20_PENALTY: Final = -2
 
 Negative because it is contributed to the roll like any other modifier."""
 
+PER_LEVEL_SPEED_PENALTY_FT: Final = 5
+"""The feet of Speed each Exhaustion level takes off."""
+
 
 class Exhaustion(Condition):
     """Worn down, in levels: every D20 Test is reduced, and a Long Rest removes
@@ -41,10 +44,6 @@ class Exhaustion(Condition):
 
     CONDITION = enums.Condition.EXHAUSTION
     NEEDS_HOOK = (
-        "nothing can change a creature's Speed: "
-        '"Your Speed is reduced by a number of feet equal to 5 times your '
-        'Exhaustion level." '
-        "(ROADMAP.md § The W0 debt register #47)",
         "a handler cannot ask the engine to kill its owner: "
         '"You die if your Exhaustion level is 6." '
         "(ROADMAP.md § The W0 debt register #44)",
@@ -66,6 +65,12 @@ class Exhaustion(Condition):
                 "Exhaustion(owner) assembles one."
             )
         return charges
+
+    @property
+    def speed_reduction_ft(self) -> int:
+        """ "Your Speed is reduced by a number of feet equal to 5 times your
+        Exhaustion level." """
+        return PER_LEVEL_SPEED_PENALTY_FT * self.level
 
     @hook("on_effect_applied", phase=Phase.EARLY)
     def accumulate(self, ctx: EffectContext) -> R:

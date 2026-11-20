@@ -14,7 +14,7 @@ from typing import Final
 from dndsim.core.geometry import Cell
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.economy import ActionEconomy
-from dndsim.creatures.effects import EffectStore
+from dndsim.creatures.effects import Effect, EffectStore
 from dndsim.creatures.resources import Resources
 from dndsim.creatures.stats import UNARMOURED, Armour, StatBlock, Weapon
 from dndsim.hooks.contexts import Context
@@ -27,7 +27,7 @@ from dndsim.rules.constants import (
     DEATH_SAVE_SUCCESSES_TO_STABILIZE,
     SHIELD_AC_BONUS,
 )
-from dndsim.rules.enums import Ability, Size
+from dndsim.rules.enums import Ability, Condition, Size, WeaponProperty
 
 __all__ = ["UNSEATED", "Creature"]
 
@@ -57,9 +57,12 @@ class Creature:
         "_stats",
         "crit_threshold",
         "_dead",
+        "_dropped_at",
+        "_dropped_weapon",
         "_death_save_failures",
         "_death_save_successes",
         "_stable",
+        "_unconscious",
         "dispatcher",
         "economy",
         "effects",
@@ -88,6 +91,9 @@ class Creature:
         self.name = name
         self._stats = stats
         self.weapon = weapon
+        # Moved together, and only by `drop_held()` and `pick_up_weapon()`.
+        self._dropped_weapon: Weapon | None = None
+        self._dropped_at: Cell | None = None
         self._armour = armour
         self._shield = shield
         self.position = position
@@ -108,12 +114,16 @@ class Creature:
         # Where this creature's attacks start critting; a feature that lowers
         # it sets it here (`docs/decisions.md` § w1a).
         self.crit_threshold = CRITICAL_HIT_THRESHOLD
+        # How many Unconscious effects are attached, which the Shield's bonus
+        # lapses under (`docs/decisions.md` § w2j).
+        self._unconscious = 0
         self._armour_class = self._derive_armour_class()
-        self.economy = ActionEconomy()
+        self.economy = ActionEconomy(denied=self._is_incapacitated)
         self.dispatcher = Dispatcher(economy=self.economy)
         # Trap: `UNSEATED` is a seat in the order, not a position ahead of it,
-        # so a duration anchored to a creature that sorts before it already
-        # reads as begun (debt #29).
+        # so until a sweep or a shared clock moves this store, a duration
+        # anchored to a creature that sorts before it already reads as begun
+        # (`docs/decisions.md` § w2c).
         self.effects = EffectStore(self, now=TimeKey(1, UNSEATED, TurnPhase.START))
         # Empty until the build or a feature adds pools.
         self.resources = Resources(self, stats)
@@ -142,11 +152,27 @@ class Creature:
 
     @property
     def speed_ft(self) -> int:
-        return self._stats.speed_ft
+        """Speed now: 0 while an effect sets it so, otherwise the stat block's
+        less what effects take off it, never below 0 (`docs/decisions.md`
+        § w2c)."""
+        speed = self._stats.speed_ft
+        for effect in self.effects:
+            if effect.SPEED_ZERO:
+                return 0
+            speed -= effect.speed_reduction_ft
+        return max(speed, 0)
+
+    @property
+    def incapacitated(self) -> bool:
+        """Whether an effect denies every Action, Bonus Action and Reaction."""
+        return any(effect.INCAPACITATES for effect in self.effects)
 
     @property
     def size(self) -> Size:
         return self._stats.size
+
+    def _is_incapacitated(self) -> bool:
+        return self.incapacitated
 
     def modifier(self, ability: Ability) -> int:
         """The modifier for one ability score."""
@@ -171,7 +197,8 @@ class Creature:
 
     @property
     def shield(self) -> bool:
-        """Whether a Shield is in hand, for `SHIELD_AC_BONUS`."""
+        """Whether a Shield is in hand, for `SHIELD_AC_BONUS`, which it gives
+        only while this creature is not Unconscious."""
         return self._shield
 
     @shield.setter
@@ -180,9 +207,12 @@ class Creature:
         self._armour_class = self._derive_armour_class()
 
     def _derive_armour_class(self) -> int:
-        """The one place an AC is computed; called when equipment changes."""
+        """The one place an AC is computed; called when equipment changes and
+        when the Unconscious condition is attached or detached."""
         armour_class = self._armour.armour_class(self._stats)
-        return armour_class + SHIELD_AC_BONUS if self._shield else armour_class
+        if self._shield and not self._unconscious:
+            return armour_class + SHIELD_AC_BONUS
+        return armour_class
 
     # -- what changes during a fight ------------------------------------------
 
@@ -194,6 +224,59 @@ class Creature:
         (`docs/decisions.md` § w1d).
         """
         return 5 if self.weapon is None else self.weapon.reach_ft
+
+    @property
+    def hands_held(self) -> int:
+        """How many hands what this creature holds fills: a Two-Handed weapon
+        two, any other weapon one, a Shield one. A grapple is held by an
+        effect, not here (`docs/decisions.md` § w2j)."""
+        weapon = self.weapon
+        if weapon is None:
+            held = 0
+        elif weapon.has(WeaponProperty.TWO_HANDED):
+            held = 2
+        else:
+            held = 1
+        return held + 1 if self._shield else held
+
+    @property
+    def dropped_weapon(self) -> Weapon | None:
+        """What `drop_held()` let go of, until `pick_up_weapon()` takes it
+        back."""
+        return self._dropped_weapon
+
+    @property
+    def dropped_at(self) -> Cell | None:
+        """The square `dropped_weapon` fell in."""
+        return self._dropped_at
+
+    def drop_held(self) -> None:
+        """Drop the wielded weapon where this creature stands. Holding nothing
+        drops nothing; a Shield is worn, not held (`docs/decisions.md` § w2b).
+        """
+        weapon = self.weapon
+        if weapon is None:
+            return
+        self._dropped_weapon = weapon
+        self._dropped_at = self.position
+        self.weapon = None
+
+    def pick_up_weapon(self) -> None:
+        """Wield the weapon this creature dropped again.
+
+        Raises `ValueError` when it dropped nothing or is wielding another.
+        """
+        weapon = self._dropped_weapon
+        if weapon is None:
+            raise ValueError(f"{self.name} has dropped nothing to pick up")
+        if self.weapon is not None:
+            raise ValueError(
+                f"{self.name} is wielding {self.weapon.name} and cannot pick up "
+                f"{weapon.name} as well"
+            )
+        self.weapon = weapon
+        self._dropped_weapon = None
+        self._dropped_at = None
 
     @property
     def is_alive(self) -> bool:
@@ -279,10 +362,16 @@ class Creature:
                 "hook Scope exists to make impossible to get wrong."
             )
         self.dispatcher.attach(source)
+        if isinstance(source, Effect) and source.CONDITION is Condition.UNCONSCIOUS:
+            self._unconscious += 1
+            self._armour_class = self._derive_armour_class()
 
     def detach(self, source: HookSource) -> None:
         """Remove a source — an effect expiring, an item unequipped."""
         self.dispatcher.detach(source)
+        if isinstance(source, Effect) and source.CONDITION is Condition.UNCONSCIOUS:
+            self._unconscious -= 1
+            self._armour_class = self._derive_armour_class()
 
     def dispatch(self, spec: HookSpec, ctx: Context) -> None:
         """Run this creature's handlers for `spec` over `ctx`; a hook nothing

@@ -21,10 +21,8 @@ class Petrified(Incapacitated):
     __slots__ = ()
 
     CONDITION = enums.Condition.PETRIFIED
+    SPEED_ZERO = True
     NEEDS_HOOK = (
-        "nothing can change a creature's Speed: "
-        '"Your Speed is 0 and can\'t increase." '
-        "(ROADMAP.md § The W0 debt register #47)",
         "SaveResolvedContext has succeed() and no counterpart, so a save "
         'cannot be made to fail: "You automatically fail Strength and '
         'Dexterity saving throws." '

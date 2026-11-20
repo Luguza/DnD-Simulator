@@ -103,8 +103,8 @@ def test_the_dc_follows_the_proficiency_table_rather_than_a_fixed_bonus() -> Non
     assert save_dc(creature(level=1), Ability.CHARISMA) == 14
 
 
-def test_a_save_adds_the_ability_modifier_and_no_proficiency_yet() -> None:
-    """Dexterity 14 is +2, with no proficiency added (debt #36)."""
+def test_a_save_not_proficient_adds_the_ability_modifier_alone() -> None:
+    """Dexterity 14 is +2; this creature is proficient in no save."""
     assert save_bonus(creature(), DEX) == 2
     assert save_bonus(creature(), Ability.STRENGTH) == 0
 
@@ -493,7 +493,8 @@ def test_an_effect_queued_by_a_save_hook_lands_on_the_saver() -> None:
 
 
 def test_the_repeat_save_timing_is_an_enum_and_not_a_string_literal() -> None:
-    """`SaveRepeat` has exactly the two repeat-save timings (debt #35)."""
+    """`SaveRepeat` has exactly the two repeat-save timings (`docs/decisions.md`
+    § w2c)."""
     assert {timing.value for timing in SaveRepeat} == {"turn_end", "turn_start"}
     assert len(SaveRepeat) == 2
 

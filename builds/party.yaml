@@ -1,0 +1,3 @@
+# Two members, who retreat once both are down.
+members: [fighter_gwm_l5.yaml, rogue_l3.yaml]
+retreat_when: "allies.down >= 2"

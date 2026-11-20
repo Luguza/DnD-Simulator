@@ -178,7 +178,8 @@ class SaveOutcome(Enum):
 
 @unique
 class SaveRepeat(Enum):
-    """When a save-ends effect offers its save again (debt #35)."""
+    """When a save-ends effect offers its save again (`docs/decisions.md`
+    § w1g, § w2c)."""
 
     TURN_END = "turn_end"
     TURN_START = "turn_start"

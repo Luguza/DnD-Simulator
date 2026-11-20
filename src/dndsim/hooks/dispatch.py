@@ -1,16 +1,19 @@
 """The dispatcher: a per-creature table of handlers, run in order over one context.
 
-The table is sorted at `attach()` and `dispatch()` walks a tuple; `attach()` and
-`detach()` build new tuples, so an effect applied mid-hook never joins the
-dispatch that applied it. Nothing is spent by a handler that declined:
-`once_per` and `costs` are paid only on `APPLIED`. The dispatcher stamps
-provenance before each handler and restores the stamp it found afterwards.
+The table is kept sorted by `attach()` and `detach()`, which touch only the hooks
+the source has handlers on, and `dispatch()` walks a tuple. Both build new
+tuples, so an effect applied mid-hook never joins the dispatch that applied it.
+Nothing is spent by a handler that declined: `once_per` and `costs` are paid
+only on `APPLIED`. The dispatcher stamps provenance before each handler and
+restores the stamp it found afterwards.
 
 It does not drain `ctx.pending_effects` or `close()` the context; the engine
 that owns the event does both, once (`docs/decisions.md` § w0g).
 """
 
+from bisect import insort
 from collections.abc import Callable
+from operator import attrgetter
 from typing import Final, Protocol
 
 from dndsim.core.errors import EngineAssemblyError, FeatureContractError
@@ -26,6 +29,7 @@ __all__ = ["BoundHandler", "Dispatcher", "Economy", "Gate"]
 _APPLIED: Final = HookResult.APPLIED
 _SKIPPED: Final = HookResult.SKIPPED
 _VETO_PHASES: Final = frozenset({Phase.EARLY, Phase.FINAL})
+_SORT_KEY: Final = attrgetter("sort_key")
 
 
 class Economy(Protocol):
@@ -64,6 +68,7 @@ class BoundHandler:
         "order",
         "phase",
         "sequence",
+        "sort_key",
         "source",
         "source_id",
         "spec",
@@ -92,10 +97,8 @@ class BoundHandler:
         )
         # `APPLIED` returns, for DESIGN.md § No-op detector.
         self.applied = 0
-
-    def sort_key(self) -> tuple[int, int, int]:
-        """Phase band, then declared order, then attachment sequence."""
-        return (self.phase.value, self.order, self.sequence)
+        # Phase band, then declared order, then attachment sequence.
+        self.sort_key = (handler.phase.value, handler.order, sequence)
 
     def __repr__(self) -> str:
         return f"<{self.source_id}.{self.handler.name} on {self.spec.name}>"
@@ -159,17 +162,33 @@ class Dispatcher:
             )
         self._sequence += 1
         sequence = self._sequence
-        self._bound[source] = tuple(
+        bound_handlers = tuple(
             BoundHandler(source, handler, sequence) for handler in source.HANDLERS
         )
-        self._rebuild()
+        self._bound[source] = bound_handlers
+        table = self._table
+        grouped: dict[HookSpec, list[BoundHandler]] = {}
+        for bound in bound_handlers:
+            grouped.setdefault(bound.spec, []).append(bound)
+        for spec, bounds in grouped.items():
+            merged = list(table.get(spec, ()))
+            for bound in bounds:
+                # Right of equal keys: one source's handlers on one hook keep
+                # their declared order.
+                insort(merged, bound, key=_SORT_KEY)
+            table[spec] = tuple(merged)
 
     def detach(self, source: HookSource) -> None:
         """Remove a source's handlers — an effect expiring, an item unequipped."""
         if source not in self._bound:
             raise ValueError(f"{source!r} is not attached to this dispatcher")
-        del self._bound[source]
-        self._rebuild()
+        table = self._table
+        for spec in {bound.spec for bound in self._bound.pop(source)}:
+            kept = tuple(bound for bound in table[spec] if bound.source is not source)
+            if kept:
+                table[spec] = kept
+            else:
+                del table[spec]
 
     def sources(self) -> tuple[HookSource, ...]:
         """Everything attached, in attachment order."""
@@ -287,14 +306,3 @@ class Dispatcher:
             # `_permits()` already refused a cost with no economy; the second
             # test is for the type checker.
             self._economy.spend(cost)
-
-    def _rebuild(self) -> None:
-        """Re-sort the table into fresh tuples, leaving any in flight untouched."""
-        grouped: dict[HookSpec, list[BoundHandler]] = {}
-        for bound_handlers in self._bound.values():
-            for bound in bound_handlers:
-                grouped.setdefault(bound.spec, []).append(bound)
-        self._table = {
-            spec: tuple(sorted(bounds, key=BoundHandler.sort_key))
-            for spec, bounds in grouped.items()
-        }
