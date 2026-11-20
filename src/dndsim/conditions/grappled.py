@@ -19,6 +19,14 @@ class Grappled(SourcedCondition):
     CONDITION = enums.Condition.GRAPPLED
     STACKING = Stacking.UNIQUE_PER_SOURCE
     SPEED_ZERO = True
+    APPROXIMATED = (
+        "a grappler that dies without gaining a condition, as a creature that "
+        "makes no death saves does at 0 hit points, holds on until the held "
+        "creature's next turn starts or either moves, where its grapple should "
+        'end with it: "the condition also ends if the grappler has the '
+        'Incapacitated condition" covers only the living '
+        "(ROADMAP.md § The W0 debt register #78)",
+    )
     NEEDS_HOOK = (
         'nothing moves a creature with another creature: "The grappler can '
         "drag or carry you when it moves, but every foot of movement costs it "

@@ -6655,7 +6655,8 @@ death. A monster reduced to 0 hit points dies with no condition gained, so no
 hook hears a grappler die; asked at the held creature's own turn, it moves
 that turn. Between the death and that turn it is still Grappled, which
 matters only to an opportunity attack it makes against someone else: one roll
-at Disadvantage that should not have it.
+at Disadvantage that should not have it. Grappled declares it `APPROXIMATED`, and debt #78
+holds it for `w2j2`.
 
 ### The escape's ability check
 
