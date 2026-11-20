@@ -267,9 +267,10 @@ def test_a_seated_roller_writes_its_initiative_to_the_log() -> None:
 
 
 def test_a_turn_offers_every_command_it_can_pay_for_in_a_fixed_order() -> None:
-    """One Attack per enemy in reach, in seating order, then Dodge, Disengage
-    and Dash. An ally that is not dying is not offered a Stabilize, and
-    nothing was dropped to pick up."""
+    """One Attack per enemy in reach, in seating order, then the Unarmed
+    Strike's options against each, then Dodge, Disengage and Dash. The
+    Greatsword fills both hands, so no Grapple; an ally that is not dying is
+    not offered a Stabilize, and nothing was dropped to pick up."""
     fighter = creature("fighter")
     ally = creature("ally", cell=Cell(0, 1))
     orc = creature("orc", cell=EAST)
@@ -279,7 +280,14 @@ def test_a_turn_offers_every_command_it_can_pay_for_in_a_fixed_order() -> None:
     )
     fighter.economy.turn_started(fighter.speed_ft)
     offered = offers(seated, fighter)
-    assert ids(offered) == ["attack", "attack", "dodge", "disengage", "dash"]
+    assert ids(offered) == [
+        "attack",
+        "attack",
+        *("unarmed_strike", "shove_prone", "shove_push") * 2,
+        "dodge",
+        "disengage",
+        "dash",
+    ]
     assert [getattr(one, "target", None) for one in offered[:2]] == [orc, goblin]
 
 
@@ -588,7 +596,18 @@ def test_a_bonus_action_spent_never_starves_the_action() -> None:
 
     assert focus.taken == 1
     assert policy.calls == [
-        ("fighter", ["attack", "dodge", "disengage", "dash"]),
+        (
+            "fighter",
+            [
+                "attack",
+                "unarmed_strike",
+                "shove_prone",
+                "shove_push",
+                "dodge",
+                "disengage",
+                "dash",
+            ],
+        ),
         ("fighter", []),
     ]
     assert goblin.hp == 10
@@ -616,8 +635,31 @@ def test_the_loop_re_polls_after_every_command() -> None:
     assert take_turn(seated, fighter, 1, policy=policy, rng=rng) == 2
 
     assert policy.calls == [
-        ("fighter", ["dodge", "disengage", "dash", "pick_up_weapon"]),
-        ("fighter", ["attack", "dodge", "disengage", "dash"]),
+        (
+            "fighter",
+            [
+                "unarmed_strike",
+                "grapple",
+                "shove_prone",
+                "shove_push",
+                "dodge",
+                "disengage",
+                "dash",
+                "pick_up_weapon",
+            ],
+        ),
+        (
+            "fighter",
+            [
+                "attack",
+                "unarmed_strike",
+                "shove_prone",
+                "shove_push",
+                "dodge",
+                "disengage",
+                "dash",
+            ],
+        ),
         ("fighter", []),
     ]
     assert fighter.weapon is GREATSWORD
@@ -655,7 +697,20 @@ def test_a_turn_ends_when_the_policy_declines() -> None:
     seated, fighter, _ = duel()
     policy = Recorder()
     assert take_turn(seated, fighter, 1, policy=policy, rng=no_dice()) == 0
-    assert policy.calls == [("fighter", ["attack", "dodge", "disengage", "dash"])]
+    assert policy.calls == [
+        (
+            "fighter",
+            [
+                "attack",
+                "unarmed_strike",
+                "shove_prone",
+                "shove_push",
+                "dodge",
+                "disengage",
+                "dash",
+            ],
+        )
+    ]
     assert fighter.economy.actions == 1
 
 
@@ -700,7 +755,19 @@ def test_a_repeat_save_ends_the_effect_on_a_success_at_its_boundary(
 
     take_turn(seated, fighter, 1, policy=policy, rng=rng)
 
-    offered = ["attack", "dodge", "disengage", "dash"] if acts else []
+    offered = (
+        [
+            "attack",
+            "unarmed_strike",
+            "shove_prone",
+            "shove_push",
+            "dodge",
+            "disengage",
+            "dash",
+        ]
+        if acts
+        else []
+    )
     assert policy.calls == [("fighter", offered)]
     assert (stun in list(fighter.effects)) is not ends
     outcome = SaveOutcome.SUCCESS if ends else SaveOutcome.FAILURE
@@ -1203,7 +1270,17 @@ def test_offers_end_with_a_move_toward_each_enemy_out_of_reach() -> None:
 
     offered = offers(seated, fighter)
 
-    assert ids(offered) == ["attack", "dodge", "disengage", "dash", "move", "move"]
+    assert ids(offered) == [
+        "attack",
+        "unarmed_strike",
+        "shove_prone",
+        "shove_push",
+        "dodge",
+        "disengage",
+        "dash",
+        "move",
+        "move",
+    ]
     assert [getattr(one, "target", None) for one in offered[-2:]] == [far, near]
 
 

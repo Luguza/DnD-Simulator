@@ -23,6 +23,8 @@ from dndsim.actions.dodge import Dodge
 from dndsim.actions.move import Move, Walk
 from dndsim.actions.pick_up import PickUpWeapon
 from dndsim.actions.stabilize import Stabilize
+from dndsim.actions.stand_up import StandUp
+from dndsim.actions.unarmed import endings, loosen_grapples, unarmed_options
 from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.rng import Rng
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
@@ -119,20 +121,29 @@ def roll_initiative(creature: Creature, *, rng: Rng) -> InitiativeKey:
 def offers(world: World, actor: Creature) -> list[Action[Any]]:
     """Every Command `actor` could take now and pay for, in a fixed order.
 
-    Built from the six in `actions/` and a `Move` toward each enemy against
-    the roster, then filtered by `is_legal()`. Spends nothing.
+    Built from the Commands in `actions/` against the roster — the Unarmed
+    Strike's options against each enemy, an escape from each grapple `actor`
+    is held in and a release of each it holds — then filtered by
+    `is_legal()`. Spends nothing.
     """
     log = world.log
     enemies = enemies_of(world, actor)
     candidates: list[Action[Any]] = [
         Attack(actor, enemy, log=log, world=world) for enemy in enemies
     ]
+    attacks = len(candidates)
     candidates.extend(Stabilize(actor, ally) for ally in allies_of(world, actor))
     candidates.extend(
         (Dodge(actor), Disengage(actor), Dash(actor), PickUpWeapon(actor))
     )
+    candidates.extend(endings(world, actor))
+    candidates.append(StandUp(actor))
     candidates.extend(Move(actor, enemy, world=world) for enemy in enemies)
-    return [command for command in candidates if command.is_legal()]
+    offered = [command for command in candidates[:attacks] if command.is_legal()]
+    # Already asked: `unarmed_options()` returns only the legal ones.
+    offered.extend(unarmed_options(world, actor, enemies))
+    offered.extend(command for command in candidates[attacks:] if command.is_legal())
+    return offered
 
 
 def take_turn(
@@ -157,6 +168,9 @@ def take_turn(
         log.write((TURN_START, round_number, creature.name))
     for other in world:
         other.dispatcher.resets.turn_started(own=other is creature)
+    # Before the economy, which reads Speed: a grapple whose grappler died
+    # since leaves the turn its movement.
+    loosen_grapples(world, creature)
     # Both saves before the economy, which reads Speed: a Speed-0 condition
     # saved off, or a death save that wakes the creature, leaves the turn its
     # full movement.

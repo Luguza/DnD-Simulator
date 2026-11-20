@@ -31,10 +31,21 @@ from dndsim.actions.move import Move, Retreat, Walk
 from dndsim.actions.opportunity_attack import OpportunityAttack
 from dndsim.actions.pick_up import PickUpWeapon
 from dndsim.actions.stabilize import Stabilize
+from dndsim.actions.stand_up import StandUp
+from dndsim.actions.unarmed import (
+    EscapeGrapple,
+    Grapple,
+    Grappling,
+    ReleaseGrapple,
+    ShoveDown,
+    ShovePush,
+    UnarmedStrike,
+)
 from dndsim.conditions.grappled import Grappled
 from dndsim.conditions.incapacitated import Incapacitated
 from dndsim.conditions.paralyzed import Paralyzed
 from dndsim.conditions.petrified import Petrified
+from dndsim.conditions.prone import Prone
 from dndsim.conditions.restrained import Restrained
 from dndsim.conditions.stunned import Stunned
 from dndsim.conditions.unconscious import Unconscious
@@ -47,7 +58,7 @@ from dndsim.creatures.economy import ActionEconomy
 from dndsim.creatures.effects import Effect, EffectStore
 from dndsim.creatures.resources import Recovery, Resources, ResourceSpec
 from dndsim.creatures.stats import StatBlock, Weapon
-from dndsim.engine import attack, damage, dying, healing, saves
+from dndsim.engine import attack, d20, damage, dying, healing, saves
 from dndsim.engine.damage import resolve_damage
 from dndsim.engine.dying import MEDICINE, STABILIZE_DC
 from dndsim.engine.saves import saving_throw
@@ -63,9 +74,10 @@ from dndsim.rules.enums import (
     Outcome,
     RecoveryTrigger,
     SaveOutcome,
+    Size,
     WeaponProperty,
 )
-from weapon_fixtures import GREATSWORD
+from weapon_fixtures import DAGGER, GREATSWORD
 
 SCORES: Final = MappingProxyType(
     {
@@ -725,6 +737,64 @@ def _incapacitated(subject: Creature) -> Creature:
     return subject
 
 
+def _in_world(*creatures: Creature) -> World:
+    """The first creature on one side, every other on the other."""
+    seated = World()
+    for index, subject in enumerate(creatures):
+        seated.seat(subject, "heroes" if index == 0 else "monsters")
+    return seated
+
+
+def _option(
+    cls: type[Grapple | ShoveDown | ShovePush],
+    actor: Creature,
+    target: Creature,
+    *others: Creature,
+) -> Grapple | ShoveDown | ShovePush:
+    return cls(actor, target, world=_in_world(actor, target, *others))
+
+
+def _sized(size: Size, cell: Cell = EAST) -> Creature:
+    return Creature(
+        name="big",
+        stats=StatBlock(abilities=SCORES, max_hp=HP, size=size),
+        position=cell,
+    )
+
+
+def _shielded(subject: Creature) -> Creature:
+    subject.shield = True
+    return subject
+
+
+def _holding(grappler: Creature, target: Creature) -> Creature:
+    """`grappler` holding `target`, by the two effects a landed Grapple
+    applies."""
+    target.effects.apply(Grappled(target, caster=grappler))
+    grappler.effects.apply(Grappling(grappler, target=target, escape_dc=13))
+    return grappler
+
+
+def _held(target: Creature, grappler: Creature) -> Creature:
+    _holding(grappler, target)
+    return target
+
+
+def _prone(subject: Creature) -> Creature:
+    subject.effects.apply(Prone(subject))
+    return subject
+
+
+def _unconscious(subject: Creature) -> Creature:
+    subject.effects.apply(Unconscious(subject))
+    return subject
+
+
+def _walked(subject: Creature, feet: int) -> Creature:
+    subject.economy.move(feet)
+    return subject
+
+
 SCENARIOS: Final[dict[type[Action[Any]], tuple[tuple[str, Build, bool], ...]]] = {
     Attack: (
         ("legal", lambda: Attack(ready(fighter()), goblin()), True),
@@ -822,7 +892,7 @@ SCENARIOS: Final[dict[type[Action[Any]], tuple[tuple[str, Build, bool], ...]]] =
         ),
         ("reaction-spent", lambda: _opportunity(_reacted(fighter()), goblin()), False),
         ("out-of-reach", lambda: _opportunity(fighter(), goblin(TWO_EAST)), False),
-        ("no-weapon", lambda: _opportunity(fighter(weapon=None), goblin()), False),
+        ("no-weapon", lambda: _opportunity(fighter(weapon=None), goblin()), True),
         (
             "incapacitated",
             lambda: _opportunity(_incapacitated(fighter()), goblin()),
@@ -907,6 +977,214 @@ SCENARIOS: Final[dict[type[Action[Any]], tuple[tuple[str, Build, bool], ...]]] =
         ("dead-actor", lambda: PickUpWeapon(_dropped(_dead_actor())), False),
         ("down-actor", lambda: PickUpWeapon(_downed_actor()), False),
     ),
+    UnarmedStrike: (
+        ("legal", lambda: UnarmedStrike(ready(fighter()), goblin()), True),
+        (
+            "weaponless",
+            lambda: UnarmedStrike(ready(fighter(weapon=None)), goblin()),
+            True,
+        ),
+        (
+            "weapon-dropped",
+            lambda: UnarmedStrike(_dropped(ready(fighter())), goblin()),
+            True,
+        ),
+        ("no-action", lambda: UnarmedStrike(fighter(), goblin()), False),
+        (
+            "ten-feet",
+            lambda: UnarmedStrike(ready(fighter()), goblin(TWO_EAST)),
+            False,
+        ),
+        (
+            "dead-target",
+            lambda: UnarmedStrike(ready(fighter()), _dead(goblin())),
+            False,
+        ),
+        (
+            "incapacitated",
+            lambda: UnarmedStrike(_incapacitated(ready(fighter())), goblin()),
+            False,
+        ),
+    ),
+    Grapple: (
+        (
+            "legal",
+            lambda: _option(Grapple, ready(fighter(weapon=None)), goblin()),
+            True,
+        ),
+        (
+            "one-handed-weapon",
+            lambda: _option(Grapple, ready(fighter(weapon=DAGGER)), goblin()),
+            True,
+        ),
+        (
+            "weapon-and-shield",
+            lambda: _option(
+                Grapple, _shielded(ready(fighter(weapon=DAGGER))), goblin()
+            ),
+            False,
+        ),
+        (
+            "two-handed",
+            lambda: _option(Grapple, ready(fighter()), goblin()),
+            False,
+        ),
+        (
+            "holding-it-already",
+            lambda: (
+                lambda target: _option(
+                    Grapple, _holding(ready(fighter(weapon=None)), target), target
+                )
+            )(goblin()),
+            False,
+        ),
+        (
+            "second-hand",
+            lambda: (
+                lambda held: _option(
+                    Grapple,
+                    _holding(ready(fighter(weapon=None)), held),
+                    goblin(),
+                    held,
+                )
+            )(goblin(NORTHEAST)),
+            True,
+        ),
+        (
+            "large",
+            lambda: _option(Grapple, ready(fighter(weapon=None)), _sized(Size.LARGE)),
+            True,
+        ),
+        (
+            "huge",
+            lambda: _option(Grapple, ready(fighter(weapon=None)), _sized(Size.HUGE)),
+            False,
+        ),
+        (
+            "ten-feet",
+            lambda: _option(Grapple, ready(fighter(weapon=None)), goblin(TWO_EAST)),
+            False,
+        ),
+        (
+            "no-action",
+            lambda: _option(Grapple, fighter(weapon=None), goblin()),
+            False,
+        ),
+    ),
+    ShoveDown: (
+        ("legal", lambda: _option(ShoveDown, ready(fighter()), goblin()), True),
+        (
+            "huge",
+            lambda: _option(ShoveDown, ready(fighter()), _sized(Size.HUGE)),
+            False,
+        ),
+        (
+            "ten-feet",
+            lambda: _option(ShoveDown, ready(fighter()), goblin(TWO_EAST)),
+            False,
+        ),
+        ("no-action", lambda: _option(ShoveDown, fighter(), goblin()), False),
+        ("dead-actor", lambda: _option(ShoveDown, _dead_actor(), goblin()), False),
+    ),
+    ShovePush: (
+        ("legal", lambda: _option(ShovePush, ready(fighter()), goblin()), True),
+        (
+            "square-taken",
+            lambda: _option(ShovePush, ready(fighter()), goblin(), goblin(TWO_EAST)),
+            False,
+        ),
+        (
+            "huge",
+            lambda: _option(ShovePush, ready(fighter()), _sized(Size.HUGE)),
+            False,
+        ),
+        ("no-action", lambda: _option(ShovePush, fighter(), goblin()), False),
+    ),
+    EscapeGrapple: (
+        (
+            "legal",
+            lambda: (
+                lambda grappler: EscapeGrapple(
+                    _held(ready(goblin()), grappler), grappler
+                )
+            )(fighter(weapon=None)),
+            True,
+        ),
+        (
+            "not-held",
+            lambda: EscapeGrapple(ready(goblin()), fighter(weapon=None)),
+            False,
+        ),
+        (
+            "held-by-another",
+            lambda: EscapeGrapple(
+                _held(ready(goblin()), fighter("other", weapon=None)),
+                fighter(weapon=None),
+            ),
+            False,
+        ),
+        (
+            "no-action",
+            lambda: (
+                lambda grappler: EscapeGrapple(_held(goblin(), grappler), grappler)
+            )(fighter(weapon=None)),
+            False,
+        ),
+    ),
+    ReleaseGrapple: (
+        (
+            "legal",
+            lambda: (
+                lambda target: ReleaseGrapple(
+                    _holding(fighter(weapon=None), target), target
+                )
+            )(goblin()),
+            True,
+        ),
+        (
+            "not-held",
+            lambda: ReleaseGrapple(fighter(weapon=None), goblin()),
+            False,
+        ),
+        (
+            "dead-actor",
+            lambda: (
+                lambda target: ReleaseGrapple(_holding(_dead_actor(), target), target)
+            )(goblin()),
+            False,
+        ),
+    ),
+    StandUp: (
+        ("legal", lambda: StandUp(_prone(ready(fighter()))), True),
+        (
+            "half-left",
+            lambda: StandUp(_walked(_prone(ready(fighter())), 15)),
+            True,
+        ),
+        (
+            "short",
+            lambda: StandUp(_walked(_prone(ready(fighter())), 20)),
+            False,
+        ),
+        (
+            "incapacitated",
+            lambda: StandUp(_incapacitated(_prone(ready(fighter())))),
+            True,
+        ),
+        ("standing", lambda: StandUp(ready(fighter())), False),
+        ("speed-zero", lambda: StandUp(_prone(ready(fighter(speed=0)))), False),
+        (
+            "grappled",
+            lambda: StandUp(_held(_prone(ready(fighter())), goblin())),
+            False,
+        ),
+        (
+            "unconscious",
+            lambda: (lambda subject: StandUp(subject))(_unconscious(ready(fighter()))),
+            False,
+        ),
+        ("dead-actor", lambda: StandUp(_prone(_dead_actor())), False),
+    ),
 }
 """Every concrete action in legal and illegal states, with what `is_legal()`
 should answer in each."""
@@ -965,6 +1243,7 @@ dispatch is among them: handlers spend from the economy."""
 
 ENGINE_CALLS: Final = (
     attack.resolve_attack,
+    d20.ability_check,
     damage.resolve_damage,
     dying.stabilize,
     dying.death_save,

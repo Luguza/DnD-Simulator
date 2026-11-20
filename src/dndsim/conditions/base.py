@@ -34,7 +34,10 @@ class Condition(Effect):
 
     `STACKING` is `Effect`'s inherited `REFRESH`, which is the glossary's "A
     condition doesn't stack with itself; a recipient either has a condition or
-    doesn't. The Exhaustion condition is an exception to that rule."
+    doesn't. The Exhaustion condition is an exception to that rule." A
+    condition held once per imposer declares `UNIQUE_PER_SOURCE` instead, as
+    Grappled does; the store still announces the condition once
+    (`docs/decisions.md` § w2j).
     """
 
     __slots__ = ()

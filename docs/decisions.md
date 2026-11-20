@@ -4917,6 +4917,8 @@ Sources: `ROADMAP.md` `w2c`, § The W0 debt register #29, #30, #35, #41, #47,
 § The APL; XPHB "Combat", "Initiative", Rules Glossary "Incapacitated",
 "Speed".
 
+**The owner's answer to `docs/questions.md` #17** (2026-11-04, recorded by `w2j`): one predefined order is wanted for what happens at the same moment, chosen from concrete examples. The repeat save first stands until #30, which re-asks it with one, is answered.
+
 ## The `w2c` merge conflict
 
 PR #62 sat for hours with no CI and no review after its hold was cleared
@@ -5015,6 +5017,9 @@ register alone.
 
 Sources: `ROADMAP.md` `w2d`, debt #36, #59; DESIGN.md § The target dummy,
 § Failing loudly; § w1a, § w1e.
+
+**The owner's answer to `docs/questions.md` #18** (2026-11-04, recorded by `w2j`): a question back — why the dummy has Legendary Resistance. It has none by default (`legendary_resistances: 0`); the knob lets it stand in for a boss. The choice stands.
+
 ## w2c2 — the walk and the opportunity attack
 
 **A creature can now walk in a fight, and be hit for leaving.** The turn loop
@@ -5209,6 +5214,8 @@ Sources: `ROADMAP.md` `w2c2`, § The W0 debt register #18–#22, #26, #28, #34,
 § Reactions in the APL, § The APL, § Module layout; XPHB "Combat" ->
 Opportunity Attacks, "Movement and Position", "Actions" -> Disengage; Rules
 Glossary "Frightened", "Prone".
+
+**The owner's answer to `docs/questions.md` #19** (2026-11-04, recorded by `w2j`): A, no step closes in. Confirms the choice taken.
 
 ## The `w2a` spec correction — the engine halves move to `w2f`
 
@@ -5496,6 +5503,8 @@ was cleared by a single push once the owner said to; `w2c2` (#66) and `w2d`
 - **Not proposed:** a check on `docs/questions.md` numbers being reused. `w2d`
   took #18 after `w2c`'s process row left it, which made one pointer in § w2c
   ambiguous; it has happened once and the pointer is fixed.
+
+**The owner's answer to `docs/questions.md` #20** (2026-11-04, recorded by `w2j`): A, CI fetches the pinned copy and runs the import test on every change. A workflow edit, so it is the owner's to merge; debt #77 holds it.
 
 ## w2e — the APL, compiled
 
@@ -5796,6 +5805,8 @@ before its economy and route, for the turns that start in reach. It read
 0.927 (0.905–0.961) on `--no-provoking`, inside the span above, and 0.954
 (0.929–0.972) on provoking, where every mover not yet in reach pays the extra
 question.
+
+**The owner's answers to `docs/questions.md` #21–#23** (2026-11-04, recorded by `w2j`): A each — the normal range, as far as it can get, and always. Each confirms the choice taken.
 
 ## The `w2f2` spec correction — the data CI lacks, the column, and the world
 
@@ -6573,3 +6584,145 @@ Sources: `ROADMAP.md` `w2j`, `w2j2`, `w2k`, `w2g`, § The W0 debt register #20,
 #57, #60–#62; § w1a, § w2c2, § w2e, § The W2 mid-wave review; XPHB "Unarmed
 Strike", "Grappling", "Difficult Terrain", "Opportunity Attacks", Rules Glossary
 "Grappled", "Prone"; `docs/questions.md` #15, #28, #29.
+
+## w2j — the Unarmed Strike's options, ending a grapple, standing up, and the Shield
+
+Debts #61 and #62 retire, and #57 narrows to the drag `w2j2` owns. The row is
+the contract; what follows is why the code took the shape it did.
+
+### The Damage option is an `Attack` with a fixed weapon
+
+`UNARMED_STRIKE` is a `Weapon` whose damage is the flat 1 (§ w2f2), so a
+Critical Hit has nothing to double, and which is neither Finesse nor Ranged,
+so `attack_ability()` already picks Strength. `UnarmedStrike` subclasses
+`Attack` rather than standing beside it: `_pick()` hands an `Attack` the
+policy's `trigger` root and `_target_of()` reads its `target`, and both then
+hold for the strike with no new branch. Every creature's proficiency is
+written into `StatBlock.trained_weapons` at construction, `None` still meaning
+every weapon, so `resolve_attack()`'s training read adds the bonus and
+`engine/attack.py` is not edited (§ The `w2j` spec correction).
+
+An opportunity attack picks its weapon when the reaction is built: the melee
+weapon in hand, else the Unarmed Strike. Building it then is what makes a
+dropped weapon, or a bow, fall back without a second legality branch. It is the Damage option only: a
+Grapple or Shove made as an opportunity attack is declared in
+`OpportunityAttack`'s docstring and not offered, and debt #76 owns it
+(§ The `w2j` spec correction).
+
+### Grapple and Shove are one save under one base
+
+The DC is `save_dc(actor, Ability.STRENGTH)`, which is 8 plus the Proficiency
+Bonus plus the Strength modifier, the text's number exactly. The save is the
+one with the better `save_bonus()`, `max()` keeping the first of equals, so
+Strength wins a tie (`docs/questions.md` #28).
+
+The push is one square along the compass direction, of the eight, nearest
+the line from the shover's centre to the target's: a Large target mostly
+beside a Medium shover goes straight back, not diagonally because the centres
+differ a little on the other axis. Centres are compared doubled, so a
+footprint two squares wide stays on integers. A square anyone stands in refuses the
+offer rather than turning it into a Prone (§ The `w2j` spec correction).
+
+The Prone option is the class `ShoveDown`, id `shove_prone`: `engine/turn.py`
+imports it, and `test_no_condition_is_named_anywhere_in_the_engine` reads
+`engine/` for a condition's name (§ w2c).
+
+### A grapple is two effects
+
+`Grappled` on the target and `Grappling` on the grappler. The grappler's half
+is needed three ways: it fills the hand (XPHB "Grappling", One Grapple per
+Hand), it keeps the escape DC from the moment of the grapple (the text makes
+it equal to the save DC, not to whatever the grappler's Strength is later),
+and it hears the grappler gain a condition. `on_condition_gained` is SELF, so
+only a source attached to the grappler hears it become Incapacitated.
+
+`Grappled` stacks `UNIQUE_PER_SOURCE`: under `REFRESH` a second grappler's
+application would be absorbed by the first's, keeping the first `caster`, and
+the first grappler letting go would free a creature the second still holds.
+The store announces the condition once and its loss once, whichever comes
+first or last (§ w2b).
+
+`Creature.hands_held` counts what a creature holds — a weapon, a Shield — and
+`grips()` adds the grapples. The two are kept apart so `creatures/` imports
+nothing from `actions/` or `conditions/`. `grips()` counts only a grapple
+whose target still holds the matching `Grappled`, so a `Grappled` ended by
+anything else frees the hand without a hook to say so.
+
+The endings nobody chooses are asked in `loosen_grapples()`: after every walk
+(`Walk._perform()`, which `Move` and `Retreat` share), after every push, and
+at the start of every turn before the economy reads Speed. The last is for
+death. A monster reduced to 0 hit points dies with no condition gained, so no
+hook hears a grappler die; asked at the held creature's own turn, it moves
+that turn. Between the death and that turn it is still Grappled, which
+matters only to an opportunity attack it makes against someone else: one roll
+at Disadvantage that should not have it. Grappled declares it `APPROXIMATED`, and debt #78
+holds it for `w2j2`.
+
+### The escape's ability check
+
+The stabilise's Medicine check was the only ability check, written inline in
+`engine/dying.py`. The escape is the second, so the sequence moved to
+`engine/d20.py`'s `ability_check()`, beside what D20 Tests already share
+(§ w1j), and both call it: one copy, so a fix to the participants it settles
+among reaches both. Its `among` is the event's other party — the creature
+being stabilised, the grappler being escaped — so a handler's queued effect
+lands on it (§ w1c).
+
+### Standing up, and the default policy
+
+`StandUp` is paid in feet like a walk, so it is legal while Incapacitated as
+a walk is; Unconscious sets Speed to 0, and a Stunned creature can still
+stand. It ends only an effect whose type is exactly `Prone`, never
+`Unconscious`, which subclasses it.
+
+An APL with no `move:` clause anywhere takes `stand_up` before any entry,
+whenever it is offered (`docs/questions.md` #29). It is offered only while
+Prone and while half the Speed is left, which on the creature's own turn is
+at its start. An APL that says how to move is taken at its word.
+
+### The Shield of an Unconscious creature (#61)
+
+The Armor Class is cached (§ w1a), so the lapse has to reach the cache.
+`Creature.attach()` and `detach()` see every effect come and go, since the
+store attaches through its holder (§ w1c); they count the `Unconscious`
+effects held and re-derive the AC when that count changes. The condition's own
+handlers could not do it: `on_condition_lost` fires after the effect has been
+detached, and a handler would need a `Creature` where `self.owner` is a
+`Combatant`.
+
+### The price
+
+The spike calls neither `offers()` nor any new Command: its hero is offered
+from a fixed table (§ w2e), and its enemies close by `Move` or by stepping. What
+this row adds to it is the grapple check after every walk, the opportunity
+attack's weapon choice, and the `Unconscious` count in `attach()` and
+`detach()`. The witness is the fixed 200-encounter profiled run at seed 0,
+milestone branch at `2a2003f` → this task, counting `dndsim` and builtin calls
+only (the generated `reopen`, `__eq__` and APL lambdas share pstats keys across
+classes, and read as differences they are not): 1,996,791 → 1,998,782 on
+`--no-provoking` and 3,229,345 → 3,247,976 on provoking, the difference being
+`loosen_grapples()` (220 and 3,300 calls) and the effect iterations it makes.
+
+The rate, by the spike's own `main()` in sibling worktrees, a fresh
+interpreter per arm, the order reversed every other pair:
+
+| Configuration | Pairs | Ratios | Median |
+|---|---|---|---|
+| `--no-provoking` | 8 | 0.959, 0.856, 1.012, 0.955, 1.000, 0.957, 1.048, 0.973 | **0.966** |
+| provoking | 6 | 0.946, 0.994, 1.036, 1.040, 1.022, 1.029 | **1.026** |
+
+Both are inside the ±6% the same tree spreads against itself here
+(§ w2i2), and the call counts move by a tenth of a percent and seven tenths:
+nothing measurable is added to the spike.
+
+`offers()` is where the row's cost is, and the spike does not see it. Timed
+alone for a creature with three enemies in reach, it is about 20 µs on the
+milestone branch and about 45 µs here, against about 22 µs for one
+`resolve_attack()`; with no enemy in reach the difference is the escape, the
+release and the stand-up, which ask only the actor's own effects. The first cut
+was about 75 µs: twelve more candidates, each asking `is_legal()` from the top.
+`unarmed_options()` asks the actor's half once and an enemy's reach and size
+once, and builds only what passes, so it returns exactly what filtering every
+option by `is_legal()` keeps — `test_unarmed_options_are_exactly_the_legal_ones`
+holds the two equal. The rest is the price of nine to twelve more offers, and
+it lands on `w2g`'s runner, which asks `offers()` before every Command.

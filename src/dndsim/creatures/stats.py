@@ -28,7 +28,7 @@ from dndsim.rules.enums import (
     WeaponProperty,
 )
 
-__all__ = ["UNARMOURED", "Armour", "StatBlock", "Weapon"]
+__all__ = ["UNARMED_STRIKE", "UNARMOURED", "Armour", "StatBlock", "Weapon"]
 
 _DEX: Final = Ability.DEXTERITY
 
@@ -80,6 +80,13 @@ class Weapon:
         return self.name
 
 
+UNARMED_STRIKE: Final = Weapon(
+    name="Unarmed Strike", damage=1, damage_type=DamageType.BLUDGEONING
+)
+"""The weapon of XPHB "Unarmed Strike"'s Damage option (`docs/decisions.md`
+§ w2j)."""
+
+
 @dataclass(frozen=True, slots=True)
 class StatBlock:
     """The numbers a creature has before anything happens to it.
@@ -91,7 +98,8 @@ class StatBlock:
 
     `saving_throws` and `skills` are the ones the creature is proficient in,
     skills by lowercase name. `trained_weapons` names the weapons it is
-    proficient with, `None` for every weapon (`docs/decisions.md` § w2f).
+    proficient with, `None` for every weapon, and always names
+    `UNARMED_STRIKE` (`docs/decisions.md` § w2f, § w2j).
 
     Raises `ValueError` for a missing ability score or `max_hp` below 1.
     """
@@ -119,6 +127,9 @@ class StatBlock:
             )
         if self.max_hp < 1:
             raise ValueError(f"a creature has at least 1 hit point, got {self.max_hp}")
+        trained = self.trained_weapons
+        if trained is not None and UNARMED_STRIKE.name not in trained:
+            object.__setattr__(self, "trained_weapons", trained | {UNARMED_STRIKE.name})
         # Raises for a level off the table.
         object.__setattr__(self, "proficiency_bonus", proficiency_bonus(self.level))
         # Copy before deriving: the caller still holds the dict it passed in.

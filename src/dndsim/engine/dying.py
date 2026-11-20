@@ -11,17 +11,15 @@ from typing import Final, NamedTuple
 
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
-from dndsim.engine.d20 import modifier_total, roll_d20, settle
+from dndsim.engine.d20 import ability_check, modifier_total, roll_d20, settle
 from dndsim.engine.healing import Downed, heal
 from dndsim.hooks.contexts import (
-    AbilityCheckContext,
     DeathSaveContext,
     KillContext,
     ReducedToZeroContext,
     StabilizeContext,
 )
 from dndsim.hooks.definitions import (
-    ON_ABILITY_CHECK,
     ON_DEATH_SAVE,
     ON_KILL,
     ON_REDUCED_TO_ZERO,
@@ -195,29 +193,15 @@ def stabilize(helper: Creature, creature: Creature, *, rng: Rng) -> bool:
     """
     if not dying(creature):
         raise ValueError(f"{creature!r} is not dying and cannot be stabilised")
-    check = AbilityCheckContext(
-        creature=helper, ability=Ability.WISDOM, skill=MEDICINE, dc=STABILIZE_DC
-    )
-    helper.dispatch(ON_ABILITY_CHECK, check)
-    settle(
-        check,
-        _refusal(
-            "on_ability_check",
-            "A feature that means to change a check grants advantage or adds "
-            "to the total through ctx.bonus.",
-        ),
+    total = ability_check(
         helper,
-        creature,
+        Ability.WISDOM,
+        skill=MEDICINE,
+        dc=STABILIZE_DC,
+        rng=rng,
+        among=(creature,),
     )
-    had_advantage = check.had_advantage
-    had_disadvantage = check.had_disadvantage
-    bonus = modifier_total(check.bonus, rng)
-    check.close()
-
-    natural = roll_d20(rng, advantage=had_advantage, disadvantage=had_disadvantage)
-    if MEDICINE in helper.stats.skills:
-        bonus += helper.proficiency_bonus
-    if natural + helper.modifier(Ability.WISDOM) + bonus < STABILIZE_DC:
+    if total < STABILIZE_DC:
         return False
     creature.stabilize()
     _announce_stable(creature)
