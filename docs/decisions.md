@@ -6604,7 +6604,10 @@ every weapon, so `resolve_attack()`'s training read adds the bonus and
 
 An opportunity attack picks its weapon when the reaction is built: the melee
 weapon in hand, else the Unarmed Strike. Building it then is what makes a
-dropped weapon, or a bow, fall back without a second legality branch.
+dropped weapon, or a bow, fall back without a second legality branch. It is the Damage option only: a
+Grapple or Shove made as an opportunity attack is declared in
+`OpportunityAttack`'s docstring and not offered, and debt #76 owns it
+(§ The `w2j` spec correction).
 
 ### Grapple and Shove are one save under one base
 
@@ -6613,9 +6616,11 @@ Bonus plus the Strength modifier, the text's number exactly. The save is the
 one with the better `save_bonus()`, `max()` keeping the first of equals, so
 Strength wins a tie (`docs/questions.md` #28).
 
-The push goes from centre to centre, one square on each axis the shover's
-centre is behind the target's. Centres are compared doubled, so a footprint
-two squares wide stays on integers. A square anyone stands in refuses the
+The push is one square along the compass direction, of the eight, nearest
+the line from the shover's centre to the target's: a Large target mostly
+beside a Medium shover goes straight back, not diagonally because the centres
+differ a little on the other axis. Centres are compared doubled, so a
+footprint two squares wide stays on integers. A square anyone stands in refuses the
 offer rather than turning it into a Prone (§ The `w2j` spec correction).
 
 The Prone option is the class `ShoveDown`, id `shove_prone`: `engine/turn.py`

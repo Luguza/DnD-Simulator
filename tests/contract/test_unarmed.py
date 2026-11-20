@@ -264,6 +264,25 @@ def test_a_push_moves_the_target_five_feet_directly_away_for_free(
     assert (hero.economy.movement_ft, foe.economy.movement_ft) == (30, 30)
 
 
+def test_a_large_target_mostly_beside_the_shover_is_pushed_straight_back() -> None:
+    """Doubled centres (1, 1) and (4, 2): 3 across and 1 down, nearer east than
+    south-east, so the Large target goes from (1, 0) to (2, 0) and a creature
+    at (3, 2) is not in the way."""
+    hero = creature("hero")
+    big = Creature(
+        name="big",
+        stats=StatBlock(abilities=SCORES, max_hp=HP, size=enums.Size.LARGE),
+        position=EAST,
+    )
+    bystander = creature("bystander", cell=Cell(3, 2))
+    world = seated(hero, big, bystander)
+    ready(hero)
+
+    ShovePush(hero, big, world=world).execute(rng=ScriptedRng([9]))
+
+    assert big.position == Cell(2, 0)
+
+
 def test_a_push_into_an_occupied_square_is_not_offered() -> None:
     hero, foe = creature("hero"), creature("foe", cell=EAST)
     wall = creature("wall", cell=Cell(2, 0))

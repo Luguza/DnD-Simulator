@@ -35,7 +35,9 @@ class OpportunityAttack(Attack):
 
     Refused against a creature on `actor`'s own side of `world`. It is a melee
     attack, so a Thrown melee weapon is swung and a Ranged weapon's wielder
-    strikes unarmed (`docs/decisions.md` § w2j).
+    strikes unarmed. A Grapple or Shove is not offered as one; it is
+    declared here and owned by `ROADMAP.md` § The W0 debt register #76
+    (`docs/decisions.md` § w2j).
     `resolve()` carries it out without spending the Reaction, for the
     dispatcher that spends it (`docs/decisions.md` § w2c2, § w2f2).
     """

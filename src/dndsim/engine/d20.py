@@ -11,7 +11,7 @@ from dndsim.hooks.contexts import AbilityCheckContext, Context, ModifierBag
 from dndsim.hooks.definitions import ON_ABILITY_CHECK
 from dndsim.rules.enums import Ability
 
-__all__ = ["ability_check", "modifier_total", "roll_d20", "settle"]
+__all__ = ["ability_check", "check_bonus", "modifier_total", "roll_d20", "settle"]
 
 
 def modifier_total(bag: ModifierBag, rng: Rng) -> int:
@@ -77,6 +77,14 @@ def ability_check(
     bonus = modifier_total(check.bonus, rng)
     check.close()
     natural = roll_d20(rng, advantage=had_advantage, disadvantage=had_disadvantage)
+    return natural + check_bonus(creature, ability, skill) + bonus
+
+
+def check_bonus(creature: Creature, ability: Ability, skill: str) -> int:
+    """What `creature` adds to a check of `ability` with `skill` before any
+    handler: the ability modifier, and the Proficiency Bonus with a skill it
+    has."""
+    bonus = creature.modifier(ability)
     if skill in creature.stats.skills:
         bonus += creature.proficiency_bonus
-    return natural + creature.modifier(ability) + bonus
+    return bonus

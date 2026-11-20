@@ -8,6 +8,7 @@ grappler's side of a grapple, the hand it holds; `EscapeGrapple` and
 (`docs/decisions.md` § w2j).
 """
 
+import math
 from abc import abstractmethod
 from collections.abc import Sequence
 from typing import ClassVar
@@ -22,7 +23,7 @@ from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.effects import Effect, Stacking
 from dndsim.creatures.stats import UNARMED_STRIKE
-from dndsim.engine.d20 import ability_check
+from dndsim.engine.d20 import ability_check, check_bonus
 from dndsim.engine.saves import save_bonus, save_dc, saving_throw
 from dndsim.engine.triggers import walk_provoking
 from dndsim.engine.world import World
@@ -46,6 +47,9 @@ __all__ = [
 ]
 
 _HANDS = 2
+
+_TAN_22_5 = math.sqrt(2) - 1
+"""Where the nearest compass direction turns from straight to diagonal."""
 
 _ESCAPE_SKILLS = ((Ability.STRENGTH, "athletics"), (Ability.DEXTERITY, "acrobatics"))
 
@@ -193,7 +197,9 @@ class ShovePush(_Option):
         loosen_grapples(self.world, target)
 
     def _square(self) -> Cell | None:
-        """The anchor 5 feet directly away from the actor, when it is clear."""
+        """The anchor 5 feet directly away from the actor — one square along
+        the compass direction nearest the line between the two centres — when
+        it is clear."""
         actor, target = self.actor, self.target
         width = SIZE_WIDTH_CELLS[actor.size]
         target_width = SIZE_WIDTH_CELLS[target.size]
@@ -201,8 +207,7 @@ class ShovePush(_Option):
         dx = (2 * target.position.x + target_width) - (2 * actor.position.x + width)
         dy = (2 * target.position.y + target_width) - (2 * actor.position.y + width)
         square = Cell(
-            target.position.x + (dx > 0) - (dx < 0),
-            target.position.y + (dy > 0) - (dy < 0),
+            target.position.x + _step(dx, dy), target.position.y + _step(dy, dx)
         )
         cells = footprint(square, target.size)
         for creature in self.world:
@@ -254,9 +259,7 @@ class EscapeGrapple(Action[bool]):
             None,
         )
         dc = save_dc(grappler, Ability.STRENGTH) if hold is None else hold.escape_dc
-        ability, skill = max(
-            _ESCAPE_SKILLS, key=lambda pair: _check_bonus(actor, *pair)
-        )
+        ability, skill = max(_ESCAPE_SKILLS, key=lambda pair: check_bonus(actor, *pair))
         total = ability_check(
             actor, ability, skill=skill, dc=dc, rng=rng, among=(grappler,)
         )
@@ -386,6 +389,14 @@ def _slipped(world: World, grappler: Creature, target: Creature) -> bool:
     )
 
 
+def _step(along: int, across: int) -> int:
+    """The step on one axis of the compass direction, of the eight, nearest
+    the line between two centres `along` and `across` apart on the two axes."""
+    if abs(along) < _TAN_22_5 * abs(across):
+        return 0
+    return (along > 0) - (along < 0)
+
+
 def _within_grasp(actor: Creature, target: Creature) -> bool:
     """What a Grapple and both Shoves ask of `target`: another creature,
     alive, within 5 feet and no more than one size larger than `actor`."""
@@ -406,11 +417,3 @@ def _adjacent(one: Creature, other: Creature) -> bool:
         origin_size=one.size,
         destination_size=other.size,
     )
-
-
-def _check_bonus(creature: Creature, ability: Ability, skill: str) -> int:
-    """The ability modifier, and the Proficiency Bonus with a skill it has."""
-    bonus = creature.modifier(ability)
-    if skill in creature.stats.skills:
-        bonus += creature.proficiency_bonus
-    return bonus
