@@ -32,6 +32,7 @@ from dndsim.actions.unarmed import (
     ShovePush,
     UnarmedStrike,
     grips,
+    unarmed_options,
 )
 from dndsim.apl.apl import COMMAND_IDS, Apl, Entry
 from dndsim.conditions.base import SourcedCondition
@@ -522,3 +523,69 @@ def test_prone_and_grappled_land_under_every_condition(
 
     assert foe.effects.apply(Prone(foe)) is not None
     assert foe.effects.apply(Grappled(foe, caster=hero)) is not None
+
+
+# --- what `offers()` is handed ------------------------------------------------
+
+
+def _every_option(
+    world: World, actor: Creature, enemy: Creature
+) -> list[UnarmedStrike | Grapple | ShoveDown | ShovePush]:
+    return [
+        UnarmedStrike(actor, enemy, world=world),
+        Grapple(actor, enemy, world=world),
+        ShoveDown(actor, enemy, world=world),
+        ShovePush(actor, enemy, world=world),
+    ]
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        "ready",
+        "no-action",
+        "incapacitated",
+        "two-handed",
+        "far",
+        "huge",
+        "dead",
+        "push-blocked",
+        "holding",
+    ],
+)
+def test_unarmed_options_are_exactly_the_legal_ones(state: str) -> None:
+    """`unarmed_options()` asks the actor's half once; what it returns is what
+    asking each option's `is_legal()` keeps, in the same order."""
+    hero = creature("hero", weapon=GREATSWORD if state == "two-handed" else None)
+    near = creature("near", cell=EAST)
+    side = creature("side", cell=SOUTH)
+    others: list[Creature] = []
+    if state == "far":
+        near.position = Cell(3, 0)
+    if state == "huge":
+        near = Creature(
+            name="huge",
+            stats=StatBlock(abilities=SCORES, max_hp=HP, size=enums.Size.HUGE),
+            position=EAST,
+        )
+    if state == "push-blocked":
+        others.append(creature("wall", cell=Cell(2, 0)))
+    world = seated(hero, near, side, *others)
+    if state != "no-action":
+        ready(hero)
+    if state == "incapacitated":
+        hero.effects.apply(Incapacitated(hero))
+    if state == "dead":
+        near.die()
+    if state == "holding":
+        grappled(hero, side)
+
+    expected = [
+        option
+        for enemy in (near, side)
+        for option in _every_option(world, hero, enemy)
+        if option.is_legal()
+    ]
+    got = unarmed_options(world, hero, (near, side))
+
+    assert [(type(o), o.target) for o in got] == [(type(o), o.target) for o in expected]

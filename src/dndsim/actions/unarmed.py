@@ -9,6 +9,7 @@ grappler's side of a grapple, the hand it holds; `EscapeGrapple` and
 """
 
 from abc import abstractmethod
+from collections.abc import Sequence
 from typing import ClassVar
 
 from dndsim.actions.attack import Attack
@@ -40,6 +41,7 @@ __all__ = [
     "ShovePush",
     "UnarmedStrike",
     "endings",
+    "unarmed_options",
     "grips",
     "loosen_grapples",
 ]
@@ -111,13 +113,11 @@ class _Option(Action[SaveOutcome | None]):
         self.log = world.log
 
     def _permits(self) -> bool:
-        actor, target = self.actor, self.target
-        return (
-            target is not actor
-            and not target.dead
-            and SIZE_ORDER[target.size] <= SIZE_ORDER[actor.size] + 1
-            and _adjacent(actor, target)
-        )
+        return _within_grasp(self.actor, self.target) and self._own()
+
+    def _own(self) -> bool:
+        """What this option asks besides the target being within grasp."""
+        return True
 
     def _perform(self, rng: Rng) -> SaveOutcome | None:
         actor, target = self.actor, self.target
@@ -150,13 +150,11 @@ class Grapple(_Option):
 
     ID: ClassVar[str] = "grapple"
 
-    def _permits(self) -> bool:
+    def _own(self) -> bool:
         actor, target = self.actor, self.target
         held = grips(actor)
-        return (
-            actor.hands_held + len(held) < _HANDS
-            and not any(grip.target is target for grip in held)
-            and super()._permits()
+        return actor.hands_held + len(held) < _HANDS and not any(
+            grip.target is target for grip in held
         )
 
     def _land(self, dc: int) -> None:
@@ -184,8 +182,8 @@ class ShovePush(_Option):
 
     ID: ClassVar[str] = "shove_push"
 
-    def _permits(self) -> bool:
-        return super()._permits() and self._square() is not None
+    def _own(self) -> bool:
+        return self._square() is not None
 
     def _land(self, dc: int) -> None:
         square = self._square()
@@ -207,14 +205,17 @@ class ShovePush(_Option):
             target.position.x + (dx > 0) - (dx < 0),
             target.position.y + (dy > 0) - (dy < 0),
         )
-        taken = {
-            cell
-            for creature in self.world
-            if creature is not target and not creature.dead
-            for cell in footprint(creature.position, creature.size)
-        }
-        if any(cell in taken for cell in footprint(square, target.size)):
-            return None
+        cells = footprint(square, target.size)
+        for creature in self.world:
+            if creature is target or creature.dead:
+                continue
+            if SIZE_WIDTH_CELLS[creature.size] == 1:
+                if creature.position in cells:
+                    return None
+            elif any(
+                cell in cells for cell in footprint(creature.position, creature.size)
+            ):
+                return None
         return square
 
 
@@ -289,6 +290,40 @@ class ReleaseGrapple(Action[None]):
         return f"<{self.ID} by {self.actor.name} of {self.target.name}>"
 
 
+def unarmed_options(
+    world: World, actor: Creature, enemies: Sequence[Creature]
+) -> list[UnarmedStrike | Grapple | ShoveDown | ShovePush]:
+    """The Unarmed Strike's options `actor` could take now against each of
+    `enemies`: exactly those whose `is_legal()` is true, with the actor's own
+    half of the question asked once rather than once an option."""
+    if (
+        actor.dead
+        or actor.is_down
+        or actor.incapacitated
+        or not actor.economy.can_spend(ActionCost.ACTION)
+    ):
+        return []
+    log = world.log
+    reach = SIZE_ORDER[actor.size] + 1
+    options: list[UnarmedStrike | Grapple | ShoveDown | ShovePush] = []
+    for enemy in enemies:
+        if enemy is actor or enemy.dead or not _adjacent(actor, enemy):
+            continue
+        # Alive and within 5 feet is all `Attack` asks of a target for a weapon
+        # that is never dropped.
+        options.append(UnarmedStrike(actor, enemy, log=log, world=world))
+        if SIZE_ORDER[enemy.size] > reach:
+            continue
+        for option in (
+            Grapple(actor, enemy, world=world),
+            ShoveDown(actor, enemy, world=world),
+            ShovePush(actor, enemy, world=world),
+        ):
+            if option._own():
+                options.append(option)
+    return options
+
+
 def endings(world: World, actor: Creature) -> list[EscapeGrapple | ReleaseGrapple]:
     """An escape from each grapple `actor` is held in, by a grappler seated in
     `world`, and a release of each it holds; legal or not."""
@@ -346,6 +381,17 @@ def _slipped(world: World, grappler: Creature, target: Creature) -> bool:
         or target.dead
         or target not in world
         or not _adjacent(grappler, target)
+    )
+
+
+def _within_grasp(actor: Creature, target: Creature) -> bool:
+    """What a Grapple and both Shoves ask of `target`: another creature,
+    alive, within 5 feet and no more than one size larger than `actor`."""
+    return (
+        target is not actor
+        and not target.dead
+        and SIZE_ORDER[target.size] <= SIZE_ORDER[actor.size] + 1
+        and _adjacent(actor, target)
     )
 
 

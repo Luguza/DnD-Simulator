@@ -24,14 +24,7 @@ from dndsim.actions.move import Move, Walk
 from dndsim.actions.pick_up import PickUpWeapon
 from dndsim.actions.stabilize import Stabilize
 from dndsim.actions.stand_up import StandUp
-from dndsim.actions.unarmed import (
-    Grapple,
-    ShoveDown,
-    ShovePush,
-    UnarmedStrike,
-    endings,
-    loosen_grapples,
-)
+from dndsim.actions.unarmed import endings, loosen_grapples, unarmed_options
 from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.rng import Rng
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
@@ -138,15 +131,7 @@ def offers(world: World, actor: Creature) -> list[Action[Any]]:
     candidates: list[Action[Any]] = [
         Attack(actor, enemy, log=log, world=world) for enemy in enemies
     ]
-    for enemy in enemies:
-        candidates.extend(
-            (
-                UnarmedStrike(actor, enemy, log=log, world=world),
-                Grapple(actor, enemy, world=world),
-                ShoveDown(actor, enemy, world=world),
-                ShovePush(actor, enemy, world=world),
-            )
-        )
+    attacks = len(candidates)
     candidates.extend(Stabilize(actor, ally) for ally in allies_of(world, actor))
     candidates.extend(
         (Dodge(actor), Disengage(actor), Dash(actor), PickUpWeapon(actor))
@@ -154,7 +139,11 @@ def offers(world: World, actor: Creature) -> list[Action[Any]]:
     candidates.extend(endings(world, actor))
     candidates.append(StandUp(actor))
     candidates.extend(Move(actor, enemy, world=world) for enemy in enemies)
-    return [command for command in candidates if command.is_legal()]
+    offered = [command for command in candidates[:attacks] if command.is_legal()]
+    # Already asked: `unarmed_options()` returns only the legal ones.
+    offered.extend(unarmed_options(world, actor, enemies))
+    offered.extend(command for command in candidates[attacks:] if command.is_legal())
+    return offered
 
 
 def take_turn(

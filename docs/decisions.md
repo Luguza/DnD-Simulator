@@ -6681,3 +6681,40 @@ effects held and re-derive the AC when that count changes. The condition's own
 handlers could not do it: `on_condition_lost` fires after the effect has been
 detached, and a handler would need a `Creature` where `self.owner` is a
 `Combatant`.
+
+### The price
+
+The spike calls neither `offers()` nor any new Command: its hero is offered
+from a fixed table (§ w2e), and its enemies close by `Move` or by stepping. What
+this row adds to it is the grapple check after every walk, the opportunity
+attack's weapon choice, and the `Unconscious` count in `attach()` and
+`detach()`. The witness is the fixed 200-encounter profiled run at seed 0,
+milestone branch at `2a2003f` → this task, counting `dndsim` and builtin calls
+only (the generated `reopen`, `__eq__` and APL lambdas share pstats keys across
+classes, and read as differences they are not): 1,996,791 → 1,998,782 on
+`--no-provoking` and 3,229,345 → 3,247,976 on provoking, the difference being
+`loosen_grapples()` (220 and 3,300 calls) and the effect iterations it makes.
+
+The rate, by the spike's own `main()` in sibling worktrees, a fresh
+interpreter per arm, the order reversed every other pair:
+
+| Configuration | Pairs | Ratios | Median |
+|---|---|---|---|
+| `--no-provoking` | 8 | 0.959, 0.856, 1.012, 0.955, 1.000, 0.957, 1.048, 0.973 | **0.966** |
+| provoking | 6 | 0.946, 0.994, 1.036, 1.040, 1.022, 1.029 | **1.026** |
+
+Both are inside the ±6% the same tree spreads against itself here
+(§ w2i2), and the call counts move by a tenth of a percent and seven tenths:
+nothing measurable is added to the spike.
+
+`offers()` is where the row's cost is, and the spike does not see it. Timed
+alone for a creature with three enemies in reach, it is about 20 µs on the
+milestone branch and about 45 µs here, against about 22 µs for one
+`resolve_attack()`; with no enemy in reach the difference is the escape, the
+release and the stand-up, which ask only the actor's own effects. The first cut
+was about 75 µs: twelve more candidates, each asking `is_legal()` from the top.
+`unarmed_options()` asks the actor's half once and an enemy's reach and size
+once, and builds only what passes, so it returns exactly what filtering every
+option by `is_legal()` keeps — `test_unarmed_options_are_exactly_the_legal_ones`
+holds the two equal. The rest is the price of nine to twelve more offers, and
+it lands on `w2g`'s runner, which asks `offers()` before every Command.
