@@ -53,10 +53,11 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 22 | w2f — build schema and `Character` | done | |
 | — | ⏸ plan review | done | |
 | 23 | w2i2 — the W2 levers 🔒 | done | |
-| 24 | w2j — Unarmed Strike, Shove, Grapple, standing up, passing through | next | |
-| 25 | w2k — what a build carries 🔒 | queued | |
-| 26 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |
-| 27 | w2h — the CLI | queued | |
+| 24 | w2j — Unarmed Strike, Shove, Grapple, escaping, standing up, the Unconscious Shield | next | |
+| 25 | w2j2 — passing through, Difficult Terrain, the drag 🔒 | queued | |
+| 26 | w2k — what a build carries 🔒 | queued | |
+| 27 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |
+| 28 | w2h — the CLI | queued | |
 | — | ⏸ **M1 / W2 milestone review** | queued | |
 
 Order within W1 is the critical path first (`w1e → w1f`, the two 🔒 tasks
@@ -73,4 +74,6 @@ depend on nearly everything else. `w2g` carries the M1 golden
 split `w2f2` off `w2f`, added `w2j`, and moved the second gate to after `w2f`
 (`docs/decisions.md` § The W2 mid-wave review). `w2f`'s spec correction put `w2a2` ahead of it:
 the content a build is checked against (`docs/decisions.md` § The `w2f` spec
-correction).
+correction). `w2j`'s spec correction split the walk off it as `w2j2`, ahead of
+`w2g`, whose golden would otherwise move under it (`docs/decisions.md` § The
+`w2j` spec correction).
