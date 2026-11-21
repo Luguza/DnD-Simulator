@@ -329,10 +329,10 @@ Retired so far: **#1, #2, #4 and #10 by `w1a`**, **#7 by `w1e`**, **#3 and
 **#15 by `w1k`**, **#33 and #52 by the M0 / W1 milestone review**, **#42 and
 #48 by `w2b`**, **#29, #30, #35, #41, #47, #50 and #55 by `w2c`**, **#18–#20,
 #26 and #28 by `w2c2`**, **#11, #14 and #34 by `w2e`**, **#13, #24 and
-#63 by `w2f2`**, **#12, #25, #27 and #36 by `w2f`** and **#61 and #62 by
-`w2j`** (`docs/decisions.md` § w1a, § w1e, § w1f, § w1c, § w1d, § w1j,
-§ w1k, § The M0 / W1 milestone review, § w2b, § w2c, § w2c2, § w2e, § w2f2,
-§ w2f, § w2j).
+#63 by `w2f2`**, **#12, #25, #27 and #36 by `w2f`**, **#61 and #62 by
+`w2j`** and **#57, #60 and #78 by `w2j2`** (`docs/decisions.md` § w1a, § w1e,
+§ w1f, § w1c, § w1d, § w1j, § w1k, § The M0 / W1 milestone review, § w2b,
+§ w2c, § w2c2, § w2e, § w2f2, § w2f, § w2j, § w2j2).
 
 | # | The stand-in or debt | Where | Retired by | What it costs if nobody does |
 |---|---|---|---|---|
