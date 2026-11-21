@@ -280,7 +280,7 @@ def route(
     `blocked` is the set of cells the walker's footprint may not enter, built by
     the caller and not containing the walker's own squares. Each of `towing` is
     moved with the walker, its footprint kept out of `crowded`. The route
-    ignores the movement budget; truncate it with `step_costs()`. Raises
+    ignores the movement budget; `step_costs()` prices each step. Raises
     `ValueError` when the destination itself is blocked. `docs/decisions.md`
     § w0g2, § w1d, § w2j2.
     """

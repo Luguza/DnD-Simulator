@@ -12,8 +12,7 @@ __all__ = ["Grappled"]
 class Grappled(SourcedCondition):
     """Held: Speed 0, and Disadvantage against anything but the grappler, who is
     this effect's `caster`. One per grappler, so a second grapple by another
-    creature holds alongside the first (`docs/decisions.md` § w2j). The
-    grappler drags it in `actions/move.py` (`docs/decisions.md` § w2j2)."""
+    creature holds alongside the first (`docs/decisions.md` § w2j, § w2j2)."""
 
     __slots__ = ()
 
