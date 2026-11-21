@@ -11,10 +11,11 @@ Sources: XPHB (2024) "Combat" battle-grid rules, "Creature Size", Rules Glossary
 """
 
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from heapq import heappop, heappush
+from itertools import chain
 from typing import Final
 
 from dndsim.rules.constants import CELL_SIZE_FT, SIZE_WIDTH_CELLS
@@ -259,10 +260,11 @@ class Footing:
     with it, each `(dx, dy, size)` from its anchor: those footprints may touch
     neither `blocked` nor `crowded` at any step. Every question is asked of the
     mover's anchor; the footprints are folded into anchor sets once, here
-    (`docs/decisions.md` § w2j2).
+    (`docs/decisions.md` § w2j2). A one-square mover's sets are kept, not
+    copied, so the caller does not change them afterwards.
     """
 
-    __slots__ = ("_costly", "_no_pass", "_no_stand", "step_ft")
+    __slots__ = ("_costly", "_no_pass", "_no_stop", "step_ft")
 
     def __init__(
         self,
@@ -275,8 +277,12 @@ class Footing:
         step_ft: int = CELL_SIZE_FT,
     ) -> None:
         width = SIZE_WIDTH_CELLS[size]
-        no_pass = _anchors(blocked, 0, 0, width)
-        no_stand = no_pass | _anchors(crowded, 0, 0, width) if crowded else no_pass
+        if width == 1:
+            no_pass, no_stop, costly = blocked, crowded, difficult
+        else:
+            no_pass = _anchors(blocked, 0, 0, width)
+            no_stop = _anchors(crowded, 0, 0, width)
+            costly = _anchors(difficult, 0, 0, width)
         for dx, dy, towed in towing:
             towed_width = SIZE_WIDTH_CELLS[towed]
             no_pass = (
@@ -284,10 +290,9 @@ class Footing:
                 | _anchors(blocked, dx, dy, towed_width)
                 | _anchors(crowded, dx, dy, towed_width)
             )
-            no_stand = no_stand | no_pass
         self._no_pass = no_pass
-        self._no_stand = no_stand
-        self._costly = _anchors(difficult, 0, 0, width)
+        self._no_stop = no_stop
+        self._costly = costly
         self.step_ft = step_ft
 
     def passes(self, anchor: Cell) -> bool:
@@ -296,12 +301,11 @@ class Footing:
 
     def stands(self, anchor: Cell) -> bool:
         """Whether the mover may end its move on `anchor`."""
-        return anchor not in self._no_stand
+        return anchor not in self._no_pass and anchor not in self._no_stop
 
-    @property
-    def unstandable(self) -> AbstractSet[Cell]:
-        """Every anchor `stands()` refuses."""
-        return self._no_stand
+    def unstandable(self) -> Iterator[Cell]:
+        """Every anchor `stands()` refuses, some perhaps more than once."""
+        return chain(self._no_pass, self._no_stop)
 
     def cost_ft(self, anchor: Cell) -> int:
         """What the step onto `anchor` costs."""
@@ -357,6 +361,10 @@ def route(
     """
     if footing is None:
         footing = Footing(blocked=blocked, size=size)
+    elif blocked or size is not Size.MEDIUM:
+        raise ValueError(
+            "pass `blocked` and `size` inside the `footing`, not beside it"
+        )
     if not footing.stands(destination):
         raise ValueError(
             f"cannot route to {destination}: it is blocked. A destination is "
@@ -397,8 +405,10 @@ def reachable(origin: Cell, budget_ft: int, footing: Footing) -> Reach:
     )
 
 
-def step_costs(walked: Iterable[Cell], footing: Footing) -> tuple[int, ...]:
+def step_costs(walked: Sequence[Cell], footing: Footing) -> tuple[int, ...]:
     """What each step of `walked` costs on `footing`."""
+    if not footing._costly:
+        return (footing.step_ft,) * len(walked)
     cost_ft = footing.cost_ft
     return tuple(cost_ft(cell) for cell in walked)
 
@@ -544,14 +554,9 @@ def _cells(anchor: Cell, width: int) -> tuple[Cell, ...]:
     )
 
 
-def _anchors(
-    cells: AbstractSet[Cell], dx: int, dy: int, width: int
-) -> AbstractSet[Cell]:
+def _anchors(cells: AbstractSet[Cell], dx: int, dy: int, width: int) -> frozenset[Cell]:
     """The anchors at which a footprint `width` on a side, placed `(dx, dy)`
-    from the anchor, covers one of `cells`. Returned as given when that is
-    `cells` itself: the one-square mover is the hot path."""
-    if width == 1 and not (dx or dy):
-        return cells
+    from the anchor, covers one of `cells`."""
     return frozenset(
         Cell(cell.x - dx - i, cell.y - dy - j)
         for cell in cells

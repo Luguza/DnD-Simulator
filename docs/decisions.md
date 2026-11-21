@@ -6726,3 +6726,120 @@ once, and builds only what passes, so it returns exactly what filtering every
 option by `is_legal()` keeps — `test_unarmed_options_are_exactly_the_legal_ones`
 holds the two equal. The rest is the price of nine to twelve more offers, and
 it lands on `w2g`'s runner, which asks `offers()` before every Command.
+
+## w2j2 — passing through, Difficult Terrain, the drag
+
+Debts #57, #60 and #78 retire. The row is the contract; what follows is why
+the code took the shape it did.
+
+### The ground is folded into anchor sets once per plan
+
+`Footing` takes the squares a mover may never enter (`blocked`), may pass but
+not stop in (`crowded`) and pays five more feet to enter (`difficult`), with
+the mover's size and what it tows, and turns each into the set of *anchors*
+the mover may not take. Every later question — the greedy walk, the search,
+the stand search, the trim — is one set lookup on the anchor, whatever the
+footprint. A Large mover's footprint, and each towed footprint at its offset,
+are a Minkowski sum computed once, rather than a footprint built on every
+step as `_clear()` did. A one-square mover's sets are the caller's own,
+uncopied: `Cell`'s hash is not cached, and copying a set re-hashes every
+square in it, which was most of the first cut's cost.
+
+A Large mover is in Difficult Terrain when any square of its footprint is.
+That is the plain reading of "every foot of movement in Difficult Terrain"
+for a body several squares wide, and is not asked as a question.
+
+### The cheapest route, and the same route where nothing costs more
+
+`route()` keeps the greedy walk, accepted only when it is the Chebyshev floor
+and enters no costly square, so its cost is the floor's and nothing is
+cheaper. Otherwise it searches: breadth-first, unchanged, when no square costs
+more; cheapest-first when one does. The cheapest-first key is cost, then
+steps, then the order squares were reached in, so on uniform ground it
+settles squares in the breadth-first order and keeps the first parent found,
+and `reachable()` — which `Retreat` now plans on — gives exactly the old
+routes' costs. Two searches are kept rather than one because the cap counts
+squares differently: breadth-first returns the moment it generates the
+destination, cheapest-first only when it settles it, and the cap tests pin
+the former.
+
+`Move`'s early stop compares the cheapest a stand could cost — its Chebyshev
+floor at the mover's cheapest step — with the best route's cost, which is the
+old step comparison scaled by a constant when nothing costs more.
+
+### Who blocks, who is Difficult Terrain
+
+Read from XPHB "Moving Around Other Creatures" and "Difficult Terrain" as the
+row quotes them: an ally or a Tiny creature is passed freely; an Incapacitated
+creature or one two or more sizes apart is passed as Difficult Terrain unless
+it is an ally or Tiny; anyone else blocks. A walk whose movement runs out
+inside a crowded square is cut back to the last square the mover may stop
+on, and only a cut walk is checked: a planned route already ends on one. The
+classification asks side first, so the spike's enemies, each other's allies,
+never ask `incapacitated`.
+
+### The drag
+
+A grappler's `Walk` drags every living creature it grips, by the same step
+offset, so the held creature keeps its place beside the grappler and never
+leaves its reach. Moving it rigidly rather than into the square the grappler
+vacated works for every pair of sizes; the price is that the planner must
+know the towed footprints, which is `Footing`'s `towing`. A towed footprint
+may touch nobody's space at any step, ally's included (`docs/questions.md`
+#32). The extra foot is charged once however many it drags, and not at all
+when every dragged creature is Tiny or two or more sizes smaller
+(`docs/questions.md` #31).
+
+`walk_provoking()` takes `costs`, one per step, in place of one `step_ft`,
+and `dragging`. A dragged creature is struck from the bystanders: it never
+leaves its grappler's reach, but the watcher's test is asked before it moves,
+against its old square, and would read every step away from it as one. It
+provokes nothing itself, being moved rather than moving (XPHB "Opportunity
+Attacks"), and its `on_move` is not dispatched, as a push's is not.
+
+`Retreat` from a creature the actor drags is never offered: no square is
+farther from it.
+
+### A grappler that dies (#78)
+
+`Grappling` listens on `on_damage_taken`, `TARGET`, so on its owner, and ends
+the grapple when the owner is dead. The hook fires after the hit points and
+`dropped_to_zero()` are settled, so a death `on_reduced_to_zero` prevented is
+not read as one. A creature dies only of damage or of a third failed death
+save, and one making death saves is already Unconscious, which `let_go`
+answers.
+
+### The price
+
+The witness is the fixed 200-encounter profiled run at seed 0, milestone
+branch at `42dc7ff` → this task, counting `dndsim` and builtin calls:
+
+| Arm | Calls | Closing HP (hero; enemies) | Next draw |
+|---|---|---|---|
+| `--no-provoking`, milestone | 1,711,999 | 55; 207, 1,000, 1,000 | 108454 |
+| `--no-provoking`, this task | 1,720,399 | 55; 207, 1,000, 1,000 | 108454 |
+| provoking, milestone | 2,820,023 | 49; 180, 1,000, 1,000 | 401888 |
+| provoking, this task | 2,994,846 | 49; 180, 1,000, 1,000 | 401888 |
+
+The fights are the same: the spike's enemies may now pass through each other,
+and no route they take changes. The 175k calls on provoking are the ground
+built for each of the ~4,000 plans: every other creature's side, size and
+footprint, the mover's grips, and `Footing`'s construction, about 44 calls a
+plan. The first cut cost 291k; copying sets, an empty-difficulty cost lookup
+per step and the trim on uncut walks were the difference.
+
+The rate, by the spike's own `main()` against a sibling worktree of the
+milestone, a fresh interpreter per arm, the order reversed every other pair:
+
+| Configuration | Pairs | Ratios | Median |
+|---|---|---|---|
+| `--no-provoking` | 8 | 0.869, 0.958, 0.913, 1.043, 1.004, 1.088, 1.079, 0.920 | **0.981** |
+| provoking | 8 | 0.949, 0.910, 0.905, 0.932, 0.957, 0.893, 0.946, 1.018 | **0.939** |
+
+`--no-provoking`, the configuration the budget is quoted on, is inside the
+±6% the same tree spreads against itself (§ w2i2), as half a percent of calls
+says it should be. Provoking costs about 6%, which matches its 6.2% more calls
+and is the ground being built: it is real work for the rule, paid once for
+each plan, and the spike plans about one route per creature per turn. A first
+eight provoking pairs, run while another agent's tests shared the container,
+read 0.90 and are not the figure.

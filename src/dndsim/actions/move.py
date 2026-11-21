@@ -134,15 +134,19 @@ class Walk(Action[tuple[Cell, ...]]):
             if paid > budget:
                 break
             steps += 1
+        whole = steps == len(planned)
         planned = planned[:steps]
         sources = _sources_of_fear(self.world, actor)
         if sources:
             planned = _unafraid(actor, planned, sources)
-        stands = ground.footing.stands
-        end = len(planned)
-        while end and not stands(planned[end - 1]):
-            end -= 1
-        planned = planned[:end]
+            whole = whole and steps == len(planned)
+        if not whole:
+            # A planned route ends where the actor may stop; a cut one may not.
+            stands = ground.footing.stands
+            end = len(planned)
+            while end and not stands(planned[end - 1]):
+                end -= 1
+            planned = planned[:end]
         return planned, costs[: len(planned)], ground
 
     def _route(self) -> tuple[tuple[Cell, ...], tuple[int, ...], _Ground]:
@@ -332,24 +336,17 @@ def _ground(world: World, mover: Creature) -> _Ground:
     crowded: set[Cell] = set()
     difficult: set[Cell] = set()
     for creature in world:
-        if (
-            creature is mover
-            or creature.dead
-            or any(creature is held for held in dragging)
-        ):
+        if creature is mover or creature.dead:
             continue
-        cells = footprint(creature.position, creature.size)
-        tiny = creature.size is Size.TINY
-        ally = side is not None and world.side_of(creature) == side
-        if (
-            ally
-            or tiny
-            or abs(SIZE_ORDER[creature.size] - rank) >= 2
-            or creature.incapacitated
-        ):
+        if dragging and any(creature is held for held in dragging):
+            continue
+        size = creature.size
+        cells = footprint(creature.position, size)
+        if side is not None and world.side_of(creature) == side or size is Size.TINY:
             crowded.update(cells)
-            if not (ally or tiny):
-                difficult.update(cells)
+        elif abs(SIZE_ORDER[size] - rank) >= 2 or creature.incapacitated:
+            crowded.update(cells)
+            difficult.update(cells)
         else:
             blocked.update(cells)
     step_ft = _step_ft(mover)
@@ -362,9 +359,9 @@ def _ground(world: World, mover: Creature) -> _Ground:
     )
     return _Ground(
         Footing(
-            blocked=frozenset(blocked),
-            crowded=frozenset(crowded),
-            difficult=frozenset(difficult),
+            blocked=blocked,
+            crowded=crowded,
+            difficult=difficult,
             size=mover.size,
             towing=towing,
             step_ft=step_ft,
@@ -405,7 +402,7 @@ def _stands(
     )
     origin = actor.position
     origin_x, origin_y = origin.x, origin.y
-    taken = {(cell.x, cell.y) for cell in footing.unstandable}
+    taken = {(cell.x, cell.y) for cell in footing.unstandable()}
     found = [
         (max(abs(x - origin_x), abs(y - origin_y)), y, x)
         for y in ys

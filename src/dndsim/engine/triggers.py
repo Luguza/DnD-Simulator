@@ -236,10 +236,11 @@ def walk_provoking(
             f"{mover.name} has a Speed of 0 and cannot move; ask `speed_ft` "
             "before walking it"
         )
-    if charge and not economy.can_move(sum(costs)):
+    total = sum(costs)
+    if charge and not economy.can_move(total):
         raise EconomyError(
             f"{mover.name} has {economy.movement_ft} ft of movement left and "
-            f"the route costs {sum(costs)} ft; truncate it before walking it"
+            f"the route costs {total} ft; truncate it before walking it"
         )
     if dragging:
         bystanders = [
@@ -256,7 +257,7 @@ def walk_provoking(
         if not route:
             return ()
         if charge:
-            economy.move(sum(costs))
+            economy.move(total)
         _drag(dragging, mover.position, route[-1])
         mover.position = route[-1]
         return tuple(route)
