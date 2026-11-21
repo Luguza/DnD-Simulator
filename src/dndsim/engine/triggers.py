@@ -5,15 +5,16 @@ offers `on_leave_reach` to each watcher a step leaves, in initiative order. An
 opportunity attack is not implemented here: it is a gated `on_leave_reach`
 handler, and the dispatcher spends the reaction (`docs/decisions.md` § w0g3).
 
-`walk_provoking()` charges each step to the mover's economy and stops a mover
-a reaction has dropped or brought to Speed 0 (`docs/decisions.md` § w2c2).
+`walk_provoking()` charges each step to the mover's economy, moves what the
+mover drags with it, and stops a mover a reaction has dropped or brought to
+Speed 0 (`docs/decisions.md` § w2c2, § w2j2).
 
 Sources: XPHB (2024) "Combat" -> Opportunity Attacks, Movement and Position.
 
 Open debts: rows 21 and 22 of ROADMAP.md § The W0 debt register.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 
 from dndsim.core.errors import EconomyError
 from dndsim.core.geometry import Cell, distance_ft, in_reach
@@ -203,32 +204,45 @@ def walk_provoking(
     provokes: bool = True,
     charge: bool = True,
     step_ft: int = CELL_SIZE_FT,
+    costs: Sequence[int] | None = None,
+    towing: Sequence[Creature] = (),
+    holding: Callable[[Creature], bool] | None = None,
 ) -> tuple[Cell, ...]:
     """Walk `mover` along `route` square by square, provoking on the way out.
 
     Returns the part of the route actually walked: the whole of it unless a
-    reaction dropped the mover or, on a walk it pays for, brought its Speed
-    to 0 partway. It does not choose the route or dispatch `on_move`.
+    reaction dropped the mover, let go of one of `towing`, or, on a walk it
+    pays for, brought its Speed to 0 partway. It does not choose the route or
+    dispatch `on_move`.
 
     Each offer is made while the mover is still on the square it is leaving,
     and the position moves afterwards (`docs/decisions.md` § w0g3). With
-    `charge` the walk is the mover's own: each step walked spends `step_ft`
-    of its movement, and it raises `EconomyError` before anything moves when
-    the route costs more than the mover has left, or when it is at Speed 0.
-    Without it nothing is spent and Speed is not asked (`docs/decisions.md`
-    § w2c2).
+    `charge` the walk is the mover's own: each step walked spends its cost —
+    `costs[i]` for the `i`th, else `step_ft` — and it raises `EconomyError`
+    before anything moves when the route costs more than the mover has left,
+    or when it is at Speed 0. Without it nothing is spent and Speed is not
+    asked (`docs/decisions.md` § w2c2).
+
+    Each of `towing` moves as the mover does, step by step, provoking nothing;
+    the walk stops before a step once `holding` says the mover no longer holds
+    one of them (`docs/decisions.md` § w2j2).
     """
     economy = mover.economy
+    if costs is None:
+        total = step_ft * len(route)
+    elif len(costs) != len(route):
+        raise ValueError(f"{len(costs)} step costs for a route of {len(route)} squares")
+    else:
+        total = sum(costs)
     if charge and route and mover.speed_ft == 0:
         raise EconomyError(
             f"{mover.name} has a Speed of 0 and cannot move; ask `speed_ft` "
             "before walking it"
         )
-    if charge and not economy.can_move(len(route) * step_ft):
+    if charge and not economy.can_move(total):
         raise EconomyError(
             f"{mover.name} has {economy.movement_ft} ft of movement left and "
-            f"the route costs {len(route) * step_ft} ft; truncate it before "
-            "walking it"
+            f"the route costs {total} ft; truncate it before walking it"
         )
     watch = watch_movement(
         mover, bystanders, squares=len(route), provokes=provokes, halts=charge
@@ -239,19 +253,33 @@ def walk_provoking(
         if not route:
             return ()
         if charge:
-            economy.move(len(route) * step_ft)
+            economy.move(total)
+        _tow(mover, route[-1], towing)
         mover.position = route[-1]
         return tuple(route)
     walked = []
-    for square in route:
+    for index, square in enumerate(route):
         watch.leaving(square)
         if mover.is_down or (charge and mover.speed_ft == 0):
             break
+        if holding is not None and not all(map(holding, towing)):
+            break
         if charge:
-            economy.move(step_ft)
+            economy.move(step_ft if costs is None else costs[index])
+        _tow(mover, square, towing)
         mover.position = square
         walked.append(square)
     return tuple(walked)
+
+
+def _tow(mover: Creature, square: Cell, towing: Sequence[Creature]) -> None:
+    """Move each of `towing` by the step `mover` is about to take to `square`."""
+    if not towing:
+        return
+    dx = square.x - mover.position.x
+    dy = square.y - mover.position.y
+    for creature in towing:
+        creature.position = Cell(creature.position.x + dx, creature.position.y + dy)
 
 
 def _seat(watcher: _Watcher) -> InitiativeKey:

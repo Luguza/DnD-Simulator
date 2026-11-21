@@ -21,7 +21,6 @@ from typing import Final
 
 import pytest
 
-from dndsim.actions.move import Retreat
 from dndsim.actions.stand_up import StandUp
 from dndsim.actions.unarmed import (
     EscapeGrapple,
@@ -32,6 +31,7 @@ from dndsim.actions.unarmed import (
     ShovePush,
     UnarmedStrike,
     grips,
+    loosen_grapples,
     unarmed_options,
 )
 from dndsim.apl.apl import COMMAND_IDS, Apl, Entry
@@ -331,14 +331,15 @@ def test_the_grapple_ends_when_the_grappler_is_incapacitated() -> None:
     assert not any(isinstance(effect, Grappling) for effect in hero.effects)
 
 
-def test_the_grapple_ends_when_the_grappler_walks_away() -> None:
-    """Until `w2j2`'s drag, walking off lets go."""
+def test_the_grapple_ends_when_the_held_creature_is_moved_away() -> None:
+    """Moved by anything but its grappler's walk, which drags it
+    (`docs/decisions.md` § w2j2)."""
     hero, foe = creature("hero"), creature("foe", cell=EAST)
     grappled(hero, foe)
     world = seated(hero, foe)
-    ready(hero)
+    foe.position = Cell(3, 0)
 
-    Retreat(hero, foe, world=world, keep_ft=15).execute(rng=ScriptedRng([]))
+    loosen_grapples(world, foe)
 
     assert held_by(foe) == []
     assert grips(hero) == []

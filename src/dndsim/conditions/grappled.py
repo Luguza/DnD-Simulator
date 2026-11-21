@@ -12,27 +12,14 @@ __all__ = ["Grappled"]
 class Grappled(SourcedCondition):
     """Held: Speed 0, and Disadvantage against anything but the grappler, who is
     this effect's `caster`. One per grappler, so a second grapple by another
-    creature holds alongside the first (`docs/decisions.md` § w2j)."""
+    creature holds alongside the first (`docs/decisions.md` § w2j). The
+    grappler drags it in `actions/move.py` (`docs/decisions.md` § w2j2)."""
 
     __slots__ = ()
 
     CONDITION = enums.Condition.GRAPPLED
     STACKING = Stacking.UNIQUE_PER_SOURCE
     SPEED_ZERO = True
-    APPROXIMATED = (
-        "a grappler that dies without gaining a condition, as a creature that "
-        "makes no death saves does at 0 hit points, holds on until the held "
-        "creature's next turn starts or either moves, where its grapple should "
-        'end with it: "the condition also ends if the grappler has the '
-        'Incapacitated condition" covers only the living '
-        "(ROADMAP.md § The W0 debt register #78)",
-    )
-    NEEDS_HOOK = (
-        'nothing moves a creature with another creature: "The grappler can '
-        "drag or carry you when it moves, but every foot of movement costs it "
-        '1 extra foot." (ROADMAP.md § The W0 debt register #57; `w2j2` '
-        "lands the drag)",
-    )
 
     @hook("on_declare_attack")
     def attacks(self, ctx: AttackDeclaredContext) -> R:
