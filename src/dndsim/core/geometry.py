@@ -11,9 +11,10 @@ Sources: XPHB (2024) "Combat" battle-grid rules, "Creature Size", Rules Glossary
 """
 
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
+from heapq import heappop, heappush
 from typing import Final
 
 from dndsim.rules.constants import CELL_SIZE_FT, SIZE_WIDTH_CELLS
@@ -22,6 +23,8 @@ from dndsim.rules.enums import Size
 __all__ = [
     "SEARCH_CELLS",
     "Cell",
+    "Reached",
+    "Towed",
     "cone",
     "distance_ft",
     "footprint",
@@ -29,7 +32,9 @@ __all__ = [
     "in_reach",
     "line",
     "route",
+    "routes_within",
     "sphere",
+    "step_costs",
     "steps_within",
 ]
 
@@ -245,28 +250,42 @@ forever (`docs/decisions.md` § w0g2).
 """
 
 
+Towed = tuple[Cell, Size]
+"""A creature moved with the walker: its anchor's offset from the walker's,
+and its size."""
+
+
 def route(
     origin: Cell,
     destination: Cell,
     *,
     blocked: AbstractSet[Cell] = frozenset(),
     size: Size = Size.MEDIUM,
+    difficult: AbstractSet[Cell] = frozenset(),
+    step_ft: int = CELL_SIZE_FT,
+    towing: Sequence[Towed] = (),
+    crowded: AbstractSet[Cell] = frozenset(),
 ) -> tuple[Cell, ...]:
-    """The shortest legal route from `origin` to `destination`, origin excluded.
+    """The cheapest legal route from `origin` to `destination`, origin excluded.
 
-    A greedy diagonal walk first, kept only when it arrives in exactly the
-    Chebyshev floor's step count; otherwise a breadth-first search capped at
-    `SEARCH_CELLS`. If nothing arrives, the greedy walk's partial path is
-    returned, so a caller checks `walked and walked[-1] == destination`.
+    A step costs `step_ft`, and `CELL_SIZE_FT` more when the walker's footprint
+    enters a `difficult` square (`step_costs()`). A greedy diagonal walk first,
+    kept only when it arrives in exactly the Chebyshev floor's step count over
+    no `difficult` square; otherwise a search capped at `SEARCH_CELLS` —
+    breadth-first while no square costs extra, cheapest-first when one does.
+    Of equal costs the route with fewer steps wins. If nothing arrives, the
+    greedy walk's partial path is returned, so a caller checks
+    `walked and walked[-1] == destination`.
 
-    `blocked` is the set of cells that may not be entered, built by the caller
-    and not containing the mover's own squares. `size` is the mover's: its
-    whole footprint must be clear at every step. The route ignores the movement
-    budget; truncate it with `steps_within()`. Raises `ValueError` when the
-    destination itself is blocked. `docs/decisions.md` § w0g2, § w1d.
+    `blocked` is the set of cells the walker's footprint may not enter, built by
+    the caller and not containing the walker's own squares. Each of `towing` is
+    moved with the walker, its footprint kept out of `crowded`. The route
+    ignores the movement budget; `step_costs()` prices each step. Raises
+    `ValueError` when the destination itself is blocked. `docs/decisions.md`
+    § w0g2, § w1d, § w2j2.
     """
-    width = SIZE_WIDTH_CELLS[size]
-    if not _clear(destination, width, blocked):
+    clear = _clearance(SIZE_WIDTH_CELLS[size], blocked, towing, crowded)
+    if not clear(destination):
         raise ValueError(
             f"cannot route to {destination}: it is blocked. A destination is "
             "chosen by the APL's move: clause from cells a creature may stand "
@@ -274,19 +293,133 @@ def route(
         )
     if origin == destination:
         return ()
-    walked = _greedy(origin, destination, blocked, width)
+    walked = _greedy(origin, destination, clear)
     if (
         walked
         and walked[-1] == destination
         and len(walked) * CELL_SIZE_FT == distance_ft(origin, destination)
+        and not (
+            difficult and any(map(_rough(SIZE_WIDTH_CELLS[size], difficult), walked))
+        )
     ):
         return walked
-    found = _search(origin, destination, blocked, width)
+    if difficult:
+        cheapest = routes_within(
+            origin,
+            None,
+            blocked=blocked,
+            size=size,
+            difficult=difficult,
+            step_ft=step_ft,
+            towing=towing,
+            crowded=crowded,
+            destination=destination,
+        )
+        return walked if destination not in cheapest else cheapest.path(destination)
+    found = _search(origin, destination, clear)
     return walked if found is None else found
 
 
+def step_costs(
+    walked: Sequence[Cell],
+    *,
+    size: Size = Size.MEDIUM,
+    difficult: AbstractSet[Cell] = frozenset(),
+    step_ft: int = CELL_SIZE_FT,
+) -> tuple[int, ...]:
+    """What each step of `walked` costs, in feet: `step_ft`, and `CELL_SIZE_FT`
+    more for a step whose footprint enters a `difficult` square (XPHB
+    "Difficult Terrain")."""
+    if not difficult:
+        return (step_ft,) * len(walked)
+    rough = _rough(SIZE_WIDTH_CELLS[size], difficult)
+    return tuple(step_ft + CELL_SIZE_FT if rough(cell) else step_ft for cell in walked)
+
+
+class Reached:
+    """Every anchor a search reached, with the cheapest cost to it and the
+    route that costs it."""
+
+    __slots__ = ("_came_from", "_origin", "cost")
+
+    def __init__(
+        self, origin: Cell, cost: dict[Cell, int], came_from: dict[Cell, Cell]
+    ) -> None:
+        self._origin = origin
+        self.cost = cost
+        self._came_from = came_from
+
+    def __contains__(self, cell: object) -> bool:
+        return cell in self.cost
+
+    def path(self, cell: Cell) -> tuple[Cell, ...]:
+        """The cheapest route to `cell`, origin excluded."""
+        if cell == self._origin:
+            return ()
+        return _retrace(self._came_from, self._origin, cell)
+
+
+def routes_within(
+    origin: Cell,
+    budget_ft: int | None,
+    *,
+    blocked: AbstractSet[Cell] = frozenset(),
+    size: Size = Size.MEDIUM,
+    difficult: AbstractSet[Cell] = frozenset(),
+    step_ft: int = CELL_SIZE_FT,
+    towing: Sequence[Towed] = (),
+    crowded: AbstractSet[Cell] = frozenset(),
+    destination: Cell | None = None,
+) -> Reached:
+    """The cheapest route to every anchor within `budget_ft`, origin included.
+
+    Cheapest-first, costs as `step_costs()` prices them, and of equal costs
+    the fewer steps, then the first found in the fixed neighbour order. With no
+    budget the search examines at most `SEARCH_CELLS` anchors, and stops early
+    once `destination` is settled. The arguments are `route()`'s.
+    """
+    width = SIZE_WIDTH_CELLS[size]
+    clear = _clearance(width, blocked, towing, crowded)
+    rough = _rough(width, difficult)
+    cost = {origin: 0}
+    steps_to = {origin: 0}
+    came_from: dict[Cell, Cell] = {}
+    settled: set[Cell] = set()
+    order = 0
+    frontier = [(0, 0, order, origin)]
+    while frontier:
+        spent, steps, _, current = heappop(frontier)
+        if current in settled:
+            continue
+        settled.add(current)
+        if current == destination:
+            break
+        if budget_ft is None and len(settled) >= SEARCH_CELLS:
+            break
+        for step_x, step_y in _NEIGHBOURS:
+            candidate = Cell(current.x + step_x, current.y + step_y)
+            if candidate in settled:
+                continue
+            price = spent + (step_ft + CELL_SIZE_FT if rough(candidate) else step_ft)
+            if budget_ft is not None and price > budget_ft:
+                continue
+            known = cost.get(candidate)
+            if known is not None and (known, steps_to[candidate]) <= (price, steps + 1):
+                continue
+            if not clear(candidate):
+                continue
+            cost[candidate] = price
+            steps_to[candidate] = steps + 1
+            came_from[candidate] = current
+            order += 1
+            heappush(frontier, (price, steps + 1, order, candidate))
+    if destination is not None and destination not in settled:
+        cost.pop(destination, None)
+    return Reached(origin, cost, came_from)
+
+
 def _greedy(
-    origin: Cell, destination: Cell, blocked: AbstractSet[Cell], width: int
+    origin: Cell, destination: Cell, clear: Callable[[Cell], bool]
 ) -> tuple[Cell, ...]:
     """Walk toward the destination, giving up an axis to get round what blocks.
 
@@ -296,7 +429,7 @@ def _greedy(
     walked: list[Cell] = []
     current = origin
     while current != destination:
-        step = _step(current, destination, blocked, width)
+        step = _step(current, destination, clear)
         if step is None:
             break
         walked.append(step)
@@ -305,7 +438,7 @@ def _greedy(
 
 
 def _search(
-    origin: Cell, destination: Cell, blocked: AbstractSet[Cell], width: int
+    origin: Cell, destination: Cell, clear: Callable[[Cell], bool]
 ) -> tuple[Cell, ...] | None:
     """Breadth-first, so the first route found is a shortest one, or `None`."""
     came_from: dict[Cell, Cell] = {}
@@ -315,7 +448,7 @@ def _search(
         current = frontier.popleft()
         for step_x, step_y in _NEIGHBOURS:
             candidate = Cell(current.x + step_x, current.y + step_y)
-            if candidate in seen or not _clear(candidate, width, blocked):
+            if candidate in seen or not clear(candidate):
                 continue
             came_from[candidate] = current
             if candidate == destination:
@@ -338,14 +471,14 @@ def _retrace(
 
 
 def _step(
-    current: Cell, destination: Cell, blocked: AbstractSet[Cell], width: int
+    current: Cell, destination: Cell, clear: Callable[[Cell], bool]
 ) -> Cell | None:
     """The next cell of the greedy walk, or `None` when nothing legal is closer."""
     dx = _sign(destination.x - current.x)
     dy = _sign(destination.y - current.y)
     for step_x, step_y in _candidates(dx, dy):
         candidate = Cell(current.x + step_x, current.y + step_y)
-        if _clear(candidate, width, blocked):
+        if clear(candidate):
             return candidate
     return None
 
@@ -375,14 +508,42 @@ def _cells(anchor: Cell, width: int) -> tuple[Cell, ...]:
     )
 
 
-def _clear(anchor: Cell, width: int, blocked: AbstractSet[Cell]) -> bool:
-    """Whether a creature `width` squares on a side can stand at `anchor`.
+def _clearance(
+    width: int,
+    blocked: AbstractSet[Cell],
+    towing: Sequence[Towed],
+    crowded: AbstractSet[Cell],
+) -> Callable[[Cell], bool]:
+    """Whether a walker `width` squares on a side, and what it tows, can stand
+    at an anchor.
 
-    The one-square case skips building a footprint: it is on the hot path.
+    The one-square walker towing nothing skips building a footprint: it is on
+    the hot path.
     """
+    if not towing:
+        if width == 1:
+            return lambda anchor: anchor not in blocked
+        return lambda anchor: all(cell not in blocked for cell in _cells(anchor, width))
+    shapes = tuple((offset, SIZE_WIDTH_CELLS[size]) for offset, size in towing)
+
+    def clear(anchor: Cell) -> bool:
+        if any(cell in blocked for cell in _cells(anchor, width)):
+            return False
+        return all(
+            cell not in crowded
+            for offset, towed in shapes
+            for cell in _cells(Cell(anchor.x + offset.x, anchor.y + offset.y), towed)
+        )
+
+    return clear
+
+
+def _rough(width: int, difficult: AbstractSet[Cell]) -> Callable[[Cell], bool]:
+    """Whether a walker `width` squares on a side standing at an anchor has a
+    square of its footprint in `difficult`."""
     if width == 1:
-        return anchor not in blocked
-    return all(cell not in blocked for cell in _cells(anchor, width))
+        return lambda anchor: anchor in difficult
+    return lambda anchor: any(cell in difficult for cell in _cells(anchor, width))
 
 
 def _direction(origin: Cell, toward: Cell, shape: str) -> tuple[int, int]:
