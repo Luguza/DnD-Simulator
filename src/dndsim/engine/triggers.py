@@ -202,7 +202,8 @@ def walk_provoking(
     *,
     provokes: bool = True,
     charge: bool = True,
-    step_ft: int = CELL_SIZE_FT,
+    costs: Sequence[int] | None = None,
+    dragging: Sequence[Creature] = (),
 ) -> tuple[Cell, ...]:
     """Walk `mover` along `route` square by square, provoking on the way out.
 
@@ -212,24 +213,40 @@ def walk_provoking(
 
     Each offer is made while the mover is still on the square it is leaving,
     and the position moves afterwards (`docs/decisions.md` § w0g3). With
-    `charge` the walk is the mover's own: each step walked spends `step_ft`
-    of its movement, and it raises `EconomyError` before anything moves when
-    the route costs more than the mover has left, or when it is at Speed 0.
-    Without it nothing is spent and Speed is not asked (`docs/decisions.md`
-    § w2c2).
+    `charge` the walk is the mover's own: each step walked spends its entry in
+    `costs`, five feet each without one, and it raises `EconomyError` before
+    anything moves when the route costs more than the mover has left, or when
+    it is at Speed 0. Without it nothing is spent and Speed is not asked
+    (`docs/decisions.md` § w2c2).
+
+    Each of `dragging` moves with the mover, by the same step, after it:
+    provoking nothing and offered nothing for the move, and its squares not
+    checked here (`docs/decisions.md` § w2j2).
     """
     economy = mover.economy
+    if costs is None:
+        costs = (CELL_SIZE_FT,) * len(route)
+    elif len(costs) != len(route):
+        raise ValueError(
+            f"{len(costs)} step costs for a route of {len(route)} squares: "
+            "price every step or none"
+        )
     if charge and route and mover.speed_ft == 0:
         raise EconomyError(
             f"{mover.name} has a Speed of 0 and cannot move; ask `speed_ft` "
             "before walking it"
         )
-    if charge and not economy.can_move(len(route) * step_ft):
+    if charge and not economy.can_move(sum(costs)):
         raise EconomyError(
             f"{mover.name} has {economy.movement_ft} ft of movement left and "
-            f"the route costs {len(route) * step_ft} ft; truncate it before "
-            "walking it"
+            f"the route costs {sum(costs)} ft; truncate it before walking it"
         )
+    if dragging:
+        bystanders = [
+            creature
+            for creature in bystanders
+            if not any(creature is held for held in dragging)
+        ]
     watch = watch_movement(
         mover, bystanders, squares=len(route), provokes=provokes, halts=charge
     )
@@ -239,19 +256,30 @@ def walk_provoking(
         if not route:
             return ()
         if charge:
-            economy.move(len(route) * step_ft)
+            economy.move(sum(costs))
+        _drag(dragging, mover.position, route[-1])
         mover.position = route[-1]
         return tuple(route)
     walked = []
-    for square in route:
+    for square, cost in zip(route, costs, strict=True):
         watch.leaving(square)
         if mover.is_down or (charge and mover.speed_ft == 0):
             break
         if charge:
-            economy.move(step_ft)
+            economy.move(cost)
+        if dragging:
+            _drag(dragging, mover.position, square)
         mover.position = square
         walked.append(square)
     return tuple(walked)
+
+
+def _drag(dragging: Sequence[Creature], before: Cell, after: Cell) -> None:
+    """Move each of `dragging` by the step from `before` to `after`."""
+    dx, dy = after.x - before.x, after.y - before.y
+    for held in dragging:
+        position = held.position
+        held.position = Cell(position.x + dx, position.y + dy)
 
 
 def _seat(watcher: _Watcher) -> InitiativeKey:

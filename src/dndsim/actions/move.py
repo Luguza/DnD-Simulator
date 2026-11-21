@@ -8,13 +8,21 @@ the positions they are asked about, and walked square by square through
 """
 
 from abc import abstractmethod
-from collections import deque
 from typing import ClassVar
 
 from dndsim.actions.base import Action
 from dndsim.actions.disengage import disengaged
-from dndsim.actions.unarmed import loosen_grapples
-from dndsim.core.geometry import Cell, distance_ft, footprint, in_reach, route
+from dndsim.actions.unarmed import grips, loosen_grapples
+from dndsim.core.geometry import (
+    Cell,
+    Footing,
+    distance_ft,
+    footprint,
+    in_reach,
+    reachable,
+    route,
+    step_costs,
+)
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
 from dndsim.engine.d20 import settle
@@ -22,14 +30,21 @@ from dndsim.engine.triggers import walk_provoking
 from dndsim.engine.world import World
 from dndsim.hooks.contexts import MoveContext
 from dndsim.hooks.definitions import ON_MOVE
-from dndsim.rules.constants import CELL_SIZE_FT, SIZE_WIDTH_CELLS
-from dndsim.rules.enums import ActionCost
+from dndsim.rules.constants import CELL_SIZE_FT, SIZE_ORDER, SIZE_WIDTH_CELLS
+from dndsim.rules.enums import ActionCost, Size
 
 __all__ = ["Move", "Retreat", "Walk"]
 
-_NEIGHBOURS = tuple(
-    (dx, dy) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if (dx, dy) != (0, 0)
-)
+
+class _Ground:
+    """What one walk is planned on: the mover's `Footing` and the creatures it
+    drags."""
+
+    __slots__ = ("dragging", "footing")
+
+    def __init__(self, footing: Footing, dragging: tuple[Creature, ...]) -> None:
+        self.footing = footing
+        self.dragging = dragging
 
 
 class Walk(Action[tuple[Cell, ...]]):
@@ -37,10 +52,17 @@ class Walk(Action[tuple[Cell, ...]]):
     movement this turn allows.
 
     Paid in feet, so `COST` is `None`; legal while Incapacitated, which stops
-    no movement. Every other living creature's space is impassable. An actor
-    holding a `CRAWLS` effect pays ten feet a square, and one holding a
-    `NO_APPROACH` effect walks no step that ends closer to its caster than the
-    square it left. `execute()` returns the squares walked.
+    no movement. The actor passes through the space of an ally, of an
+    Incapacitated or a Tiny creature, or of one two or more sizes larger or
+    smaller than itself, and through no other; it stops in nobody's, so a walk
+    its movement would end inside one ends at the last square clear of them.
+    Each square costs five feet, and five more for each of: a `CRAWLS` effect
+    it holds, entering the space of a creature that is neither Tiny nor its
+    ally, and dragging. An actor that grapples drags what it holds, at that
+    cost unless every creature it drags is Tiny or two or more sizes smaller.
+    One holding a `NO_APPROACH` effect walks no step that ends closer to its
+    caster than the square it left. `execute()` returns the squares walked
+    (`docs/decisions.md` § w2j2).
     """
 
     __slots__ = ("_planned", "target", "world")
@@ -52,7 +74,9 @@ class Walk(Action[tuple[Cell, ...]]):
         super().__init__(actor)
         self.target = target
         self.world = world
-        self._planned: tuple[Cell, Cell, int, tuple[Cell, ...]] | None = None
+        self._planned: (
+            tuple[Cell, Cell, int, tuple[Cell, ...], tuple[int, ...], _Ground] | None
+        ) = None
 
     def is_legal(self) -> bool:
         """Whether the actor can take a step of this walk now. Changes
@@ -66,20 +90,20 @@ class Walk(Action[tuple[Cell, ...]]):
         actor, target = self.actor, self.target
         if target is actor or target.dead or actor.speed_ft == 0:
             return False
-        step_ft = _step_ft(actor)
-        if not actor.economy.can_move(step_ft):
+        if not actor.economy.can_move(_step_ft(actor)):
             return False
-        return bool(self._walkable(step_ft))
+        return bool(self._walkable()[0])
 
     def _perform(self, rng: Rng) -> tuple[Cell, ...]:
         actor = self.actor
-        step_ft = _step_ft(actor)
+        walkable, costs, ground = self._walkable()
         walked = walk_provoking(
             actor,
-            self._walkable(step_ft),
+            walkable,
             self.world,
             provokes=not disengaged(actor),
-            step_ft=step_ft,
+            costs=costs,
+            dragging=ground.dragging,
         )
         if walked:
             loosen_grapples(self.world, actor)
@@ -96,38 +120,35 @@ class Walk(Action[tuple[Cell, ...]]):
             moved.close()
         return walked
 
-    def _walkable(self, step_ft: int) -> tuple[Cell, ...]:
-        """The route as far as this turn's movement pays for it at `step_ft` a
-        square and fear allows."""
+    def _walkable(self) -> tuple[tuple[Cell, ...], tuple[int, ...], _Ground]:
+        """The route as far as this turn's movement pays for it and fear
+        allows, ending on a square the actor may stop in; its step costs; and
+        the ground it was planned on."""
         actor = self.actor
-        planned = self._route()[: actor.economy.movement_ft // step_ft]
+        planned, costs, ground = self._route()
+        budget = actor.economy.movement_ft
+        paid = 0
+        steps = 0
+        for cost in costs:
+            paid += cost
+            if paid > budget:
+                break
+            steps += 1
+        planned = planned[:steps]
         sources = _sources_of_fear(self.world, actor)
-        if not sources:
-            return planned
-        here = actor.position
-        size = actor.size
-        for index, square in enumerate(planned):
-            for source in sources:
-                before = distance_ft(
-                    here,
-                    source.position,
-                    origin_size=size,
-                    destination_size=source.size,
-                )
-                after = distance_ft(
-                    square,
-                    source.position,
-                    origin_size=size,
-                    destination_size=source.size,
-                )
-                if after < before:
-                    return planned[:index]
-            here = square
-        return planned
+        if sources:
+            planned = _unafraid(actor, planned, sources)
+        stands = ground.footing.stands
+        end = len(planned)
+        while end and not stands(planned[end - 1]):
+            end -= 1
+        planned = planned[:end]
+        return planned, costs[: len(planned)], ground
 
-    def _route(self) -> tuple[Cell, ...]:
-        """The planned route, re-planned only when either creature has moved
-        or the movement left has changed since it was."""
+    def _route(self) -> tuple[tuple[Cell, ...], tuple[int, ...], _Ground]:
+        """The planned route, its step costs and its ground, re-planned only
+        when either creature has moved or the movement left has changed since
+        it was."""
         actor = self.actor
         origin = actor.position
         movement = actor.economy.movement_ft
@@ -138,14 +159,18 @@ class Walk(Action[tuple[Cell, ...]]):
             and planned[1] == self.target.position
             and planned[2] == movement
         ):
-            return planned[3]
-        walked = self._plan(origin)
-        self._planned = (origin, self.target.position, movement, walked)
-        return walked
+            return planned[3], planned[4], planned[5]
+        ground = _ground(self.world, actor)
+        walked = self._plan(origin, ground)
+        costs = step_costs(walked, ground.footing)
+        self._planned = (origin, self.target.position, movement, walked, costs, ground)
+        return walked, costs, ground
 
     @abstractmethod
-    def _plan(self, origin: Cell) -> tuple[Cell, ...]:
-        """The route from `origin`, ignoring the movement left; empty for none."""
+    def _plan(self, origin: Cell, ground: _Ground) -> tuple[Cell, ...]:
+        """The route from `origin` on `ground`; empty for none. A route that
+        ends where the actor may stop, which `Retreat` plans within the
+        movement left and `Move` does not."""
 
     def __repr__(self) -> str:
         return f"<{type(self).__name__} by {self.actor.name} re {self.target.name}>"
@@ -154,7 +179,7 @@ class Walk(Action[tuple[Cell, ...]]):
 class Move(Walk):
     """`actor` walks toward `target` until it has it in reach.
 
-    The destination is the square with the shortest route whose footprint has
+    The destination is the square with the cheapest route whose footprint has
     `target` in the actor's reach — between footprints — and stands in nobody's
     space; of equal routes, the one ending nearest, then lowest `y`, then `x`.
     No step is offered when the actor already has `target` in reach, or when
@@ -163,7 +188,7 @@ class Move(Walk):
 
     __slots__ = ()
 
-    def _plan(self, origin: Cell) -> tuple[Cell, ...]:
+    def _plan(self, origin: Cell, ground: _Ground) -> tuple[Cell, ...]:
         actor, target = self.actor, self.target
         if in_reach(
             origin,
@@ -173,19 +198,23 @@ class Move(Walk):
             destination_size=target.size,
         ):
             return ()
-        blocked = _occupied(self.world, actor)
+        footing = ground.footing
+        floor_ft = footing.step_ft
         best: tuple[Cell, ...] = ()
-        for steps, y, x in _stands(actor, target, blocked):
-            # No route is shorter than the Chebyshev floor `_stands` sorts by,
-            # so once that floor reaches the best route found, nothing later
-            # can beat it.
-            if best and steps >= len(best):
+        best_ft = 0
+        for steps, y, x in _stands(actor, target, footing):
+            # No route costs less than the Chebyshev floor `_stands` sorts by,
+            # at the cheapest step, so once that reaches the best route found,
+            # nothing later can beat it.
+            if best and steps * floor_ft >= best_ft:
                 break
             destination = Cell(x, y)
-            walked = route(origin, destination, blocked=blocked, size=actor.size)
-            reached = walked and walked[-1] == destination
-            if reached and (not best or len(walked) < len(best)):
-                best = walked
+            walked = route(origin, destination, footing=footing)
+            if not walked or walked[-1] != destination:
+                continue
+            cost_ft = sum(step_costs(walked, footing))
+            if not best or cost_ft < best_ft:
+                best, best_ft = walked, cost_ft
         return best
 
 
@@ -217,8 +246,11 @@ class Retreat(Walk):
         super().__init__(actor, target, world=world)
         self.keep_ft = keep_ft
 
-    def _plan(self, origin: Cell) -> tuple[Cell, ...]:
+    def _plan(self, origin: Cell, ground: _Ground) -> tuple[Cell, ...]:
         actor, target = self.actor, self.target
+        if any(held is target for held in ground.dragging):
+            # It moves with the actor: no square is farther from it.
+            return ()
         size = actor.size
         threat = target.position
         threat_size = target.size
@@ -232,43 +264,20 @@ class Retreat(Walk):
         keep = self.keep_ft
         if keep is not None and here >= keep:
             return ()
-        steps = actor.economy.movement_ft // _step_ft(actor)
-        if steps == 0:
+        reach = reachable(origin, actor.economy.movement_ft, ground.footing)
+        cost_ft = reach.cost_ft
+        if not cost_ft:
             return ()
-        blocked = _occupied(self.world, actor)
-        came_from: dict[Cell, Cell] = {}
-        depth = {origin: 0}
-        frontier = deque((origin,))
-        while frontier:
-            current = frontier.popleft()
-            if depth[current] == steps:
-                continue
-            for dx, dy in _NEIGHBOURS:
-                candidate = Cell(current.x + dx, current.y + dy)
-                if candidate in depth or any(
-                    cell in blocked for cell in footprint(candidate, size)
-                ):
-                    continue
-                depth[candidate] = depth[current] + 1
-                came_from[candidate] = current
-                frontier.append(candidate)
-        reached = [cell for cell in depth if cell != origin]
         far_enough = (
-            [] if keep is None else [cell for cell in reached if away(cell) >= keep]
+            [] if keep is None else [cell for cell in cost_ft if away(cell) >= keep]
         )
         if far_enough:
-            best = min(far_enough, key=lambda c: (depth[c], -away(c), c.y, c.x))
+            best = min(far_enough, key=lambda c: (cost_ft[c], -away(c), c.y, c.x))
         else:
-            best = min(
-                reached, key=lambda c: (-away(c), depth[c], c.y, c.x), default=origin
-            )
+            best = min(cost_ft, key=lambda c: (-away(c), cost_ft[c], c.y, c.x))
             if away(best) <= here:
                 return ()
-        walked = [best]
-        while (previous := came_from[walked[-1]]) != origin:
-            walked.append(previous)
-        walked.reverse()
-        return tuple(walked)
+        return reach.route_to(best)
 
 
 def _step_ft(actor: Creature) -> int:
@@ -291,21 +300,92 @@ def _sources_of_fear(world: World, actor: Creature) -> tuple[Creature, ...]:
     return tuple(sources)
 
 
-def _occupied(world: World, mover: Creature) -> frozenset[Cell]:
-    """Every square a living creature other than `mover` stands in."""
-    return frozenset(
-        cell
-        for creature in world
-        if creature is not mover and not creature.dead
-        for cell in footprint(creature.position, creature.size)
+def _unafraid(
+    actor: Creature, planned: tuple[Cell, ...], sources: tuple[Creature, ...]
+) -> tuple[Cell, ...]:
+    """`planned` up to the first step that ends closer to one of `sources`
+    than the square it left."""
+    here = actor.position
+    size = actor.size
+    for index, square in enumerate(planned):
+        for source in sources:
+            before = distance_ft(
+                here, source.position, origin_size=size, destination_size=source.size
+            )
+            after = distance_ft(
+                square, source.position, origin_size=size, destination_size=source.size
+            )
+            if after < before:
+                return planned[:index]
+        here = square
+    return planned
+
+
+def _ground(world: World, mover: Creature) -> _Ground:
+    """The ground `mover` walks on now: whose space it passes, whose costs it
+    more, and what it drags (XPHB "Moving Around Other Creatures", "Difficult
+    Terrain", Rules Glossary "Grappled")."""
+    dragging = tuple(grip.target for grip in grips(mover) if not grip.target.dead)
+    side = world.side_of(mover) if mover in world else None
+    rank = SIZE_ORDER[mover.size]
+    blocked: set[Cell] = set()
+    crowded: set[Cell] = set()
+    difficult: set[Cell] = set()
+    for creature in world:
+        if (
+            creature is mover
+            or creature.dead
+            or any(creature is held for held in dragging)
+        ):
+            continue
+        cells = footprint(creature.position, creature.size)
+        tiny = creature.size is Size.TINY
+        ally = side is not None and world.side_of(creature) == side
+        if (
+            ally
+            or tiny
+            or abs(SIZE_ORDER[creature.size] - rank) >= 2
+            or creature.incapacitated
+        ):
+            crowded.update(cells)
+            if not (ally or tiny):
+                difficult.update(cells)
+        else:
+            blocked.update(cells)
+    step_ft = _step_ft(mover)
+    if any(not _carried(mover, held) for held in dragging):
+        step_ft += CELL_SIZE_FT
+    origin = mover.position
+    towing = tuple(
+        (held.position.x - origin.x, held.position.y - origin.y, held.size)
+        for held in dragging
+    )
+    return _Ground(
+        Footing(
+            blocked=frozenset(blocked),
+            crowded=frozenset(crowded),
+            difficult=frozenset(difficult),
+            size=mover.size,
+            towing=towing,
+            step_ft=step_ft,
+        ),
+        dragging,
+    )
+
+
+def _carried(grappler: Creature, held: Creature) -> bool:
+    """Whether `held` drags at no extra cost: Tiny, or two or more sizes
+    smaller than `grappler`."""
+    return (
+        held.size is Size.TINY or SIZE_ORDER[grappler.size] - SIZE_ORDER[held.size] >= 2
     )
 
 
 def _stands(
-    actor: Creature, target: Creature, blocked: frozenset[Cell]
+    actor: Creature, target: Creature, footing: Footing
 ) -> list[tuple[int, int, int]]:
     """The anchors from which `actor`'s footprint has `target` in reach and
-    stands in nobody's space, as `(steps, y, x)`: `steps` is the Chebyshev
+    `footing` lets it stop, as `(steps, y, x)`: `steps` is the Chebyshev
     distance in squares from the actor's anchor, `distance_ft()`'s between
     anchors, and the list is sorted on it, then lowest `y`, then lowest `x`.
     Tuples, so that no `Cell` is built for an anchor the plan never routes to
@@ -325,21 +405,12 @@ def _stands(
     )
     origin = actor.position
     origin_x, origin_y = origin.x, origin.y
-    if width == 1:
-        taken = {(cell.x, cell.y) for cell in blocked}
-        found = [
-            (max(abs(x - origin_x), abs(y - origin_y)), y, x)
-            for y in ys
-            for x in xs
-            if (x, y) not in taken
-        ]
-    else:
-        size = actor.size
-        found = [
-            (max(abs(x - origin_x), abs(y - origin_y)), y, x)
-            for y in ys
-            for x in xs
-            if not any(square in blocked for square in footprint(Cell(x, y), size))
-        ]
+    taken = {(cell.x, cell.y) for cell in footing.unstandable}
+    found = [
+        (max(abs(x - origin_x), abs(y - origin_y)), y, x)
+        for y in ys
+        for x in xs
+        if (x, y) not in taken
+    ]
     found.sort()
     return found

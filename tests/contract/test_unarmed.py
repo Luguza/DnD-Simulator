@@ -331,17 +331,15 @@ def test_the_grapple_ends_when_the_grappler_is_incapacitated() -> None:
     assert not any(isinstance(effect, Grappling) for effect in hero.effects)
 
 
-def test_the_grapple_ends_when_the_grappler_walks_away() -> None:
-    """Until `w2j2`'s drag, walking off lets go."""
+def test_a_grappler_cannot_retreat_from_what_it_drags() -> None:
+    """What the hero holds moves with it, so no square is farther from it."""
     hero, foe = creature("hero"), creature("foe", cell=EAST)
     grappled(hero, foe)
     world = seated(hero, foe)
     ready(hero)
 
-    Retreat(hero, foe, world=world, keep_ft=15).execute(rng=ScriptedRng([]))
-
-    assert held_by(foe) == []
-    assert grips(hero) == []
+    assert not Retreat(hero, foe, world=world, keep_ft=15).is_legal()
+    assert held_by(foe) != []
 
 
 def test_the_grapple_ends_when_a_push_parts_the_two() -> None:

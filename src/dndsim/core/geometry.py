@@ -14,6 +14,7 @@ from collections import deque
 from collections.abc import Iterable
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
+from heapq import heappop, heappush
 from typing import Final
 
 from dndsim.rules.constants import CELL_SIZE_FT, SIZE_WIDTH_CELLS
@@ -22,14 +23,18 @@ from dndsim.rules.enums import Size
 __all__ = [
     "SEARCH_CELLS",
     "Cell",
+    "Footing",
+    "Reach",
     "cone",
     "distance_ft",
     "footprint",
     "has_line_of_sight",
     "in_reach",
     "line",
+    "reachable",
     "route",
     "sphere",
+    "step_costs",
     "steps_within",
 ]
 
@@ -245,28 +250,114 @@ forever (`docs/decisions.md` § w0g2).
 """
 
 
+class Footing:
+    """Where a mover of `size` may pass and stop, and what each square costs it.
+
+    `blocked` squares are never entered; `crowded` ones may be passed through
+    but never stopped in; entering a footprint that touches a `difficult` one
+    costs `CELL_SIZE_FT` more than `step_ft`. `towing` is what the mover moves
+    with it, each `(dx, dy, size)` from its anchor: those footprints may touch
+    neither `blocked` nor `crowded` at any step. Every question is asked of the
+    mover's anchor; the footprints are folded into anchor sets once, here
+    (`docs/decisions.md` § w2j2).
+    """
+
+    __slots__ = ("_costly", "_no_pass", "_no_stand", "step_ft")
+
+    def __init__(
+        self,
+        *,
+        blocked: AbstractSet[Cell] = frozenset(),
+        crowded: AbstractSet[Cell] = frozenset(),
+        difficult: AbstractSet[Cell] = frozenset(),
+        size: Size = Size.MEDIUM,
+        towing: Iterable[tuple[int, int, Size]] = (),
+        step_ft: int = CELL_SIZE_FT,
+    ) -> None:
+        width = SIZE_WIDTH_CELLS[size]
+        no_pass = _anchors(blocked, 0, 0, width)
+        no_stand = no_pass | _anchors(crowded, 0, 0, width) if crowded else no_pass
+        for dx, dy, towed in towing:
+            towed_width = SIZE_WIDTH_CELLS[towed]
+            no_pass = (
+                no_pass
+                | _anchors(blocked, dx, dy, towed_width)
+                | _anchors(crowded, dx, dy, towed_width)
+            )
+            no_stand = no_stand | no_pass
+        self._no_pass = no_pass
+        self._no_stand = no_stand
+        self._costly = _anchors(difficult, 0, 0, width)
+        self.step_ft = step_ft
+
+    def passes(self, anchor: Cell) -> bool:
+        """Whether the mover may step onto `anchor` on its way."""
+        return anchor not in self._no_pass
+
+    def stands(self, anchor: Cell) -> bool:
+        """Whether the mover may end its move on `anchor`."""
+        return anchor not in self._no_stand
+
+    @property
+    def unstandable(self) -> AbstractSet[Cell]:
+        """Every anchor `stands()` refuses."""
+        return self._no_stand
+
+    def cost_ft(self, anchor: Cell) -> int:
+        """What the step onto `anchor` costs."""
+        if anchor in self._costly:
+            return self.step_ft + CELL_SIZE_FT
+        return self.step_ft
+
+
+class Reach:
+    """Every square a walk from `origin` may end on within a budget, what the
+    cheapest route there costs, and that route."""
+
+    __slots__ = ("_came_from", "cost_ft", "origin")
+
+    def __init__(
+        self, origin: Cell, cost_ft: dict[Cell, int], came_from: dict[Cell, Cell]
+    ) -> None:
+        self.origin = origin
+        self.cost_ft = cost_ft
+        self._came_from = came_from
+
+    def route_to(self, destination: Cell) -> tuple[Cell, ...]:
+        """The cheapest route to `destination`, origin excluded."""
+        if destination == self.origin:
+            return ()
+        return _retrace(self._came_from, self.origin, destination)
+
+
 def route(
     origin: Cell,
     destination: Cell,
     *,
     blocked: AbstractSet[Cell] = frozenset(),
     size: Size = Size.MEDIUM,
+    footing: Footing | None = None,
 ) -> tuple[Cell, ...]:
-    """The shortest legal route from `origin` to `destination`, origin excluded.
+    """The cheapest legal route from `origin` to `destination`, origin excluded.
 
     A greedy diagonal walk first, kept only when it arrives in exactly the
-    Chebyshev floor's step count; otherwise a breadth-first search capped at
-    `SEARCH_CELLS`. If nothing arrives, the greedy walk's partial path is
-    returned, so a caller checks `walked and walked[-1] == destination`.
+    Chebyshev floor's step count and enters no costly square; otherwise a
+    search capped at `SEARCH_CELLS` — breadth-first while every square costs
+    the same, cheapest-first when some cost more, ties going to the fewer
+    steps. If nothing arrives, the greedy walk's partial path is returned, so a
+    caller checks `walked and walked[-1] == destination`.
 
-    `blocked` is the set of cells that may not be entered, built by the caller
-    and not containing the mover's own squares. `size` is the mover's: its
-    whole footprint must be clear at every step. The route ignores the movement
-    budget; truncate it with `steps_within()`. Raises `ValueError` when the
-    destination itself is blocked. `docs/decisions.md` § w0g2, § w1d.
+    `footing` says where the mover may pass and stop and what each step
+    costs; without one, `blocked` and `size` build it, where `blocked` is the
+    set of cells that may not be entered, not containing the mover's own
+    squares, and `size` is the mover's: its whole footprint must be clear at
+    every step. The route ignores the movement budget; the caller truncates
+    it. Raises `ValueError` when the mover may not stop on the destination.
+    `docs/decisions.md` § w0g2, § w1d, § w2j2.
     """
-    width = SIZE_WIDTH_CELLS[size]
-    if not _clear(destination, width, blocked):
+    if footing is None:
+        footing = Footing(blocked=blocked, size=size)
+    if not footing.stands(destination):
         raise ValueError(
             f"cannot route to {destination}: it is blocked. A destination is "
             "chosen by the APL's move: clause from cells a creature may stand "
@@ -274,19 +365,46 @@ def route(
         )
     if origin == destination:
         return ()
-    walked = _greedy(origin, destination, blocked, width)
+    no_pass = footing._no_pass
+    costly = footing._costly
+    walked = _greedy(origin, destination, no_pass)
     if (
         walked
         and walked[-1] == destination
         and len(walked) * CELL_SIZE_FT == distance_ft(origin, destination)
+        and not (costly and any(cell in costly for cell in walked))
     ):
         return walked
-    found = _search(origin, destination, blocked, width)
+    if costly:
+        found = _cheapest(origin, destination, footing, None)
+    else:
+        found = _search(origin, destination, no_pass)
     return walked if found is None else found
 
 
+def reachable(origin: Cell, budget_ft: int, footing: Footing) -> Reach:
+    """Every square the mover may stop on that a route from `origin` costing
+    at most `budget_ft` reaches, origin excluded, and the cheapest route to
+    each: cheapest-first, ties going to the fewer steps."""
+    cost_ft: dict[Cell, int] = {}
+    came_from: dict[Cell, Cell] = {}
+    _cheapest(origin, None, footing, budget_ft, cost_ft, came_from)
+    stands = footing.stands
+    return Reach(
+        origin,
+        {cell: cost for cell, cost in cost_ft.items() if stands(cell)},
+        came_from,
+    )
+
+
+def step_costs(walked: Iterable[Cell], footing: Footing) -> tuple[int, ...]:
+    """What each step of `walked` costs on `footing`."""
+    cost_ft = footing.cost_ft
+    return tuple(cost_ft(cell) for cell in walked)
+
+
 def _greedy(
-    origin: Cell, destination: Cell, blocked: AbstractSet[Cell], width: int
+    origin: Cell, destination: Cell, no_pass: AbstractSet[Cell]
 ) -> tuple[Cell, ...]:
     """Walk toward the destination, giving up an axis to get round what blocks.
 
@@ -296,7 +414,7 @@ def _greedy(
     walked: list[Cell] = []
     current = origin
     while current != destination:
-        step = _step(current, destination, blocked, width)
+        step = _step(current, destination, no_pass)
         if step is None:
             break
         walked.append(step)
@@ -305,7 +423,7 @@ def _greedy(
 
 
 def _search(
-    origin: Cell, destination: Cell, blocked: AbstractSet[Cell], width: int
+    origin: Cell, destination: Cell, no_pass: AbstractSet[Cell]
 ) -> tuple[Cell, ...] | None:
     """Breadth-first, so the first route found is a shortest one, or `None`."""
     came_from: dict[Cell, Cell] = {}
@@ -315,13 +433,66 @@ def _search(
         current = frontier.popleft()
         for step_x, step_y in _NEIGHBOURS:
             candidate = Cell(current.x + step_x, current.y + step_y)
-            if candidate in seen or not _clear(candidate, width, blocked):
+            if candidate in seen or candidate in no_pass:
                 continue
             came_from[candidate] = current
             if candidate == destination:
                 return _retrace(came_from, origin, destination)
             seen.add(candidate)
             frontier.append(candidate)
+    return None
+
+
+def _cheapest(
+    origin: Cell,
+    destination: Cell | None,
+    footing: Footing,
+    budget_ft: int | None,
+    cost_ft: dict[Cell, int] | None = None,
+    came_from: dict[Cell, Cell] | None = None,
+) -> tuple[Cell, ...] | None:
+    """Cheapest-first from `origin`: the route to `destination` or `None`; or,
+    with no destination, every square within `budget_ft`, written into
+    `cost_ft` and `came_from`.
+
+    The heap key is cost, then steps, then the order squares were reached in,
+    so equal routes resolve as the breadth-first search would. With a
+    destination the search is capped at `SEARCH_CELLS`.
+    """
+    costs = {} if cost_ft is None else cost_ft
+    parents = {} if came_from is None else came_from
+    no_pass = footing._no_pass
+    step_ft = footing.step_ft
+    costly = footing._costly
+    reached = {origin: (0, 0)}
+    settled: set[Cell] = set()
+    order = 0
+    heap = [(0, 0, order, origin)]
+    while heap:
+        cost, steps, _, current = heappop(heap)
+        if current in settled:
+            continue
+        settled.add(current)
+        if current == destination:
+            return _retrace(parents, origin, destination)
+        if current != origin:
+            costs[current] = cost
+        if destination is not None and len(reached) >= SEARCH_CELLS:
+            continue
+        for step_x, step_y in _NEIGHBOURS:
+            candidate = Cell(current.x + step_x, current.y + step_y)
+            if candidate in settled or candidate in no_pass:
+                continue
+            onward = cost + step_ft + (CELL_SIZE_FT if candidate in costly else 0)
+            if budget_ft is not None and onward > budget_ft:
+                continue
+            known = reached.get(candidate)
+            if known is not None and known <= (onward, steps + 1):
+                continue
+            reached[candidate] = (onward, steps + 1)
+            parents[candidate] = current
+            order += 1
+            heappush(heap, (onward, steps + 1, order, candidate))
     return None
 
 
@@ -337,15 +508,13 @@ def _retrace(
     return tuple(walked)
 
 
-def _step(
-    current: Cell, destination: Cell, blocked: AbstractSet[Cell], width: int
-) -> Cell | None:
+def _step(current: Cell, destination: Cell, no_pass: AbstractSet[Cell]) -> Cell | None:
     """The next cell of the greedy walk, or `None` when nothing legal is closer."""
     dx = _sign(destination.x - current.x)
     dy = _sign(destination.y - current.y)
     for step_x, step_y in _candidates(dx, dy):
         candidate = Cell(current.x + step_x, current.y + step_y)
-        if _clear(candidate, width, blocked):
+        if candidate not in no_pass:
             return candidate
     return None
 
@@ -375,14 +544,20 @@ def _cells(anchor: Cell, width: int) -> tuple[Cell, ...]:
     )
 
 
-def _clear(anchor: Cell, width: int, blocked: AbstractSet[Cell]) -> bool:
-    """Whether a creature `width` squares on a side can stand at `anchor`.
-
-    The one-square case skips building a footprint: it is on the hot path.
-    """
-    if width == 1:
-        return anchor not in blocked
-    return all(cell not in blocked for cell in _cells(anchor, width))
+def _anchors(
+    cells: AbstractSet[Cell], dx: int, dy: int, width: int
+) -> AbstractSet[Cell]:
+    """The anchors at which a footprint `width` on a side, placed `(dx, dy)`
+    from the anchor, covers one of `cells`. Returned as given when that is
+    `cells` itself: the one-square mover is the hot path."""
+    if width == 1 and not (dx or dy):
+        return cells
+    return frozenset(
+        Cell(cell.x - dx - i, cell.y - dy - j)
+        for cell in cells
+        for i in range(width)
+        for j in range(width)
+    )
 
 
 def _direction(origin: Cell, toward: Cell, shape: str) -> tuple[int, int]:

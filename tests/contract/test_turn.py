@@ -1157,8 +1157,8 @@ def test_a_move_walks_what_is_left_after_an_earlier_one() -> None:
 def test_a_move_ends_on_a_free_square_when_the_nearest_is_taken() -> None:
     """The fighter's ally stands on (3, 3), the one square in reach of the
     goblin at (4, 4) that is three steps away. The next nearest, (3, 4) and
-    (4, 3), are four: the move takes four steps, never enters the ally's
-    square, and ends in reach of the goblin."""
+    (4, 3), are four: the move takes four steps, may pass through the ally's
+    square but does not end there, and ends in reach of the goblin."""
     seated, fighter, goblin = closing(Cell(4, 4))
     ally = creature("ally", cell=Cell(3, 3))
     seated.seat(ally, "heroes")
@@ -1166,7 +1166,6 @@ def test_a_move_ends_on_a_free_square_when_the_nearest_is_taken() -> None:
     walked = Move(fighter, goblin, world=seated).execute(rng=no_dice())
 
     assert len(walked) == 4
-    assert Cell(3, 3) not in walked
     assert fighter.position in (Cell(3, 4), Cell(4, 3))
     assert reaches(fighter, goblin)
 
@@ -1376,14 +1375,15 @@ def test_a_frightened_creature_walks_freely_away_from_its_source() -> None:
 
 
 def _cornered() -> tuple[World, Creature, Creature, Creature]:
-    """The fighter at the origin, the goblin at (6, 0), and a wall of the
-    fighter's friends on (2, -1) to (2, 5) and on (3, -2) and (3, -3). The only
-    shortest way round is (1, -1), (2, -2), (3, -1), then two more squares to
-    stand beside the goblin. The source of fear `dread` waits at (4, 4)."""
+    """The fighter at the origin, the goblin at (6, 0), and a wall of
+    strangers, whom nobody passes, on (2, -1) to (2, 5) and on (3, -2) and
+    (3, -3). The only shortest way round is (1, -1), (2, -2), (3, -1), then
+    two more squares to stand beside the goblin. The source of fear `dread`
+    waits at (4, 4)."""
     seated, fighter, goblin = closing(Cell(6, 0))
     wall = [Cell(2, y) for y in range(-1, 6)] + [Cell(3, -2), Cell(3, -3)]
     for index, cell in enumerate(wall):
-        seated.seat(creature(f"wall{index}", cell=cell), "heroes")
+        seated.seat(creature(f"wall{index}", cell=cell), "strangers")
     dread = creature("dread", cell=Cell(4, 4), initiative=SECOND)
     seated.seat(dread, "monsters")
     return seated, fighter, goblin, dread
@@ -1446,12 +1446,12 @@ def test_a_move_takes_the_shortest_route_among_the_squares_in_reach() -> None:
 
 def test_a_square_earlier_in_the_tie_order_loses_to_a_shorter_route() -> None:
     """Goblin at (4, 0): the stands (3, -1), (3, 0) and (3, 1) are 15 feet away.
-    With (2, -2), (2, -1) and (2, 0) taken, (3, -1) — lowest y — needs four
+    With (2, -2), (2, -1) and (2, 0) held by strangers, (3, -1) — lowest y — needs four
     steps, while (3, 0) is three, by (2, 1). Shortest route first, then lowest
     y: the walk ends on (3, 0) with 15 feet left."""
     seated, fighter, goblin = closing(Cell(4, 0))
     for index, cell in enumerate((Cell(2, -2), Cell(2, -1), Cell(2, 0))):
-        seated.seat(creature(f"post{index}", cell=cell), "heroes")
+        seated.seat(creature(f"post{index}", cell=cell), "strangers")
 
     walked = Move(fighter, goblin, world=seated).execute(rng=no_dice())
 

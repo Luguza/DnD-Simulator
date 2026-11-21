@@ -27,7 +27,7 @@ from dndsim.engine.d20 import ability_check, check_bonus
 from dndsim.engine.saves import save_bonus, save_dc, saving_throw
 from dndsim.engine.triggers import walk_provoking
 from dndsim.engine.world import World
-from dndsim.hooks.contexts import ConditionContext
+from dndsim.hooks.contexts import ConditionContext, DamageTakenContext
 from dndsim.hooks.decorator import R, hook
 from dndsim.rules.constants import CELL_SIZE_FT, SIZE_ORDER, SIZE_WIDTH_CELLS
 from dndsim.rules.enums import Ability, ActionCost, SaveOutcome
@@ -76,7 +76,7 @@ class Grappling(Effect):
     """The grappler's hold on `target`: one hand filled, and the DC to escape.
 
     Ends the grapple when its owner gains a condition that leaves it
-    Incapacitated.
+    Incapacitated, or dies of damage.
     """
 
     __slots__ = ("_creature", "escape_dc", "target")
@@ -94,6 +94,16 @@ class Grappling(Effect):
         """Ends the grapple once the grappler is Incapacitated (XPHB
         "Grappling", Ending a Grapple)."""
         if not self._creature.incapacitated:
+            return R.SKIPPED
+        end_grapple(self._creature, self.target)
+        return R.APPLIED
+
+    @hook("on_damage_taken")
+    def released_by_death(self, ctx: DamageTakenContext) -> R:
+        """Ends the grapple once damage has killed the grappler, which a
+        creature that makes no death saves does with no condition gained
+        (`docs/decisions.md` § w2j2)."""
+        if not self._creature.dead:
             return R.SKIPPED
         end_grapple(self._creature, self.target)
         return R.APPLIED

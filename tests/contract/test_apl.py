@@ -49,7 +49,7 @@ from dndsim.apl.expr import (
 from dndsim.apl.namespace import SelfProxy, TargetProxy, TriggerProxy
 from dndsim.apl.schema import CREATURE_FIELDS, Kind, NamespaceSchema
 from dndsim.core.dice import Dice
-from dndsim.core.geometry import Cell, distance_ft, in_reach
+from dndsim.core.geometry import Cell, Footing, distance_ft, in_reach
 from dndsim.core.log import EventLog
 from dndsim.core.rng import ScriptedRng
 from dndsim.core.timeline import InitiativeKey
@@ -1963,7 +1963,7 @@ def test_the_stand_search_is_exactly_the_anchors_in_reach(
         )
     }
 
-    stands = _stands(actor, target, frozenset())
+    stands = _stands(actor, target, Footing(size=actor.size))
     found = [Cell(x, y) for _, y, x in stands]
     assert len(found) == len(set(found))
     assert set(found) == expected

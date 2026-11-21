@@ -748,7 +748,7 @@ def test_a_ten_foot_step_charges_ten_feet_a_square(watched: bool) -> None:
         watcher.attach(Ledger(watcher))
         bystanders.append(watcher)
 
-    walked = walk_provoking(mover, _east(Cell(0, 0), 3), bystanders, step_ft=10)
+    walked = walk_provoking(mover, _east(Cell(0, 0), 3), bystanders, costs=(10,) * 3)
 
     assert walked == _east(Cell(0, 0), 3)
     assert mover.economy.movement_ft == 0
@@ -761,7 +761,7 @@ def test_a_ten_foot_step_is_charged_as_it_is_taken() -> None:
     ledger = Ledger(watcher)
     watcher.attach(ledger)
 
-    walk_provoking(mover, _east(Cell(0, 0), 3), [watcher], step_ft=10)
+    walk_provoking(mover, _east(Cell(0, 0), 3), [watcher], costs=(10,) * 3)
 
     assert ledger.seen == [20]
 
@@ -774,7 +774,7 @@ def test_a_route_of_ten_foot_steps_costing_too_much_raises(watched: bool) -> Non
 
     with pytest.raises(EconomyError):
         walk_provoking(
-            mover, _east(Cell(0, 0), 4), [guard] if watched else [], step_ft=10
+            mover, _east(Cell(0, 0), 4), [guard] if watched else [], costs=(10,) * 4
         )
 
     assert mover.position == Cell(0, 0)
