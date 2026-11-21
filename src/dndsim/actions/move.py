@@ -39,7 +39,7 @@ class _Plan:
     """One planned route, what each step costs, and the squares it may not
     stop in."""
 
-    __slots__ = ("costs", "crowded", "key", "walked")
+    __slots__ = ("costs", "crowded", "key", "step", "walked")
 
     def __init__(
         self,
@@ -52,6 +52,8 @@ class _Plan:
         self.walked = walked
         self.costs = costs
         self.crowded = crowded
+        # Every step the same price, or 0 when they differ.
+        self.step = costs[0] if costs and costs.count(costs[0]) == len(costs) else 0
 
 
 class _Terrain:
@@ -59,32 +61,40 @@ class _Terrain:
     Creatures", "Difficult Terrain"): the squares it may not enter, the
     squares it may pass but not stop in, and those that cost it extra."""
 
-    __slots__ = ("blocked", "crowded", "difficult", "towing")
+    __slots__ = ("blocked", "crowded", "difficult", "passable", "towing")
 
     def __init__(
         self, world: World, actor: Creature, towed: tuple[Creature, ...]
     ) -> None:
         side = world.side_of(actor) if actor in world else None
-        rank = SIZE_ORDER[actor.size]
+        own_size = actor.size
         blocked: list[Cell] = []
         difficult: list[Cell] = []
         crowded: list[Cell] = []
         for creature in world:
             if creature is actor or creature.dead or creature in towed:
                 continue
-            cells = footprint(creature.position, creature.size)
+            size = creature.size
+            if size is Size.MEDIUM or size is Size.SMALL or size is Size.TINY:
+                cells: tuple[Cell, ...] = (creature.position,)
+            else:
+                cells = footprint(creature.position, size)
             crowded.extend(cells)
             if side is not None and world.side_of(creature) == side:
                 continue
-            if creature.size is Size.TINY:
+            if size is Size.TINY:
                 continue
-            if abs(SIZE_ORDER[creature.size] - rank) >= 2 or creature.incapacitated:
+            if (
+                size is not own_size
+                and abs(SIZE_ORDER[size] - SIZE_ORDER[own_size]) >= 2
+            ) or creature.incapacitated:
                 difficult.extend(cells)
             else:
                 blocked.extend(cells)
         self.blocked = frozenset(blocked)
         self.difficult = frozenset(difficult)
         self.crowded = frozenset(crowded)
+        self.passable = len(self.crowded) != len(self.blocked)
         origin = actor.position
         self.towing = tuple(
             (Cell(c.position.x - origin.x, c.position.y - origin.y), c.size)
@@ -183,28 +193,37 @@ class Walk(Action[tuple[Cell, ...]]):
         actor = self.actor
         plan = self._route()
         budget = actor.economy.movement_ft
-        end = 0
-        for cost in plan.costs:
-            budget -= cost
-            if budget < 0:
-                break
-            end += 1
+        if plan.step:
+            end = budget // plan.step
+        else:
+            end = 0
+            for cost in plan.costs:
+                budget -= cost
+                if budget < 0:
+                    break
+                end += 1
         planned = plan.walked[:end]
         sources = _sources_of_fear(self.world, actor)
         if sources:
             planned = _unafraid(actor, planned, sources)
-        size = actor.size
         crowded = plan.crowded
-        # A walk the movement left would stop inside a creature's space stops
-        # at the last square clear of them (XPHB "Moving Around Other
-        # Creatures").
-        while planned and any(cell in crowded for cell in footprint(planned[-1], size)):
-            planned = planned[:-1]
+        if crowded:
+            size = actor.size
+            # A walk the movement left would stop inside a creature's space
+            # stops at the last square clear of them (XPHB "Moving Around Other
+            # Creatures").
+            while planned and any(
+                cell in crowded for cell in footprint(planned[-1], size)
+            ):
+                planned = planned[:-1]
         return planned, plan.costs[: len(planned)]
 
     def _towed(self) -> tuple[Creature, ...]:
         """The living creatures the actor grapples, which it drags."""
-        return tuple(grip.target for grip in grips(self.actor) if not grip.target.dead)
+        held = grips(self.actor)
+        if not held:
+            return ()
+        return tuple(grip.target for grip in held if not grip.target.dead)
 
     def _route(self) -> _Plan:
         """The planned route, re-planned only when either creature has moved,
@@ -216,14 +235,25 @@ class Walk(Action[tuple[Cell, ...]]):
         planned = self._planned
         if planned is not None and planned.key == key:
             return planned
+        if self._arrived(towed):
+            plan = self._planned = _Plan(key, (), (), frozenset())
+            return plan
         terrain = _Terrain(self.world, actor, towed)
         step_ft = _step_ft(actor, towed)
         walked = self._plan(actor.position, terrain, step_ft)
         costs = step_costs(
             walked, size=actor.size, difficult=terrain.difficult, step_ft=step_ft
         )
-        plan = self._planned = _Plan(key, walked, costs, terrain.crowded)
+        # With nobody passable on the field, no square of a route is in anyone's
+        # space, and `_walkable()` has nothing to trim.
+        crowded = terrain.crowded if terrain.passable else frozenset()
+        plan = self._planned = _Plan(key, walked, costs, crowded)
         return plan
+
+    @abstractmethod
+    def _arrived(self, towed: tuple[Creature, ...]) -> bool:
+        """Whether the walk has nowhere to go, asked before anything is
+        planned."""
 
     @abstractmethod
     def _plan(self, origin: Cell, terrain: _Terrain, step_ft: int) -> tuple[Cell, ...]:
@@ -246,17 +276,19 @@ class Move(Walk):
 
     __slots__ = ()
 
+    def _arrived(self, towed: tuple[Creature, ...]) -> bool:
+        actor, target = self.actor, self.target
+        return in_reach(
+            actor.position,
+            target.position,
+            actor.reach_ft,
+            origin_size=actor.size,
+            destination_size=target.size,
+        )
+
     def _plan(self, origin: Cell, terrain: _Terrain, step_ft: int) -> tuple[Cell, ...]:
         actor, target = self.actor, self.target
         size = actor.size
-        if in_reach(
-            origin,
-            target.position,
-            actor.reach_ft,
-            origin_size=size,
-            destination_size=target.size,
-        ):
-            return ()
         towing = terrain.towing
         best: tuple[Cell, ...] = ()
         best_ft = 0
@@ -281,10 +313,14 @@ class Move(Walk):
             )
             if not walked or walked[-1] != destination:
                 continue
-            spent = sum(
-                step_costs(
-                    walked, size=size, difficult=terrain.difficult, step_ft=step_ft
+            spent = (
+                sum(
+                    step_costs(
+                        walked, size=size, difficult=terrain.difficult, step_ft=step_ft
+                    )
                 )
+                if terrain.difficult
+                else len(walked) * step_ft
             )
             if not best or spent < best_ft:
                 best, best_ft = walked, spent
@@ -319,6 +355,21 @@ class Retreat(Walk):
         super().__init__(actor, target, world=world)
         self.keep_ft = keep_ft
 
+    def _arrived(self, towed: tuple[Creature, ...]) -> bool:
+        actor, target = self.actor, self.target
+        keep = self.keep_ft
+        if target in towed:
+            return True
+        return keep is not None and (
+            distance_ft(
+                actor.position,
+                target.position,
+                origin_size=actor.size,
+                destination_size=target.size,
+            )
+            >= keep
+        )
+
     def _plan(self, origin: Cell, terrain: _Terrain, step_ft: int) -> tuple[Cell, ...]:
         actor, target = self.actor, self.target
         size = actor.size
@@ -332,8 +383,6 @@ class Retreat(Walk):
 
         here = away(origin)
         keep = self.keep_ft
-        if (keep is not None and here >= keep) or target in self._towed():
-            return ()
         budget = actor.economy.movement_ft
         if budget < step_ft:
             return ()

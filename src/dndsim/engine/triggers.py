@@ -254,7 +254,8 @@ def walk_provoking(
             return ()
         if charge:
             economy.move(total)
-        _tow(mover, route[-1], towing)
+        if towing:
+            _tow(mover, route[-1], towing)
         mover.position = route[-1]
         return tuple(route)
     walked = []
@@ -262,11 +263,12 @@ def walk_provoking(
         watch.leaving(square)
         if mover.is_down or (charge and mover.speed_ft == 0):
             break
-        if holding is not None and not all(map(holding, towing)):
-            break
+        if towing:
+            if holding is not None and not all(map(holding, towing)):
+                break
+            _tow(mover, square, towing)
         if charge:
             economy.move(step_ft if costs is None else costs[index])
-        _tow(mover, square, towing)
         mover.position = square
         walked.append(square)
     return tuple(walked)
@@ -274,8 +276,6 @@ def walk_provoking(
 
 def _tow(mover: Creature, square: Cell, towing: Sequence[Creature]) -> None:
     """Move each of `towing` by the step `mover` is about to take to `square`."""
-    if not towing:
-        return
     dx = square.x - mover.position.x
     dy = square.y - mover.position.y
     for creature in towing:

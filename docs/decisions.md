@@ -6726,3 +6726,103 @@ once, and builds only what passes, so it returns exactly what filtering every
 option by `is_legal()` keeps — `test_unarmed_options_are_exactly_the_legal_ones`
 holds the two equal. The rest is the price of nine to twelve more offers, and
 it lands on `w2g`'s runner, which asks `offers()` before every Command.
+
+## w2j2 — passing through, Difficult Terrain, and the drag
+
+Debts #57, #60 and #78 retire. The row is the contract; what follows is why the
+code took the shape it did.
+
+### Three sets, not one
+
+`_occupied()` gave `route()` one set, every other creature's space, and the
+walk could neither enter nor end in it. XPHB "Moving Around Other Creatures"
+separates the two: some spaces may be passed and none ended in. `_Terrain` in
+`actions/move.py` builds three from one pass over the roster: `blocked`, the
+spaces of creatures that may not be passed; `difficult`, the passable spaces of
+creatures that are neither Tiny nor allies (XPHB "Difficult Terrain"); and
+`crowded`, everyone's, which a destination and every square of a dragged
+creature must stay out of. An ally is a creature on the walker's `World` side.
+A walker not seated anywhere has no allies.
+
+A route may end inside a passable space only by running out of movement there.
+`_walkable()` drops those trailing squares rather than planning around them:
+the destination the plan chose already stands clear, so only a truncated walk
+can end inside, and the rule is to stop short, not to go elsewhere.
+
+### `route()` weighs squares only when one costs extra
+
+The greedy walk and the breadth-first search are unchanged and still answer
+every request with no `difficult` square: with uniform costs the fewest squares
+are the cheapest. A `difficult` square switches `route()` to `routes_within()`,
+a cheapest-first search over `(cost, steps, discovery order)`, so of equal
+costs the shorter route wins and ties fall to `_NEIGHBOURS`' fixed order, as
+before. The greedy walk is still tried first and kept when it arrives in the
+Chebyshev floor over no `difficult` square, since nothing can cost less.
+
+`step_costs()` is the one price list: `route()`, `Move`'s choice among
+destinations, the truncation and `walk_provoking()`'s charge all read it. A
+step costs the walker's base, five feet, five more crawling, five more
+dragging, and five more for a footprint entering a `difficult` square. Extra
+costs add (the row); a Large walker pays once per step however many of its
+squares are rough.
+
+`Retreat` asked its own breadth-first search for every square in reach; it now
+asks `routes_within()` with the turn's movement as the budget, so a retreat and
+a closing walk price squares the same way. `Move` compares routes by cost, and
+its early exit compares the Chebyshev floor times the base step against the
+best cost, which is still a lower bound.
+
+### The drag keeps the held creature where it is relative to the grappler
+
+Every creature the walker grapples is moved by each step the walker takes, so
+adjacency holds throughout and `loosen_grapples()` has nothing to end
+(`docs/questions.md` #31). `route()` takes each as a `Towed` offset and keeps its
+footprint out of `crowded` at every step, so the held creature never passes
+through anyone, ally or not: it is moved, and "Moving Around Other Creatures"
+is a rule for the mover's own choice.
+
+`walk_provoking()` moves the towed creatures without an offer to anyone — the
+watchers are the mover's — and asks `holding` before each step: once a
+reaction has ended the grapple, the walk stops there, since its route was
+planned and priced for the pair. Nothing re-plans mid-walk; the next walk does.
+
+A grappler does not `Retreat` from what it holds: the distance cannot grow. To
+walk away it releases first (`w2j`'s `release_grapple`), as the row says.
+
+### A grappler that falls lets go at once (#78)
+
+`on_reduced_to_zero` is TARGET-scoped, so `Grappling` on the grappler hears it.
+Its handler runs `FINAL`, after anything that might `ctx.prevent()` the drop,
+and ends the grapple unless the drop was prevented: a creature at 0 hit points
+is dead or Unconscious, and either ends a grapple. Death by damage taken at 0
+hit points is already covered, the creature being Unconscious since the drop.
+
+### The price
+
+The witness is the fixed 200-encounter profiled run at seed 0, milestone branch
+→ this task, counting `dndsim` and builtin calls (§ w2j): 1,889,129 → 1,900,133
+on `--no-provoking` (+0.6%) and 3,107,692 → 3,293,159 on provoking (+6.0%), with
+6,000 attack resolutions in every arm. The fights are the same fights; what
+moved is `Move`'s planning: `_Terrain`'s one pass over the roster (a side, a
+size and, for an enemy, `incapacitated`), the grapple lookup per plan, and the
+per-step cost list. Building `_Terrain` only once the walker is known not to
+have arrived, and pricing a route by its length when nothing is rough, took
+the first cut from about 0.91 on provoking to what is below.
+
+The rate, by the spike's own `main()` in sibling worktrees, 300 encounters and
+3 repeats, a fresh interpreter per arm, the order reversed every other pair:
+
+| Configuration | Pairs | Ratios | Median |
+|---|---|---|---|
+| `--no-provoking` | 8 | 0.987, 0.953, 0.960, 1.016, 1.020, 1.029, 0.951, 0.995 | **0.991** |
+| provoking | 8 | 0.935, 0.892, 1.196, 0.939, 0.993, 0.924, 0.972, 0.977 | **0.956** |
+
+The budget's configuration is inside the ±6% the tree spreads against itself
+(§ w2i2). Provoking pays about 4%, inside that spread but on the same side in
+most pairs, and it is the walk's: the cost lands on every `Move` that `w2g`'s
+runner offers.
+
+Sources: `ROADMAP.md` `w2j2`, § The W0 debt register #57, #60, #78; § w0g2,
+§ w1d, § w2c2, § w2e, § w2j, § The `w2j` spec correction; XPHB "Moving Around
+Other Creatures", "Difficult Terrain", "Grappling", Rules Glossary "Grappled";
+`docs/questions.md` #31.

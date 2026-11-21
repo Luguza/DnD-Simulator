@@ -269,7 +269,7 @@ there is local to a module.
 | `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c, § w2i, § w2b, § w2c |
 | `conditions/`, a condition, a declared gap | § w1h, § w2b, § w2c |
 | `actions/`, a Command, legality, dropping and picking up a weapon | § w2b, § w2c2 |
-| `actions/move.py`, the walk, the retreat, a `move:` destination | § w2c2, § w2e |
+| `actions/move.py`, the walk, the retreat, a `move:` destination, passing creatures, the drag | § w2c2, § w2e, § w2j2 |
 | `apl/`, a clause, the namespace, the policy, the dummy's policy | § w2e |
 | `creatures/dummy.py`, the target dummy | § w2d |
 | `engine/turn.py`, `encounter.py`, `world.py`, `query.py`, the shared `Clock`, Speed, incapacitation | § w2c, § w2c2 (the walk), § w2e (the policy) |
