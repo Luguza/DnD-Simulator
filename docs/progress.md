@@ -54,7 +54,7 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | — | ⏸ plan review | done | |
 | 23 | w2i2 — the W2 levers 🔒 | done | |
 | 24 | w2j — Unarmed Strike, Shove, Grapple, escaping, standing up, the Unconscious Shield | done | |
-| 25 | w2j2 — passing through, Difficult Terrain, the drag 🔒 | done | |
+| 25 | w2j2 — passing through, Difficult Terrain, the drag 🔒 | done | #88 |
 | 26 | w2k — what a build carries 🔒 | next | |
 | 27 | w2g — runner, `SimResult`, the API, the M1 golden | queued | |
 | 28 | w2h — the CLI | queued | |
