@@ -223,9 +223,9 @@ def walk_provoking(
     or when it is at Speed 0. Without it nothing is spent and Speed is not
     asked (`docs/decisions.md` § w2c2).
 
-    Each of `towing` moves as the mover does, step by step, provoking nothing;
-    the walk stops before a step once `holding` says the mover no longer holds
-    one of them (`docs/decisions.md` § w2j2).
+    Each of `towing` moves as the mover does, step by step, provoking nothing
+    and offered nothing; the walk stops before a step once `holding` says the
+    mover no longer holds one of them (`docs/decisions.md` § w2j2).
     """
     economy = mover.economy
     if costs is None:
@@ -244,6 +244,9 @@ def walk_provoking(
             f"{mover.name} has {economy.movement_ft} ft of movement left and "
             f"the route costs {total} ft; truncate it before walking it"
         )
+    if towing:
+        # What the mover drags moves with it and is never left behind.
+        bystanders = [one for one in bystanders if one not in towing]
     watch = watch_movement(
         mover, bystanders, squares=len(route), provokes=provokes, halts=charge
     )

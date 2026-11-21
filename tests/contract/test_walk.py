@@ -324,6 +324,18 @@ def test_the_dragged_creature_provokes_nothing() -> None:
     assert tally.seen == 0
 
 
+def test_the_dragged_creature_is_offered_nothing() -> None:
+    """It moves with its grappler, so the grappler never leaves its reach."""
+    world, hero, foe, goblin = grappling()
+    tally = Tally(foe)
+    foe.attach(tally)
+
+    walk(world, hero, goblin)
+
+    assert hero.position.x < 0
+    assert tally.seen == 0
+
+
 def test_a_walk_stops_when_the_grapple_ends_partway() -> None:
     world, hero, foe, _ = grappling()
     route_ = (Cell(-1, 0), Cell(-2, 0))

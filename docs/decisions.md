@@ -6782,7 +6782,10 @@ through anyone, ally or not: it is moved, and "Moving Around Other Creatures"
 is a rule for the mover's own choice.
 
 `walk_provoking()` moves the towed creatures without an offer to anyone — the
-watchers are the mover's — and asks `holding` before each step: once a
+watchers are the mover's — and takes them out of the mover's audience, since a
+creature dragged along never sees its grappler leave its reach (found by the
+review of `w2j2`'s PR: measured from the square it is about to leave, it did).
+It asks `holding` before each step: once a
 reaction has ended the grapple, the walk stops there, since its route was
 planned and priced for the pair. Nothing re-plans mid-walk; the next walk does.
 
