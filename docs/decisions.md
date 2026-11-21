@@ -6825,7 +6825,14 @@ The budget's configuration is inside the ±6% the tree spreads against itself
 most pairs, and it is the walk's: the cost lands on every `Move` that `w2g`'s
 runner offers.
 
-Sources: `ROADMAP.md` `w2j2`, § The W0 debt register #57, #60, #78; § w0g2,
+### Left at the round cap
+
+The fourth review's one finding, PLAUSIBLE, is that the row's Produces cell
+does not name `actions/unarmed.py`, where #78's handler lives; #78's own
+register row named that file. It is debt #79, owned by the M1 / W2 milestone
+review.
+
+Sources: `ROADMAP.md` `w2j2`, § The W0 debt register #57, #60, #78, #79; § w0g2,
 § w1d, § w2c2, § w2e, § w2j, § The `w2j` spec correction; XPHB "Moving Around
 Other Creatures", "Difficult Terrain", "Grappling", Rules Glossary "Grappled";
 `docs/questions.md` #31.
