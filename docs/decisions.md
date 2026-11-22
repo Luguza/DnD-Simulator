@@ -6836,3 +6836,67 @@ Sources: `ROADMAP.md` `w2j2`, § The W0 debt register #57, #60, #78, #79; § w0g
 § w1d, § w2c2, § w2e, § w2j, § The `w2j` spec correction; XPHB "Moving Around
 Other Creatures", "Difficult Terrain", "Grappling", Rules Glossary "Grappled";
 `docs/questions.md` #31.
+
+## The `w2k` spec correction — the files the row needs, and the choices it left open
+
+`w2k` as the W2 late-wave review wrote it held three debts (#68, #69, #74) in
+seven named places. Read against the code its done-when has to change, it named
+too few, and it left the policy no way to choose between the weapons it gives a
+creature.
+
+### What the Produces cell left out
+
+- **`engine/turn.py`'s `offers()` and `apl/apl.py`'s `_target_of`**, the pair
+  § The `w2j` spec correction found missing from `w2j`'s cell. `offers()` builds
+  one `Attack` per enemy with what is held; a carried weapon and the Light
+  property's Bonus Action attack are offered by nothing until it changes, and an
+  offer binds `target` only through `_target_of`.
+- **`builds/loader.py`**, which resolves every name a build writes against the
+  catalogue (§ w2f). A carried weapon or a stack of arrows named in
+  `builds/schema.py` is checked there or nowhere.
+- **`content/weapons.py` and `creatures/stats.py`**. A weapon with Ammunition
+  fires only "if you have ammunition to fire from it", of the type "specified
+  with the weapon's range" (XPHB "Ammunition"). The data carries it as
+  `ammoType`, the anti-corruption layer drops it, and `Weapon` has no field for
+  it. #68's register row names `creatures/stats.py` already.
+- **`creatures/economy.py` and `actions/pick_up.py`**, for the object
+  interaction below, and because Unconscious drops "whatever it's holding":
+  two held weapons both fall, and `Creature`'s one dropped-weapon slot and
+  `PickUpWeapon` assume one.
+
+### What the row did not say
+
+Each is the conservative reading, so the implementer does not choose:
+
+- **The policy chooses the weapon, not the engine.** With a second weapon an
+  archer an enemy has closed on still has a legal bow attack, at Disadvantage;
+  if `offers()` builds attacks only with what is held, and the APL picks by id
+  and target, it never draws the sword the row exists for. So `offers()` builds
+  an `attack` per enemy per weapon held or carried that reaches it, and an
+  entry names one through `with: weapon:`, which § w2e compiles and nothing yet
+  hands to a Command. A name the build does not carry is refused at load. An
+  entry naming no weapon attacks with what is held, so every existing APL means
+  what it meant. One `attack` id, not one per weapon: the vocabulary stays
+  closed (§ w2e).
+- **The object interaction is counted from this row.** § w2b left the
+  once-a-turn limit uncounted because nothing else spent it; a weapon switch is
+  the second thing that does, and uncounted it lets an archer swap weapons any
+  number of times a turn. The Attack action's equip covers one weapon; stowing
+  the other first spends the turn's interaction (`docs/questions.md` #33).
+- **Loading limits nothing yet, by construction.** It caps the pieces fired per
+  Action, Bonus Action or Reaction; with Extra Attack unmodelled (§ The W2
+  late-wave review, the M1 golden's Fighter) every one of those makes a single
+  attack, the Light attack included. The test pins that a creature wielding a
+  Hand Crossbow, with bolts to spare, fires one bolt with the Attack action and
+  is offered no second shot from it that turn, the Light attack needing a
+  different Light weapon, so the row that lands Extra Attack meets a red test
+  rather than a silent pass.
+- **A thrown weapon is gone for the fight** (`docs/questions.md` #32). It lands
+  somewhere near the target, which the rules leave unsaid; picking it back up
+  would put a second dropped weapon on the board for a walk no policy plans,
+  and recovering it is the adventuring day's, as ammunition's is: debt #80,
+  owned by `w6a`.
+
+Sources: `ROADMAP.md` `w2k`, § The W0 debt register #68, #69, #74; XPHB
+"Ammunition", "Light", "Loading", "Thrown", "Attack", "Your Turn"; § w2b,
+§ w2e, § w2f, § The W2 late-wave review, § The `w2j` spec correction.
