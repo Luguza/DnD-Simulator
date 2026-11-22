@@ -6886,13 +6886,16 @@ Each is the conservative reading, so the implementer does not choose:
 - **Loading limits nothing yet, by construction.** It caps the pieces fired per
   Action, Bonus Action or Reaction; with Extra Attack unmodelled (§ The W2
   late-wave review, the M1 golden's Fighter) every one of those makes a single
-  attack, the Light attack included. The test pins that a Hand Crossbow fires
-  once with the Attack action and once more with the Bonus Action, so the row
-  that lands Extra Attack meets a red test rather than a silent pass.
+  attack, the Light attack included. The test pins that a creature wielding a
+  Hand Crossbow, with bolts to spare, fires one bolt with the Attack action and
+  is offered no second shot from it that turn, the Light attack needing a
+  different Light weapon, so the row that lands Extra Attack meets a red test
+  rather than a silent pass.
 - **A thrown weapon is gone for the fight** (`docs/questions.md` #32). It lands
   somewhere near the target, which the rules leave unsaid; picking it back up
   would put a second dropped weapon on the board for a walk no policy plans,
-  and recovering it is the adventuring day's, as ammunition's is (`w6a`).
+  and recovering it is the adventuring day's, as ammunition's is: debt #80,
+  owned by `w6a`.
 
 Sources: `ROADMAP.md` `w2k`, § The W0 debt register #68, #69, #74; XPHB
 "Ammunition", "Light", "Loading", "Thrown", "Attack", "Your Turn"; § w2b,
