@@ -308,3 +308,19 @@ def test_unconscious_drops_both_and_each_pick_up_takes_back_one() -> None:
     assert hero.held == (DAGGER,)
     assert [*hero.dropped] == [(SHORTSWORD, ORIGIN)]
     assert not any(isinstance(o, PickUpWeapon) for o in offers(world, hero))
+
+
+def test_the_pick_up_takes_the_one_within_reach_of_two_alike() -> None:
+    """Two Daggers dropped, one 20 feet back and one underfoot: the one
+    underfoot is picked up."""
+    hero = creature(weapon=DAGGER)
+    world, hero, goblin = duel(hero)
+    hero.drop_held()
+    hero.position = FAR
+    hero.off_hand = DAGGER
+    hero.drop_held()
+    pick = PickUpWeapon(hero, DAGGER)
+    assert pick.is_legal()
+    pick.execute(rng=ScriptedRng([]))
+    assert hero.held == (DAGGER,)
+    assert hero.dropped == ((DAGGER, ORIGIN),)

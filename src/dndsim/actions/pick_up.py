@@ -4,7 +4,6 @@
 from typing import ClassVar
 
 from dndsim.actions.base import Action
-from dndsim.core.geometry import in_reach
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.stats import Weapon
@@ -29,14 +28,9 @@ class PickUpWeapon(Action[None]):
 
     def _permits(self) -> bool:
         actor = self.actor
-        if not actor.economy.can_interact():
-            return False
-        for fallen, where in actor.dropped:
-            if self.weapon is None or fallen == self.weapon:
-                return actor.can_hold(fallen) and in_reach(
-                    actor.position, where, 5, origin_size=actor.size
-                )
-        return False
+        return (
+            actor.economy.can_interact() and actor.within_grasp(self.weapon) is not None
+        )
 
     def _perform(self, rng: Rng) -> None:
         self.actor.economy.interact()

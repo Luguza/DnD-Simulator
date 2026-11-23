@@ -12,7 +12,7 @@ are plain attributes with no damage arithmetic here (`docs/decisions.md`
 from collections.abc import Mapping
 from typing import Final
 
-from dndsim.core.geometry import Cell
+from dndsim.core.geometry import Cell, in_reach
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.economy import ActionEconomy
 from dndsim.creatures.effects import Effect, EffectStore
@@ -34,6 +34,8 @@ __all__ = ["HANDS", "UNSEATED", "Creature", "hands_for"]
 
 HANDS: Final = 2
 """How many hands a creature holds things in."""
+
+_GRASP_FT: Final = 5
 
 
 UNSEATED: Final = InitiativeKey(
@@ -356,20 +358,30 @@ class Creature:
                 self._dropped.append((weapon, self.position))
                 self._hold(hand, None)
 
-    def pick_up_weapon(self, weapon: Weapon | None = None) -> None:
-        """Hold again a weapon this creature dropped: `weapon`, or the first
-        dropped.
+    def within_grasp(self, weapon: Weapon | None = None) -> int | None:
+        """Where in `dropped` the first `weapon`, or the first weapon, lies
+        that this creature stands within 5 feet of and has a hand free for;
+        `None` when there is none."""
+        for index, (fallen, where) in enumerate(self._dropped):
+            if (
+                (weapon is None or fallen == weapon)
+                and self.can_hold(fallen)
+                and in_reach(self.position, where, _GRASP_FT, origin_size=self.size)
+            ):
+                return index
+        return None
 
-        Raises `ValueError` when it dropped no such weapon or has no hand free
-        for it.
+    def pick_up_weapon(self, weapon: Weapon | None = None) -> None:
+        """Hold again a weapon this creature dropped: the one
+        `within_grasp(weapon)` finds.
+
+        Raises `ValueError` when there is none.
         """
-        for index, (fallen, _) in enumerate(self._dropped):
-            if weapon is None or fallen == weapon:
-                hand = self._free_hand(fallen)
-                del self._dropped[index]
-                self._hold(hand, fallen)
-                return
-        raise ValueError(f"{self.name} has dropped nothing of that to pick up")
+        index = self.within_grasp(weapon)
+        if index is None:
+            raise ValueError(f"{self.name} has nothing of that dropped to pick up")
+        fallen, _ = self._dropped.pop(index)
+        self._hold(self._free_hand(fallen), fallen)
 
     @property
     def is_alive(self) -> bool:
