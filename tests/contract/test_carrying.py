@@ -98,7 +98,7 @@ def take(offered: Sequence[Action[Any]], action: str, weapon: Weapon) -> Attack:
     return next(
         offer
         for offer in offered
-        if isinstance(offer, Attack) and offer.ID == action and offer.weapon == weapon
+        if isinstance(offer, Attack) and action == offer.ID and offer.weapon == weapon
     )
 
 
