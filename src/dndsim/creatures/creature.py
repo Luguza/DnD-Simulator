@@ -279,10 +279,6 @@ class Creature:
         """The weapons carried but not held, each with how many."""
         return self._stowed
 
-    def carries(self, weapon: Weapon) -> bool:
-        """Whether `weapon` is held, or carried and can be drawn."""
-        return weapon in (self.weapon, self.off_hand) or weapon in self._stowed
-
     def ammunition(self, kind: str) -> int:
         """How many pieces of the ammunition named `kind` this creature has."""
         return self._ammunition.get(kind, 0)

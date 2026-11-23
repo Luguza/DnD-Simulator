@@ -6972,6 +6972,116 @@ to load. Loading is honoured by construction while every Action, Bonus Action
 and Reaction is one attack; `test_carrying.py` pins the Hand Crossbow case the
 spec correction named, so the row that lands Extra Attack meets it.
 
+### The opportunity attack's hand
+
+`reach_ft` is the longer reach of both hands, so the hand that sets the threat
+is not always the main hand. `OpportunityAttack` swings the held melee weapon
+that reaches the creature leaving, the main hand's first, and the off hand's
+when the main hand is empty or holds a Ranged weapon; only a creature holding
+no melee weapon strikes unarmed. Written as two branches on the two hands
+rather than a scan of `held`, because it is built on every provoking move.
+
+### The price
+
+`engine/attack.py` changed by one keyword and one hoisted `modifier()` read.
+The witness, the fixed 200-encounter profiled run at seed 0, milestone branch →
+this task: **1,840,340 → 1,837,340** calls on `--no-provoking` and
+**3,192,266 → 3,194,705** (+0.08%) on provoking, 6,000 resolutions in every arm
+and an identical closing fingerprint and next draw — the same fights. What
+provoking adds is the opportunity attack choosing its hand and asking
+`_plan()` once per offer. A first cut called `Weapon.has()` and `hands_held`
+there and cost +1.2%, and a first opportunity-attack hand that scanned `held`
++0.58%; reading the property set directly, asking the hands only for a weapon
+that loads, and branching on the two hands took it to the figure above.
+
+The rate, by the spike's own `main()` in a sibling worktree, 300 encounters
+and 3 repeats, a fresh interpreter per arm, the order reversed every other
+pair, against the final diff:
+
+| Configuration | Pairs | Ratios | Median |
+|---|---|---|---|
+| `--no-provoking` | 8 | 0.844, 0.928, 0.929, 0.984, 0.996, 1.016, 1.046, 1.061 | **0.990** |
+| provoking | 8 | 0.923, 0.940, 0.953, 0.961, 0.962, 0.985, 0.998, 1.029 | **0.962** |
+
+Both inside the ±6% the tree spreads against itself (§ w2i2). The spike does not
+run `offers()`, which now builds an attack per weapon carried; that cost lands
+on `w2g`'s runner and is its to measure.
+
+Sources: `ROADMAP.md` `w2k`, § The W0 debt register #68, #69, #74; XPHB
+"Ammunition", "Light", "Loading", "Thrown", "Attack", "Your Turn"; § w2b,
+§ w2e, § w2f, § The W2 late-wave review, § The `w2j` spec correction.
+
+## w2k — what a build carries
+
+Debts #68, #69 and #74, against the conservative readings § The `w2k` spec
+correction fixed. What follows is why the code is shaped as it is.
+
+### Two hands and a stowage, not a list of items
+
+`Creature` holds `weapon` (the main hand) and `off_hand`, and counts what is
+carried beside by value: `stowed` maps a `Weapon` to how many, and ammunition
+is a count per piece's name. An item has no identity of its own, because
+nothing in the rules asks which of two Daggers was thrown — only how many are
+left and which hand is empty. `weapon` keeps its name and meaning, the weapon an
+attack that names none is made with, so every reader since `w0g2` (the
+opportunity attack, `to_max_range`, the spike) reads what it read.
+
+How many hands a weapon fills is `hands_for()`: two for Two-Handed, and two for
+a Versatile weapon whose damage is its two-handed die, which is how
+`CharacterBuilder.equip()` has represented that grip since § w2f. Before this
+row a Versatile weapon held in two hands counted one, which left a Longsword
+wielder a hand free to grapple or load with; it now counts two.
+
+### Which weapon is the policy's
+
+`offers()` builds an `attack` per enemy per distinct weapon held or carried,
+and after an Attack action made with a Light weapon a `light_attack` per enemy
+per Light weapon. An APL entry names one with `with: weapon: <name>`, a literal
+name and not an expression, refused on any action but those two and refused at
+`load_build()` when the build neither holds nor carries it. An `attack` entry
+that names none matches only the offers made with what is held, the main hand
+first, so every APL written before this row picks what it picked. One id, not
+one per weapon, keeps the vocabulary closed (§ w2e).
+
+### The Attack action's equip, and the object interaction
+
+XPHB "Attack" allows one equip or unequip with each attack. A carried weapon is
+drawn as that equip; if the hands are too full, one held weapon is stowed first
+with the turn's object interaction (`docs/questions.md` #33), the off hand's
+before the main's. A switch that would need two stows is refused, as is a
+second switch in a turn. A Shield is never stowed this way: doffing it takes an
+action. The interaction is a count on `ActionEconomy`, handed back with the
+turn like the rest, and `PickUpWeapon` spends it.
+
+A Thrown weapon "can draw that weapon as part of the attack", so a throw draws
+from what is carried without the Attack action's equip, which is what lets the
+Light attack — not an Attack action — throw a carried Dagger. A throw is the
+one case that leaves the hand: the weapon is gone for the fight
+(`docs/questions.md` #32; recovery is debt #80) and the next one of its name is
+drawn into the hand it left.
+
+### The Light attack
+
+`light_attack` on the economy records the hand whose Light weapon the turn's
+Attack action used, or −1 when that weapon left the hand. The Bonus Action
+attack takes a Light weapon from another hand — two Daggers are two weapons —
+or any once the first was thrown, or a carried one thrown. Only the Attack
+action records: the Light attack itself, an opportunity attack and an Unarmed
+Strike do not. The modifier rule is `resolve_attack()`'s `light`, because the
+damage bag is built there and nowhere else (DESIGN.md § Structural
+prevention); what a weapon spends or leaves behind is the Command's.
+
+### Ammunition and Loading
+
+`Weapon.ammunition` is the name of the piece it fires, read from `ammoType` and
+matched against the XPHB's single-piece items (`Arrow`, not `Arrows (20)`), so a
+build carries `{Arrow: 20}` and nothing else in the domain knows the 5etools
+key. An Ammunition weapon is offered only while a piece is carried, spends one
+per attack whatever the roll, and, being one-handed, needs the other hand free
+to load. Loading is honoured by construction while every Action, Bonus Action
+and Reaction is one attack; `test_carrying.py` pins the Hand Crossbow case the
+spec correction named, so the row that lands Extra Attack meets it.
+
 ### The price
 
 `engine/attack.py` changed by one keyword and one hoisted `modifier()` read.

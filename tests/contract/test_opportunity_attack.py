@@ -14,6 +14,7 @@ Disengage; ROADMAP `w2c2` and debts 18-20, 26 of § The W0 debt register;
 """
 
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Any, Final
 
@@ -44,7 +45,7 @@ from dndsim.hooks.contexts import AttackDeclaredContext, Context, HitContext
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.source import HookSource
 from dndsim.rules.enums import Ability, ActionCost, Outcome
-from weapon_fixtures import GREATSWORD, HANDAXE, LONGBOW
+from weapon_fixtures import DAGGER, GREATSWORD, HANDAXE, LONGBOW
 
 SCORES: Final = MappingProxyType(
     {
@@ -283,6 +284,26 @@ def test_a_thrown_melee_weapon_is_swung_not_thrown() -> None:
 
     assert result == AttackResult(Outcome.HIT, 7)
     assert rng.exhausted
+
+
+def test_an_empty_main_hand_attacks_with_the_off_hand() -> None:
+    """The Handaxe thrown, the Dagger in the other hand makes the attack, not
+    an Unarmed Strike (`docs/decisions.md` § w2k)."""
+    seated, actor, target = _pair()
+    actor.weapon, actor.off_hand = None, DAGGER
+    assert OpportunityAttack(actor, target, world=seated).weapon == DAGGER
+
+
+def test_the_hand_whose_reach_is_left_makes_the_attack() -> None:
+    """A Dagger in the main hand and a 10-foot whip in the other: the runner
+    leaving from 10 feet is reached only by the whip."""
+    whip = replace(DAGGER, name="Whip", reach_ft=10)
+    seated, actor, target = _pair()
+    actor.weapon, actor.off_hand = DAGGER, whip
+    target.position = Cell(2, 0)
+    attack = OpportunityAttack(actor, target, world=seated)
+    assert attack.weapon == whip
+    assert attack.is_legal()
 
 
 def test_resolve_refuses_an_illegal_opportunity_attack() -> None:
