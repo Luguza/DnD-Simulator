@@ -13,7 +13,14 @@ from dndsim.creatures.stats import Armour, Weapon
 from dndsim.rules.constants import CELL_SIZE_FT, SHIELD_AC_BONUS
 from dndsim.rules.enums import DamageType, Mastery, WeaponProperty
 
-__all__ = ["CATEGORIES", "NOT_IMPORTED", "armour", "masteries", "weapons"]
+__all__ = [
+    "CATEGORIES",
+    "NOT_IMPORTED",
+    "ammunition",
+    "armour",
+    "masteries",
+    "weapons",
+]
 
 ITEMS: Final = "items-base.json"
 
@@ -55,6 +62,7 @@ _WEAPON_TYPES: Final = frozenset({_MELEE, _RANGED})
 CATEGORIES: Final = MappingProxyType({"simple": False, "martial": True})
 """A weapon category by its 5etools name, as whether it is Martial."""
 _ARMOUR_TYPES: Final = frozenset({"LA", "MA", "HA"})
+_AMMUNITION_TYPE: Final = "A"
 _SHIELD_TYPE: Final = "S"
 
 NOT_IMPORTED: Final[Mapping[str, str]] = MappingProxyType({})
@@ -75,7 +83,7 @@ def _xphb(data: Dataset, kinds: frozenset[str]) -> list[Any]:
     ]
 
 
-def _weapon(item: Any) -> Weapon:
+def _weapon(item: Any, pieces: Mapping[str, str]) -> Weapon:
     name = item["name"]
     try:
         properties = frozenset(_PROPERTIES[_code(p)] for p in item.get("property", []))
@@ -89,6 +97,7 @@ def _weapon(item: Any) -> Weapon:
         if "range" in item:
             normal, long = (int(n) for n in item["range"].split("/"))
         martial = CATEGORIES[item["weaponCategory"]]
+        fires = pieces[_code(item["ammoType"]).lower()] if "ammoType" in item else None
     except (KeyError, ValueError) as error:
         raise ContentError(f"weapon {name!r} is not shaped as read: {error}") from error
     if len(mastery) > 1:
@@ -106,6 +115,7 @@ def _weapon(item: Any) -> Weapon:
             ranged=_code(item["type"]) == _RANGED,
             versatile_damage=versatile,
             martial=martial,
+            ammunition=fires,
         )
     except ValueError as error:
         raise ContentError(f"weapon {name!r} is not a weapon: {error}") from error
@@ -117,16 +127,27 @@ def weapons(data: Dataset) -> Mapping[str, Weapon]:
     Raises `ContentError` for a weapon shaped otherwise than read, and for an
     entry in `NOT_IMPORTED` the data no longer holds.
     """
+    pieces = {name.lower(): name for name in ammunition(data)}
     items = {item["name"]: item for item in _xphb(data, _WEAPON_TYPES)}
     stale = NOT_IMPORTED.keys() - items.keys()
     if stale:
         raise ContentError(f"NOT_IMPORTED names weapons the data lacks: {stale}")
     return MappingProxyType(
         {
-            name: _weapon(item)
+            name: _weapon(item, pieces)
             for name, item in sorted(items.items())
             if name not in NOT_IMPORTED
         }
+    )
+
+
+def ammunition(data: Dataset) -> frozenset[str]:
+    """The name of every XPHB piece of ammunition: the Arrow, not the Arrows
+    (20) it is sold in."""
+    return frozenset(
+        item["name"]
+        for item in _xphb(data, frozenset({_AMMUNITION_TYPE}))
+        if "packContents" not in item
     )
 
 

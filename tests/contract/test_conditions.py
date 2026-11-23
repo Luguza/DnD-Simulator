@@ -636,18 +636,14 @@ def test_unconscious_drops_whatever_is_held_where_it_falls() -> None:
     sleeper = combatant("sleeper", cell=NORTH)
     impose(sleeper, Unconscious(sleeper))
     assert sleeper.weapon is None
-    assert (sleeper.dropped_weapon, sleeper.dropped_at) == (GREATSWORD, NORTH)
+    assert sleeper.dropped == ((GREATSWORD, NORTH),)
 
 
 def test_unconscious_with_empty_hands_drops_nothing() -> None:
     sleeper = combatant("sleeper")
     sleeper.weapon = None
     impose(sleeper, Unconscious(sleeper))
-    assert (sleeper.weapon, sleeper.dropped_weapon, sleeper.dropped_at) == (
-        None,
-        None,
-        None,
-    )
+    assert (sleeper.weapon, sleeper.dropped) == (None, ())
 
 
 def test_the_drop_clause_is_no_longer_declared_a_gap() -> None:
@@ -661,11 +657,7 @@ def test_a_player_character_dropped_to_zero_drops_its_weapon() -> None:
     hero = player_character("hero")
     resolve_damage(hero, {DamageType.SLASHING: HP}, rng=no_dice())
     assert hero.hp == 0 and not hero.dead
-    assert (hero.weapon, hero.dropped_weapon, hero.dropped_at) == (
-        None,
-        GREATSWORD,
-        ORIGIN,
-    )
+    assert (hero.weapon, hero.dropped) == (None, ((GREATSWORD, ORIGIN),))
 
 
 def test_unconscious_is_gained_and_lost_by_name_across_two_sources() -> None:

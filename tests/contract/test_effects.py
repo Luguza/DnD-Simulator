@@ -950,11 +950,7 @@ def test_a_queued_drop_is_carried_out_after_the_dispatch() -> None:
     assert dropper.saw == [(False, True, True)]
     assert len(dropper.reasons) == 1
     assert dropper.reasons[0].endswith("let go")
-    assert (subject.weapon, subject.dropped_weapon, subject.dropped_at) == (
-        None,
-        GREATSWORD,
-        Cell(0, 0),
-    )
+    assert (subject.weapon, subject.dropped) == (None, ((GREATSWORD, Cell(0, 0)),))
 
 
 def test_a_drop_queued_on_a_loss_is_carried_out_too() -> None:
@@ -965,18 +961,14 @@ def test_a_drop_queued_on_a_loss_is_carried_out_too() -> None:
 
     subject.effects.remove(held)
 
-    assert (subject.weapon, subject.dropped_weapon) == (None, GREATSWORD)
+    assert (subject.weapon, subject.dropped[0][0]) == (None, GREATSWORD)
 
 
 def test_a_queued_drop_with_nothing_held_drops_nothing() -> None:
     subject = creature()
     subject.attach(DropsOn(subject, Condition.GRAPPLED))
     subject.effects.apply(Held(subject))
-    assert (subject.weapon, subject.dropped_weapon, subject.dropped_at) == (
-        None,
-        None,
-        None,
-    )
+    assert (subject.weapon, subject.dropped) == (None, ())
 
 
 class Dose(Effect):

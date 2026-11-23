@@ -58,12 +58,15 @@ from weapon_fixtures import (
     CHAIN_MAIL,
     DAGGER,
     GREATSWORD,
+    HAND_CROSSBOW,
+    HANDAXE,
     LEATHER_ARMOR,
     LONGBOW,
     LONGSWORD,
     MAUL,
     PLATE_ARMOR,
     RAPIER,
+    SHORTSWORD,
 )
 
 BUILDS = Path(__file__).parents[2] / "builds"
@@ -88,8 +91,22 @@ CATALOGUE = Catalogue(
             WAR_CASTER,
         )
     },
-    weapons={w.name: w for w in (DAGGER, GREATSWORD, LONGBOW, LONGSWORD, MAUL, RAPIER)},
+    weapons={
+        w.name: w
+        for w in (
+            DAGGER,
+            GREATSWORD,
+            HAND_CROSSBOW,
+            HANDAXE,
+            LONGBOW,
+            LONGSWORD,
+            MAUL,
+            RAPIER,
+            SHORTSWORD,
+        )
+    },
     armour={a.name: a for a in (BREASTPLATE, CHAIN_MAIL, LEATHER_ARMOR, PLATE_ARMOR)},
+    ammunition=frozenset({"Arrow", "Bolt"}),
 )
 
 
@@ -420,6 +437,48 @@ def test_a_versatile_weapon_in_two_hands_rolls_its_two_handed_die() -> None:
 )
 def test_hands_are_counted(kit: dict[str, Any], fragment: str) -> None:
     refused(spec(equipment=kit), fragment)
+
+
+# --- what a build carries (debts #68, #69, #74) -------------------------------
+
+
+def test_a_build_holds_a_weapon_in_each_hand_and_carries_more_beside() -> None:
+    kit = {
+        "weapon": "Longbow",
+        "carried": {"Longsword": 1, "Arrow": 20, "Handaxe": 2},
+        "armour": "Chain Mail",
+    }
+    archer = fighter(equipment=kit)
+    assert (archer.weapon, archer.off_hand) == (LONGBOW, None)
+    assert dict(archer.stowed) == {LONGSWORD: 1, HANDAXE: 2}
+    assert archer.ammunition("Arrow") == 20
+    dual = fighter(equipment={"weapon": "Shortsword", "off_hand": "Dagger"})
+    assert dual.held == (SHORTSWORD, DAGGER)
+
+
+@pytest.mark.parametrize(
+    ("kit", "fragment"),
+    [
+        ({"weapon": "Greatsword", "off_hand": "Dagger"}, "no hand is left"),
+        ({"weapon": "Rapier", "shield": True, "off_hand": "Dagger"}, "no hand"),
+        ({"weapon": "Dagger", "off_hand": "Maul"}, "held in two hands"),
+        ({"weapon": "Dagger", "carried": {"Arrow": 0}}, "carries none"),
+    ],
+)
+def test_a_second_weapon_needs_a_hand(kit: dict[str, Any], fragment: str) -> None:
+    refused(spec(equipment=kit), fragment)
+
+
+def test_a_carried_name_is_a_weapon_or_ammunition_with_suggestions() -> None:
+    refused(spec(equipment={"carried": {"Arrows": 20}}), "unknown item", "Arrow")
+
+
+def test_an_apl_names_only_a_weapon_the_build_carries() -> None:
+    rows = [{"action": "attack", "with": {"weapon": "Longsword"}}]
+    kit = {"weapon": "Greatsword", "carried": {"Longsword": 1}}
+    assert load(spec(equipment=kit, apl=rows)).apl.weapons == {"Longsword"}
+    with pytest.raises(AplLoadError, match="neither holds nor carries"):
+        load(spec(apl=rows))
 
 
 def test_untrained_armour_and_shields_are_refused() -> None:

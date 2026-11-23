@@ -45,11 +45,13 @@ class Weapon:
     `range_ft` is the printed normal/long pair, `None` for a weapon with no
     range; `ranged` is the table's Melee/Ranged column; `versatile_damage` is
     the two-handed die of a Versatile weapon; `martial` is whether it is a
-    Martial weapon rather than a Simple one (`docs/decisions.md` § w2a, § w2f2,
-    § w2a2).
+    Martial weapon rather than a Simple one; `ammunition` names the piece of
+    ammunition an Ammunition weapon fires (`docs/decisions.md` § w2a, § w2f2,
+    § w2a2, § w2k).
 
-    Raises `ValueError` for a flat damage below 1, and for a Ranged or Thrown
-    weapon with no range.
+    Raises `ValueError` for a flat damage below 1, for a Ranged or Thrown
+    weapon with no range, and for ammunition named on a weapon without the
+    Ammunition property or missing from one with it.
     """
 
     name: str
@@ -62,6 +64,7 @@ class Weapon:
     ranged: bool = False
     versatile_damage: Dice | None = None
     martial: bool = False
+    ammunition: str | None = None
 
     def __post_init__(self) -> None:
         damage = self.damage
@@ -71,6 +74,11 @@ class Weapon:
             self.ranged or WeaponProperty.THROWN in self.properties
         ):
             raise ValueError(f"{self.name} is ranged or thrown and has no range")
+        if (self.ammunition is None) is (WeaponProperty.AMMUNITION in self.properties):
+            raise ValueError(
+                f"{self.name}: a weapon names its ammunition exactly when it has "
+                "the Ammunition property"
+            )
 
     def has(self, prop: WeaponProperty) -> bool:
         """Whether this weapon has a property."""

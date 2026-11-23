@@ -115,12 +115,16 @@ def creature(
     pc: bool = False,
     speed: int = 30,
     scores: MappingProxyType[Ability, int] = SCORES,
+    carried: dict[Weapon, int] | None = None,
+    ammunition: dict[str, int] | None = None,
 ) -> Creature:
     return Creature(
         name=name,
         stats=StatBlock(abilities=scores, max_hp=HP, speed_ft=speed),
         position=cell,
         weapon=weapon,
+        carried=carried,
+        ammunition=ammunition,
         initiative=initiative,
         player_character=pc,
     )
@@ -308,7 +312,7 @@ def test_an_enemy_in_range_of_a_bow_is_offered_and_shot_in_the_world() -> None:
     """Twenty feet is out of every reach and inside a Longbow's 150. The
     offered Attack carries the world close combat is asked of: 15 + 2 + 2 = 19
     against AC 12, for 1d8 (4) + 2 = 6 (`docs/decisions.md` § w2f2)."""
-    archer = creature("archer", weapon=LONGBOW)
+    archer = creature("archer", weapon=LONGBOW, ammunition={"Arrow": 20})
     distant = creature("distant", cell=FAR)
     seated = world((archer, "heroes"), (distant, "monsters"))
     archer.economy.turn_started(archer.speed_ft)
