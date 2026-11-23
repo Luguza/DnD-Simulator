@@ -6,7 +6,7 @@ from typing import ClassVar, NamedTuple
 from dndsim.actions.base import Action
 from dndsim.core.log import EventLog
 from dndsim.core.rng import Rng
-from dndsim.creatures.creature import Creature, hands_for
+from dndsim.creatures.creature import HANDS, Creature, hands_for
 from dndsim.creatures.stats import UNARMED_STRIKE, Weapon
 from dndsim.engine.attack import (
     FRESH,
@@ -22,7 +22,6 @@ from dndsim.rules.enums import ActionCost, WeaponProperty
 
 __all__ = ["Attack", "LightAttack"]
 
-_HANDS = 2
 _THROWN = WeaponProperty.THROWN
 _LIGHT = WeaponProperty.LIGHT
 _LEFT_THE_HAND = -1
@@ -119,12 +118,12 @@ class Attack(Action[AttackResult]):
         for hand in self._hands():
             holding = held[hand]
             if holding is weapon or holding == weapon:
-                if loads and actor.hands_held + loads > _HANDS:
+                if loads and actor.hands_held + loads > HANDS:
                     return None
                 return _Plan(hand, None, thrown)
         if actor.stowed.get(weapon, 0) < 1 or not (thrown or self.EQUIPS):
             return None
-        free = _HANDS - actor.hands_held
+        free = HANDS - actor.hands_held
         need = hands_for(weapon) + loads
         if free >= need:
             return _Plan(None, None, thrown)

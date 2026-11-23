@@ -30,9 +30,10 @@ from dndsim.rules.constants import (
 )
 from dndsim.rules.enums import Ability, Condition, Size, WeaponProperty
 
-__all__ = ["UNSEATED", "Creature", "hands_for"]
+__all__ = ["HANDS", "UNSEATED", "Creature", "hands_for"]
 
-_HANDS: Final = 2
+HANDS: Final = 2
+"""How many hands a creature holds things in."""
 
 
 UNSEATED: Final = InitiativeKey(
@@ -124,7 +125,7 @@ class Creature:
         self._dropped: list[tuple[Weapon, Cell]] = []
         self._armour = armour
         self._shield = shield
-        if self.hands_held > _HANDS:
+        if self.hands_held > HANDS:
             raise ValueError(f"{name} holds more than two hands can")
         self.position = position
         self.initiative = initiative
@@ -331,8 +332,12 @@ class Creature:
         else:
             self.off_hand = weapon
 
+    def can_hold(self, weapon: Weapon) -> bool:
+        """Whether a hand is free for `weapon` beside what is already held."""
+        return self.hands_held + hands_for(weapon) <= HANDS
+
     def _free_hand(self, weapon: Weapon) -> int:
-        if self.hands_held + hands_for(weapon) > _HANDS:
+        if not self.can_hold(weapon):
             raise ValueError(f"{self.name} has no hand free to hold {weapon.name} in")
         return 0 if self.weapon is None else 1
 

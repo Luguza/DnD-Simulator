@@ -20,7 +20,7 @@ from dndsim.conditions.prone import Prone
 from dndsim.core.geometry import Cell, footprint, in_reach
 from dndsim.core.log import EventLog
 from dndsim.core.rng import Rng
-from dndsim.creatures.creature import Creature
+from dndsim.creatures.creature import HANDS, Creature
 from dndsim.creatures.effects import Effect, Stacking
 from dndsim.creatures.stats import UNARMED_STRIKE
 from dndsim.engine.d20 import ability_check, check_bonus
@@ -46,8 +46,6 @@ __all__ = [
     "grips",
     "loosen_grapples",
 ]
-
-_HANDS = 2
 
 _TAN_22_5 = math.sqrt(2) - 1
 """Where the nearest compass direction turns from straight to diagonal."""
@@ -168,7 +166,7 @@ class Grapple(_Option):
     def _own(self) -> bool:
         actor, target = self.actor, self.target
         held = grips(actor)
-        return actor.hands_held + len(held) < _HANDS and not any(
+        return actor.hands_held + len(held) < HANDS and not any(
             grip.target is target for grip in held
         )
 

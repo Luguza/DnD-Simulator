@@ -6,13 +6,11 @@ from typing import ClassVar
 from dndsim.actions.base import Action
 from dndsim.core.geometry import in_reach
 from dndsim.core.rng import Rng
-from dndsim.creatures.creature import Creature, hands_for
+from dndsim.creatures.creature import Creature
 from dndsim.creatures.stats import Weapon
 from dndsim.rules.enums import ActionCost
 
 __all__ = ["PickUpWeapon"]
-
-_HANDS = 2
 
 
 class PickUpWeapon(Action[None]):
@@ -35,7 +33,7 @@ class PickUpWeapon(Action[None]):
             return False
         for fallen, where in actor.dropped:
             if self.weapon is None or fallen == self.weapon:
-                return actor.hands_held + hands_for(fallen) <= _HANDS and in_reach(
+                return actor.can_hold(fallen) and in_reach(
                     actor.position, where, 5, origin_size=actor.size
                 )
         return False
