@@ -15,7 +15,7 @@ whose destination is the policy's (`docs/decisions.md` § w2e).
 from collections.abc import Sequence
 from typing import Any, Final, Protocol
 
-from dndsim.actions.attack import Attack
+from dndsim.actions.attack import Attack, LightAttack
 from dndsim.actions.base import Action
 from dndsim.actions.dash import Dash
 from dndsim.actions.disengage import Disengage
@@ -29,6 +29,7 @@ from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.rng import Rng
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import Creature
+from dndsim.creatures.stats import Weapon
 from dndsim.engine.d20 import modifier_total, roll_d20, settle
 from dndsim.engine.dying import death_save, dying
 from dndsim.engine.query import allies_of, enemies_of
@@ -41,7 +42,7 @@ from dndsim.hooks.definitions import (
     ON_TURN_START,
 )
 from dndsim.hooks.registry import HookSpec
-from dndsim.rules.enums import Ability, SaveOutcome, SaveRepeat
+from dndsim.rules.enums import Ability, SaveOutcome, SaveRepeat, WeaponProperty
 
 __all__ = [
     "DEATH_SAVE",
@@ -121,21 +122,43 @@ def roll_initiative(creature: Creature, *, rng: Rng) -> InitiativeKey:
 def offers(world: World, actor: Creature) -> list[Action[Any]]:
     """Every Command `actor` could take now and pay for, in a fixed order.
 
-    Built from the Commands in `actions/` against the roster — the Unarmed
+    Built from the Commands in `actions/` against the roster — an attack
+    against each enemy with what is held and with each other weapon held or
+    carried, the Light property's extra attack with each, the Unarmed
     Strike's options against each enemy, an escape from each grapple `actor`
-    is held in and a release of each it holds — then filtered by
-    `is_legal()`. Spends nothing.
+    is held in, a release of each it holds, a pick-up of each weapon it
+    dropped — then filtered by `is_legal()`. Spends nothing.
     """
     log = world.log
     enemies = enemies_of(world, actor)
     candidates: list[Action[Any]] = [
         Attack(actor, enemy, log=log, world=world) for enemy in enemies
     ]
+    held = actor.weapon
+    others: dict[str, Weapon] = {}
+    for weapon in (actor.off_hand, *actor.stowed):
+        if weapon is not None and (held is None or weapon.name != held.name):
+            others.setdefault(weapon.name, weapon)
+    for weapon in others.values():
+        candidates.extend(
+            Attack(actor, enemy, weapon=weapon, log=log, world=world)
+            for enemy in enemies
+        )
+    if actor.economy.light_hand is not None:
+        light = {
+            weapon.name: weapon
+            for weapon in (held, *others.values())
+            if weapon is not None and weapon.has(WeaponProperty.LIGHT)
+        }
+        for weapon in light.values():
+            candidates.extend(
+                LightAttack(actor, enemy, weapon=weapon, log=log, world=world)
+                for enemy in enemies
+            )
     attacks = len(candidates)
     candidates.extend(Stabilize(actor, ally) for ally in allies_of(world, actor))
-    candidates.extend(
-        (Dodge(actor), Disengage(actor), Dash(actor), PickUpWeapon(actor))
-    )
+    candidates.extend((Dodge(actor), Disengage(actor), Dash(actor)))
+    candidates.extend(PickUpWeapon(actor, *lying) for lying in actor.dropped)
     candidates.extend(endings(world, actor))
     candidates.append(StandUp(actor))
     candidates.extend(Move(actor, enemy, world=world) for enemy in enemies)

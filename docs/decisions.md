@@ -6900,3 +6900,104 @@ Each is the conservative reading, so the implementer does not choose:
 Sources: `ROADMAP.md` `w2k`, § The W0 debt register #68, #69, #74; XPHB
 "Ammunition", "Light", "Loading", "Thrown", "Attack", "Your Turn"; § w2b,
 § w2e, § w2f, § The W2 late-wave review, § The `w2j` spec correction.
+
+## w2k — two hands, what is carried, and the Light attack
+
+What § The `w2k` spec correction left to the implementer, and the reason for
+each choice; the rules themselves are XPHB "Attack", "Ammunition", "Light",
+"Thrown" and "Your Turn".
+
+### Two hands, not a list of held things
+
+`Creature.weapon` stays the hand an attack naming no weapon uses, so every
+reader of it — the reach, the opportunity attack, `to_max_range` — means what
+it meant, and `off_hand` is the second. A list would have made "the weapon"
+ambiguous at each of those readers. `hands_for()` counts a Versatile weapon
+the builder handed its two-handed die (§ w2f) as two hands, read off the die,
+because that copy is the only record that it is held in both; without it a
+two-handed Longsword left a hand free to draw into.
+
+### A creature whose kit is not counted
+
+`carried=None` is a creature nobody wrote an inventory for: a monster's stat
+block or a test's hand-made creature. Its ammunition never runs out, a thrown
+weapon stays in hand, and a weapon it names is at hand unless it lies dropped,
+which is what each of them did before this row and what a stat block's
+attacks assume. A `Character` is always counted, with `()` when the build
+carries nothing beside, so every build runs out. Defaulting the other way
+would have made every hand-made archer in the suite unable to fire, and made
+a monster with a Longbow need an arrow count no stat block prints.
+
+### The switch
+
+The Attack action equips or unequips one weapon with each attack, so drawing
+a carried weapon into a free hand is the attack's own; when no hand is free,
+one held weapon is stowed first with the turn's object interaction
+(`docs/questions.md` #33). A switch that would need two held weapons stowed
+is refused rather than spending something the rules do not offer. The
+stowed weapon goes back to what is carried, so it can be drawn again later.
+`PickUpWeapon` spends the same interaction, so a creature that stowed a
+weapon to switch this turn cannot also pick up what it dropped.
+
+### The Light attack is a Command of its own
+
+`light_attack` is its own id rather than `attack` with a parameter: it costs
+the Bonus Action, which an APL entry has to be able to name apart from the
+Action, and the vocabulary stays closed (§ w2e). "A different Light weapon"
+is a different physical weapon, so the economy records the *hand* whose
+Light weapon the Attack action attacked with (`light_hand`), and a weapon
+leaving that hand — thrown, stowed or dropped — marks it gone: a Dagger
+thrown and the next drawn into the same hand is a different Dagger. Two
+Daggers held, one in each hand, are two weapons. The Light attack draws a
+carried weapon only when throwing it, by the Thrown property's draw; it has no
+equip, which belongs to the Attack action.
+
+The damage is `resolve_attack(positive_modifier=False)`: one keyword on the
+hot path, read only on a hit, rather than a second resolution path the
+estimator would have to be kept in step with.
+
+### Ammunition, Loading and Thrown
+
+A piece is spent when the attack is made, hit or miss. A one-handed
+Ammunition weapon is refused while no hand is free to load it once it is in
+hand — a Hand Crossbow and a Shield, or two Hand Crossbows — and a Two-Handed
+one needs nothing more. Loading is honoured by construction (§ The `w2k` spec
+correction). A thrown weapon leaves the hand after the attack resolves and the
+next carried one of its name is drawn into a free hand; it is not put on the
+board, so `dropped` holds only what was let go of (`docs/questions.md` #32).
+`ammoType` is resolved to the piece's name at the import, against the
+`Arrow`-shaped items rather than the `Arrows (20)` packs, so 5etools'
+lowercase uid stops at `content/`.
+
+### `with: weapon:`
+
+On `attack` and `light_attack` the `weapon` parameter is a name, not an
+expression, so it is taken out before `with:` compiles; on any other id it
+compiles as before. The loader checks it against what the build holds and
+carries. An `attack` entry naming no weapon takes only the offer with what is
+in the main hand, so an APL written before this row picks what it picked.
+
+### The price
+
+The spike calls `resolve_attack()` directly, so of this row it sees the
+modifier's one comparison on a hit and, through `OpportunityAttack`, the
+attack's readying. The witness is the fixed 200-encounter profiled run at seed
+0, milestone branch → this task, counting `dndsim` and builtin calls (§ w2j):
+1,902,908 → 1,903,596 on `--no-provoking` and 3,295,961 → 3,335,367 on
+provoking (+1.2%, the opportunity attack's `_ready()`).
+
+The rate, by the spike's own `main()` in sibling worktrees, 300 encounters and
+3 repeats, a fresh interpreter per arm, the order reversed every other pair:
+
+| Configuration | Pairs | Ratios | Median |
+|---|---|---|---|
+| `--no-provoking` | 8 | 1.067, 1.003, 0.994, 1.031, 0.972, 0.958, 1.004, 0.969 | **0.998** |
+| provoking | 8 | 0.984, 0.982, 1.049, 1.006, 1.004, 1.007, 1.024, 1.078 | **1.006** |
+
+Both are inside the ±6% the tree spreads against itself (§ w2i2). `offers()`
+grows by one candidate per enemy per other weapon and per Light weapon, which
+the spike does not call; it lands on `w2g`'s runner.
+
+Sources: `ROADMAP.md` `w2k`, § The W0 debt register #68, #69, #74, #80; XPHB
+"Attack", "Ammunition", "Light", "Loading", "Thrown", "Your Turn"; § w2b,
+§ w2e, § w2f, § w2j, § The `w2k` spec correction.

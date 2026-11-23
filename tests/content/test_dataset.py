@@ -18,11 +18,17 @@ from dndsim.content.loader import Dataset
 from dndsim.content.refs import class_features, subclass_features
 from dndsim.content.species import Species, species
 from dndsim.content.tables import class_tables, table_value
-from dndsim.content.weapons import NOT_IMPORTED, armour, masteries, weapons
+from dndsim.content.weapons import (
+    NOT_IMPORTED,
+    ammunition,
+    armour,
+    masteries,
+    weapons,
+)
 from dndsim.core.dice import Dice
 from dndsim.core.geometry import Cell
 from dndsim.creatures.stats import Armour, Weapon
-from dndsim.rules.enums import Mastery
+from dndsim.rules.enums import Mastery, WeaponProperty
 from origin_fixtures import (
     ABILITY_SCORE_IMPROVEMENT,
     BLESSED_WARRIOR,
@@ -48,6 +54,7 @@ from weapon_fixtures import (
     DAGGER,
     DART,
     GREATSWORD,
+    HAND_CROSSBOW,
     HANDAXE,
     LEATHER_ARMOR,
     LONGBOW,
@@ -55,6 +62,7 @@ from weapon_fixtures import (
     MAUL,
     PLATE_ARMOR,
     RAPIER,
+    SHORTSWORD,
 )
 
 pytestmark = pytest.mark.content
@@ -106,7 +114,19 @@ def test_the_melee_ranged_column_parts_a_dart_from_a_dagger(data: Dataset) -> No
 
 @pytest.mark.parametrize(
     "fixture",
-    [GREATSWORD, MAUL, LONGBOW, DAGGER, DART, HANDAXE, BLOWGUN, LONGSWORD, RAPIER],
+    [
+        GREATSWORD,
+        MAUL,
+        LONGBOW,
+        DAGGER,
+        DART,
+        HANDAXE,
+        BLOWGUN,
+        LONGSWORD,
+        RAPIER,
+        HAND_CROSSBOW,
+        SHORTSWORD,
+    ],
     ids=lambda weapon: weapon.name,
 )
 def test_each_weapon_fixture_is_its_imported_entry(
@@ -115,6 +135,20 @@ def test_each_weapon_fixture_is_its_imported_entry(
     """The default suite and `-m bench` stand on hand-written copies; this is
     what keeps them the table's (`docs/decisions.md` § w2f2)."""
     assert weapons(data)[fixture.name] == fixture
+
+
+def test_every_ammunition_weapon_names_a_piece_the_data_holds(
+    data: Dataset,
+) -> None:
+    """XPHB "Ammunition": the type is specified with the weapon's range."""
+    pieces = ammunition(data)
+    assert {"Arrow", "Bolt", "Needle"} <= pieces
+    assert not any("(" in piece for piece in pieces)
+    for weapon in weapons(data).values():
+        if weapon.has(WeaponProperty.AMMUNITION):
+            assert weapon.ammunition in pieces, weapon.name
+        else:
+            assert weapon.ammunition is None, weapon.name
 
 
 @pytest.mark.parametrize(

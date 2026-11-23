@@ -16,14 +16,17 @@ class _Spec(BaseModel):
 
 
 class Equipment(_Spec):
-    """What the character wields, wears and carries on its arm; each named
-    as the XPHB tables print it. `two_handed` holds a Versatile weapon in two
-    hands."""
+    """What the character wields in each hand, wears, carries on its arm and
+    carries beside; each named as the XPHB tables print it. `two_handed` holds
+    a Versatile `weapon` in two hands. `carried` counts each weapon and piece
+    of ammunition carried beside what is held."""
 
     weapon: str | None = None
+    off_hand: str | None = None
     two_handed: bool = False
     armour: str | None = None
     shield: bool = False
+    carried: dict[str, int] = {}
 
 
 class FeatChoice(_Spec):

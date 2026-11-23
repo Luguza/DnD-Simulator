@@ -1,19 +1,20 @@
 """`Creature` — something that stands somewhere, has hit points, and answers when
 the engine asks.
 
-A creature holds its stat block, equipment and the AC derived from them, its
+A creature holds its stat block, equipment and the AC derived from them, what
+it holds in each hand and carries beside, its
 hit points and position, its `ActionEconomy`, its own `Dispatcher` (which
 spends from that economy), its `EffectStore` and its `Resources`. Hit points
 are plain attributes with no damage arithmetic here (`docs/decisions.md`
 § w0g2, § w1a).
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Final
 
 from dndsim.core.geometry import Cell
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
-from dndsim.creatures.economy import ActionEconomy
+from dndsim.creatures.economy import LIGHT_WEAPON_GONE, ActionEconomy
 from dndsim.creatures.effects import Effect, EffectStore
 from dndsim.creatures.resources import Resources
 from dndsim.creatures.stats import UNARMOURED, Armour, StatBlock, Weapon
@@ -29,7 +30,19 @@ from dndsim.rules.constants import (
 )
 from dndsim.rules.enums import Ability, Condition, Size, WeaponProperty
 
-__all__ = ["UNSEATED", "Creature"]
+__all__ = ["HANDS", "UNSEATED", "Creature", "hands_for"]
+
+HANDS: Final = 2
+"""How many hands a creature holds things in."""
+
+
+def hands_for(weapon: Weapon) -> int:
+    """How many hands wielding `weapon` fills: two for a Two-Handed weapon and
+    for a Versatile one the builder handed its two-handed die, else one."""
+    if weapon.has(WeaponProperty.TWO_HANDED):
+        return 2
+    versatile = weapon.versatile_damage
+    return 2 if versatile is not None and weapon.damage == versatile else 1
 
 
 UNSEATED: Final = InitiativeKey(
@@ -57,8 +70,9 @@ class Creature:
         "_stats",
         "crit_threshold",
         "_dead",
-        "_dropped_at",
-        "_dropped_weapon",
+        "_dropped",
+        "_stock",
+        "_stowed",
         "_death_save_failures",
         "_death_save_successes",
         "_stable",
@@ -69,6 +83,7 @@ class Creature:
         "hp",
         "initiative",
         "name",
+        "off_hand",
         "player_character",
         "position",
         "resources",
@@ -83,6 +98,8 @@ class Creature:
         stats: StatBlock,
         position: Cell,
         weapon: Weapon | None = None,
+        off_hand: Weapon | None = None,
+        carried: Iterable[tuple[Weapon | str, int]] | None = None,
         armour: Armour = UNARMOURED,
         shield: bool = False,
         initiative: InitiativeKey = UNSEATED,
@@ -90,10 +107,24 @@ class Creature:
     ) -> None:
         self.name = name
         self._stats = stats
+        # The two hands: `weapon` is the one an attack naming none uses.
         self.weapon = weapon
-        # Moved together, and only by `drop_held()` and `pick_up_weapon()`.
-        self._dropped_weapon: Weapon | None = None
-        self._dropped_at: Cell | None = None
+        self.off_hand = off_hand
+        # What is carried beside, by name: weapons stowed and pieces of
+        # ammunition. `None` is a creature whose kit is not counted, which
+        # never runs out (`docs/decisions.md` § w2k).
+        self._stowed: dict[str, Weapon] | None = None
+        self._stock: dict[str, int] | None = None
+        if carried is not None:
+            self._stowed, self._stock = {}, {}
+            for item, count in carried:
+                if count < 1:
+                    raise ValueError(f"{self.name} carries {count} of {item}")
+                if isinstance(item, Weapon):
+                    self._stowed.setdefault(item.name, item)
+                    item = item.name
+                self._stock[item] = self._stock.get(item, 0) + count
+        self._dropped: list[tuple[Weapon, Cell]] = []
         self._armour = armour
         self._shield = shield
         self.position = position
@@ -227,56 +258,161 @@ class Creature:
 
     @property
     def hands_held(self) -> int:
-        """How many hands what this creature holds fills: a Two-Handed weapon
-        two, any other weapon one, a Shield one. A grapple is held by an
-        effect, not here (`docs/decisions.md` § w2j)."""
+        """How many hands what this creature holds fills: each weapon by
+        `hands_for()`, a Shield one. A grapple is held by an effect, not here
+        (`docs/decisions.md` § w2j)."""
+        held = 1 if self._shield else 0
+        for weapon in (self.weapon, self.off_hand):
+            if weapon is not None:
+                held += hands_for(weapon)
+        return held
+
+    def holding(self, name: str) -> int | None:
+        """The hand (0 for `weapon`, 1 for `off_hand`) holding a weapon called
+        `name`, or `None`."""
         weapon = self.weapon
+        if weapon is not None and weapon.name == name:
+            return 0
+        off_hand = self.off_hand
+        if off_hand is not None and off_hand.name == name:
+            return 1
+        return None
+
+    def held(self, hand: int) -> Weapon | None:
+        """What is in `hand`, 0 or 1."""
+        return self.weapon if hand == 0 else self.off_hand
+
+    # -- what it carries ------------------------------------------------------
+
+    @property
+    def counts_carried(self) -> bool:
+        """Whether what this creature carries is counted, and can run out."""
+        return self._stock is not None
+
+    def carried(self, name: str) -> int:
+        """How many of a weapon called `name`, or of a piece of ammunition,
+        are carried beside what is held; 0 when nothing is counted."""
+        stock = self._stock
+        return 0 if stock is None else stock.get(name, 0)
+
+    @property
+    def stowed(self) -> tuple[Weapon, ...]:
+        """One of each weapon carried beside what is held, in the order first
+        carried."""
+        stowed, stock = self._stowed, self._stock
+        if stowed is None or stock is None:
+            return ()
+        return tuple(weapon for name, weapon in stowed.items() if stock[name])
+
+    def has_ammunition(self, piece: str) -> bool:
+        """Whether a piece of `piece` is carried to fire; always, when nothing
+        is counted."""
+        stock = self._stock
+        return stock is None or stock.get(piece, 0) > 0
+
+    def spend_ammunition(self, piece: str) -> None:
+        """Spend one `piece` of ammunition, when what is carried is counted.
+
+        Raises `ValueError` when none is carried.
+        """
+        stock = self._stock
+        if stock is None:
+            return
+        if stock.get(piece, 0) < 1:
+            raise ValueError(f"{self.name} carries no {piece} to fire")
+        stock[piece] -= 1
+
+    def draw(self, name: str) -> int:
+        """Take a carried weapon called `name` into the first free hand, and
+        return that hand.
+
+        Raises `ValueError` when none is carried or no hand is free for it.
+        """
+        stowed = self._stowed
+        if stowed is None or self.carried(name) < 1:
+            raise ValueError(f"{self.name} carries no {name} to draw")
+        weapon = stowed[name]
+        if HANDS - self.hands_held < hands_for(weapon):
+            raise ValueError(f"{self.name} has no hand free to draw {name}")
+        stock = self._stock
+        assert stock is not None
+        stock[name] -= 1
+        if self.weapon is None:
+            self.weapon = weapon
+            return 0
+        self.off_hand = weapon
+        return 1
+
+    def stow(self, hand: int) -> None:
+        """Put the weapon in `hand` away with what is carried.
+
+        Raises `ValueError` for an empty hand, or a creature whose kit is not
+        counted.
+        """
+        weapon = self.held(hand)
+        stowed, stock = self._stowed, self._stock
+        if weapon is None or stowed is None or stock is None:
+            raise ValueError(f"{self.name} has nothing in hand {hand} to stow")
+        stowed.setdefault(weapon.name, weapon)
+        stock[weapon.name] = stock.get(weapon.name, 0) + 1
+        self.let_go(hand)
+
+    def let_go(self, hand: int) -> Weapon:
+        """Empty `hand` — a weapon thrown, stowed or dropped — and return what
+        it held. Raises `ValueError` for an empty hand."""
+        weapon = self.held(hand)
         if weapon is None:
-            held = 0
-        elif weapon.has(WeaponProperty.TWO_HANDED):
-            held = 2
+            raise ValueError(f"{self.name} holds nothing in hand {hand}")
+        if hand == 0:
+            self.weapon = None
         else:
-            held = 1
-        return held + 1 if self._shield else held
+            self.off_hand = None
+        economy = self.economy
+        if economy.light_hand == hand:
+            economy.light_hand = LIGHT_WEAPON_GONE
+        return weapon
 
     @property
-    def dropped_weapon(self) -> Weapon | None:
-        """What `drop_held()` let go of, until `pick_up_weapon()` takes it
-        back."""
-        return self._dropped_weapon
-
-    @property
-    def dropped_at(self) -> Cell | None:
-        """The square `dropped_weapon` fell in."""
-        return self._dropped_at
+    def dropped(self) -> tuple[tuple[Weapon, Cell], ...]:
+        """Each weapon `drop_held()` let go of and the square it fell in,
+        until `pick_up_weapon()` takes it back."""
+        return tuple(self._dropped)
 
     def drop_held(self) -> None:
-        """Drop the wielded weapon where this creature stands. Holding nothing
-        drops nothing; a Shield is worn, not held (`docs/decisions.md` § w2b).
-        """
-        weapon = self.weapon
-        if weapon is None:
-            return
-        self._dropped_weapon = weapon
-        self._dropped_at = self.position
-        self.weapon = None
+        """Drop every weapon held where this creature stands. A Shield is worn,
+        not held (`docs/decisions.md` § w2b)."""
+        for hand in (0, 1):
+            if self.held(hand) is not None:
+                self._dropped.append((self.let_go(hand), self.position))
 
-    def pick_up_weapon(self) -> None:
-        """Wield the weapon this creature dropped again.
+    def pick_up_weapon(
+        self, weapon: Weapon | None = None, at: Cell | None = None
+    ) -> None:
+        """Wield again `weapon` lying at `at`, or the first weapon this
+        creature dropped, in the first free hand.
 
-        Raises `ValueError` when it dropped nothing or is wielding another.
+        Raises `ValueError` when it dropped no such weapon or has no hand free
+        for it.
         """
-        weapon = self._dropped_weapon
-        if weapon is None:
+        dropped = self._dropped
+        index = next(
+            (
+                i
+                for i, (lying, where) in enumerate(dropped)
+                if (weapon is None or lying is weapon) and (at is None or where == at)
+            ),
+            None,
+        )
+        if index is None:
             raise ValueError(f"{self.name} has dropped nothing to pick up")
-        if self.weapon is not None:
-            raise ValueError(
-                f"{self.name} is wielding {self.weapon.name} and cannot pick up "
-                f"{weapon.name} as well"
-            )
-        self.weapon = weapon
-        self._dropped_weapon = None
-        self._dropped_at = None
+        lying = dropped[index][0]
+        if HANDS - self.hands_held < hands_for(lying):
+            raise ValueError(f"{self.name} has no hand free to pick up {lying.name}")
+        del dropped[index]
+        if self.weapon is None:
+            self.weapon = lying
+        else:
+            self.off_hand = lying
 
     @property
     def is_alive(self) -> bool:

@@ -25,7 +25,7 @@ from dndsim.content.classes import SKILLS, CharacterClass, classes
 from dndsim.content.feats import Feat, feats
 from dndsim.content.loader import Dataset
 from dndsim.content.species import Species, species
-from dndsim.content.weapons import armour, weapons
+from dndsim.content.weapons import ammunition, armour, weapons
 from dndsim.core.geometry import Cell
 from dndsim.core.rng import Rng
 from dndsim.creatures.character import BuildError, Character, CharacterBuilder
@@ -61,6 +61,7 @@ class Catalogue:
     feats: Mapping[str, Feat]
     weapons: Mapping[str, Weapon]
     armour: Mapping[str, Armour]
+    ammunition: frozenset[str] = frozenset()
 
     @classmethod
     def from_dataset(cls, data: Dataset) -> "Catalogue":
@@ -72,6 +73,7 @@ class Catalogue:
             feats=feats(data),
             weapons=weapons(data),
             armour=armour(data),
+            ammunition=ammunition(data),
         )
 
 
@@ -152,16 +154,30 @@ def load_build(spec: BuildSpec, catalogue: Catalogue) -> Build:
             None if increases is None else _abilities(increases, "ability"),
         )
     kit = spec.equipment
+    carried: list[tuple[Weapon, int]] = []
+    pieces: dict[str, int] = {}
+    for name, count in kit.carried.items():
+        if name in catalogue.ammunition:
+            pieces[name] = count
+        else:
+            items = {**catalogue.weapons, **dict.fromkeys(catalogue.ammunition)}
+            _lookup(items, name, "weapon or ammunition")
+            carried.append((catalogue.weapons[name], count))
     builder.equip(
         armoury=catalogue.weapons.values(),
         weapon=None
         if kit.weapon is None
         else _lookup(catalogue.weapons, kit.weapon, "weapon"),
+        off_hand=None
+        if kit.off_hand is None
+        else _lookup(catalogue.weapons, kit.off_hand, "weapon"),
         two_handed=kit.two_handed,
         armour=None
         if kit.armour is None
         else _lookup(catalogue.armour, kit.armour, "armour"),
         shield=kit.shield,
+        weapons=carried,
+        ammunition=pieces,
     )
     # Built once here so that a choice its level owes fails at load.
     builder.build(Cell(0, 0))
@@ -170,6 +186,17 @@ def load_build(spec: BuildSpec, catalogue: Catalogue) -> Build:
         if spec.apl is None
         else Apl(Entry.from_mapping(row) for row in spec.apl)
     )
+    kit_names = {weapon.name for weapon, _ in carried}
+    kit_names.update(name for name in (kit.weapon, kit.off_hand) if name is not None)
+    for compiled in apl.compiled:
+        named = compiled.weapon
+        if named is not None and named not in kit_names:
+            close = difflib.get_close_matches(named, sorted(kit_names), n=1)
+            hint = f"; did you mean {close[0]!r}?" if close else ""
+            raise BuildError(
+                f"{spec.name}: the APL attacks with {named!r}, which the build "
+                f"does not carry{hint}"
+            )
     return Build(spec, apl, builder)
 
 

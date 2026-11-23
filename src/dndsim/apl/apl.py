@@ -17,7 +17,7 @@ from weakref import WeakKeyDictionary
 
 import yaml
 
-from dndsim.actions.attack import Attack
+from dndsim.actions.attack import Attack, LightAttack
 from dndsim.actions.base import Action
 from dndsim.actions.dash import Dash
 from dndsim.actions.disengage import Disengage
@@ -72,6 +72,7 @@ COMMAND_IDS: Final = frozenset(
     command.ID
     for command in (
         Attack,
+        LightAttack,
         Dash,
         Disengage,
         Dodge,
@@ -95,6 +96,11 @@ DEFAULT_MOVE: Final = "toward nearest of enemies until in_reach"
 taken (DESIGN.md § APL)."""
 
 _KEYS: Final = ("action", "if", "target", "move", "with")
+
+_WEAPON_PARAM: Final = "weapon"
+_ARMED: Final = frozenset({Attack.ID, LightAttack.ID})
+"""The ids whose `with: weapon:` names the weapon, as the build names it
+(`docs/decisions.md` § w2k)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +160,8 @@ def _params(written: Any) -> tuple[tuple[str, str], ...]:
 @dataclass(frozen=True, slots=True)
 class CompiledEntry:
     """One row compiled: the action, its clauses as callables of a
-    `Namespace`, and the gate id it answers."""
+    `Namespace`, the gate id it answers, and the weapon its `with: weapon:`
+    names."""
 
     action: str
     condition: Callable[[Namespace], Any]
@@ -164,6 +171,7 @@ class CompiledEntry:
     gate: str
     params: tuple[tuple[str, Compiled], ...] = ()
     reads_target: bool = False
+    weapon: str | None = None
 
 
 def _always(ns: Namespace) -> bool:
@@ -478,7 +486,12 @@ def _compile_entry(
     names = [name for name, _ in entry.with_]
     if len(set(names)) != len(names):
         raise AplLoadError(f"APL entry {action!r} names a with: param twice: {names}")
-    params = tuple((name, compile_param(text, schema)) for name, text in entry.with_)
+    weapon: str | None = None
+    written = entry.with_
+    if action in _ARMED:
+        weapon = dict(written).get(_WEAPON_PARAM)
+        written = tuple(pair for pair in written if pair[0] != _WEAPON_PARAM)
+    params = tuple((name, compile_param(text, schema)) for name, text in written)
     return CompiledEntry(
         action=action,
         condition=_always if condition is None else condition.fn,
@@ -489,6 +502,7 @@ def _compile_entry(
         params=params,
         reads_target=condition is not None
         and any(path.startswith("target.") for path in condition.reads),
+        weapon=weapon,
     )
 
 
@@ -551,13 +565,27 @@ def _target_of(command: Action[Any]) -> Creature | None:
     return None
 
 
+def _answers(entry: CompiledEntry, offer: Action[Any]) -> bool:
+    """Whether `offer` is one `entry` takes: its action, and its weapon when
+    the entry names one; an `attack` naming none is made with what is held,
+    as it was before a creature could carry a second weapon."""
+    if entry.action != offer.ID:
+        return False
+    if not isinstance(offer, Attack):
+        return True
+    named = entry.weapon
+    if named is None:
+        return offer.ID != Attack.ID or offer.weapon is None
+    return offer.weapon_name == named
+
+
 def _aim(
     entry: CompiledEntry, namespace: Namespace, offers: Sequence[Action[Any]]
 ) -> None:
     """Bind `target` to the creature `entry` would take its action on, before
     its `if:` reads it: the first of its `target:` picks that an offer is
     against, else its first pick; with no `target:`, the nearest offer's."""
-    matching = [offer for offer in offers if entry.action == offer.ID]
+    matching = [offer for offer in offers if _answers(entry, offer)]
     picked: Creature | None = None
     selector = entry.target
     if selector is not None:
@@ -582,7 +610,7 @@ def _pick(
     offers: Sequence[Action[Any]],
 ) -> Action[Any] | None:
     """The offer of `entry`'s action its `target:` picks, binding `target`."""
-    matching = [offer for offer in offers if entry.action == offer.ID]
+    matching = [offer for offer in offers if _answers(entry, offer)]
     if not matching:
         return None
     selector = entry.target

@@ -558,7 +558,7 @@ def test_a_creature_does_not_know_how_to_take_damage() -> None:
 
 def test_a_creature_starts_with_nothing_dropped() -> None:
     subject = creature()
-    assert (subject.dropped_weapon, subject.dropped_at) == (None, None)
+    assert subject.dropped == ()
 
 
 def test_dropping_leaves_the_weapon_where_the_creature_stands() -> None:
@@ -566,8 +566,7 @@ def test_dropping_leaves_the_weapon_where_the_creature_stands() -> None:
     subject.position = Cell(3, 4)
     subject.drop_held()
     assert subject.weapon is None
-    assert subject.dropped_weapon is GREATSWORD
-    assert subject.dropped_at == Cell(3, 4)
+    assert subject.dropped == ((GREATSWORD, Cell(3, 4)),)
 
 
 def test_the_dropped_weapon_stays_where_it_fell() -> None:
@@ -575,17 +574,13 @@ def test_the_dropped_weapon_stays_where_it_fell() -> None:
     subject.weapon = GREATSWORD
     subject.drop_held()
     subject.position = Cell(1, 1)
-    assert subject.dropped_at == Cell(0, 0)
+    assert subject.dropped == ((GREATSWORD, Cell(0, 0)),)
 
 
 def test_dropping_with_empty_hands_drops_nothing() -> None:
     subject = creature()
     subject.drop_held()
-    assert (subject.weapon, subject.dropped_weapon, subject.dropped_at) == (
-        None,
-        None,
-        None,
-    )
+    assert (subject.weapon, subject.dropped) == (None, ())
 
 
 def test_a_shield_is_not_dropped() -> None:
@@ -610,7 +605,7 @@ def test_picking_up_undoes_the_drop() -> None:
     subject.drop_held()
     subject.pick_up_weapon()
     assert subject.weapon is PIKE
-    assert (subject.dropped_weapon, subject.dropped_at) == (None, None)
+    assert subject.dropped == ()
     assert subject.reach_ft == 10
 
 
@@ -631,11 +626,7 @@ def test_picking_up_while_wielding_another_is_refused_and_changes_nothing() -> N
     subject.weapon = PIKE
     with pytest.raises(ValueError):
         subject.pick_up_weapon()
-    assert (subject.weapon, subject.dropped_weapon, subject.dropped_at) == (
-        PIKE,
-        GREATSWORD,
-        Cell(0, 0),
-    )
+    assert (subject.weapon, subject.dropped) == (PIKE, ((GREATSWORD, Cell(0, 0)),))
 
 
 def test_a_creature_is_slotted_so_a_typo_is_not_a_new_field() -> None:

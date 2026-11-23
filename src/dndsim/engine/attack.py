@@ -19,11 +19,12 @@ Sources:
 
 - the proficiency bonus only with a weapon the attacker is proficient with —
   XPHB, "Equipment" -> Weapon Proficiency; `docs/decisions.md` § w2f
+- the Light property's extra attack adds a positive modifier to nothing —
+  XPHB, "Equipment" -> Weapon Properties, Light; `docs/decisions.md` § w2k
 
-Two gaps, declared: close combat counts every enemy within 5 feet that is
-not Incapacitated, because nothing can yet be asked whether it can see the
-attacker (debt #39); and a thrown weapon stays in the thrower's hand, because
-nothing says how many a build carries (debt #69).
+One gap, declared: close combat counts every enemy within 5 feet that is not
+Incapacitated, because nothing can yet be asked whether it can see the
+attacker (debt #39).
 """
 
 from collections.abc import Mapping
@@ -83,6 +84,7 @@ __all__ = [
     "Trigger",
     "attack_ability",
     "resolve_attack",
+    "thrown_or_shot",
     "within_range",
     "within_reach",
 ]
@@ -606,7 +608,7 @@ def within_reach(attacker: Creature, defender: Creature, weapon: Weapon) -> bool
     )
 
 
-def _thrown_or_shot(attacker: Creature, defender: Creature, weapon: Weapon) -> bool:
+def thrown_or_shot(attacker: Creature, defender: Creature, weapon: Weapon) -> bool:
     """Whether attacking `defender` with `weapon` is a ranged attack: always
     with a Ranged weapon, and with a Thrown melee weapon only at a target out
     of its reach (`docs/decisions.md` § w2f2)."""
@@ -628,7 +630,7 @@ def _distance(attacker: Creature, defender: Creature) -> int:
 def within_range(attacker: Creature, defender: Creature, weapon: Weapon) -> bool:
     """Whether `attacker` can attack `defender` with `weapon` at all: within its
     reach for a melee attack, within its long range for a ranged one."""
-    if not _thrown_or_shot(attacker, defender, weapon):
+    if not thrown_or_shot(attacker, defender, weapon):
         return within_reach(attacker, defender, weapon)
     range_ft = weapon.range_ft
     return range_ft is not None and _distance(attacker, defender) <= range_ft[1]
@@ -701,13 +703,16 @@ def resolve_attack(
     trigger: Trigger | None = None,
     log: EventLog | None = None,
     world: World | None = None,
+    positive_modifier: bool = True,
 ) -> AttackResult:
     """Resolve one attack by `attacker` against `defender`.
 
     `weapon` defaults to what the attacker has equipped and `ability` to what
-    `attack_ability()` derives from it. `contexts` decides where the contexts
-    come from; `trigger` is the APL's `trigger.*` root, told what is being
-    offered immediately before each dispatch that can carry gated handlers.
+    `attack_ability()` derives from it. With `positive_modifier` false the
+    ability modifier is added to the damage only when it is negative.
+    `contexts` decides where the contexts come from; `trigger` is the APL's
+    `trigger.*` root, told what is being offered immediately before each
+    dispatch that can carry gated handlers.
     `log`, when given, is written the `ATTACK`, `ATTACK_ROLL` and `DAMAGE_ROLL`
     records above. `world` holds the enemies a ranged attack's close-combat
     Disadvantage is asked about; a melee attack never reads it.
@@ -827,17 +832,15 @@ def resolve_attack(
         # The ability modifier goes in `flat`, which a crit never doubles
         # (DESIGN.md § Structural prevention).
         damage = weapon.damage
+        modifier = attacker.modifier(ability)
+        if modifier > 0 and not positive_modifier:
+            modifier = 0
         if isinstance(damage, Dice):
-            bag.add(
-                dice=damage,
-                flat=attacker.modifier(ability),
-                damage_type=weapon.damage_type,
-            )
+            bag.add(dice=damage, flat=modifier, damage_type=weapon.damage_type)
         else:
             # Two parts: one flat of weapon and modifier could sum to 0, an
             # empty contribution `add()` refuses (`docs/decisions.md` § w2f2).
             bag.add(flat=damage, damage_type=weapon.damage_type)
-            modifier = attacker.modifier(ability)
             if modifier:
                 bag.add(flat=modifier, damage_type=weapon.damage_type)
         strike(ON_HIT, hit)

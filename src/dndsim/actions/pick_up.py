@@ -4,31 +4,41 @@
 from typing import ClassVar
 
 from dndsim.actions.base import Action
-from dndsim.core.geometry import in_reach
+from dndsim.core.geometry import Cell, in_reach
 from dndsim.core.rng import Rng
+from dndsim.creatures.creature import HANDS, Creature, hands_for
+from dndsim.creatures.stats import Weapon
 from dndsim.rules.enums import ActionCost
 
 __all__ = ["PickUpWeapon"]
 
 
 class PickUpWeapon(Action[None]):
-    """Wield again the weapon the actor dropped, from within 5 feet of where it
-    fell. Free, and the once-a-turn limit is not counted
-    (`docs/decisions.md` § w2b)."""
+    """Wield again `weapon`, which the actor dropped at `at`, from within 5
+    feet of it, in a free hand. Spends the turn's object interaction, and no
+    Action (`docs/decisions.md` § w2b, § w2k)."""
 
-    __slots__ = ()
+    __slots__ = ("at", "weapon")
 
     ID: ClassVar[str] = "pick_up_weapon"
     COST: ClassVar[ActionCost | None] = None
 
+    def __init__(self, actor: Creature, weapon: Weapon, at: Cell) -> None:
+        super().__init__(actor)
+        self.weapon = weapon
+        self.at = at
+
     def _permits(self) -> bool:
-        actor = self.actor
-        where = actor.dropped_at
+        actor, weapon = self.actor, self.weapon
         return (
-            actor.weapon is None
-            and where is not None
-            and in_reach(actor.position, where, 5, origin_size=actor.size)
+            actor.economy.can_interact()
+            and any(
+                lying is weapon and where == self.at for lying, where in actor.dropped
+            )
+            and HANDS - actor.hands_held >= hands_for(weapon)
+            and in_reach(actor.position, self.at, 5, origin_size=actor.size)
         )
 
     def _perform(self, rng: Rng) -> None:
-        self.actor.pick_up_weapon()
+        self.actor.economy.interact()
+        self.actor.pick_up_weapon(self.weapon, self.at)

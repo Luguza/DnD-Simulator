@@ -168,6 +168,13 @@ def at(round_: int, phase: TurnPhase) -> TimeKey:
     return TimeKey(round_, KEY, phase)
 
 
+def pick_up(subject: Creature) -> PickUpWeapon:
+    """The pick-up of the first weapon `subject` dropped, else of a
+    greatsword at its feet."""
+    weapon, at = subject.dropped[0] if subject.dropped else (GREATSWORD, ORIGIN)
+    return PickUpWeapon(subject, weapon, at)
+
+
 def ledger(subject: Creature) -> tuple[int, int, int, int]:
     economy = subject.economy
     return (
@@ -330,7 +337,7 @@ def test_the_weapon_on_the_floor_cannot_be_swung_by_naming_it() -> None:
     resolve_damage(hero, {SLASHING: HP}, rng=no_dice())
     healing.heal(hero, rng=no_dice(), flat=5)
     ready(hero)
-    assert (hero.weapon, hero.dropped_weapon) == (None, GREATSWORD)
+    assert (hero.weapon, hero.dropped) == (None, ((GREATSWORD, ORIGIN),))
 
     named = Attack(hero, target, weapon=GREATSWORD)
     assert not named.is_legal()
@@ -343,7 +350,7 @@ def test_the_weapon_on_the_floor_cannot_be_swung_by_naming_it() -> None:
     assert not Attack(hero, target, weapon=GREATSWORD).is_legal()
 
     hero.position = ORIGIN
-    PickUpWeapon(hero).execute(rng=no_dice())
+    pick_up(hero).execute(rng=no_dice())
     assert Attack(hero, target, weapon=GREATSWORD).is_legal()
     assert Attack(hero, target).is_legal()
 
@@ -562,40 +569,44 @@ def test_the_helper_stands_within_five_feet() -> None:
 # --- PickUpWeapon ------------------------------------------------------------
 
 
-def test_picking_up_a_dropped_weapon_rearms_and_costs_nothing() -> None:
-    """A fresh economy has no Action, and the pick-up needs none."""
-    actor = fighter()
+def test_picking_up_a_dropped_weapon_spends_only_the_interaction() -> None:
+    """No Action, Bonus Action, Reaction or movement: the turn's one object
+    interaction, so a second pick-up that turn is refused."""
+    actor = ready(fighter())
     actor.drop_held()
     before = ledger(actor)
-    pick_up = PickUpWeapon(actor)
-    assert pick_up.is_legal()
-    pick_up.execute(rng=no_dice())
+    taken = pick_up(actor)
+    assert taken.is_legal()
+    taken.execute(rng=no_dice())
     assert actor.weapon is GREATSWORD
-    assert (actor.dropped_weapon, actor.dropped_at) == (None, None)
+    assert actor.dropped == ()
     assert ledger(actor) == before
+    assert not actor.economy.can_interact()
+    actor.drop_held()
+    assert not pick_up(actor).is_legal()
 
 
 def test_the_weapon_is_picked_up_from_within_five_feet() -> None:
     """Dropped at (0, 0): from (1, 1) it is 5 feet away, from (2, 0) 10."""
-    actor = fighter()
+    actor = ready(fighter())
     actor.drop_held()
     actor.position = NORTHEAST
-    assert PickUpWeapon(actor).is_legal()
+    assert pick_up(actor).is_legal()
     actor.position = TWO_EAST
-    assert not PickUpWeapon(actor).is_legal()
+    assert not pick_up(actor).is_legal()
 
 
 def test_nothing_to_pick_up_or_a_full_hand_is_not_a_pick_up() -> None:
     armed, unarmed = fighter(), fighter("monk", weapon=None)
-    assert not PickUpWeapon(armed).is_legal()
-    assert not PickUpWeapon(unarmed).is_legal()
+    assert not pick_up(armed).is_legal()
+    assert not pick_up(unarmed).is_legal()
 
     armed.drop_held()
     armed.weapon = PIKE
-    assert not PickUpWeapon(armed).is_legal()
+    assert not pick_up(armed).is_legal()
     with pytest.raises(ValueError):
-        PickUpWeapon(armed).execute(rng=no_dice())
-    assert (armed.weapon, armed.dropped_weapon) == (PIKE, GREATSWORD)
+        pick_up(armed).execute(rng=no_dice())
+    assert (armed.weapon, armed.dropped) == (PIKE, ((GREATSWORD, ORIGIN),))
 
 
 # --- The acceptance cycle: dropped, healed, rearmed --------------------------
@@ -609,13 +620,9 @@ def test_a_downed_fighter_drops_its_weapon_and_picks_it_up_once_healed() -> None
     goblin's 20 - 10 = 10."""
     hero, target = fighter("hero", pc=True), goblin()
     resolve_damage(hero, {SLASHING: HP}, rng=no_dice(), attacker=target)
-    assert (hero.weapon, hero.dropped_weapon, hero.dropped_at) == (
-        None,
-        GREATSWORD,
-        ORIGIN,
-    )
+    assert (hero.weapon, hero.dropped) == (None, ((GREATSWORD, ORIGIN),))
     ready(hero)
-    assert not PickUpWeapon(hero).is_legal()
+    assert not pick_up(hero).is_legal()
     assert not Attack(hero, target, weapon=GREATSWORD).is_legal()
 
     healing.heal(hero, rng=no_dice(), flat=5)
@@ -623,7 +630,7 @@ def test_a_downed_fighter_drops_its_weapon_and_picks_it_up_once_healed() -> None
     assert not any(isinstance(effect, Unconscious) for effect in hero.effects)
     assert not Attack(hero, target).is_legal()
 
-    PickUpWeapon(hero).execute(rng=no_dice())
+    pick_up(hero).execute(rng=no_dice())
     assert hero.weapon is GREATSWORD
     assert hero.economy.actions == 1
 
@@ -675,6 +682,11 @@ def _monster_at_zero() -> Creature:
 
 def _moved(subject: Creature, cell: Cell) -> Creature:
     subject.position = cell
+    return subject
+
+
+def _interacted(subject: Creature) -> Creature:
+    subject.economy.interact()
     return subject
 
 
@@ -956,26 +968,32 @@ SCENARIOS: Final[dict[type[Action[Any]], tuple[tuple[str, Build, bool], ...]]] =
         ),
     ),
     PickUpWeapon: (
-        ("legal", lambda: PickUpWeapon(_dropped(fighter())), True),
+        ("legal", lambda: pick_up(_dropped(ready(fighter()))), True),
         (
             "five-feet",
-            lambda: PickUpWeapon(_moved(_dropped(fighter()), NORTHEAST)),
+            lambda: pick_up(_moved(_dropped(ready(fighter())), NORTHEAST)),
             True,
+        ),
+        ("no-turn-started", lambda: pick_up(_dropped(fighter())), False),
+        (
+            "interaction-spent",
+            lambda: pick_up(_interacted(_dropped(ready(fighter())))),
+            False,
         ),
         (
             "ten-feet",
-            lambda: PickUpWeapon(_moved(_dropped(fighter()), TWO_EAST)),
+            lambda: pick_up(_moved(_dropped(fighter()), TWO_EAST)),
             False,
         ),
-        ("nothing-dropped", lambda: PickUpWeapon(fighter(weapon=None)), False),
-        ("still-wielding", lambda: PickUpWeapon(fighter()), False),
+        ("nothing-dropped", lambda: pick_up(fighter(weapon=None)), False),
+        ("still-wielding", lambda: pick_up(fighter()), False),
         (
             "wielding-another",
-            lambda: PickUpWeapon(_rearmed(_dropped(fighter()))),
+            lambda: pick_up(_rearmed(_dropped(fighter()))),
             False,
         ),
-        ("dead-actor", lambda: PickUpWeapon(_dropped(_dead_actor())), False),
-        ("down-actor", lambda: PickUpWeapon(_downed_actor()), False),
+        ("dead-actor", lambda: pick_up(_dropped(_dead_actor())), False),
+        ("down-actor", lambda: pick_up(_downed_actor()), False),
     ),
     UnarmedStrike: (
         ("legal", lambda: UnarmedStrike(ready(fighter()), goblin()), True),
@@ -1279,8 +1297,7 @@ def _state(subject: Creature) -> tuple[object, ...]:
         subject.temp_hp,
         subject.position,
         subject.weapon,
-        subject.dropped_weapon,
-        subject.dropped_at,
+        subject.dropped,
         tuple(subject.effects),
         subject.dispatcher.sources(),
         subject.dead,

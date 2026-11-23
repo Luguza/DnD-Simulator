@@ -19,7 +19,7 @@ from dndsim.content.loader import ContentError, Dataset, FeatureText, plain
 from dndsim.content.refs import class_features, optional_feature, subclass_features
 from dndsim.content.species import species
 from dndsim.content.tables import class_tables, table_value
-from dndsim.content.weapons import armour, masteries, weapons
+from dndsim.content.weapons import ammunition, armour, masteries, weapons
 from dndsim.core.dice import Dice
 from dndsim.creatures.stats import Armour
 from dndsim.rules.constants import FULL_CASTER_SLOTS, PACT_MAGIC_SLOTS
@@ -49,6 +49,11 @@ LONGBOW = _item(
     mastery=["Slow|XPHB"],
     range="150/600",
     weaponCategory="martial",
+    ammoType="arrow|xphb",
+)
+ARROW = _item("Arrow", "A")
+ARROWS = _item(
+    "Arrows (20)", "A", packContents=[{"item": "arrow|xphb", "quantity": 20}]
 )
 GLAIVE = _item(
     "Glaive",
@@ -284,6 +289,8 @@ def _dataset(tmp_path: Path, **override: Any) -> Dataset:
         "items-base.json": {
             "baseitem": [
                 LONGBOW,
+                ARROW,
+                ARROWS,
                 GLAIVE,
                 LONGSWORD,
                 LANCE,
@@ -402,10 +409,16 @@ def test_weapons_translate_every_field(tmp_path: Path) -> None:
     assert longbow.mastery is Mastery.SLOW
     assert longbow.range_ft == (150, 600)
     assert longbow.reach_ft == 5
+    assert longbow.ammunition == "Arrow"
+    assert table["Glaive"].ammunition is None
     assert table["Glaive"].reach_ft == 10
     assert table["Glaive"].range_ft is None
     assert table["Longsword"].versatile_damage == Dice(1, 10)
     assert table["Lance"].has(WeaponProperty.TWO_HANDED)
+
+
+def test_ammunition_is_each_piece_not_its_pack(tmp_path: Path) -> None:
+    assert ammunition(_dataset(tmp_path)) == {"Arrow"}
 
 
 def test_only_simple_and_martial_weapons_import(tmp_path: Path) -> None:
@@ -465,10 +478,12 @@ def test_a_weapon_the_domain_refuses_is_a_content_error(
         {**LONGBOW, "mastery": ["Slow|XPHB", "Vex|XPHB"]},
         {**LONGBOW, "weaponCategory": "exotic"},
         {k: v for k, v in LONGBOW.items() if k != "weaponCategory"},
+        {k: v for k, v in LONGBOW.items() if k != "ammoType"},
+        {**LONGBOW, "ammoType": "bolt|xphb"},
     ],
 )
 def test_a_weapon_shaped_otherwise_is_refused(tmp_path: Path, broken: Any) -> None:
-    items = {"baseitem": [broken, BLOWGUN], "itemMastery": MASTERIES}
+    items = {"baseitem": [broken, BLOWGUN, ARROW], "itemMastery": MASTERIES}
     with pytest.raises(ContentError, match="Longbow"):
         weapons(_dataset(tmp_path, **{"items-base.json": items}))
 
@@ -675,7 +690,7 @@ def test_a_trait_keeps_the_text_of_its_table(tmp_path: Path) -> None:
 
 def test_a_weapon_carries_its_category(tmp_path: Path) -> None:
     dagger = {**LONGBOW, "name": "Dagger", "weaponCategory": "simple"}
-    items = {"baseitem": [dagger, LONGBOW], "itemMastery": MASTERIES}
+    items = {"baseitem": [dagger, LONGBOW, ARROW], "itemMastery": MASTERIES}
     table = weapons(_dataset(tmp_path, **{"items-base.json": items}))
     assert table["Longbow"].martial
     assert not table["Dagger"].martial
