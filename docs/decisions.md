@@ -6948,7 +6948,14 @@ from what is carried without the Attack action's equip, which is what lets the
 Light attack — not an Attack action — throw a carried Dagger. A throw is the
 one case that leaves the hand: the weapon is gone for the fight
 (`docs/questions.md` #32; recovery is debt #80) and the next one of its name is
-drawn into the hand it left.
+drawn into the hand it left, found by name: a Versatile weapon held in two
+hands is not equal to the one-handed copies carried.
+
+The weapon is brought to hand before the attack is declared, so its handlers
+see what is held, and everything else waits on the declaration: an attack
+vetoed there (Charmed, against the charmer) puts the hands back as they were
+and spends no piece of ammunition, no throw, no interaction, and opens no
+Light attack, which the row offers only after an attack actually made.
 
 ### The Light attack
 
@@ -6985,18 +6992,19 @@ rather than a scan of `held`, because it is built on every provoking move.
 
 `engine/attack.py` changed by one keyword and one hoisted `modifier()` read.
 The witness, the fixed 200-encounter profiled run at seed 0, milestone branch →
-this task: **1,840,340 → 1,837,340** calls on `--no-provoking` and
-**3,192,266 → 3,194,705** (+0.08%) on provoking, 6,000 resolutions in every arm
+this task: **1,840,340 → 1,840,340** calls on `--no-provoking` and
+**3,192,266 → 3,196,305** (+0.13%) on provoking, 6,000 resolutions in every arm
 and an identical closing fingerprint and next draw — the same fights. What
 provoking adds is the opportunity attack choosing its hand and asking
 `_plan()` once per offer. A first cut called `Weapon.has()` and `hands_held`
 there and cost +1.2%, and a first opportunity-attack hand that scanned `held`
 +0.58%; reading the property set directly, asking the hands only for a weapon
-that loads, and branching on the two hands took it to the figure above.
+that loads, and branching on the two hands took it to +0.08%, and settling the
+spend after the declaration (above) to the figure here.
 
 The rate, by the spike's own `main()` in a sibling worktree, 300 encounters
 and 3 repeats, a fresh interpreter per arm, the order reversed every other
-pair, against the final diff:
+pair, against `a1e459e`, the diff before the declaration fix's 1,600 calls:
 
 | Configuration | Pairs | Ratios | Median |
 |---|---|---|---|

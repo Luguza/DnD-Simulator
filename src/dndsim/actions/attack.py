@@ -10,6 +10,7 @@ from dndsim.creatures.creature import HANDS, Creature, hands_for
 from dndsim.creatures.stats import UNARMED_STRIKE, Weapon
 from dndsim.engine.attack import (
     FRESH,
+    PREVENTED,
     AttackContexts,
     AttackResult,
     Trigger,
@@ -142,23 +143,43 @@ class Attack(Action[AttackResult]):
         plan = self._plan(weapon)
         if plan is None:
             raise ValueError(f"{actor.name} cannot bring {weapon.name} to hand")
-        if plan is not _UNARMED:
-            hand = plan.hand
-            if plan.stow is not None:
-                actor.economy.interact()
-                actor.stow(plan.stow)
-            if hand is None:
-                hand = actor.draw(weapon)
-            if weapon.ammunition is not None:
-                actor.spend_ammunition(weapon.ammunition)
-            if plan.thrown:
-                actor.let_go(hand)
-                if actor.stowed.get(weapon, 0) > 0:
-                    actor.draw(weapon)
-            if self.COST is ActionCost.ACTION and weapon.has(_LIGHT):
-                actor.economy.light_attack = _LEFT_THE_HAND if plan.thrown else hand
+        if plan is _UNARMED:
+            return self._resolve(rng, weapon)
+        # In hand before the attack is declared; nothing is spent until it is
+        # not vetoed, and a vetoed attack puts the hands back as they were.
+        hand = plan.hand
+        stowed = None
+        if plan.stow is not None:
+            stowed = actor.weapon if plan.stow == 0 else actor.off_hand
+            actor.stow(plan.stow)
+        drawn = hand is None
+        if hand is None:
+            hand = actor.draw(weapon)
+        result = self._resolve(rng, weapon)
+        if result is PREVENTED:
+            if drawn:
+                actor.stow(hand)
+            if stowed is not None:
+                actor.draw(stowed)
+            return result
+        if stowed is not None:
+            actor.economy.interact()
+        if weapon.ammunition is not None:
+            actor.spend_ammunition(weapon.ammunition)
+        if self.COST is ActionCost.ACTION and weapon.has(_LIGHT):
+            actor.economy.light_attack = _LEFT_THE_HAND if plan.thrown else hand
+        if plan.thrown and (actor.weapon, actor.off_hand)[hand] == weapon:
+            actor.let_go(hand)
+            # By name: a Versatile weapon held in two hands is not equal to
+            # the one-handed copies carried (`docs/decisions.md` § w2k).
+            spare = next((w for w in actor.stowed if w.name == weapon.name), None)
+            if spare is not None:
+                actor.draw(spare)
+        return result
+
+    def _resolve(self, rng: Rng, weapon: Weapon) -> AttackResult:
         return resolve_attack(
-            actor,
+            self.actor,
             self.target,
             rng=rng,
             weapon=weapon,

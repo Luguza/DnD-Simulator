@@ -8,6 +8,7 @@ XPHB "Equipment" -> Weapon Properties (Ammunition, Light, Loading, Thrown);
 """
 
 from collections.abc import Sequence
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Any, Final
 
@@ -18,14 +19,17 @@ from dndsim.actions.base import Action
 from dndsim.actions.pick_up import PickUpWeapon
 from dndsim.apl.apl import Apl
 from dndsim.apl.expr import AplLoadError
+from dndsim.conditions.charmed import Charmed
 from dndsim.conditions.unconscious import Unconscious
+from dndsim.core.dice import Dice
 from dndsim.core.geometry import Cell
 from dndsim.core.rng import ScriptedRng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.stats import StatBlock, Weapon
+from dndsim.engine.attack import PREVENTED
 from dndsim.engine.turn import offers
 from dndsim.engine.world import World
-from dndsim.rules.enums import Ability, ActionCost
+from dndsim.rules.enums import Ability, ActionCost, WeaponProperty
 from weapon_fixtures import (
     DAGGER,
     HAND_CROSSBOW,
@@ -324,3 +328,41 @@ def test_the_pick_up_takes_the_one_within_reach_of_two_alike() -> None:
     pick.execute(rng=ScriptedRng([]))
     assert hero.held == (DAGGER,)
     assert hero.dropped == ((DAGGER, ORIGIN),)
+
+
+def test_a_vetoed_attack_spends_nothing_and_opens_no_light_attack() -> None:
+    """Charmed by the goblin: the attack is refused at its declaration, so
+    no arrow, no throw, no interaction, and no Light attack after it."""
+    hero = creature(
+        weapon=SHORTSWORD,
+        carried={LONGBOW: 1, HANDAXE: 1},
+        ammunition={"Arrow": 3},
+    )
+    world, hero, goblin = duel(hero, FAR)
+    hero.effects.apply(Charmed(hero, caster=goblin))
+    hero.economy.grant(ActionCost.ACTION, 2)
+    for weapon in (LONGBOW, HANDAXE):
+        attack = Attack(hero, goblin, weapon=weapon, world=world)
+        assert attack.execute(rng=ScriptedRng([])) is PREVENTED
+        assert hero.held == (SHORTSWORD,)
+        assert dict(hero.stowed) == {LONGBOW: 1, HANDAXE: 1}
+    assert hero.ammunition("Arrow") == 3
+    assert hero.economy.can_interact()
+    assert hero.economy.light_attack is None
+
+
+def test_a_versatile_weapon_thrown_from_two_hands_draws_a_carried_one() -> None:
+    """A Spear held in two hands rolls its 1d8; the three carried are the
+    table's 1d6. A throw draws one of them."""
+    spear = replace(
+        HANDAXE,
+        name="Spear",
+        damage=Dice(1, 6),
+        properties=frozenset({WeaponProperty.THROWN, WeaponProperty.VERSATILE}),
+        versatile_damage=Dice(1, 8),
+    )
+    gripped = replace(spear, damage=Dice(1, 8))
+    world, hero, goblin = duel(creature(weapon=gripped, carried={spear: 3}), FAR)
+    Attack(hero, goblin, world=world).execute(rng=ScriptedRng([1]))
+    assert hero.held == (spear,)
+    assert hero.stowed[spear] == 2
