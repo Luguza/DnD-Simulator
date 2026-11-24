@@ -77,6 +77,9 @@ class Character(Creature):
         background: Background,
         feats: tuple[str, ...],
         weapon: Weapon | None = None,
+        off_hand: Weapon | None = None,
+        carried: Mapping[Weapon, int] | None = None,
+        ammunition: Mapping[str, int] | None = None,
         armour: Armour = UNARMOURED,
         shield: bool = False,
     ) -> None:
@@ -85,6 +88,9 @@ class Character(Creature):
             stats=stats,
             position=position,
             weapon=weapon,
+            off_hand=off_hand,
+            carried=carried,
+            ammunition=ammunition,
             armour=armour,
             shield=shield,
             player_character=True,
@@ -137,6 +143,9 @@ class CharacterBuilder:
         self._fighting_style: Feat | None = None
         self._masteries: tuple[Weapon, ...] = ()
         self._weapon: Weapon | None = None
+        self._off_hand: Weapon | None = None
+        self._carried: dict[Weapon, int] = {}
+        self._ammunition: dict[str, int] = {}
         self._armour: Armour = UNARMOURED
         self._shield = False
         self._armoury: tuple[Weapon, ...] = ()
@@ -356,14 +365,20 @@ class CharacterBuilder:
         armoury: Iterable[Weapon],
         weapon: Weapon | None = None,
         two_handed: bool = False,
+        off_hand: Weapon | None = None,
+        carried: Mapping[Weapon, int] | None = None,
+        ammunition: Mapping[str, int] | None = None,
         armour: Armour | None = None,
         shield: bool = False,
     ) -> Self:
-        """What the character wields, wears and carries on its arm.
+        """What the character wields in each hand, carries, wears and carries
+        on its arm.
 
         `armoury` is every weapon its proficiencies are read against.
-        `two_handed` holds a Versatile weapon in two hands. Training with the
-        armour and Shield is checked by `build()`, against every feat taken.
+        `two_handed` holds a Versatile `weapon` in two hands; `off_hand` is
+        held in the other. `carried` counts the weapons carried beside, and
+        `ammunition` the pieces of each kind. Training with the armour and
+        Shield is checked by `build()`, against every feat taken.
         """
         self._armoury = tuple(armoury)
         if weapon is not None:
@@ -377,7 +392,19 @@ class CharacterBuilder:
             raise self._fail("nothing is held in two hands")
         if shield and two_handed:
             raise self._fail("a Shield leaves one hand for the weapon")
+        if off_hand is not None:
+            if two_handed or shield:
+                raise self._fail(f"no hand is left to hold {off_hand.name} in")
+            if off_hand.has(WeaponProperty.TWO_HANDED):
+                raise self._fail(f"{off_hand.name} is held in two hands")
+        counts = [*(carried or {}).items(), *(ammunition or {}).items()]
+        short = sorted(str(name) for name, n in counts if n < 1)
+        if short:
+            raise self._fail(f"carries none of {short}")
         self._weapon = weapon
+        self._off_hand = off_hand
+        self._carried = dict(carried or {})
+        self._ammunition = dict(ammunition or {})
         self._armour = UNARMOURED if armour is None else armour
         self._shield = shield
         return self
@@ -455,6 +482,9 @@ class CharacterBuilder:
             background=background,
             feats=tuple(feats),
             weapon=self._weapon,
+            off_hand=self._off_hand,
+            carried=self._carried,
+            ammunition=self._ammunition,
             armour=self._armour,
             shield=self._shield,
         )

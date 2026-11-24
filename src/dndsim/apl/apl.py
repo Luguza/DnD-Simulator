@@ -17,7 +17,7 @@ from weakref import WeakKeyDictionary
 
 import yaml
 
-from dndsim.actions.attack import Attack
+from dndsim.actions.attack import Attack, LightAttack
 from dndsim.actions.base import Action
 from dndsim.actions.dash import Dash
 from dndsim.actions.disengage import Disengage
@@ -72,6 +72,7 @@ COMMAND_IDS: Final = frozenset(
     command.ID
     for command in (
         Attack,
+        LightAttack,
         Dash,
         Disengage,
         Dodge,
@@ -95,6 +96,12 @@ DEFAULT_MOVE: Final = "toward nearest of enemies until in_reach"
 taken (DESIGN.md § APL)."""
 
 _KEYS: Final = ("action", "if", "target", "move", "with")
+
+WEAPON_PARAM: Final = "weapon"
+"""The `with:` parameter naming the weapon an attack is made with, by the name
+the XPHB prints; a name, not an expression (`docs/decisions.md` § w2k)."""
+
+_ARMED: Final = frozenset({Attack.ID, LightAttack.ID})
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +171,7 @@ class CompiledEntry:
     gate: str
     params: tuple[tuple[str, Compiled], ...] = ()
     reads_target: bool = False
+    weapon: str | None = None
 
 
 def _always(ns: Namespace) -> bool:
@@ -257,6 +265,15 @@ class Apl:
     @property
     def compiled(self) -> tuple[CompiledEntry, ...]:
         return self._compiled
+
+    @property
+    def weapons(self) -> frozenset[str]:
+        """Every weapon an entry's `with: weapon:` names."""
+        return frozenset(
+            compiled.weapon
+            for compiled in self._compiled
+            if compiled.weapon is not None
+        )
 
     @property
     def reads(self) -> frozenset[str]:
@@ -478,7 +495,16 @@ def _compile_entry(
     names = [name for name, _ in entry.with_]
     if len(set(names)) != len(names):
         raise AplLoadError(f"APL entry {action!r} names a with: param twice: {names}")
-    params = tuple((name, compile_param(text, schema)) for name, text in entry.with_)
+    weapon = dict(entry.with_).get(WEAPON_PARAM)
+    if weapon is not None and action not in _ARMED:
+        raise AplLoadError(
+            f"APL entry {action!r} names a weapon; only {sorted(_ARMED)} take one"
+        )
+    params = tuple(
+        (name, compile_param(text, schema))
+        for name, text in entry.with_
+        if name != WEAPON_PARAM
+    )
     return CompiledEntry(
         action=action,
         condition=_always if condition is None else condition.fn,
@@ -489,6 +515,7 @@ def _compile_entry(
         params=params,
         reads_target=condition is not None
         and any(path.startswith("target.") for path in condition.reads),
+        weapon=weapon,
     )
 
 
@@ -551,13 +578,36 @@ def _target_of(command: Action[Any]) -> Creature | None:
     return None
 
 
+def _matching(
+    entry: CompiledEntry, actor: Creature, offers: Sequence[Action[Any]]
+) -> list[Action[Any]]:
+    """The offers of `entry`'s action, with the weapon it names; an `attack`
+    that names none is made with what `actor` holds, its main hand first."""
+    matching = [offer for offer in offers if entry.action == offer.ID]
+    named = entry.weapon
+    if named is None and entry.action == Attack.ID:
+        held = actor.held
+        if not held:
+            return []
+        named = held[0].name
+    if named is None:
+        return matching
+    found: list[Action[Any]] = []
+    for offer in matching:
+        if isinstance(offer, Attack):
+            weapon = actor.weapon if offer.weapon is None else offer.weapon
+            if weapon is not None and weapon.name == named:
+                found.append(offer)
+    return found
+
+
 def _aim(
     entry: CompiledEntry, namespace: Namespace, offers: Sequence[Action[Any]]
 ) -> None:
     """Bind `target` to the creature `entry` would take its action on, before
     its `if:` reads it: the first of its `target:` picks that an offer is
     against, else its first pick; with no `target:`, the nearest offer's."""
-    matching = [offer for offer in offers if entry.action == offer.ID]
+    matching = _matching(entry, namespace.self.creature, offers)
     picked: Creature | None = None
     selector = entry.target
     if selector is not None:
@@ -582,7 +632,7 @@ def _pick(
     offers: Sequence[Action[Any]],
 ) -> Action[Any] | None:
     """The offer of `entry`'s action its `target:` picks, binding `target`."""
-    matching = [offer for offer in offers if entry.action == offer.ID]
+    matching = _matching(entry, actor, offers)
     if not matching:
         return None
     selector = entry.target

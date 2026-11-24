@@ -48,6 +48,7 @@ from weapon_fixtures import (
     DAGGER,
     DART,
     GREATSWORD,
+    HAND_CROSSBOW,
     HANDAXE,
     LEATHER_ARMOR,
     LONGBOW,
@@ -55,6 +56,7 @@ from weapon_fixtures import (
     MAUL,
     PLATE_ARMOR,
     RAPIER,
+    SHORTSWORD,
 )
 
 pytestmark = pytest.mark.content
@@ -106,7 +108,19 @@ def test_the_melee_ranged_column_parts_a_dart_from_a_dagger(data: Dataset) -> No
 
 @pytest.mark.parametrize(
     "fixture",
-    [GREATSWORD, MAUL, LONGBOW, DAGGER, DART, HANDAXE, BLOWGUN, LONGSWORD, RAPIER],
+    [
+        GREATSWORD,
+        MAUL,
+        LONGBOW,
+        DAGGER,
+        DART,
+        HANDAXE,
+        BLOWGUN,
+        LONGSWORD,
+        RAPIER,
+        HAND_CROSSBOW,
+        SHORTSWORD,
+    ],
     ids=lambda weapon: weapon.name,
 )
 def test_each_weapon_fixture_is_its_imported_entry(

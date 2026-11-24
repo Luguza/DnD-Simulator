@@ -262,13 +262,14 @@ there is local to a module.
 | `creatures/`, `core/geometry.py` | § w0g2 |
 | `core/geometry.py`, size, line of sight, templates | § w1d |
 | `engine/damage.py`, the resolution order | § w0g2, § w1e |
-| `engine/attack.py`, the attack sequence | § w1f, § w2f2, § w2f |
-| `Weapon`, the ranged branch, `tests/weapon_fixtures.py` | § w2f2 |
+| `engine/attack.py`, the attack sequence | § w1f, § w2f2, § w2f, § w2k |
+| `Weapon`, the ranged branch, `tests/weapon_fixtures.py` | § w2f2, § w2k |
 | `engine/saves.py`, saving throws, save-for-half | § w1g |
 | `creatures/creature.py`, `stats.py`, `economy.py`, AC, the action economy | § w1a |
 | `creatures/effects.py`, effects, stacking, expiry, the drain | § w1c, § w2i, § w2b, § w2c |
 | `conditions/`, a condition, a declared gap | § w1h, § w2b, § w2c |
 | `actions/`, a Command, legality, dropping and picking up a weapon | § w2b, § w2c2 |
+| what a creature holds and carries, the Light attack, Ammunition, Thrown, `with: weapon:` | § w2k |
 | `actions/move.py`, the walk, the retreat, a `move:` destination, passing creatures, the drag | § w2c2, § w2e, § w2j2 |
 | `apl/`, a clause, the namespace, the policy, the dummy's policy | § w2e |
 | `creatures/dummy.py`, the target dummy | § w2d |

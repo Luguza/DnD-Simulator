@@ -12,10 +12,10 @@ Movement is offered the same way, as a `Move` toward each enemy out of reach
 whose destination is the policy's (`docs/decisions.md` § w2e).
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from typing import Any, Final, Protocol
 
-from dndsim.actions.attack import Attack
+from dndsim.actions.attack import Attack, LightAttack
 from dndsim.actions.base import Action
 from dndsim.actions.dash import Dash
 from dndsim.actions.disengage import Disengage
@@ -29,6 +29,7 @@ from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.rng import Rng
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import Creature
+from dndsim.creatures.stats import Weapon
 from dndsim.engine.d20 import modifier_total, roll_d20, settle
 from dndsim.engine.dying import death_save, dying
 from dndsim.engine.query import allies_of, enemies_of
@@ -41,7 +42,7 @@ from dndsim.hooks.definitions import (
     ON_TURN_START,
 )
 from dndsim.hooks.registry import HookSpec
-from dndsim.rules.enums import Ability, SaveOutcome, SaveRepeat
+from dndsim.rules.enums import Ability, SaveOutcome, SaveRepeat, WeaponProperty
 
 __all__ = [
     "DEATH_SAVE",
@@ -121,20 +122,32 @@ def roll_initiative(creature: Creature, *, rng: Rng) -> InitiativeKey:
 def offers(world: World, actor: Creature) -> list[Action[Any]]:
     """Every Command `actor` could take now and pay for, in a fixed order.
 
-    Built from the Commands in `actions/` against the roster — the Unarmed
-    Strike's options against each enemy, an escape from each grapple `actor`
-    is held in and a release of each it holds — then filtered by
-    `is_legal()`. Spends nothing.
+    Built from the Commands in `actions/` against the roster — an attack
+    and a Light attack against each enemy with each weapon held or carried,
+    the Unarmed Strike's options against each enemy, an escape from each
+    grapple `actor` is held in and a release of each it holds, a pick-up of
+    each weapon dropped — then filtered by `is_legal()`. Spends nothing.
     """
     log = world.log
     enemies = enemies_of(world, actor)
+    arms = _arms(actor)
     candidates: list[Action[Any]] = [
-        Attack(actor, enemy, log=log, world=world) for enemy in enemies
+        Attack(actor, enemy, weapon=weapon, log=log, world=world)
+        for enemy in enemies
+        for weapon in arms
     ]
+    if actor.economy.light_attack is not None:
+        candidates.extend(
+            LightAttack(actor, enemy, weapon=weapon, log=log, world=world)
+            for enemy in enemies
+            for weapon in arms
+            if weapon.has(WeaponProperty.LIGHT)
+        )
     attacks = len(candidates)
     candidates.extend(Stabilize(actor, ally) for ally in allies_of(world, actor))
+    candidates.extend((Dodge(actor), Disengage(actor), Dash(actor)))
     candidates.extend(
-        (Dodge(actor), Disengage(actor), Dash(actor), PickUpWeapon(actor))
+        PickUpWeapon(actor, weapon) for weapon in _distinct(w for w, _ in actor.dropped)
     )
     candidates.extend(endings(world, actor))
     candidates.append(StandUp(actor))
@@ -144,6 +157,19 @@ def offers(world: World, actor: Creature) -> list[Action[Any]]:
     offered.extend(unarmed_options(world, actor, enemies))
     offered.extend(command for command in candidates[attacks:] if command.is_legal())
     return offered
+
+
+def _distinct(weapons: Iterable[Weapon]) -> list[Weapon]:
+    found: list[Weapon] = []
+    for weapon in weapons:
+        if weapon not in found:
+            found.append(weapon)
+    return found
+
+
+def _arms(actor: Creature) -> list[Weapon]:
+    """Each weapon `actor` holds or carries, once, the held ones first."""
+    return _distinct((*actor.held, *actor.stowed))
 
 
 def take_turn(

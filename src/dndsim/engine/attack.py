@@ -19,11 +19,13 @@ Sources:
 
 - the proficiency bonus only with a weapon the attacker is proficient with —
   XPHB, "Equipment" -> Weapon Proficiency; `docs/decisions.md` § w2f
+- the Light property's extra attack adds the modifier only when negative —
+  XPHB, "Equipment" -> Weapon Properties, Light; `docs/decisions.md` § w2k
 
-Two gaps, declared: close combat counts every enemy within 5 feet that is
+One gap, declared: close combat counts every enemy within 5 feet that is
 not Incapacitated, because nothing can yet be asked whether it can see the
-attacker (debt #39); and a thrown weapon stays in the thrower's hand, because
-nothing says how many a build carries (debt #69).
+attacker (debt #39). What a weapon spends or leaves behind is the Command's,
+not this function's (`docs/decisions.md` § w2k).
 """
 
 from collections.abc import Mapping
@@ -701,6 +703,7 @@ def resolve_attack(
     trigger: Trigger | None = None,
     log: EventLog | None = None,
     world: World | None = None,
+    light: bool = False,
 ) -> AttackResult:
     """Resolve one attack by `attacker` against `defender`.
 
@@ -710,7 +713,9 @@ def resolve_attack(
     offered immediately before each dispatch that can carry gated handlers.
     `log`, when given, is written the `ATTACK`, `ATTACK_ROLL` and `DAMAGE_ROLL`
     records above. `world` holds the enemies a ranged attack's close-combat
-    Disadvantage is asked about; a melee attack never reads it.
+    Disadvantage is asked about; a melee attack never reads it. `light` is
+    the Light property's extra attack, whose damage takes the ability
+    modifier only when it is negative.
 
     Raises `ValueError` when there is no weapon or the target is out of its
     reach or range, and `EngineAssemblyError` for a ranged attack with no
@@ -827,17 +832,15 @@ def resolve_attack(
         # The ability modifier goes in `flat`, which a crit never doubles
         # (DESIGN.md § Structural prevention).
         damage = weapon.damage
+        modifier = attacker.modifier(ability)
+        if light and modifier > 0:
+            modifier = 0
         if isinstance(damage, Dice):
-            bag.add(
-                dice=damage,
-                flat=attacker.modifier(ability),
-                damage_type=weapon.damage_type,
-            )
+            bag.add(dice=damage, flat=modifier, damage_type=weapon.damage_type)
         else:
             # Two parts: one flat of weapon and modifier could sum to 0, an
             # empty contribution `add()` refuses (`docs/decisions.md` § w2f2).
             bag.add(flat=damage, damage_type=weapon.damage_type)
-            modifier = attacker.modifier(ability)
             if modifier:
                 bag.add(flat=modifier, damage_type=weapon.damage_type)
         strike(ON_HIT, hit)

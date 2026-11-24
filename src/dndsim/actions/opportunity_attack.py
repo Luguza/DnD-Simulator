@@ -30,8 +30,9 @@ __all__ = ["OpportunityAttack", "OpportunityAttacks"]
 
 
 class OpportunityAttack(Attack):
-    """`actor` attacks `target`, which is leaving its reach, with the melee
-    weapon it wields, or with an Unarmed Strike when it wields none.
+    """`actor` attacks `target`, which is leaving its reach, with a melee
+    weapon it holds that reaches `target`, or with an Unarmed Strike when it
+    holds none (`docs/decisions.md` § w2k).
 
     Refused against a creature on `actor`'s own side of `world`. It is a melee
     attack, so a Thrown melee weapon is swung and a Ranged weapon's wielder
@@ -57,11 +58,10 @@ class OpportunityAttack(Attack):
         trigger: Trigger | None = None,
         log: EventLog | None = None,
     ) -> None:
-        wielded = actor.weapon
         super().__init__(
             actor,
             target,
-            weapon=UNARMED_STRIKE if wielded is None or wielded.ranged else wielded,
+            weapon=_swung(actor, target),
             contexts=contexts,
             trigger=trigger,
             log=log,
@@ -92,6 +92,19 @@ class OpportunityAttack(Attack):
                 f"{self.target.name} now; is_legal() answers first"
             )
         return self._perform(rng)
+
+
+def _swung(actor: Creature, target: Creature) -> Weapon:
+    """The first melee weapon `actor` holds that reaches `target`, the main
+    hand's first; else the first it holds; else an Unarmed Strike."""
+    main, off = actor.weapon, actor.off_hand
+    if off is None or off.ranged:
+        return UNARMED_STRIKE if main is None or main.ranged else main
+    if main is None or main.ranged:
+        return off
+    if within_reach(actor, target, main) or not within_reach(actor, target, off):
+        return main
+    return off
 
 
 class OpportunityAttacks(HookSource):

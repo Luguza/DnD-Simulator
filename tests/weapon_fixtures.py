@@ -39,6 +39,7 @@ LONGBOW: Final = Weapon(
     range_ft=(150, 600),
     ranged=True,
     martial=True,
+    ammunition="Arrow",
 )
 DAGGER: Final = Weapon(
     name="Dagger",
@@ -75,6 +76,28 @@ BLOWGUN: Final = Weapon(
     mastery=Mastery.VEX,
     range_ft=(25, 100),
     ranged=True,
+    martial=True,
+    ammunition="Needle",
+)
+HAND_CROSSBOW: Final = Weapon(
+    name="Hand Crossbow",
+    damage=Dice(1, 6),
+    damage_type=DamageType.PIERCING,
+    properties=frozenset(
+        {WeaponProperty.AMMUNITION, WeaponProperty.LIGHT, WeaponProperty.LOADING}
+    ),
+    mastery=Mastery.VEX,
+    range_ft=(30, 120),
+    ranged=True,
+    martial=True,
+    ammunition="Bolt",
+)
+SHORTSWORD: Final = Weapon(
+    name="Shortsword",
+    damage=Dice(1, 6),
+    damage_type=DamageType.PIERCING,
+    properties=frozenset({WeaponProperty.FINESSE, WeaponProperty.LIGHT}),
+    mastery=Mastery.VEX,
     martial=True,
 )
 LONGSWORD: Final = Weapon(

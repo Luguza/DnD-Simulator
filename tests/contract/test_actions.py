@@ -22,7 +22,7 @@ from typing import Any, Final
 import pytest
 
 from dndsim import actions
-from dndsim.actions.attack import Attack
+from dndsim.actions.attack import Attack, LightAttack
 from dndsim.actions.base import Action
 from dndsim.actions.dash import Dash
 from dndsim.actions.disengage import Disengage, disengaged
@@ -77,7 +77,7 @@ from dndsim.rules.enums import (
     Size,
     WeaponProperty,
 )
-from weapon_fixtures import DAGGER, GREATSWORD
+from weapon_fixtures import DAGGER, GREATSWORD, SHORTSWORD
 
 SCORES: Final = MappingProxyType(
     {
@@ -126,12 +126,16 @@ def fighter(
     weapon: Weapon | None = GREATSWORD,
     speed: int = 30,
     pc: bool = False,
+    carried: dict[Weapon, int] | None = None,
+    off_hand: Weapon | None = None,
 ) -> Creature:
     subject = Creature(
         name=name,
         stats=StatBlock(abilities=SCORES, max_hp=HP, speed_ft=speed),
         position=cell,
         weapon=weapon,
+        off_hand=off_hand,
+        carried=carried,
         initiative=KEY,
         player_character=pc,
     )
@@ -283,21 +287,25 @@ def test_an_attack_is_one_attack() -> None:
 
 
 def test_a_named_weapon_is_swung_instead_of_the_wielded_one() -> None:
-    """The pike at 10 feet: natural 10, 15 against AC 10, a hit. 1d10 rolled
-    6, + 3 = 9; 20 - 9 = 11. The greatsword could not reach and rolls 2d6."""
-    actor, target = ready(fighter()), goblin(TWO_EAST)
+    """The carried pike at 10 feet: natural 10, 15 against AC 10, a hit. 1d10
+    rolled 6, + 3 = 9; 20 - 9 = 11. The greatsword could not reach and rolls
+    2d6; it fills both hands, so it is stowed with the turn's object
+    interaction and the pike drawn as the attack's equip."""
+    actor, target = ready(fighter(carried={PIKE: 1})), goblin(TWO_EAST)
     assert not Attack(actor, target).is_legal()
     rng = ScriptedRng([10, 6])
     outcome, dealt = Attack(actor, target, weapon=PIKE).execute(rng=rng)
     assert (outcome, dealt) == (Outcome.HIT, 9)
     assert target.hp == 11
     assert rng.exhausted
+    assert (actor.weapon, dict(actor.stowed)) == (PIKE, {GREATSWORD: 1})
+    assert not actor.economy.can_interact()
 
 
 def test_an_attack_needs_a_weapon() -> None:
     actor, target = ready(fighter(weapon=None)), goblin()
     assert not Attack(actor, target).is_legal()
-    assert Attack(actor, target, weapon=GREATSWORD).is_legal()
+    assert not Attack(actor, target, weapon=GREATSWORD).is_legal()
 
 
 def test_an_attack_needs_the_target_in_reach() -> None:
@@ -330,7 +338,7 @@ def test_the_weapon_on_the_floor_cannot_be_swung_by_naming_it() -> None:
     resolve_damage(hero, {SLASHING: HP}, rng=no_dice())
     healing.heal(hero, rng=no_dice(), flat=5)
     ready(hero)
-    assert (hero.weapon, hero.dropped_weapon) == (None, GREATSWORD)
+    assert (hero.weapon, hero.dropped[0][0]) == (None, GREATSWORD)
 
     named = Attack(hero, target, weapon=GREATSWORD)
     assert not named.is_legal()
@@ -350,8 +358,8 @@ def test_the_weapon_on_the_floor_cannot_be_swung_by_naming_it() -> None:
 
 def test_another_weapon_may_be_named_while_one_lies_dropped() -> None:
     """The Attack action lets a weapon be equipped as part of the attack: with
-    the greatsword on the floor, a named pike is still legal."""
-    actor = ready(fighter())
+    the greatsword on the floor, a carried pike is still legal."""
+    actor = ready(fighter(carried={PIKE: 1}))
     actor.drop_held()
     assert Attack(actor, goblin(), weapon=PIKE).is_legal()
 
@@ -562,22 +570,27 @@ def test_the_helper_stands_within_five_feet() -> None:
 # --- PickUpWeapon ------------------------------------------------------------
 
 
-def test_picking_up_a_dropped_weapon_rearms_and_costs_nothing() -> None:
-    """A fresh economy has no Action, and the pick-up needs none."""
-    actor = fighter()
+def test_picking_up_a_dropped_weapon_rearms_and_spends_the_interaction() -> None:
+    """No Action is spent, only the turn's one object interaction, so a second
+    pick-up that turn is refused (`docs/questions.md` #33)."""
+    actor = ready(fighter())
+    actor.economy.spend(ActionCost.ACTION)
     actor.drop_held()
     before = ledger(actor)
     pick_up = PickUpWeapon(actor)
     assert pick_up.is_legal()
     pick_up.execute(rng=no_dice())
     assert actor.weapon is GREATSWORD
-    assert (actor.dropped_weapon, actor.dropped_at) == (None, None)
+    assert actor.dropped == ()
     assert ledger(actor) == before
+    assert not actor.economy.can_interact()
+    actor.drop_held()
+    assert not PickUpWeapon(actor).is_legal()
 
 
 def test_the_weapon_is_picked_up_from_within_five_feet() -> None:
     """Dropped at (0, 0): from (1, 1) it is 5 feet away, from (2, 0) 10."""
-    actor = fighter()
+    actor = ready(fighter())
     actor.drop_held()
     actor.position = NORTHEAST
     assert PickUpWeapon(actor).is_legal()
@@ -595,7 +608,7 @@ def test_nothing_to_pick_up_or_a_full_hand_is_not_a_pick_up() -> None:
     assert not PickUpWeapon(armed).is_legal()
     with pytest.raises(ValueError):
         PickUpWeapon(armed).execute(rng=no_dice())
-    assert (armed.weapon, armed.dropped_weapon) == (PIKE, GREATSWORD)
+    assert (armed.weapon, armed.dropped[0][0]) == (PIKE, GREATSWORD)
 
 
 # --- The acceptance cycle: dropped, healed, rearmed --------------------------
@@ -609,11 +622,7 @@ def test_a_downed_fighter_drops_its_weapon_and_picks_it_up_once_healed() -> None
     goblin's 20 - 10 = 10."""
     hero, target = fighter("hero", pc=True), goblin()
     resolve_damage(hero, {SLASHING: HP}, rng=no_dice(), attacker=target)
-    assert (hero.weapon, hero.dropped_weapon, hero.dropped_at) == (
-        None,
-        GREATSWORD,
-        ORIGIN,
-    )
+    assert (hero.weapon, hero.dropped) == (None, ((GREATSWORD, ORIGIN),))
     ready(hero)
     assert not PickUpWeapon(hero).is_legal()
     assert not Attack(hero, target, weapon=GREATSWORD).is_legal()
@@ -675,6 +684,15 @@ def _monster_at_zero() -> Creature:
 
 def _moved(subject: Creature, cell: Cell) -> Creature:
     subject.position = cell
+    return subject
+
+
+def _dual(*, attacked: bool = True, off_hand: Weapon = DAGGER) -> Creature:
+    """A ready fighter with a Shortsword and `off_hand`, whose Attack action,
+    when `attacked`, was made with the Shortsword."""
+    subject = ready(fighter(weapon=SHORTSWORD, off_hand=off_hand))
+    if attacked:
+        subject.economy.light_attack = 0
     return subject
 
 
@@ -801,17 +819,30 @@ SCENARIOS: Final[dict[type[Action[Any]], tuple[tuple[str, Build, bool], ...]]] =
         ("dying-target", lambda: Attack(ready(fighter()), downed()), True),
         (
             "named-weapon",
-            lambda: Attack(ready(fighter(weapon=None)), goblin(), weapon=GREATSWORD),
+            lambda: Attack(
+                ready(fighter(weapon=None, carried={GREATSWORD: 1})),
+                goblin(),
+                weapon=GREATSWORD,
+            ),
             True,
         ),
         (
+            "weapon-not-carried",
+            lambda: Attack(ready(fighter(weapon=None)), goblin(), weapon=GREATSWORD),
+            False,
+        ),
+        (
             "reach-weapon",
-            lambda: Attack(ready(fighter()), goblin(TWO_EAST), weapon=PIKE),
+            lambda: Attack(
+                ready(fighter(carried={PIKE: 1})), goblin(TWO_EAST), weapon=PIKE
+            ),
             True,
         ),
         (
             "other-weapon-while-dropped",
-            lambda: Attack(_dropped(ready(fighter())), goblin(), weapon=PIKE),
+            lambda: Attack(
+                _dropped(ready(fighter(carried={PIKE: 1}))), goblin(), weapon=PIKE
+            ),
             True,
         ),
         (
@@ -955,18 +986,37 @@ SCENARIOS: Final[dict[type[Action[Any]], tuple[tuple[str, Build, bool], ...]]] =
             False,
         ),
     ),
+    LightAttack: (
+        ("legal", lambda: LightAttack(_dual(), goblin(), weapon=DAGGER), True),
+        (
+            "no-attack-action",
+            lambda: LightAttack(_dual(attacked=False), goblin(), weapon=DAGGER),
+            False,
+        ),
+        (
+            "same-weapon",
+            lambda: LightAttack(_dual(), goblin(), weapon=SHORTSWORD),
+            False,
+        ),
+        (
+            "not-light",
+            lambda: LightAttack(_dual(off_hand=PIKE), goblin(), weapon=PIKE),
+            False,
+        ),
+    ),
     PickUpWeapon: (
-        ("legal", lambda: PickUpWeapon(_dropped(fighter())), True),
+        ("legal", lambda: PickUpWeapon(_dropped(ready(fighter()))), True),
         (
             "five-feet",
-            lambda: PickUpWeapon(_moved(_dropped(fighter()), NORTHEAST)),
+            lambda: PickUpWeapon(_moved(_dropped(ready(fighter())), NORTHEAST)),
             True,
         ),
         (
             "ten-feet",
-            lambda: PickUpWeapon(_moved(_dropped(fighter()), TWO_EAST)),
+            lambda: PickUpWeapon(_moved(_dropped(ready(fighter())), TWO_EAST)),
             False,
         ),
+        ("no-interaction", lambda: PickUpWeapon(_dropped(fighter())), False),
         ("nothing-dropped", lambda: PickUpWeapon(fighter(weapon=None)), False),
         ("still-wielding", lambda: PickUpWeapon(fighter()), False),
         (
@@ -1217,7 +1267,10 @@ def test_every_action_has_a_legality_table_with_both_answers() -> None:
 
 
 WRITERS: Final = (
-    (ActionEconomy, ("spend", "grant", "move", "grant_movement", "turn_started")),
+    (
+        ActionEconomy,
+        ("spend", "grant", "move", "grant_movement", "turn_started", "interact"),
+    ),
     (Resources, ("spend", "add", "recover", "transaction")),
     (EffectStore, ("apply", "remove", "expire_before", "expire_after")),
     (
@@ -1225,6 +1278,10 @@ WRITERS: Final = (
         (
             "pick_up_weapon",
             "drop_held",
+            "draw",
+            "stow",
+            "let_go",
+            "spend_ammunition",
             "stabilize",
             "die",
             "revive",
@@ -1279,8 +1336,9 @@ def _state(subject: Creature) -> tuple[object, ...]:
         subject.temp_hp,
         subject.position,
         subject.weapon,
-        subject.dropped_weapon,
-        subject.dropped_at,
+        subject.off_hand,
+        subject.dropped,
+        dict(subject.stowed),
         tuple(subject.effects),
         subject.dispatcher.sources(),
         subject.dead,

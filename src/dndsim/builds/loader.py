@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 from dndsim.actions.opportunity_attack import OpportunityAttacks
 from dndsim.apl.apl import BEST_SCORED, Apl, Entry
-from dndsim.apl.expr import Compiled, compile_condition
+from dndsim.apl.expr import AplLoadError, Compiled, compile_condition
 from dndsim.apl.schema import NamespaceSchema
 from dndsim.builds.schema import BuildSpec, PartySpec
 from dndsim.content.backgrounds import Background, backgrounds
@@ -25,7 +25,7 @@ from dndsim.content.classes import SKILLS, CharacterClass, classes
 from dndsim.content.feats import Feat, feats
 from dndsim.content.loader import Dataset
 from dndsim.content.species import Species, species
-from dndsim.content.weapons import armour, weapons
+from dndsim.content.weapons import ammunition, armour, weapons
 from dndsim.core.geometry import Cell
 from dndsim.core.rng import Rng
 from dndsim.creatures.character import BuildError, Character, CharacterBuilder
@@ -61,6 +61,7 @@ class Catalogue:
     feats: Mapping[str, Feat]
     weapons: Mapping[str, Weapon]
     armour: Mapping[str, Armour]
+    ammunition: frozenset[str] = frozenset()
 
     @classmethod
     def from_dataset(cls, data: Dataset) -> "Catalogue":
@@ -72,6 +73,7 @@ class Catalogue:
             feats=feats(data),
             weapons=weapons(data),
             armour=armour(data),
+            ammunition=ammunition(data),
         )
 
 
@@ -152,24 +154,44 @@ def load_build(spec: BuildSpec, catalogue: Catalogue) -> Build:
             None if increases is None else _abilities(increases, "ability"),
         )
     kit = spec.equipment
+    carried: dict[Weapon, int] = {}
+    pieces: dict[str, int] = {}
+    for name, count in kit.carried.items():
+        if name in catalogue.ammunition:
+            pieces[name] = count
+            continue
+        if name not in catalogue.weapons:
+            _lookup([*catalogue.weapons, *catalogue.ammunition], name, "item")
+        carried[catalogue.weapons[name]] = count
     builder.equip(
         armoury=catalogue.weapons.values(),
         weapon=None
         if kit.weapon is None
         else _lookup(catalogue.weapons, kit.weapon, "weapon"),
         two_handed=kit.two_handed,
+        off_hand=None
+        if kit.off_hand is None
+        else _lookup(catalogue.weapons, kit.off_hand, "weapon"),
+        carried=carried,
+        ammunition=pieces,
         armour=None
         if kit.armour is None
         else _lookup(catalogue.armour, kit.armour, "armour"),
         shield=kit.shield,
     )
     # Built once here so that a choice its level owes fails at load.
-    builder.build(Cell(0, 0))
+    character = builder.build(Cell(0, 0))
     apl = (
         DEFAULT_APL
         if spec.apl is None
         else Apl(Entry.from_mapping(row) for row in spec.apl)
     )
+    held = {weapon.name for weapon in (*character.held, *character.stowed)}
+    for name in apl.weapons - held:
+        raise AplLoadError(
+            f"an APL entry attacks with {name!r}, which {spec.name} neither "
+            f"holds nor carries; it has {sorted(held)}"
+        )
     return Build(spec, apl, builder)
 
 
