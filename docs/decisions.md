@@ -7044,8 +7044,8 @@ built as written, and it is the one the rest of the row does not need.
   its `threat_profile` picks — Multiattack's shape, one roll per target.
 - **Where an attack reaches.** An attack entry names no reach and no range. It
   is read as a melee attack with a 5-foot reach, which is what `closes_to_melee`,
-  the default profile, closes to; a `kites_at` dummy keeps the distance it names
-  and would never land one, so that pairing is refused at load rather than run
+  the default profile, closes to; a dummy that kites at more than 5 feet keeps
+  out of that reach and would never land one, so that pairing is refused at load rather than run
   as a dummy whose damage is silently zero (DESIGN.md § Failing loudly;
   `docs/questions.md` #34). A ranged entry is a knob for whoever first needs a
   dummy that shoots.
