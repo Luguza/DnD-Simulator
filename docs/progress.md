@@ -69,9 +69,11 @@ last: every row that prices itself has to have landed before the totalling.
 Order within W2 is `w2i` first — the levers `w1k`'s shortfall names, so no W2
 row prices itself against a baseline already known to be under budget — then
 the critical path (`w2b → w2c → w2c2 → w2e`, the turn loop and the APL everything
-after them runs on), then the leaves, with `w2g` and `w2h` last because they
+after them runs on), then the leaves, with `w2g`, `w2g2` and `w2h` last because they
 depend on nearly everything else. `w2g` carries the M1 golden
-(`docs/decisions.md` § The M0 / W1 milestone review). The W2 mid-wave review
+(`docs/decisions.md` § The M0 / W1 milestone review); its spec correction
+split the dummy's turn routine off as `w2g2`, after it (`docs/decisions.md`
+§ The `w2g` spec correction). The W2 mid-wave review
 split `w2f2` off `w2f`, added `w2j`, and moved the second gate to after `w2f`
 (`docs/decisions.md` § The W2 mid-wave review). `w2f`'s spec correction put `w2a2` ahead of it:
 the content a build is checked against (`docs/decisions.md` § The `w2f` spec

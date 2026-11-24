@@ -2543,8 +2543,9 @@ closed tag vocabulary.
 
 The only "monster" until W7, fully configurable in YAML: `ac`, `hp`, `count`,
 size, speed, grid placement; per-ability save bonuses and its own `save_dc`; a
-scripted `damage_per_round` routine (to-hit, dice, targets, type) so the party
-actually takes attrition damage; resistances / immunities / vulnerabilities;
+scripted `damage_per_round` routine (each entry an attack at its to-hit or a
+save at `save_dc`, with dice, targets and type) so the party actually takes
+attrition damage; resistances / immunities / vulnerabilities;
 `legendary_resistances`; regeneration; a `threat_profile` driving its target
 selection; and a **`movement_profile`** — `static`, `closes_to_melee`, or
 `kites_at(range)`.
