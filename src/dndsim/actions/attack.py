@@ -172,7 +172,14 @@ class Attack(Action[AttackResult]):
             actor.let_go(hand)
             # By name: a Versatile weapon held in two hands is not equal to
             # the one-handed copies carried (`docs/decisions.md` § w2k).
-            spare = next((w for w in actor.stowed if w.name == weapon.name), None)
+            spare = next(
+                (
+                    w
+                    for w in actor.stowed
+                    if w.name == weapon.name and actor.can_hold(w)
+                ),
+                None,
+            )
             if spare is not None:
                 actor.draw(spare)
         return result

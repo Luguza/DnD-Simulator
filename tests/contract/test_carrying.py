@@ -366,3 +366,21 @@ def test_a_versatile_weapon_thrown_from_two_hands_draws_a_carried_one() -> None:
     Attack(hero, goblin, world=world).execute(rng=ScriptedRng([1]))
     assert hero.held == (spear,)
     assert hero.stowed[spear] == 2
+
+
+def test_a_throw_leaves_a_two_handed_spare_stowed_when_a_hand_is_full() -> None:
+    """A Shortsword in the main hand, a Spear in the other, and a Spear
+    carried in its two-handed form: the throw draws nothing."""
+    spear = replace(
+        HANDAXE,
+        name="Spear",
+        damage=Dice(1, 6),
+        properties=frozenset({WeaponProperty.THROWN, WeaponProperty.VERSATILE}),
+        versatile_damage=Dice(1, 8),
+    )
+    gripped = replace(spear, damage=Dice(1, 8))
+    hero = creature(weapon=SHORTSWORD, off_hand=spear, carried={gripped: 1})
+    world, hero, goblin = duel(hero, FAR)
+    Attack(hero, goblin, weapon=spear, world=world).execute(rng=ScriptedRng([1]))
+    assert hero.held == (SHORTSWORD,)
+    assert dict(hero.stowed) == {gripped: 1}

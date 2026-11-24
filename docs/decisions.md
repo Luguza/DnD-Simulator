@@ -6949,7 +6949,9 @@ Light attack — not an Attack action — throw a carried Dagger. A throw is the
 one case that leaves the hand: the weapon is gone for the fight
 (`docs/questions.md` #32; recovery is debt #80) and the next one of its name is
 drawn into the hand it left, found by name: a Versatile weapon held in two
-hands is not equal to the one-handed copies carried.
+hands is not equal to the one-handed copies carried. Only a copy a hand is free
+for is drawn, else none: one carried in its two-handed form is left stowed when
+the other hand is full.
 
 The weapon is brought to hand before the attack is declared, so its handlers
 see what is held, and everything else waits on the declaration: an attack
