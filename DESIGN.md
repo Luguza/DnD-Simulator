@@ -2543,8 +2543,9 @@ closed tag vocabulary.
 
 The only "monster" until W7, fully configurable in YAML: `ac`, `hp`, `count`,
 size, speed, grid placement; per-ability save bonuses and its own `save_dc`; a
-scripted `damage_per_round` routine (to-hit, dice, targets, type) so the party
-actually takes attrition damage; resistances / immunities / vulnerabilities;
+scripted `damage_per_round` routine (each entry an attack at its to-hit or a
+save at `save_dc`, with dice, targets and type) so the party actually takes
+attrition damage; resistances / immunities / vulnerabilities;
 `legendary_resistances`; regeneration; a `threat_profile` driving its target
 selection; and a **`movement_profile`** — `static`, `closes_to_melee`, or
 `kites_at(range)`.
@@ -2570,7 +2571,7 @@ Great Weapon Master stops being worth it, exactly as a WoW sim would.
 ## Build order
 
 Nine waves, `W0`–`W8`. This is the summary; [ROADMAP.md](ROADMAP.md) carries the
-86 tasks, their dependency edges, delegation modes and the task-packet template.
+87 tasks, their dependency edges, delegation modes and the task-packet template.
 Its § The W0 debt register is the ledger of what W0 left for later waves to
 retire, and which task retires each.
 

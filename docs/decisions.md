@@ -7020,3 +7020,53 @@ on `w2g`'s runner and is its to measure.
 Sources: `ROADMAP.md` `w2k`, § The W0 debt register #68, #69, #74, #80; XPHB
 "Ammunition", "Light", "Loading", "Thrown", "Attack", "Your Turn";
 `docs/questions.md` #32, #33; § w2b, § w2e, § w2f, § The `w2k` spec correction.
+
+## The `w2g` spec correction — the dummy's turn routine split off, and what `save_dc` does
+
+`w2g` as it stood held the runner, multiprocessing,
+the statistics, `SimResult` and its schema, both renderers, the public API with
+its three `w8` seams, the M1 golden, and three debts (#59, #65, #66). Read
+against the code its done-when has to change, one of the three could not be
+built as written, and it is the one the rest of the row does not need.
+
+### What the row did not say
+
+- **What `save_dc` does.** #59 has the knob be "the DC its routine forces
+  saves at", but no routine entry forces a save: a `DummyAttack` has a `to_hit`,
+  dice and a type, and nothing names the ability saved with or what a failure
+  costs. The conservative reading, taken here so the implementer does not
+  choose: an entry is an attack *or* a save — `save: <ability>` in place of
+  `to_hit` — and a save entry deals its damage on a failure and half on a
+  success through `save_for_half()` (§ w1g), the shape of nearly every
+  save-for-damage monster action the dummy stands in for (`docs/questions.md` #35).
+- **What a routine is.** The entries are the dummy's Action, all of them once
+  a turn in the order written, each against up to `targets` distinct enemies
+  its `threat_profile` picks — Multiattack's shape, one roll per target.
+- **Where an attack reaches.** An attack entry names no reach and no range. It
+  is read as a melee attack with a 5-foot reach, which is what `closes_to_melee`,
+  the default profile, closes to; a dummy that kites at more than 5 feet keeps
+  out of that reach and would never land one, so that pairing is refused at load rather than run
+  as a dummy whose damage is silently zero (DESIGN.md § Failing loudly;
+  `docs/questions.md` #34). A ranged entry is a knob for whoever first needs a
+  dummy that shoots.
+- **Where a save reaches.** Anywhere: a save entry stands in for a breath
+  weapon or a fireball, and the dummy has no area template to place, so its
+  `targets` are picked by `threat_profile` from every enemy, at any distance.
+  An area is a knob for whoever first needs one placed.
+- **A knob nothing reads is refused**, for the same reason: a `save_dc` with no
+  save entry, and a save entry with no `save_dc`.
+
+### Why it is split, and why after `w2g`
+
+Every other clause of `w2g` is the runner and what it reports; #59 is the
+dummy's behaviour, in `creatures/dummy.py`, `apl/dummy.py`, `actions/` and
+`engine/turn.py`'s `offers()` — the row's Produces cell named the second and
+fourth only as "wherever" the routine went, and the first and third not at
+all — and the M1 golden does not need it, since the
+Fighter kills a dummy that never strikes back. `w2g2` depends on `w2g` because
+a dummy acting in a fight beside a build needs a policy per creature (#66),
+which `w2g` builds, and its tests run in the fight `w2g`'s scenario
+assembles. The register row is re-owned with it.
+
+Sources: `ROADMAP.md` `w2g`, `w2g2`, debt #59; § w2d, § w2e, § w1g;
+DESIGN.md § The target dummy.
