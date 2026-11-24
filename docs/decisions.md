@@ -7023,11 +7023,11 @@ Sources: `ROADMAP.md` `w2k`, § The W0 debt register #68, #69, #74, #80; XPHB
 
 ## The `w2g` spec correction — the dummy's turn routine split off, and what `save_dc` does
 
-`w2g` as the W2 late-wave review left it held the runner, multiprocessing,
+`w2g` as it stood held the runner, multiprocessing,
 the statistics, `SimResult` and its schema, both renderers, the public API with
 its three `w8` seams, the M1 golden, and three debts (#59, #65, #66). Read
 against the code its done-when has to change, one of the three could not be
-built as written, and it is the one that does not need the rest of the row.
+built as written, and it is the one the rest of the row does not need.
 
 ### What the row did not say
 
@@ -7037,8 +7037,8 @@ built as written, and it is the one that does not need the rest of the row.
   costs. The conservative reading, taken here so the implementer does not
   choose: an entry is an attack *or* a save — `save: <ability>` in place of
   `to_hit` — and a save entry deals its damage on a failure and half on a
-  success through `save_for_half()` (§ w1g), the shape of every save-for-damage
-  monster action the dummy stands in for (`docs/questions.md` #35).
+  success through `save_for_half()` (§ w1g), the shape of nearly every
+  save-for-damage monster action the dummy stands in for (`docs/questions.md` #35).
 - **What a routine is.** The entries are the dummy's Action, all of them once
   a turn in the order written, each against up to `targets` distinct enemies
   its `threat_profile` picks — Multiattack's shape, one roll per target.
@@ -7060,8 +7060,9 @@ built as written, and it is the one that does not need the rest of the row.
 
 Every other clause of `w2g` is the runner and what it reports; #59 is the
 dummy's behaviour, in `creatures/dummy.py`, `apl/dummy.py`, `actions/` and
-`engine/turn.py`'s `offers()` — four files the row's Produces cell did not
-name — and it is the only clause the M1 golden does not need, since the
+`engine/turn.py`'s `offers()` — the row's Produces cell named the second and
+fourth only as "wherever" the routine went, and the first and third not at
+all — and the M1 golden does not need it, since the
 Fighter kills a dummy that never strikes back. `w2g2` depends on `w2g` because
 a dummy acting in a fight beside a build needs a policy per creature (#66),
 which `w2g` builds, and its tests run in the fight `w2g`'s scenario
