@@ -7049,6 +7049,10 @@ built as written, and it is the one that does not need the rest of the row.
   as a dummy whose damage is silently zero (DESIGN.md § Failing loudly;
   `docs/questions.md` #34). A ranged entry is a knob for whoever first needs a
   dummy that shoots.
+- **Where a save reaches.** Anywhere: a save entry stands in for a breath
+  weapon or a fireball, and the dummy has no area template to place, so its
+  `targets` are picked by `threat_profile` from every enemy, at any distance.
+  An area is a knob for whoever first needs one placed.
 - **A knob nothing reads is refused**, for the same reason: a `save_dc` with no
   save entry, and a save entry with no `save_dc`.
 
