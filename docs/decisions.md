@@ -7115,7 +7115,9 @@ seeds a result reports, handed back as a list, reproduce it, and two policies
 run on one list pair seed by seed (DESIGN.md § APL derivation, seam 2). The
 pool's `map()` yields in input order, which is the iteration-order merge
 DESIGN.md § What is a file, and what is not requires; `as_completed` would not
-be. A run started inside a worker raises instead of starting a pool of its own,
+be. A run of several jobs started inside a worker raises instead of starting a
+pool of its own — a run of one job starts none, so a caller parallelising above
+the runner (`w8e`'s evaluator) runs each of its own with `jobs=1` —
 and the module starts nothing at import, which is the half of the `spawn`
 hazard (§ w0i) a library can guard; the main guard is the caller's.
 

@@ -2,7 +2,9 @@
 § w2g; DESIGN.md § Performance, § Interfaces: library, CLI, and files)."""
 
 import json
+import multiprocessing
 import pickle
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Final
@@ -216,3 +218,22 @@ def test_the_text_is_read_from_the_json() -> None:
     text = render_text(json.dumps(document))
     assert "123.46" in text
     assert "Fighter (GWM) vs Target Dummy" in text
+
+
+def _serial_in_worker() -> int:
+    return len(run(scenario(), (1, 2), jobs=1))
+
+
+def _pooled_in_worker() -> str:
+    try:
+        run(scenario(), (1, 2), jobs=2)
+    except RuntimeError as error:
+        return str(error)
+    return "started"
+
+
+def test_a_worker_runs_serially_but_starts_no_pool() -> None:
+    context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=1, mp_context=context) as pool:
+        assert pool.submit(_serial_in_worker).result() == 2
+        assert "inside a worker process" in pool.submit(_pooled_in_worker).result()

@@ -45,18 +45,19 @@ def run(
     iterations in the order of `seeds`, each with its log at `log_level`
     (`None` keeps none).
 
-    Raises `ValueError` for `jobs` below 1, and `RuntimeError` when called
-    from inside a worker, whose pool would start a pool of its own."""
+    Raises `ValueError` for `jobs` below 1, and `RuntimeError` when a run
+    that would start a pool is called from inside a worker process."""
     if jobs < 1:
         raise ValueError(f"a run takes at least one job, not {jobs}")
-    if multiprocessing.parent_process() is not None:
-        raise RuntimeError(
-            "a run was started inside a worker process; a script that runs a "
-            'simulation keeps the call behind `if __name__ == "__main__":`'
-        )
     if jobs == 1 or len(seeds) <= 1:
         loaded = load(scenario)
         return tuple(_iterate(loaded, seed, log_level) for seed in seeds)
+    if multiprocessing.parent_process() is not None:
+        raise RuntimeError(
+            f"a run of {jobs} jobs was started inside a worker process; a "
+            "script that runs a simulation keeps the call behind "
+            '`if __name__ == "__main__":`, and a worker runs with jobs=1'
+        )
     chunk = max(1, len(seeds) // (jobs * 4))
     with ProcessPoolExecutor(
         max_workers=jobs,

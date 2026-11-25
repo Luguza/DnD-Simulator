@@ -1,7 +1,5 @@
 """The public surface: `run_sim`, `SimConfig`, `SimResult` (DESIGN.md
-§ Interfaces: library, CLI, and files). The CLI and any later UI are adapters
-over this module and hold no simulation logic.
-"""
+§ Interfaces: library, CLI, and files)."""
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
