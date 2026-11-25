@@ -190,8 +190,8 @@ class DummySpec:
         return cls(**kwargs)  # type: ignore[arg-type]
 
     def __reduce__(self) -> tuple[type["DummySpec"], tuple[object, ...]]:
-        """Pickled by its knobs, `saves` as a plain dict: the runner's workers
-        are handed the spec (`docs/decisions.md` § w2g)."""
+        """Pickled by its knobs, `saves` as a plain dict
+        (`docs/decisions.md` § w2g)."""
         return type(self), tuple(
             dict(self.saves) if spec.name == "saves" else getattr(self, spec.name)
             for spec in fields(self)

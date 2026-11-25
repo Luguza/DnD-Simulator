@@ -32,11 +32,13 @@ def dummy_apl(spec: DummySpec) -> Apl:
     )
 
 
-def arm_dummy(dummy: TargetDummy, world: World, *, rng: Rng) -> Apl:
-    """Bind `dummy`'s policy to its dispatcher as the gate and attach the
-    opportunity attack it answers. Returns the bound policy, for the turn
-    loop."""
-    apl = dummy_apl(dummy.spec).bind(dummy, world)
+def arm_dummy(
+    dummy: TargetDummy, world: World, *, rng: Rng, apl: Apl | None = None
+) -> Apl:
+    """Bind `dummy`'s policy — `apl`, or by default `dummy_apl()` of its spec —
+    to its dispatcher as the gate and attach the opportunity attack it
+    answers. Returns the bound policy, for the turn loop."""
+    apl = (dummy_apl(dummy.spec) if apl is None else apl).bind(dummy, world)
     dummy.dispatcher.bind(gate=apl)
     dummy.attach(
         OpportunityAttacks(dummy, world=world, rng=rng, trigger=apl.namespace.trigger)

@@ -111,7 +111,7 @@ def test_a_dummy_dealt_nothing_by_its_routine_leaves_the_party_s_count_alone() -
         ({"builds": ()}, "at least one build"),
         ({"builds": (fighter(), fighter())}, "two creatures"),
         ({"dummy": replace(DUMMY, name="Fighter (GWM)")}, "two creatures"),
-        ({"apl": (("Wizard", (Entry("attack"),)),)}, "not a build"),
+        ({"apl": (("Wizard", (Entry("attack"),)),)}, "no creature"),
         ({"surprised": frozenset({"Wizard"})}, "no creature"),
     ],
 )
@@ -237,3 +237,17 @@ def test_a_worker_runs_serially_but_starts_no_pool() -> None:
     with ProcessPoolExecutor(max_workers=1, mp_context=context) as pool:
         assert pool.submit(_serial_in_worker).result() == 2
         assert "inside a worker process" in pool.submit(_pooled_in_worker).result()
+
+
+def test_a_dummy_s_policy_is_overridden_by_its_name() -> None:
+    """A dummy told only to Dodge spends its turns on it, and the party's
+    counts do not move; its override is in the scenario's provenance."""
+    dodge = Apl((Entry("dodge"),))
+    seeds = list(iteration_seeds(4, 3))
+    plain = run_sim(config(seeds=seeds))
+    dodging = run_sim(config(seeds=seeds, apl={DUMMY.name: dodge}))
+    assert dodging.provenance.scenario["dummy_apl"] == {
+        DUMMY.name: dodge.canonical_hash
+    }
+    assert plain.provenance.scenario["dummy_apl"] == {}
+    assert [s.damage for s in dodging.per_seed] != [s.damage for s in plain.per_seed]

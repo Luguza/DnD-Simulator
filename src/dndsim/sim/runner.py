@@ -3,10 +3,8 @@
 Each iteration's generator is seeded from its own seed, never the worker's, and
 the workers' results are taken back in iteration order, never completion
 order, so a run's records do not depend on `jobs` (DESIGN.md § Performance,
-§ What is a file, and what is not). The pool uses `spawn`, which re-imports the
-caller's `__main__` in every worker: a caller starting a run from a script
-keeps the call behind `if __name__ == "__main__":`, and this module starts
-nothing when imported (`docs/decisions.md` § w2g).
+§ What is a file, and what is not). The pool uses `spawn`; why that needs the
+caller's main guard is `docs/decisions.md` § w2g.
 """
 
 import multiprocessing

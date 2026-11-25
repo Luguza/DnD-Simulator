@@ -7101,7 +7101,10 @@ A compiled `Apl` holds closures and a `DummySpec` holds a mapping proxy, and
 neither pickles, so a worker under `spawn` is handed a `Scenario` of plain
 data — build specs, the catalogue, the dummy spec (pickled by its knobs), and
 each override as its `Entry` rows — and compiles it once in the pool's
-initializer. An override is therefore recompiled against the default schema
+initializer. An override names a build or a dummy, since the row asks for one
+per creature; a dummy's replaces the list `dummy_apl()` compiles from its
+profiles, and its hash is in the scenario's provenance beside the knobs it
+overrides. An override is therefore recompiled against the default schema
 and vocabulary; an `Apl` built with extra actions or gates is a `w8` concern
 when one exists. Names are the scenario's identities — the counts attribute by
 name and the overrides and surprise address by name — so two creatures of one
@@ -7130,7 +7133,8 @@ never see one instance. It is the damage as `resolve_damage()` reports it,
 overkill included — `Ê_raw`'s quantity, not `Ê_eff`'s (`docs/questions.md`
 #37). "Actions per round" counts every Command the turn loop carried out,
 a walk included, since that is what `take_turn()` counts; attacks per round
-count `ATTACK` records, opportunity attacks included. The party starts in a
+count `ATTACK` records with an outcome, opportunity attacks included; a vetoed
+attack is logged with none and resolved nothing. The party starts in a
 column beside the first dummy (`docs/questions.md` #36).
 
 ### The result and its two renderers

@@ -31,9 +31,10 @@ class SimConfig:
     `catalogue`. The run is `iterations` iterations seeded from master `seed`,
     or, when `seeds` is given, one iteration per seed in that order, each
     seeded from it directly — the same list given twice pairs the two runs
-    seed by seed. `apl` replaces a build's policy by build name. `surprised`
-    names the creatures surprised at the start. `jobs` is how many worker
-    processes run the iterations; it changes no result.
+    seed by seed. `apl` replaces a creature's policy by its name, a build's
+    or a dummy's. `surprised` names the creatures surprised at the start.
+    `jobs` is how many worker processes run the iterations; it changes no
+    result.
     """
 
     builds: Sequence[BuildSpec]

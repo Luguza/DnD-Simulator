@@ -53,13 +53,12 @@ class Scenario:
     """One fight, as data.
 
     `builds` fight on `PARTY`, the `i`th standing at `dummy.position` plus
-    `(-1, i)`; `dummy`'s dummies fight on `ENEMIES`. `apl` replaces a build's
-    policy by build name, compiled against the default schema. `surprised`
-    names the creatures surprised at the start (XPHB "Surprise").
+    `(-1, i)`; `dummy`'s dummies fight on `ENEMIES`. `apl` replaces a
+    creature's policy by its name, compiled against the default schema.
+    `surprised` names the creatures surprised at the start (XPHB "Surprise").
 
     Raises `ValueError` for no builds, two creatures of one name, or a name in
-    `apl` or `surprised` that is not a build's (or, for `surprised`, a
-    dummy's).
+    `apl` or `surprised` that no creature in the scenario has.
     """
 
     builds: tuple[BuildSpec, ...]
@@ -83,10 +82,10 @@ class Scenario:
                 )
         overridden = [name for name, _ in self.apl]
         for name in overridden:
-            if name not in party:
+            if name not in names:
                 raise ValueError(
-                    f"an APL override names {name!r}, which is not a build in "
-                    f"the scenario; the builds are {party}"
+                    f"an APL override names {name!r}, but no creature in the "
+                    f"scenario has that name; they are {names}"
                 )
             if overridden.count(name) > 1:
                 raise ValueError(f"{name!r} has two APL overrides")
@@ -101,6 +100,11 @@ class Scenario:
         """The scenario's knobs other than the builds, as JSON values."""
         return {
             "dummy": _plain(self.dummy),
+            "dummy_apl": {
+                name: Apl(entries).canonical_hash
+                for name, entries in self.apl
+                if name not in {spec.name for spec in self.builds}
+            },
             "surprised": sorted(self.surprised),
             "max_rounds": self.max_rounds,
         }
@@ -117,10 +121,12 @@ def build_hash(spec: BuildSpec) -> str:
 
 
 class Loaded(NamedTuple):
-    """A scenario with its builds loaded and their policies compiled."""
+    """A scenario with its builds loaded, their policies compiled, and each
+    dummy's override compiled by name."""
 
     scenario: Scenario
     builds: tuple[Build, ...]
+    dummy_apls: Mapping[str, Apl]
 
 
 def load(scenario: Scenario) -> Loaded:
@@ -130,9 +136,10 @@ def load(scenario: Scenario) -> Loaded:
     builds = []
     for spec in scenario.builds:
         build = load_build(spec, scenario.catalogue)
-        entries = overrides.get(spec.name)
+        entries = overrides.pop(spec.name, None)
         builds.append(build if entries is None else build.with_apl(Apl(entries)))
-    return Loaded(scenario, tuple(builds))
+    dummies = {name: Apl(entries) for name, entries in overrides.items()}
+    return Loaded(scenario, tuple(builds), dummies)
 
 
 class Outcome(NamedTuple):
@@ -164,7 +171,9 @@ def fight(loaded: Loaded, *, rng: Rng, log: EventLog) -> Outcome:
     for character, build in zip(party, loaded.builds, strict=True):
         policies[character] = arm_character(character, build.apl, world, rng=rng)
     for dummy in dummies:
-        policies[dummy] = arm_dummy(dummy, world, rng=rng)
+        policies[dummy] = arm_dummy(
+            dummy, world, rng=rng, apl=loaded.dummy_apls.get(dummy.name)
+        )
     surprised = [creature for creature in world if creature.name in scenario.surprised]
     encounter = Encounter(
         world,
@@ -187,7 +196,8 @@ def fight(loaded: Loaded, *, rng: Rng, log: EventLog) -> Outcome:
         kind = record[0]
         if kind == ROUND_START:
             number = record[1]  # type: ignore[assignment]
-        elif kind == ATTACK and record[1] in ours:
+        # A vetoed attack is logged with no outcome and resolved nothing.
+        elif kind == ATTACK and record[1] in ours and record[4] is not None:
             attacks[number - 1] += 1
             if record[2] not in ours:
                 damage += record[5]  # type: ignore[operator]
