@@ -7070,3 +7070,75 @@ assembles. The register row is re-owned with it.
 
 Sources: `ROADMAP.md` `w2g`, `w2g2`, debt #59; § w2d, § w2e, § w1g;
 DESIGN.md § The target dummy.
+
+## w2g — the runner, `SimResult`, the API, and the M1 golden
+
+### A policy per creature, and surprise, in `Encounter` (#66, #65)
+
+`Encounter` takes `policies`, a creature's own, beside the old single
+`policy`, which becomes the default for a creature without one; `join()` takes
+one too. A turn with neither raises rather than being skipped. The routing is a
+dictionary lookup rather than a router `Policy` because `take_turn()` already
+takes the policy per turn (#66's own reading); nothing else in the turn loop
+moved. Surprise is a `HookSource` attached to a surprised creature for its
+initiative roll and detached after it, so `roll_initiative()` and its context —
+hot-path code — are untouched and the disadvantage arrives the way every other
+source's does (XPHB "Surprise"). It is not an `Effect`: it has no duration and
+lasts exactly one dispatch.
+
+### The scenario names sides, not creatures
+
+`Scenario.surprised` holds `party` and `enemies`, the two sides the runner
+seats, because every surprise the XPHB describes is one side's ambush of the
+other and a creature's name is not unique until the scenario has refused
+duplicates. Two combatants of one name are refused for the same reason: the
+runner's tallies and every trace record name the creature, and a party of two
+identical builds would merge their counts silently. An APL override names a
+party member only: the dummy is the experimental control, and a dummy armed by
+another list would no longer be the dummy `w2d` describes.
+
+### Seeds, workers, and the merge
+
+An iteration's generator is `MersenneRng(seed)`, and with no seed list the
+seeds are `mix(seed, i)` — so one iteration is reproduced alone by handing its
+seed back, which is what `w8e`'s paired comparison needs. The pool is spawned,
+never forked, and only inside `run()`, so a worker re-importing the runner
+starts nothing (`w0i`'s fork bomb); `api.py`'s docstring tells a script caller
+to guard its main. Work goes out as contiguous chunks and comes back through
+`ProcessPoolExecutor.map`, which yields in submission order, so the merge is
+iteration order by construction and not by a sort that could be forgotten. A
+`Scenario` pickles through its written forms — an APL as YAML, the dummy as
+its fields — because a compiled APL holds closures and `DummySpec.saves` is a
+read-only mapping; each worker loads the builds once per chunk.
+
+### What is counted, and from where
+
+The tallies are read off the iteration's own event log at `SUMMARY`, which is
+written anyway: attacks are the party's `ATTACK` records (opportunity attacks
+included), damage is those records' damage plus the party's `DAMAGE` records,
+which never overlap because the attack pipeline hands `resolve_damage()` no log
+(§ w2c). Damage is as dealt, overkill included. Actions are the Action-cost
+Commands the party's policies chose, counted by a wrapper around each policy,
+since no record names a Command. The per-seed objective is the party's damage
+per round begun; `w8e` makes it pluggable.
+
+### The JSON form is the contract
+
+`SimResult` is a frozen dataclass whose JSON form is `asdict` and whose schema
+and reader come from one pydantic `TypeAdapter`, so the schema cannot describe
+a field the writer does not write. The text renderer parses the JSON renderer's
+output, never the dataclass, which a test proves by doctoring the JSON. The
+trace is not part of a result (DESIGN.md § What is a file): `trace_sim()` runs
+the scenario again at the asked level, each iteration opened by an
+`ITERATION` record. `build_hash` hashes the whole scenario, not just the build,
+since the dummy and placement change the numbers as much.
+
+### The golden
+
+The M1 golden runs `run_iteration()` on `ScriptedRng`, below the API. Its
+arithmetic was re-derived from the build file, the weapon fixture and the
+rules by a separate agent that did not read the runner or the test, and
+agreed on every number.
+
+Sources: ROADMAP `w2g`, debt #65, #66; § w2c, § w2e, § w0i, § w0c;
+DESIGN.md § Interfaces, § Performance.

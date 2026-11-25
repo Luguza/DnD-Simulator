@@ -284,6 +284,7 @@ there is local to a module.
 | `core/log.py`, the event log, its records and levels | § w1i |
 | `engine/dying.py`, `engine/healing.py`, `engine/d20.py`, `is_alive` | § w1j |
 | `builds/`, `creatures/character.py`, proficiencies, a build's equipment | § w2f |
+| `sim/`, `reporting/`, `api.py`, `Encounter`'s policies and surprise | § w2g |
 | `.claude/skills/`, `CODING_STANDARDS.md`, the review loop | § The PR, review and retro skills |
 
 Add a section there when a task lands, rather than growing this file.

@@ -46,7 +46,13 @@ from dndsim.engine.encounter import (
 )
 from dndsim.engine.query import allies_of, enemies_of, standing, standing_sides
 from dndsim.engine.saves import SAVE, saving_throw
-from dndsim.engine.turn import DEATH_SAVE, INITIATIVE, TURN_END, TURN_START
+from dndsim.engine.turn import (
+    DEATH_SAVE,
+    INITIATIVE,
+    TURN_END,
+    TURN_START,
+    roll_initiative,
+)
 from dndsim.engine.world import World
 from dndsim.hooks.contexts import EncounterContext, IncomingDamageContext
 from dndsim.hooks.decorator import R, hook
@@ -905,3 +911,112 @@ def test_a_placement_before_the_start_sharing_a_real_key_is_refused(
 
     assert beast not in world
     assert list(world) == roster
+
+
+# --- A policy per creature (#66) and surprise (#65) ---------------------------
+
+
+def test_each_creature_is_asked_through_its_own_policy() -> None:
+    """a: 15 + 2 = 17, first; b: 10 + 2 = 12."""
+    world = World()
+    a, b = creature("a"), creature("b", cell=EAST)
+    world.seat(a, "heroes")
+    world.seat(b, "monsters")
+    mine, theirs = Passive(), Passive()
+
+    Encounter(
+        world,
+        policies={a: mine, b: theirs},
+        rng=ScriptedRng([15, 1, 10, 1]),
+        max_rounds=2,
+    ).run()
+
+    assert (mine.asked, theirs.asked) == (["a", "a"], ["b", "b"])
+
+
+def test_a_creature_without_its_own_policy_takes_the_default() -> None:
+    world = World()
+    a, b = creature("a"), creature("b", cell=EAST)
+    world.seat(a, "heroes")
+    world.seat(b, "monsters")
+    mine, default = Passive(), Passive()
+
+    Encounter(
+        world,
+        policy=default,
+        policies={a: mine},
+        rng=ScriptedRng([15, 1, 10, 1]),
+        max_rounds=1,
+    ).run()
+
+    assert (mine.asked, default.asked) == (["a"], ["b"])
+
+
+def test_a_creature_joining_with_a_policy_is_asked_through_it() -> None:
+    world = World()
+    a, b = creature("a"), creature("b", cell=EAST)
+    world.seat(a, "heroes")
+    encounter = Encounter(world, rng=ScriptedRng([15, 1, 10, 1]), max_rounds=1)
+    mine, theirs = Passive(), Passive()
+    encounter.policies[a] = mine
+    encounter.join(b, "monsters", policy=theirs)
+
+    encounter.run()
+
+    assert (mine.asked, theirs.asked) == (["a"], ["b"])
+
+
+def test_a_turn_with_no_policy_fails_loudly() -> None:
+    world = World()
+    world.seat(creature("a"), "heroes")
+    world.seat(creature("b", cell=EAST), "monsters")
+
+    with pytest.raises(EngineAssemblyError, match="a has no policy"):
+        Encounter(world, rng=ScriptedRng([15, 1, 10, 1])).run()
+
+
+def test_a_surprised_creature_rolls_initiative_with_disadvantage() -> None:
+    """XPHB "Surprise". a is surprised: 18 and 4, the lower, + 2 = 6. b is
+    not: one d20, 10 + 2 = 12, so b acts first."""
+    log = summary()
+    world = World(log=log)
+    a, b = creature("a"), creature("b", cell=EAST)
+    world.seat(a, "heroes")
+    world.seat(b, "monsters")
+    rng = ScriptedRng([18, 4, 1, 10, 1])
+
+    Encounter(world, policy=Passive(), surprised=[a], rng=rng, max_rounds=1).run()
+
+    assert [record[1:4] for record in log if record[0] == INITIATIVE] == [
+        ("a", 4, 6),
+        ("b", 10, 12),
+    ]
+    assert turns(log) == [(1, "b"), (1, "a")]
+    assert rng.exhausted
+
+
+def test_surprise_lasts_only_for_the_roll() -> None:
+    """A creature joining once the fight has begun is not surprised, nor
+    is a surprised creature's later roll: one d20 each."""
+    world = World()
+    a = creature("a")
+    world.seat(a, "heroes")
+    world.seat(creature("b", cell=EAST), "monsters")
+    Encounter(
+        world,
+        policy=Passive(),
+        surprised=[a],
+        rng=ScriptedRng([18, 4, 1, 10, 1]),
+        max_rounds=1,
+    ).run()
+
+    rng = ScriptedRng([7, 1])
+    assert roll_initiative(a, rng=rng).initiative == 9
+    assert rng.exhausted
+
+
+def test_a_surprised_creature_must_be_in_the_fight() -> None:
+    with pytest.raises(ValueError, match="not seated"):
+        Encounter(
+            World(), policy=Passive(), surprised=[creature("a")], rng=ScriptedRng([])
+        )
