@@ -20,8 +20,10 @@ turn loop (`engine/encounter.py`, `turn.py`, `world.py`, `query.py`), and
 the walk), `w2d` the target dummy (`creatures/dummy.py`), `w2a` the 5etools
 import (`content/`) and `w2e` the APL and its compiler (`apl/`, and
 `actions/move.py`, where the walk now lives), and `w2f` the build schema and
-loader (`builds/`) and the `Character` Builder (`creatures/character.py`).
-There is no runner or CLI yet — those are W2.
+loader (`builds/`) and the `Character` Builder (`creatures/character.py`),
+and `w2g` the Monte Carlo runner (`sim/`), `SimResult` and its renderers
+(`reporting/`) and the public API (`api.py`). There is no CLI yet — that is
+`w2h`.
 
 **W0 and W1 are complete; work is at W2.** The M0 performance budget is **≥22k
 attack resolutions/sec/core** on `w0i`'s hostile configuration, which since
