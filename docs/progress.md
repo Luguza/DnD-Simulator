@@ -56,8 +56,8 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 24 | w2j — Unarmed Strike, Shove, Grapple, escaping, standing up, the Unconscious Shield | done | |
 | 25 | w2j2 — passing through, Difficult Terrain, the drag 🔒 | done | #88 |
 | 26 | w2k — what a build carries 🔒 | done | #90 |
-| 27 | w2g — runner, `SimResult`, the API, the M1 golden | next | |
-| 28 | w2g2 — the dummy's turn routine | queued | |
+| 27 | w2g — runner, `SimResult`, the API, the M1 golden | done | #65, #66 |
+| 28 | w2g2 — the dummy's turn routine | next | |
 | 29 | w2h — the CLI | queued | |
 | — | ⏸ **M1 / W2 milestone review** | queued | |
 

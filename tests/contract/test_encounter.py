@@ -905,3 +905,82 @@ def test_a_placement_before_the_start_sharing_a_real_key_is_refused(
 
     assert beast not in world
     assert list(world) == roster
+
+
+# --- A policy per creature, and surprise (#65, #66) ---------------------------
+
+
+def test_each_creature_is_asked_through_its_own_policy() -> None:
+    """The goblin's policy is asked only about the goblin; the fighter's
+    swings. Faces as in the scripted fight above, the goblin taking nothing."""
+    log = summary()
+    world = World(log=log)
+    fighter = creature("fighter")
+    goblin = creature("goblin", cell=EAST, hp=5)
+    world.seat(fighter, "heroes")
+    world.seat(goblin, "monsters")
+    passive = Passive()
+    rng = ScriptedRng([18, 1, 8, 1, 2, 15, 3, 4])
+
+    encounter = Encounter(world, policy={fighter: Attacks(), goblin: passive}, rng=rng)
+    result = encounter.run()
+
+    assert result == EncounterResult(2, "heroes")
+    assert passive.asked == ["goblin"]
+    assert [(t.round, t.creature.name, t.commands) for t in encounter.turns] == [
+        (1, "fighter", 1),
+        (1, "goblin", 0),
+        (2, "fighter", 1),
+    ]
+    assert rng.exhausted
+
+
+def test_a_creature_without_a_policy_fails_at_its_turn() -> None:
+    world = World()
+    fighter = creature("fighter")
+    goblin = creature("goblin", cell=EAST)
+    world.seat(fighter, "heroes")
+    world.seat(goblin, "monsters")
+    encounter = Encounter(
+        world, policy={fighter: Passive()}, rng=ScriptedRng([18, 1, 8, 1])
+    )
+    with pytest.raises(EngineAssemblyError, match="goblin has a turn but no policy"):
+        encounter.run()
+
+
+def test_a_joiner_brings_its_policy_only_to_an_encounter_of_many() -> None:
+    world = World()
+    fighter = creature("fighter")
+    world.seat(fighter, "heroes")
+    single = Encounter(world, policy=Passive(), rng=ScriptedRng([]))
+    with pytest.raises(ValueError, match="decides every turn with one"):
+        single.join(creature("goblin", cell=EAST), "monsters", policy=Passive())
+
+    passive = Passive()
+    many = Encounter(World(), policy={}, rng=ScriptedRng([18, 1, 8, 1]), max_rounds=1)
+    many.join(fighter, "heroes", policy=passive)
+    many.join(creature("goblin", cell=EAST), "monsters", policy=passive)
+    many.run()
+    assert passive.asked == ["fighter", "goblin"]
+
+
+def test_a_surprised_creature_rolls_initiative_with_disadvantage() -> None:
+    """XPHB "Surprise". The surprised fighter rolls 18 and 3 and keeps the 3,
+    3 + 2 = 5, behind the goblin's 8 + 2 = 10; the goblin rolls once."""
+    log = summary()
+    world = World(log=log)
+    fighter = creature("fighter")
+    goblin = creature("goblin", cell=EAST)
+    world.seat(fighter, "heroes")
+    world.seat(goblin, "monsters")
+    passive = Passive()
+    rng = ScriptedRng([18, 3, 1, 8, 1])
+
+    Encounter(world, policy=passive, rng=rng, max_rounds=1, surprised=[fighter]).run()
+
+    assert [r for r in log if r[0] == INITIATIVE] == [
+        (INITIATIVE, "fighter", 3, 5, 0.0),
+        (INITIATIVE, "goblin", 8, 10, 0.0),
+    ]
+    assert passive.asked == ["goblin", "fighter"]
+    assert rng.exhausted

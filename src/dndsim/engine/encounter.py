@@ -7,8 +7,10 @@ simply never found again (`docs/decisions.md` § w2c; DESIGN.md § Initiative is
 a key, not an index).
 """
 
+from collections.abc import Collection, Mapping
 from typing import Final, NamedTuple
 
+from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.rng import Rng
 from dndsim.core.timeline import InitiativeKey
 from dndsim.creatures.creature import UNSEATED, Creature
@@ -31,6 +33,7 @@ __all__ = [
     "ROUND_START",
     "Encounter",
     "EncounterResult",
+    "TurnTaken",
 ]
 
 ROUND_START: Final = "round_start"
@@ -51,35 +54,70 @@ class EncounterResult(NamedTuple):
     winner: str | None
 
 
-class Encounter:
-    """One fight over `world`'s roster, each turn decided by `policy`."""
+class TurnTaken(NamedTuple):
+    """One turn played: its round, whose it was, and how many Commands the
+    creature carried out in it."""
 
-    __slots__ = ("_placed", "_started", "max_rounds", "policy", "rng", "world")
+    round: int
+    creature: Creature
+    commands: int
+
+
+class Encounter:
+    """One fight over `world`'s roster.
+
+    `policy` decides every turn, or is a mapping giving each creature its own
+    (`docs/decisions.md` § w2g); a creature it has no entry for raises
+    `EngineAssemblyError` at its first turn. The creatures in `surprised` roll
+    Initiative with Disadvantage. `turns` lists every turn played, in order.
+    """
+
+    __slots__ = (
+        "_placed",
+        "_started",
+        "max_rounds",
+        "policy",
+        "rng",
+        "surprised",
+        "turns",
+        "world",
+    )
 
     def __init__(
         self,
         world: World,
         *,
-        policy: Policy,
+        policy: Policy | Mapping[Creature, Policy],
         rng: Rng,
         max_rounds: int = DEFAULT_MAX_ROUNDS,
+        surprised: Collection[Creature] = (),
     ) -> None:
         if max_rounds < 1:
             raise ValueError(f"an encounter lasts at least one round, not {max_rounds}")
         self.world = world
-        self.policy = policy
+        self.policy: Policy | dict[Creature, Policy] = (
+            dict(policy) if isinstance(policy, Mapping) else policy
+        )
         self.rng = rng
         self.max_rounds = max_rounds
+        self.surprised = frozenset(surprised)
+        self.turns: list[TurnTaken] = []
         self._started = False
         self._placed: set[Creature] = set()
 
     def join(
-        self, creature: Creature, side: str, *, initiative: InitiativeKey | None = None
+        self,
+        creature: Creature,
+        side: str,
+        *,
+        initiative: InitiativeKey | None = None,
+        policy: Policy | None = None,
     ) -> None:
         """Seat `creature` on `side`. It rolls its own initiative — at once
         when the fight has begun, with everyone else otherwise — unless
         `initiative` places it, a summon's `sharing_turn()`; no other
-        creature's key moves. Raises `ValueError` for a key another seated
+        creature's key moves. `policy` decides its turns when the encounter
+        holds one per creature. Raises `ValueError` for a key another seated
         creature holds: the order would have no place for one of the two; and,
         before the start, for `UNSEATED` or a `sharing_turn()` key, since the
         creature it was taken from has yet to roll."""
@@ -101,12 +139,21 @@ class Encounter:
                 "creature holds; a second creature sharing a turn takes "
                 "sharing_turn(order) with the next order"
             )
+        if policy is not None:
+            if not isinstance(self.policy, dict):
+                raise ValueError(
+                    f"{creature.name} was given a policy of its own, but this "
+                    "encounter decides every turn with one"
+                )
+            self.policy[creature] = policy
         self.world.seat(creature, side)
         if initiative is not None:
             creature.initiative = initiative
             self._placed.add(creature)
         elif self._started:
-            creature.initiative = roll_initiative(creature, rng=self.rng)
+            creature.initiative = roll_initiative(
+                creature, rng=self.rng, surprised=creature in self.surprised
+            )
 
     def leave(self, creature: Creature) -> None:
         """Drop `creature` from the roster; its key is left alone."""
@@ -124,7 +171,9 @@ class Encounter:
         self._everyone(ON_ENCOUNTER_START, EncounterContext(combatants=tuple(world)))
         for creature in tuple(world):
             if creature not in self._placed:
-                creature.initiative = roll_initiative(creature, rng=rng)
+                creature.initiative = roll_initiative(
+                    creature, rng=rng, surprised=creature in self.surprised
+                )
 
         number = 0
         while number < self.max_rounds and len(standing_sides(world)) > 1:
@@ -138,7 +187,10 @@ class Encounter:
                 if actor is None:
                     break
                 last = actor.initiative
-                take_turn(world, actor, number, policy=self.policy, rng=rng)
+                taken = take_turn(
+                    world, actor, number, policy=self._policy_of(actor), rng=rng
+                )
+                self.turns.append(TurnTaken(number, actor, taken))
             self._everyone(ON_ROUND_END, RoundContext(round=number))
             if log is not None:
                 log.write((ROUND_END, number))
@@ -147,6 +199,18 @@ class Encounter:
         sides = standing_sides(world)
         winner = next(iter(sides)) if len(sides) == 1 else None
         return EncounterResult(number, winner)
+
+    def _policy_of(self, creature: Creature) -> Policy:
+        policy = self.policy
+        if not isinstance(policy, dict):
+            return policy
+        found = policy.get(creature)
+        if found is None:
+            raise EngineAssemblyError(
+                f"{creature.name} has a turn but no policy; an encounter that "
+                "holds one per creature is given one for each it seats"
+            )
+        return found
 
     def _everyone(self, spec: HookSpec, ctx: Context) -> None:
         """Dispatch a GLOBAL hook to every seated creature, in seating order."""

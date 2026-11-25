@@ -189,6 +189,14 @@ class DummySpec:
             kwargs[key] = _READERS.get(key, _plain)(key, raw)
         return cls(**kwargs)  # type: ignore[arg-type]
 
+    def __reduce__(self) -> tuple[type["DummySpec"], tuple[object, ...]]:
+        """Pickled by its knobs, `saves` as a plain dict: the runner's workers
+        are handed the spec (`docs/decisions.md` § w2g)."""
+        return type(self), tuple(
+            dict(self.saves) if spec.name == "saves" else getattr(self, spec.name)
+            for spec in fields(self)
+        )
+
     def abilities(self) -> dict[Ability, int]:
         """The ability scores whose modifiers are the save bonuses; a score is
         an encoding here and may fall outside 1-30 (`docs/decisions.md` § w2d).

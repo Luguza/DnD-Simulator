@@ -48,6 +48,7 @@ __all__ = [
     "DEATH_SAVE",
     "INITIATIVE",
     "MAX_COMMANDS_PER_TURN",
+    "SURPRISED",
     "TURN_END",
     "TURN_START",
     "Policy",
@@ -68,6 +69,9 @@ TURN_END: Final = "turn_end"
 DEATH_SAVE: Final = "death_save"
 """`(DEATH_SAVE, creature, natural, successes, failures)`, at every level."""
 
+SURPRISED: Final = "Surprised"
+"""The reason a surprised creature's Initiative roll has Disadvantage."""
+
 MAX_COMMANDS_PER_TURN: Final = 32
 """How many Commands one turn may carry out before `take_turn()` raises."""
 
@@ -84,14 +88,21 @@ class Policy(Protocol):
     ) -> Action[Any] | None: ...
 
 
-def roll_initiative(creature: Creature, *, rng: Rng) -> InitiativeKey:
+def roll_initiative(
+    creature: Creature, *, rng: Rng, surprised: bool = False
+) -> InitiativeKey:
     """Roll `creature`'s initiative and return its place in the order.
 
     A Dexterity check after `on_initiative_roll`, then one independent
     uniform draw for the tiebreak, `(rng.roll(2**32) - 1) / 2**32` (DESIGN.md
-    § Initiative is a key, not an index). Sets nothing on `creature`.
+    § Initiative is a key, not an index). A `surprised` creature rolls with
+    Disadvantage (XPHB "Surprise"). Sets nothing on `creature`.
     """
     rolling = InitiativeContext(creature=creature)
+    if surprised:
+        rolling.stamp("engine.initiative", None)
+        rolling.impose_disadvantage(SURPRISED)
+        rolling.stamp(None, None)
     creature.dispatch(ON_INITIATIVE_ROLL, rolling)
     settle(
         rolling,
