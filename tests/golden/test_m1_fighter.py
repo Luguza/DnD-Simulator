@@ -32,7 +32,8 @@ from dndsim.engine.attack import ATTACK
 from dndsim.engine.dying import DROPPED
 from dndsim.engine.turn import INITIATIVE
 from dndsim.rules.enums import Outcome
-from dndsim.sim.scenario import PARTY, Outcome as FightOutcome, Scenario, fight, load
+from dndsim.sim.scenario import PARTY, Scenario, fight, load
+from dndsim.sim.scenario import Outcome as FightOutcome
 from m1_fixtures import CATALOGUE, fighter
 
 FACES = [

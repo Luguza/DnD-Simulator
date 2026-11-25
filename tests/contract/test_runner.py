@@ -14,7 +14,6 @@ from dndsim.apl.apl import Apl, Entry
 from dndsim.apl.expr import AplLoadError
 from dndsim.core.log import LogLevel
 from dndsim.creatures.dummy import DummySpec, MovementProfile, ThreatProfile
-from dndsim.engine.attack import ATTACK
 from dndsim.reporting.render_json import render_json
 from dndsim.reporting.render_text import render_text
 from dndsim.reporting.result import SimResult
@@ -37,7 +36,9 @@ def scenario(**changes: Any) -> Scenario:
 
 
 def config(**changes: Any) -> SimConfig:
-    base = SimConfig(builds=[fighter()], catalogue=CATALOGUE, dummy=DUMMY, iterations=40)
+    base = SimConfig(
+        builds=[fighter()], catalogue=CATALOGUE, dummy=DUMMY, iterations=40
+    )
     return replace(base, **changes)
 
 
@@ -52,7 +53,9 @@ def test_the_log_is_byte_identical_at_any_jobs() -> None:
     pooled = run(scenario(), seeds, jobs=3, log_level=LogLevel.FULL)
     assert [i.result.seed for i in pooled] == list(seeds)
     assert pooled == alone
-    assert repr([i.log for i in pooled]).encode() == repr([i.log for i in alone]).encode()
+    assert (
+        repr([i.log for i in pooled]).encode() == repr([i.log for i in alone]).encode()
+    )
 
 
 def test_an_iteration_depends_on_its_seed_alone() -> None:
@@ -89,9 +92,7 @@ def test_a_policy_that_never_attacks_shows_as_a_count() -> None:
     assert iteration.result.winner is None
 
 
-def test_a_dummy_dealt_nothing_by_its_routine_leaves_the_party_s_count_alone() -> (
-    None
-):
+def test_a_dummy_dealt_nothing_by_its_routine_leaves_the_party_s_count_alone() -> None:
     """Only the party's attacks are counted: a dummy kiting out of reach
     makes none, and the Fighter's walk is a Command."""
     kiting = replace(DUMMY, movement_profile=MovementProfile.kites_at(60))
