@@ -62,6 +62,9 @@ class Catalogue:
     weapons: Mapping[str, Weapon]
     armour: Mapping[str, Armour]
     ammunition: frozenset[str] = frozenset()
+    version: str | None = None
+    """The content version: the upstream commit SHA the tables were imported
+    at, `None` for tables not imported from a dataset."""
 
     @classmethod
     def from_dataset(cls, data: Dataset) -> "Catalogue":
@@ -74,6 +77,7 @@ class Catalogue:
             weapons=weapons(data),
             armour=armour(data),
             ammunition=ammunition(data),
+            version=data.version,
         )
 
 
@@ -89,6 +93,13 @@ class Build:
     def character(self, position: Cell) -> Character:
         """A fresh character of this build at `position`."""
         return self._builder.build(position)
+
+    def with_apl(self, apl: Apl) -> "Build":
+        """This build with `apl` in place of its own. Raises `AplLoadError`
+        for an entry attacking with a weapon the build neither holds nor
+        carries."""
+        _check_weapons(self.spec.name, apl, self.character(Cell(0, 0)))
+        return Build(self.spec, apl, self._builder)
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,13 +197,17 @@ def load_build(spec: BuildSpec, catalogue: Catalogue) -> Build:
         if spec.apl is None
         else Apl(Entry.from_mapping(row) for row in spec.apl)
     )
+    _check_weapons(spec.name, apl, character)
+    return Build(spec, apl, builder)
+
+
+def _check_weapons(name: str, apl: Apl, character: Character) -> None:
     held = {weapon.name for weapon in (*character.held, *character.stowed)}
-    for name in apl.weapons - held:
+    for weapon in apl.weapons - held:
         raise AplLoadError(
-            f"an APL entry attacks with {name!r}, which {spec.name} neither "
+            f"an APL entry attacks with {weapon!r}, which {name} neither "
             f"holds nor carries; it has {sorted(held)}"
         )
-    return Build(spec, apl, builder)
 
 
 _SIZES = {size.value: size for size in Size}

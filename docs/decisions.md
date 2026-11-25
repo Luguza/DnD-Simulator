@@ -7070,3 +7070,88 @@ assembles. The register row is re-owned with it.
 
 Sources: `ROADMAP.md` `w2g`, `w2g2`, debt #59; § w2d, § w2e, § w1g;
 DESIGN.md § The target dummy.
+
+## w2g — the runner, `SimResult`, the API, and the M1 golden
+
+Debts #65 and #66, the runner's merge rule, and the three `w8` seams. What
+follows is why the code is shaped as it is.
+
+### A policy per creature, held by the encounter
+
+`Encounter` takes either one `Policy` or a mapping from creature to policy, and
+asks the mapping at each turn; a creature seated without one raises
+`EngineAssemblyError` at its first turn rather than borrowing another's (#66).
+The mapping lives in the encounter, not the world, because `take_turn()`
+already took the policy per call (§ w2c) and only the loop above it needed to
+choose. A joiner brings its own through `join(policy=)`. Each turn played is
+recorded as a `TurnTaken`, which is where the runner's actions per round come
+from: `take_turn()` already returned the count and the loop dropped it.
+
+### Surprise is a disadvantage imposed by the engine
+
+`roll_initiative(surprised=True)` imposes Disadvantage on the context before
+`on_initiative_roll` (XPHB "Surprise"), stamped as the engine the way
+`engine/attack.py` stamps its own, so a feature that grants Advantage on
+Initiative cancels it by the ordinary ledger (#65). Who is surprised is a set
+of creatures on the encounter, and of names on the `Scenario`.
+
+### A scenario is data, and a worker compiles it
+
+A compiled `Apl` holds closures and a `DummySpec` holds a mapping proxy, and
+neither pickles, so a worker under `spawn` is handed a `Scenario` of plain
+data — build specs, the catalogue, the dummy spec (pickled by its knobs), and
+each override as its `Entry` rows — and compiles it once in the pool's
+initializer. An override names a build or a dummy, since the row asks for one
+per creature; a dummy's replaces the list `dummy_apl()` compiles from its
+profiles, and its hash is in the scenario's provenance beside the knobs it
+overrides. An override is therefore recompiled against the default schema
+and vocabulary; an `Apl` built with extra actions or gates is a `w8` concern
+when one exists. Names are the scenario's identities — the counts attribute by
+name and the overrides and surprise address by name — so two creatures of one
+name are refused at construction.
+
+### Seeding and the merge
+
+An iteration's generator is `MersenneRng(seed)`, where a master seed's
+iterations are `mix(seed, i)` and an explicit list is used as given; so the
+seeds a result reports, handed back as a list, reproduce it, and two policies
+run on one list pair seed by seed (DESIGN.md § APL derivation, seam 2). The
+pool's `map()` yields in input order, which is the iteration-order merge
+DESIGN.md § What is a file, and what is not requires; `as_completed` would not
+be. A run of several jobs started inside a worker raises instead of starting a
+pool of its own — a run of one job starts none, so a caller parallelising above
+the runner (`w8e`'s evaluator) runs each of its own with `jobs=1` —
+and the module starts nothing at import, which is the half of the `spawn`
+hazard (§ w0i) a library can guard; the main guard is the caller's.
+
+### What is counted
+
+Every count is the party's, read from the summary-level log a fight always
+writes plus `Encounter.turns`. Damage is `ATTACK`'s `damage_dealt` plus
+`DAMAGE` records: an attack does not hand `resolve_damage()` a log, so the two
+never see one instance. It is the damage as `resolve_damage()` reports it,
+overkill included — `Ê_raw`'s quantity, not `Ê_eff`'s (`docs/questions.md`
+#37). "Actions per round" counts every Command the turn loop carried out,
+a walk included, since that is what `take_turn()` counts; attacks per round
+count `ATTACK` records with an outcome, opportunity attacks included; a vetoed
+attack is logged with none and resolved nothing. The party starts in a
+column beside the first dummy (`docs/questions.md` #36).
+
+### The result and its two renderers
+
+`SimResult` is a frozen, strict pydantic model rather than a dataclass, because
+the schema the row asks for is then `model_json_schema()` and the JSON
+round-trips by validation; `reporting/simresult.schema.json` is the checked-in
+copy and a test holds the two equal, so a shape change is a visible diff with
+`SCHEMA_VERSION` beside it. The statistics are the normal approximation in pure
+Python: nothing else needs numpy yet. `render_text()` takes the JSON text, not
+the model, so it cannot print what the JSON lacks.
+
+### The golden
+
+The M1 golden calls `fight()`, below the API, on `ScriptedRng`. Its arithmetic
+was re-derived from the build file, the dummy's knobs and the faces by an agent
+that read neither the test nor this section, and matched in every number.
+
+Sources: `ROADMAP.md` `w2g`, debts #65, #66; DESIGN.md § Performance, § What
+is a file, and what is not, § APL derivation; § w2c, § w2e, § w0i.

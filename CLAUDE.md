@@ -20,8 +20,10 @@ turn loop (`engine/encounter.py`, `turn.py`, `world.py`, `query.py`), and
 the walk), `w2d` the target dummy (`creatures/dummy.py`), `w2a` the 5etools
 import (`content/`) and `w2e` the APL and its compiler (`apl/`, and
 `actions/move.py`, where the walk now lives), and `w2f` the build schema and
-loader (`builds/`) and the `Character` Builder (`creatures/character.py`).
-There is no runner or CLI yet — those are W2.
+loader (`builds/`) and the `Character` Builder (`creatures/character.py`),
+and `w2g` the Monte Carlo runner (`sim/`), `SimResult` and its renderers
+(`reporting/`) and the public API (`api.py`). There is no CLI yet — that is
+`w2h`.
 
 **W0 and W1 are complete; work is at W2.** The M0 performance budget is **≥22k
 attack resolutions/sec/core** on `w0i`'s hostile configuration, which since
@@ -270,6 +272,7 @@ there is local to a module.
 | `conditions/`, a condition, a declared gap | § w1h, § w2b, § w2c |
 | `actions/`, a Command, legality, dropping and picking up a weapon | § w2b, § w2c2 |
 | what a creature holds and carries, the Light attack, Ammunition, Thrown, `with: weapon:` | § w2k |
+| `sim/`, `reporting/`, `api.py`, a policy per creature, surprise | § w2g |
 | `actions/move.py`, the walk, the retreat, a `move:` destination, passing creatures, the drag | § w2c2, § w2e, § w2j2 |
 | `apl/`, a clause, the namespace, the policy, the dummy's policy | § w2e |
 | `creatures/dummy.py`, the target dummy | § w2d |
