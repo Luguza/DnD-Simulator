@@ -45,11 +45,13 @@ CLAW: Final = DummyAttack(6, Dice(2, 8), SLASHING, flat=4)
 
 
 def hero(name: str, cell: Cell, *, ac: int = 16, hp: int = HP) -> Creature:
+    """A player character, so 0 hit points leaves it dying rather than dead."""
     return Creature(
         name=name,
         stats=StatBlock(abilities=dict.fromkeys(Ability, 10), max_hp=hp, speed_ft=30),
         position=cell,
         armour=Armour.natural(ac),
+        player_character=True,
     )
 
 
@@ -203,6 +205,32 @@ def test_lowest_hp_picks_by_hit_points() -> None:
     Routine(dummy, world=world).execute(rng=ScriptedRng([10, 1, 1]))
 
     assert (hale.hp, hurt.hp) == (HP, 10 - 6)
+
+
+def test_a_downed_enemy_is_not_picked() -> None:
+    """A creature at 0 hit points is left out, as the APL's `enemies` groups
+    leave it out, so `lowest_hp` swings at the standing one."""
+    dying = hero("dying", Cell(1, 0), ac=1)
+    resolve_damage(dying, {SLASHING: HP}, rng=ScriptedRng([]))
+    assert dying.is_down and not dying.dead
+    standing = hero("standing", Cell(0, 1), ac=1)
+    dummy, world = ready_dummy(
+        DummySpec(damage_per_round=(CLAW,), threat_profile=ThreatProfile.LOWEST_HP),
+        dying,
+        standing,
+    )
+
+    Routine(dummy, world=world).execute(rng=ScriptedRng([10, 1, 1]))
+
+    assert (dying.hp, standing.hp) == (0, HP - 6)
+
+
+def test_only_downed_enemies_offer_no_routine() -> None:
+    dying = hero("dying", Cell(1, 0))
+    resolve_damage(dying, {SLASHING: HP}, rng=ScriptedRng([]))
+    dummy, world = ready_dummy(DummySpec(damage_per_round=(CLAW,)), dying)
+
+    assert not Routine(dummy, world=world).is_legal()
 
 
 # --- a save entry --------------------------------------------------------------

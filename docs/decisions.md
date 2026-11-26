@@ -7185,9 +7185,10 @@ attack modifier is zero, which its saves do not allow.
 `Routine` (`actions/routine.py`, id `routine`) is the dummy's Action. It is
 legal while some entry has an enemy to act on: an attack entry an enemy within
 its reach, a save entry any enemy at all; an entry with nobody this turn is
-skipped. Targets are ranked afresh for each entry — `nearest` by distance,
-`lowest_hp` by hit points, ties in seating order, the same picks the APL's
-selectors make — so an entry after a kill does not swing at the dead; a dummy a defender's
+skipped. Targets are the standing enemies, ranked afresh for each entry —
+`nearest` by distance, `lowest_hp` by hit points, ties in seating order, the
+same picks the APL's `enemies` groups make, which leave out a creature at 0
+hit points — so an entry after a kill does not swing at the dead; a dummy a defender's
 handler drops partway stops there. A save
 entry forces every target's save through `force_save()` first, so
 `on_forced_save` fires once for the set, then rolls each target's damage and

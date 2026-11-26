@@ -26,7 +26,8 @@ __all__ = ["Routine"]
 
 class Routine(Action[int]):
     """`actor` makes every `damage_per_round` entry of its spec once, in order,
-    each against up to `targets` distinct enemies its `threat_profile` picks,
+    each against up to `targets` distinct standing enemies its `threat_profile`
+    picks,
     one roll per target; `execute()` returns the damage dealt.
 
     An attack entry is made through `resolve_attack()` against the enemies
@@ -58,10 +59,10 @@ class Routine(Action[int]):
         )
 
     def _targets(self, entry: DummyAttack, weapon: Weapon | None) -> list[Creature]:
-        """Up to `entry.targets` enemies, in the order the threat profile
-        ranks them; ties keep seating order."""
+        """Up to `entry.targets` standing enemies, in the order the threat
+        profile ranks them; ties keep seating order."""
         dummy = self.dummy
-        enemies = enemies_of(self.world, dummy)
+        enemies = tuple(e for e in enemies_of(self.world, dummy) if not e.is_down)
         if weapon is not None:
             enemies = tuple(e for e in enemies if within_reach(dummy, e, weapon))
         if dummy.spec.threat_profile is ThreatProfile.LOWEST_HP:
