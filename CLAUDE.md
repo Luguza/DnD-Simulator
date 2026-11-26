@@ -273,6 +273,7 @@ there is local to a module.
 | `actions/`, a Command, legality, dropping and picking up a weapon | § w2b, § w2c2 |
 | what a creature holds and carries, the Light attack, Ammunition, Thrown, `with: weapon:` | § w2k |
 | `sim/`, `reporting/`, `api.py`, a policy per creature, surprise | § w2g |
+| `actions/routine.py`, the dummy's routine, Regeneration | § w2g2 |
 | `actions/move.py`, the walk, the retreat, a `move:` destination, passing creatures, the drag | § w2c2, § w2e, § w2j2 |
 | `apl/`, a clause, the namespace, the policy, the dummy's policy | § w2e |
 | `creatures/dummy.py`, the target dummy | § w2d |

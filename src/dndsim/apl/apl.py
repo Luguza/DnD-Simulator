@@ -25,6 +25,7 @@ from dndsim.actions.dodge import Dodge
 from dndsim.actions.move import Move, Retreat, Walk
 from dndsim.actions.opportunity_attack import OpportunityAttack
 from dndsim.actions.pick_up import PickUpWeapon
+from dndsim.actions.routine import Routine
 from dndsim.actions.stabilize import Stabilize
 from dndsim.actions.stand_up import StandUp
 from dndsim.actions.unarmed import (
@@ -87,6 +88,7 @@ COMMAND_IDS: Final = frozenset(
         EscapeGrapple,
         ReleaseGrapple,
         StandUp,
+        Routine,
     )
 )
 """The ids of the Commands in `actions/`, which no feature has to provide."""

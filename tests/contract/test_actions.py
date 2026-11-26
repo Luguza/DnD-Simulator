@@ -30,6 +30,7 @@ from dndsim.actions.dodge import Dodge, Dodging
 from dndsim.actions.move import Move, Retreat, Walk
 from dndsim.actions.opportunity_attack import OpportunityAttack
 from dndsim.actions.pick_up import PickUpWeapon
+from dndsim.actions.routine import Routine
 from dndsim.actions.stabilize import Stabilize
 from dndsim.actions.stand_up import StandUp
 from dndsim.actions.unarmed import (
@@ -54,6 +55,7 @@ from dndsim.core.geometry import Cell
 from dndsim.core.rng import ScriptedRng
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import Creature
+from dndsim.creatures.dummy import DummyAttack, DummySpec, TargetDummy
 from dndsim.creatures.economy import ActionEconomy
 from dndsim.creatures.effects import Effect, EffectStore
 from dndsim.creatures.resources import Recovery, Resources, ResourceSpec
@@ -755,6 +757,26 @@ def _incapacitated(subject: Creature) -> Creature:
     return subject
 
 
+_SWING: Final = DummyAttack(5, Dice(1, 6), SLASHING)
+_BREATH: Final = DummyAttack(None, Dice(1, 6), SLASHING, save=Ability.DEXTERITY)
+
+
+def _routine(
+    *entries: DummyAttack, enemy: Creature | None = None, turn: bool = True
+) -> Routine:
+    """A dummy at `ORIGIN` with `entries` as its routine, and `enemy` on the
+    other side."""
+    spec = DummySpec(
+        damage_per_round=entries,
+        save_dc=13 if any(entry.is_save for entry in entries) else None,
+    )
+    dummy = TargetDummy(spec, name="dummy", position=ORIGIN)
+    if turn:
+        ready(dummy)
+    world = _in_world(dummy) if enemy is None else _in_world(dummy, enemy)
+    return Routine(dummy, world=world)
+
+
 def _in_world(*creatures: Creature) -> World:
     """The first creature on one side, every other on the other."""
     seated = World()
@@ -1201,6 +1223,25 @@ SCENARIOS: Final[dict[type[Action[Any]], tuple[tuple[str, Build, bool], ...]]] =
             lambda: (
                 lambda target: ReleaseGrapple(_holding(_dead_actor(), target), target)
             )(goblin()),
+            False,
+        ),
+    ),
+    Routine: (
+        ("legal", lambda: _routine(_SWING, enemy=goblin()), True),
+        ("out-of-reach", lambda: _routine(_SWING, enemy=goblin(TWO_EAST)), False),
+        (
+            "a-save-reaches-anywhere",
+            lambda: _routine(_SWING, _BREATH, enemy=goblin(Cell(9, 0))),
+            True,
+        ),
+        ("no-enemy", lambda: _routine(_SWING, _BREATH), False),
+        ("dead-enemy", lambda: _routine(_BREATH, enemy=_dead(goblin())), False),
+        ("no-action", lambda: _routine(_SWING, enemy=goblin(), turn=False), False),
+        (
+            "incapacitated",
+            lambda: (lambda routine: (_incapacitated(routine.actor), routine)[1])(
+                _routine(_SWING, enemy=goblin())
+            ),
             False,
         ),
     ),

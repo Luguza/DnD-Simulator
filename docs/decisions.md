@@ -7155,3 +7155,63 @@ that read neither the test nor this section, and matched in every number.
 
 Sources: `ROADMAP.md` `w2g`, debts #65, #66; DESIGN.md § Performance, § What
 is a file, and what is not, § APL derivation; § w2c, § w2e, § w0i.
+
+## w2g2 — the dummy's turn routine and Regeneration
+
+Debt #59's last half: `damage_per_round`, `save_dc` and `regeneration` act.
+The shape of each entry, its reach and the load-time refusals are the spec
+correction's (§ The `w2g` spec correction; `docs/questions.md` #34, #35);
+what follows is why the code is shaped as it is.
+
+### An attack entry's numbers without editing `engine/attack.py`
+
+`resolve_attack()` totals d20 + the ability modifier + the proficiency bonus
++ `on_declare_attack`'s bonus, and puts the modifier in the damage's `flat`.
+A dummy's ability scores encode its save bonuses (§ w2d), so those terms are
+whatever the `saves` knob made them. Each attack entry is therefore swung as a
+5-foot melee `Weapon` of its own, named `routine <n>`, with Strength named
+explicitly, and `RoutineTerms`, attached by `TargetDummy` when any entry is
+an attack, adds `to_hit` minus those terms on `on_declare_attack` and `flat`
+minus the modifier on `on_hit`. Both are flat parts, so a Critical Hit still
+doubles only the entry's dice, and the defender's hooks and the damage order
+see an ordinary attack. A `Weapon` with a modifier-free mode, or an attack
+bonus `resolve_attack()` takes as a number, were the alternatives; both edit
+a hot-path file for a creature no build is. The handlers key on the weapon's
+name, which no imported weapon shares.
+
+### One Command, with an id of its own
+
+The routine is `actions/routine.py`'s `Routine`, id `routine`, costing the
+Action, so it is in `COMMAND_IDS` and an override list can name it. It picks
+its own targets per entry — `targets` distinct enemies in `threat_profile`
+order, ties in seating order as the APL's `nearest` and `lowest_hp` break
+them — because one `target:` clause cannot pick a different set per entry.
+It is legal while any entry has someone to be taken against, and an entry
+with nobody in reach is skipped rather than refusing the rest. An enemy at 0
+hit points who is not dead is still an enemy (`engine/query.py`'s
+`enemies_of()`), so a routine finishes a dying character as a monster would.
+
+`dummy_apl()` appends `Entry("routine", move=<the profile's move>)` after the
+`attack` entry rather than replacing it: a dummy holds no weapon, so the
+`attack` entry only ever walks, and a test that arms a dummy with a weapon
+still reads it. The `move:` is repeated so a dummy given no weapon still
+closes or kites before its routine.
+
+### A save entry rolls its damage per target
+
+One roll per target, as the row says: each target saves, then the entry's
+dice are rolled and `save_for_half()` deals them. A fireball rolls once for
+every creature it catches; the dummy stands in for an area it has no
+template for, and per-target rolls keep each target's damage independent of
+how many others the entry caught, which is the cheaper thing to reverse.
+
+### Regeneration needs the generator, so `arm_dummy()` attaches it
+
+`heal()` takes a generator and `TurnContext` carries none (§ w2d), so
+`Regeneration` lives in `apl/dummy.py` and is attached by `arm_dummy()`,
+which already holds the encounter's generator for the opportunity attack.
+It heals on `on_turn_start` through `heal()`, so `on_heal`'s veto applies,
+with the dummy as its own healer.
+
+Sources: `ROADMAP.md` `w2g2`, debt #59; § The `w2g` spec correction, § w1f,
+§ w1g, § w2d, § w2e; DESIGN.md § The target dummy.

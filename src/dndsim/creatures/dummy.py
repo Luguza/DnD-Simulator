@@ -18,8 +18,13 @@ from dndsim.core.dice import Dice
 from dndsim.core.geometry import Cell
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.resources import Recovery, ResourceSpec
-from dndsim.creatures.stats import Armour, StatBlock
-from dndsim.hooks.contexts import IncomingDamageContext, SaveResolvedContext
+from dndsim.creatures.stats import Armour, StatBlock, Weapon
+from dndsim.hooks.contexts import (
+    AttackDeclaredContext,
+    HitContext,
+    IncomingDamageContext,
+    SaveResolvedContext,
+)
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.source import HookSource
 from dndsim.rules.constants import SIZE_WIDTH_CELLS
@@ -27,20 +32,28 @@ from dndsim.rules.enums import Ability, DamageType, RecoveryTrigger, Size
 
 __all__ = [
     "LEGENDARY_RESISTANCE",
+    "ROUTINE_ABILITY",
+    "ROUTINE_REACH_FT",
     "DamageDefences",
     "DummyAttack",
     "DummySpec",
     "LegendaryResistance",
     "Movement",
     "MovementProfile",
+    "RoutineTerms",
     "TargetDummy",
     "ThreatProfile",
     "build_dummies",
+    "routine_weapon",
 ]
 
 _E = TypeVar("_E", bound=Enum)
 
 LEGENDARY_RESISTANCE: Final = "legendary_resistance"
+
+ROUTINE_REACH_FT: Final = 5
+"""The reach of a routine's attack entry (`docs/decisions.md` § The `w2g`
+spec correction)."""
 
 
 class Movement(Enum):
@@ -112,17 +125,34 @@ class ThreatProfile(Enum):
 
 @dataclass(frozen=True, slots=True)
 class DummyAttack:
-    """One attack in a dummy's scripted `damage_per_round` routine."""
+    """One entry in a dummy's scripted `damage_per_round` routine: an attack
+    rolled at `to_hit`, or, with `save` in its place, a saving throw forced
+    at the spec's `save_dc` (`docs/decisions.md` § The `w2g` spec correction).
 
-    to_hit: int
+    Raises `ValueError` unless exactly one of `to_hit` and `save` is given, or
+    for fewer than one target.
+    """
+
+    to_hit: int | None
     dice: Dice
     damage_type: DamageType
     flat: int = 0
     targets: int = 1
+    save: Ability | None = None
 
     def __post_init__(self) -> None:
         if self.targets < 1:
             raise ValueError(f"an attack has at least one target, got {self}")
+        if (self.to_hit is None) == (self.save is None):
+            raise ValueError(
+                f"a damage_per_round entry has a to_hit or a save, not both or "
+                f"neither; got {self}"
+            )
+
+    @property
+    def is_save(self) -> bool:
+        """Whether this entry forces a saving throw rather than an attack."""
+        return self.save is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,7 +197,33 @@ class DummySpec:
                 raise ValueError(f"dummy {knob} is at least {least}, got {value}")
         if self.save_dc is not None and self.save_dc < 1:
             raise ValueError(f"dummy save_dc is at least 1, got {self.save_dc}")
+        self._refuse_what_nothing_acts_on()
         object.__setattr__(self, "saves", MappingProxyType(dict(self.saves)))
+
+    def _refuse_what_nothing_acts_on(self) -> None:
+        """`docs/questions.md` #34, #35."""
+        forces_a_save = any(entry.is_save for entry in self.damage_per_round)
+        if forces_a_save and self.save_dc is None:
+            raise ValueError(
+                "damage_per_round has a save entry and the dummy has no save_dc "
+                "to force it at"
+            )
+        if self.save_dc is not None and not forces_a_save:
+            raise ValueError(
+                "save_dc is set and no damage_per_round entry is a save, so "
+                "nothing would read it"
+            )
+        profile = self.movement_profile
+        if (
+            profile.range_ft is not None
+            and profile.range_ft > ROUTINE_REACH_FT
+            and any(not entry.is_save for entry in self.damage_per_round)
+        ):
+            raise ValueError(
+                f"damage_per_round has an attack entry, which reaches "
+                f"{ROUTINE_REACH_FT} ft, and movement_profile {profile} keeps "
+                "the dummy out of that reach"
+            )
 
     @classmethod
     def from_mapping(cls, document: Mapping[str, object]) -> "DummySpec":
@@ -175,7 +231,8 @@ class DummySpec:
 
         Enum knobs are their values (`slashing`, `large`, `dex`); `position` is
         `[x, y]`; `saves` maps an ability to its bonus; each `damage_per_round`
-        entry has `to_hit`, `dice`, `type` and optionally `flat` and `targets`.
+        entry has `to_hit` or `save`, `dice`, `type` and optionally `flat` and
+        `targets`.
         Raises `ValueError` naming the knob, with a suggestion for a misspelt
         one.
         """
@@ -261,10 +318,72 @@ class LegendaryResistance(HookSource):
         return R.APPLIED
 
 
-class TargetDummy(Creature):
-    """A `Creature` built from a `DummySpec`, which it keeps as `spec`."""
+ROUTINE_ABILITY: Final = Ability.STRENGTH
+"""The ability a routine's attack entry is resolved with; `RoutineTerms`
+cancels its modifier."""
 
-    __slots__ = ("spec",)
+
+def routine_weapon(index: int, entry: DummyAttack) -> Weapon:
+    """The melee weapon `resolve_attack()` swings for attack entry `index`."""
+    return Weapon(
+        name=f"routine {index + 1}",
+        damage=entry.dice,
+        damage_type=entry.damage_type,
+        reach_ft=ROUTINE_REACH_FT,
+    )
+
+
+class RoutineTerms(HookSource):
+    """Makes a routine attack's total d20 + `to_hit` and its damage `dice` +
+    `flat`, in place of the ability modifier and proficiency bonus the attack
+    sequence adds (`docs/decisions.md` § w2g2)."""
+
+    __slots__ = ("_creature", "_entries")
+
+    def __init__(self, owner: Creature, entries: Mapping[str, DummyAttack]) -> None:
+        super().__init__(owner)
+        self._creature = owner
+        self._entries = entries
+
+    @hook("on_declare_attack")
+    def to_hit(self, ctx: AttackDeclaredContext) -> R:
+        """Adds what takes the attack sequence's own terms to `to_hit`."""
+        weapon = ctx.weapon
+        entry = None if weapon is None else self._entries.get(weapon.name)
+        if entry is None or entry.to_hit is None or weapon is None:
+            return R.SKIPPED
+        creature = self._creature
+        added = creature.modifier(ctx.ability)
+        trained = creature.stats.trained_weapons
+        if trained is None or weapon.name in trained:
+            added += creature.proficiency_bonus
+        if entry.to_hit == added:
+            return R.SKIPPED
+        ctx.bonus.add(flat=entry.to_hit - added)
+        return R.APPLIED
+
+    @hook("on_hit")
+    def flat(self, ctx: HitContext) -> R:
+        """Adds what takes the ability modifier already in the bag to `flat`."""
+        weapon = ctx.weapon
+        entry = None if weapon is None else self._entries.get(weapon.name)
+        if entry is None:
+            return R.SKIPPED
+        difference = entry.flat - self._creature.modifier(ROUTINE_ABILITY)
+        if difference == 0:
+            return R.SKIPPED
+        ctx.damage.add(flat=difference)
+        return R.APPLIED
+
+
+class TargetDummy(Creature):
+    """A `Creature` built from a `DummySpec`, which it keeps as `spec`.
+
+    `routine_weapons` holds, per `damage_per_round` entry, the weapon an
+    attack entry is resolved with, `None` for a save entry.
+    """
+
+    __slots__ = ("routine_weapons", "spec")
 
     def __init__(self, spec: DummySpec, *, name: str, position: Cell) -> None:
         stats = StatBlock(
@@ -289,6 +408,19 @@ class TargetDummy(Creature):
                 )
             )
             self.attach(LegendaryResistance(self))
+        self.routine_weapons = tuple(
+            None if entry.is_save else routine_weapon(index, entry)
+            for index, entry in enumerate(spec.damage_per_round)
+        )
+        swung = {
+            weapon.name: entry
+            for weapon, entry in zip(
+                self.routine_weapons, spec.damage_per_round, strict=True
+            )
+            if weapon is not None
+        }
+        if swung:
+            self.attach(RoutineTerms(self, MappingProxyType(swung)))
 
 
 def build_dummies(spec: DummySpec) -> tuple[TargetDummy, ...]:
@@ -369,7 +501,7 @@ def _saves(knob: str, raw: object) -> dict[Ability, int]:
     }
 
 
-_ATTACK_KEYS: Final = frozenset({"to_hit", "dice", "type", "flat", "targets"})
+_ATTACK_KEYS: Final = frozenset({"to_hit", "save", "dice", "type", "flat", "targets"})
 
 
 def _attack(knob: str, raw: object) -> DummyAttack:
@@ -381,14 +513,17 @@ def _attack(knob: str, raw: object) -> DummyAttack:
         raise ValueError(
             f"unknown {knob} key {key!r}{_suggest(key, sorted(_ATTACK_KEYS))}"
         )
-    missing = sorted(key for key in ("to_hit", "dice", "type") if key not in raw)
+    missing = sorted(key for key in ("dice", "type") if key not in raw)
     if missing:
         raise ValueError(f"a {knob} entry needs {missing}, got {raw!r}")
+    if ("to_hit" in raw) == ("save" in raw):
+        raise ValueError(f"a {knob} entry has a to_hit or a save, got {raw!r}")
     dice = raw["dice"]
     if not isinstance(dice, str):
         raise ValueError(f"{knob}.dice is notation like '2d6', got {dice!r}")
     return DummyAttack(
-        to_hit=_int(f"{knob}.to_hit", raw["to_hit"]),
+        to_hit=_int(f"{knob}.to_hit", raw["to_hit"]) if "to_hit" in raw else None,
+        save=_member(Ability, raw["save"], f"{knob}.save") if "save" in raw else None,
         dice=Dice.parse(dice),
         damage_type=_member(DamageType, raw["type"], f"{knob}.type"),
         flat=_int(f"{knob}.flat", raw.get("flat", 0)),

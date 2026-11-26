@@ -57,8 +57,8 @@ Statuses: `done` · `next` · `queued` · `held` (blocked, see the PR).
 | 25 | w2j2 — passing through, Difficult Terrain, the drag 🔒 | done | #88 |
 | 26 | w2k — what a build carries 🔒 | done | #90 |
 | 27 | w2g — runner, `SimResult`, the API, the M1 golden | done | #92 |
-| 28 | w2g2 — the dummy's turn routine | next | |
-| 29 | w2h — the CLI | queued | |
+| 28 | w2g2 — the dummy's turn routine | done | |
+| 29 | w2h — the CLI | next | |
 | — | ⏸ **M1 / W2 milestone review** | queued | |
 
 Order within W1 is the critical path first (`w1e → w1f`, the two 🔒 tasks
