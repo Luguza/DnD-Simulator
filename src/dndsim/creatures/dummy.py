@@ -3,8 +3,9 @@
 `DummySpec.from_mapping()` reads the knobs from a parsed YAML document and
 `build_dummies()` turns a spec into `count` creatures. Damage defences,
 Legendary Resistance and the scripted attacks' numbers are attached as hook
-sources, and `Regeneration` is attached by `apl/dummy.py`'s `arm_dummy()`; every
-other knob is data on `TargetDummy.spec` (`docs/decisions.md` § w2d, § w2g2).
+sources; `Regeneration` is a hook source that takes a generator, so a dummy is
+not built with it; every other knob is data on `TargetDummy.spec`
+(`docs/decisions.md` § w2d, § w2g2).
 """
 
 import difflib
