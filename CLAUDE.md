@@ -22,7 +22,8 @@ import (`content/`) and `w2e` the APL and its compiler (`apl/`, and
 `actions/move.py`, where the walk now lives), and `w2f` the build schema and
 loader (`builds/`) and the `Character` Builder (`creatures/character.py`),
 and `w2g` the Monte Carlo runner (`sim/`), `SimResult` and its renderers
-(`reporting/`) and the public API (`api.py`). There is no CLI yet — that is
+(`reporting/`) and the public API (`api.py`), and `w2g2` the dummy's turn
+routine (`actions/routine.py`) and Regeneration. There is no CLI yet — that is
 `w2h`.
 
 **W0 and W1 are complete; work is at W2.** The M0 performance budget is **≥22k
@@ -275,7 +276,7 @@ there is local to a module.
 | `sim/`, `reporting/`, `api.py`, a policy per creature, surprise | § w2g |
 | `actions/move.py`, the walk, the retreat, a `move:` destination, passing creatures, the drag | § w2c2, § w2e, § w2j2 |
 | `apl/`, a clause, the namespace, the policy, the dummy's policy | § w2e |
-| `creatures/dummy.py`, the target dummy | § w2d |
+| `creatures/dummy.py`, the target dummy, its routine, `actions/routine.py` | § w2d, § w2g2 |
 | `engine/turn.py`, `encounter.py`, `world.py`, `query.py`, the shared `Clock`, Speed, incapacitation | § w2c, § w2c2 (the walk), § w2e (the policy) |
 | `content/`, the 5etools import, `table_value()` | § w2a, § w2a2 |
 | `creatures/resources.py`, pools, slots, `transaction()` | § w1b, § w2i |

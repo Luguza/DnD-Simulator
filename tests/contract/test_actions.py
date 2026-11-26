@@ -30,6 +30,7 @@ from dndsim.actions.dodge import Dodge, Dodging
 from dndsim.actions.move import Move, Retreat, Walk
 from dndsim.actions.opportunity_attack import OpportunityAttack
 from dndsim.actions.pick_up import PickUpWeapon
+from dndsim.actions.routine import Routine
 from dndsim.actions.stabilize import Stabilize
 from dndsim.actions.stand_up import StandUp
 from dndsim.actions.unarmed import (
@@ -54,6 +55,7 @@ from dndsim.core.geometry import Cell
 from dndsim.core.rng import ScriptedRng
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import Creature
+from dndsim.creatures.dummy import DummyAttack, DummySpec, TargetDummy
 from dndsim.creatures.economy import ActionEconomy
 from dndsim.creatures.effects import Effect, EffectStore
 from dndsim.creatures.resources import Recovery, Resources, ResourceSpec
@@ -808,6 +810,31 @@ def _unconscious(subject: Creature) -> Creature:
     return subject
 
 
+CLAW: Final = DummyAttack(5, Dice(1, 6), SLASHING)
+BREATH: Final = DummyAttack(None, Dice(2, 6), SLASHING, save=Ability.DEXTERITY)
+
+
+def _routine(*entries: DummyAttack, enemy: Cell | None = EAST) -> Routine:
+    """A ready dummy at `ORIGIN` with `entries` as its routine, and a goblin
+    on the other side at `enemy`, or no enemy at all."""
+    saves = any(entry.save is not None for entry in entries)
+    dummy = TargetDummy(
+        DummySpec(damage_per_round=entries, save_dc=13 if saves else None),
+        name="dummy",
+        position=ORIGIN,
+    )
+    world = World()
+    world.seat(ready(dummy), "monsters")
+    if enemy is not None:
+        world.seat(goblin(enemy), "heroes")
+    return Routine(dummy, world=world)
+
+
+def _spent(routine: Routine) -> Routine:
+    routine.actor.economy.spend(ActionCost.ACTION)
+    return routine
+
+
 def _walked(subject: Creature, feet: int) -> Creature:
     subject.economy.move(feet)
     return subject
@@ -1204,6 +1231,14 @@ SCENARIOS: Final[dict[type[Action[Any]], tuple[tuple[str, Build, bool], ...]]] =
             False,
         ),
     ),
+    Routine: (
+        ("attack-in-reach", lambda: _routine(CLAW), True),
+        ("attack-out-of-reach", lambda: _routine(CLAW, enemy=TWO_EAST), False),
+        ("save-at-any-distance", lambda: _routine(BREATH, enemy=Cell(9, 0)), True),
+        ("one-entry-reaches", lambda: _routine(CLAW, BREATH, enemy=TWO_EAST), True),
+        ("no-enemy", lambda: _routine(CLAW, BREATH, enemy=None), False),
+        ("action-spent", lambda: _spent(_routine(CLAW)), False),
+    ),
     StandUp: (
         ("legal", lambda: StandUp(_prone(ready(fighter()))), True),
         (
@@ -1307,6 +1342,8 @@ ENGINE_CALLS: Final = (
     healing.heal,
     healing.grant_temp_hp,
     saves.saving_throw,
+    saves.force_save,
+    saves.save_for_half,
 )
 """The engine entry points an action module may hold a name for."""
 

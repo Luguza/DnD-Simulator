@@ -1,9 +1,10 @@
 """`TargetDummy` — a creature built from a `DummySpec` of configurable knobs.
 
 `DummySpec.from_mapping()` reads the knobs from a parsed YAML document and
-`build_dummies()` turns a spec into `count` creatures. Damage defences and
-Legendary Resistance are attached as hook sources; every other knob is data on
-`TargetDummy.spec` (`docs/decisions.md` § w2d).
+`build_dummies()` turns a spec into `count` creatures. Damage defences,
+Legendary Resistance and the scripted attacks' numbers are attached as hook
+sources, and `Regeneration` is attached by `apl/dummy.py`'s `arm_dummy()`; every
+other knob is data on `TargetDummy.spec` (`docs/decisions.md` § w2d, § w2g2).
 """
 
 import difflib
@@ -16,10 +17,18 @@ from typing import Final, TypeVar
 
 from dndsim.core.dice import Dice
 from dndsim.core.geometry import Cell
+from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
 from dndsim.creatures.resources import Recovery, ResourceSpec
-from dndsim.creatures.stats import Armour, StatBlock
-from dndsim.hooks.contexts import IncomingDamageContext, SaveResolvedContext
+from dndsim.creatures.stats import Armour, StatBlock, Weapon
+from dndsim.engine.healing import heal
+from dndsim.hooks.contexts import (
+    AttackDeclaredContext,
+    HitContext,
+    IncomingDamageContext,
+    SaveResolvedContext,
+    TurnContext,
+)
 from dndsim.hooks.decorator import R, hook
 from dndsim.hooks.source import HookSource
 from dndsim.rules.constants import SIZE_WIDTH_CELLS
@@ -27,12 +36,16 @@ from dndsim.rules.enums import Ability, DamageType, RecoveryTrigger, Size
 
 __all__ = [
     "LEGENDARY_RESISTANCE",
+    "ROUTINE_ABILITY",
+    "ROUTINE_REACH_FT",
     "DamageDefences",
     "DummyAttack",
     "DummySpec",
     "LegendaryResistance",
     "Movement",
     "MovementProfile",
+    "Regeneration",
+    "ScriptedAttacks",
     "TargetDummy",
     "ThreatProfile",
     "build_dummies",
@@ -41,6 +54,13 @@ __all__ = [
 _E = TypeVar("_E", bound=Enum)
 
 LEGENDARY_RESISTANCE: Final = "legendary_resistance"
+
+ROUTINE_ABILITY: Final = Ability.STRENGTH
+"""The ability a scripted attack is resolved with; `ScriptedAttacks` takes its
+modifier back out."""
+
+ROUTINE_REACH_FT: Final = 5
+"""The reach of a scripted attack, in feet."""
 
 
 class Movement(Enum):
@@ -112,17 +132,29 @@ class ThreatProfile(Enum):
 
 @dataclass(frozen=True, slots=True)
 class DummyAttack:
-    """One attack in a dummy's scripted `damage_per_round` routine."""
+    """One entry in a dummy's scripted `damage_per_round` routine: a melee
+    attack at `to_hit`, or a saving throw against `save` at the dummy's
+    `save_dc` (`docs/decisions.md` § The `w2g` spec correction).
 
-    to_hit: int
+    Raises `ValueError` unless exactly one of `to_hit` and `save` is given, or
+    for fewer than one target.
+    """
+
+    to_hit: int | None
     dice: Dice
     damage_type: DamageType
     flat: int = 0
     targets: int = 1
+    save: Ability | None = None
 
     def __post_init__(self) -> None:
         if self.targets < 1:
             raise ValueError(f"an attack has at least one target, got {self}")
+        if (self.to_hit is None) == (self.save is None):
+            raise ValueError(
+                f"a damage_per_round entry has a to_hit or a save, not both or "
+                f"neither; got {self}"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,7 +199,34 @@ class DummySpec:
                 raise ValueError(f"dummy {knob} is at least {least}, got {value}")
         if self.save_dc is not None and self.save_dc < 1:
             raise ValueError(f"dummy save_dc is at least 1, got {self.save_dc}")
+        self._refuse_what_cannot_act()
         object.__setattr__(self, "saves", MappingProxyType(dict(self.saves)))
+
+    def _refuse_what_cannot_act(self) -> None:
+        """Refuse a knob nothing would read and an attack that could never
+        land (`docs/questions.md` #34, #35)."""
+        saves = any(entry.save is not None for entry in self.damage_per_round)
+        if saves and self.save_dc is None:
+            raise ValueError(
+                "damage_per_round has a save entry and the dummy has no save_dc "
+                "for it to be made against"
+            )
+        if not saves and self.save_dc is not None:
+            raise ValueError(
+                f"save_dc {self.save_dc} is read only by a save entry in "
+                "damage_per_round, and there is none"
+            )
+        profile = self.movement_profile
+        reach = profile.range_ft
+        if (
+            reach is not None
+            and reach > ROUTINE_REACH_FT
+            and any(entry.to_hit is not None for entry in self.damage_per_round)
+        ):
+            raise ValueError(
+                f"movement_profile {profile} keeps out of the {ROUTINE_REACH_FT}-ft "
+                "reach of damage_per_round's attack entries, which could never land"
+            )
 
     @classmethod
     def from_mapping(cls, document: Mapping[str, object]) -> "DummySpec":
@@ -175,7 +234,8 @@ class DummySpec:
 
         Enum knobs are their values (`slashing`, `large`, `dex`); `position` is
         `[x, y]`; `saves` maps an ability to its bonus; each `damage_per_round`
-        entry has `to_hit`, `dice`, `type` and optionally `flat` and `targets`.
+        entry has `to_hit` or `save` (an ability), `dice`, `type`, and
+        optionally `flat` and `targets`.
         Raises `ValueError` naming the knob, with a suggestion for a misspelt
         one.
         """
@@ -261,10 +321,86 @@ class LegendaryResistance(HookSource):
         return R.APPLIED
 
 
-class TargetDummy(Creature):
-    """A `Creature` built from a `DummySpec`, which it keeps as `spec`."""
+class ScriptedAttacks(HookSource):
+    """Makes a scripted attack's total exactly d20 + `to_hit` and its damage
+    exactly `dice` + `flat`, by taking back the ability modifier and the
+    proficiency `resolve_attack()` adds (`docs/decisions.md` § w2g2)."""
 
-    __slots__ = ("spec",)
+    __slots__ = ("_creature", "_entries")
+
+    def __init__(self, owner: Creature, entries: Mapping[Weapon, DummyAttack]) -> None:
+        super().__init__(owner)
+        self._creature = owner
+        self._entries = entries
+
+    @hook("on_declare_attack")
+    def to_hit(self, ctx: AttackDeclaredContext) -> R:
+        """Adds `to_hit` less what the engine adds for the attack's ability and
+        proficiency."""
+        weapon = ctx.weapon
+        if not isinstance(weapon, Weapon):
+            return R.SKIPPED
+        entry = self._entries.get(weapon)
+        if entry is None or entry.to_hit is None:
+            return R.SKIPPED
+        creature = self._creature
+        added = creature.modifier(ctx.ability)
+        # The engine's own test for adding proficiency (`engine/attack.py`).
+        trained = creature.stats.trained_weapons
+        if trained is None or weapon.name in trained:
+            added += creature.proficiency_bonus
+        adjustment = entry.to_hit - added
+        if not adjustment:
+            return R.SKIPPED
+        ctx.bonus.add(flat=adjustment)
+        return R.APPLIED
+
+    @hook("on_hit")
+    def flat(self, ctx: HitContext) -> R:
+        """Adds `flat` less the ability modifier the engine put in the damage's
+        flat part; neither doubles on a Critical Hit."""
+        weapon = ctx.weapon
+        entry = self._entries.get(weapon) if isinstance(weapon, Weapon) else None
+        if entry is None:
+            return R.SKIPPED
+        adjustment = entry.flat - self._creature.modifier(ROUTINE_ABILITY)
+        if not adjustment:
+            return R.SKIPPED
+        ctx.damage.add(flat=adjustment, damage_type=entry.damage_type)
+        return R.APPLIED
+
+
+class Regeneration(HookSource):
+    """Regains `amount` hit points through `heal()` at the start of its owner's
+    turn while it has at least 1."""
+
+    __slots__ = ("_creature", "amount", "rng")
+
+    def __init__(self, owner: Creature, *, amount: int, rng: Rng) -> None:
+        super().__init__(owner)
+        self._creature = owner
+        self.amount = amount
+        self.rng = rng
+
+    @hook("on_turn_start")
+    def regain(self, ctx: TurnContext) -> R:
+        """Heals the owner, unless it is at 0 hit points."""
+        creature = self._creature
+        if creature.hp < 1:
+            return R.SKIPPED
+        heal(creature, rng=self.rng, flat=self.amount)
+        return R.APPLIED
+
+
+class TargetDummy(Creature):
+    """A `Creature` built from a `DummySpec`, which it keeps as `spec`.
+
+    `routine_weapons` holds, for each `damage_per_round` entry in order, the
+    5-foot melee weapon an attack entry is made with, or `None` for a save
+    entry.
+    """
+
+    __slots__ = ("routine_weapons", "spec")
 
     def __init__(self, spec: DummySpec, *, name: str, position: Cell) -> None:
         stats = StatBlock(
@@ -289,6 +425,26 @@ class TargetDummy(Creature):
                 )
             )
             self.attach(LegendaryResistance(self))
+        self.routine_weapons = tuple(
+            None
+            if entry.to_hit is None
+            else Weapon(
+                name=f"{name} attack {index + 1}",
+                damage=entry.dice,
+                damage_type=entry.damage_type,
+                reach_ft=ROUTINE_REACH_FT,
+            )
+            for index, entry in enumerate(spec.damage_per_round)
+        )
+        scripted = {
+            weapon: entry
+            for weapon, entry in zip(
+                self.routine_weapons, spec.damage_per_round, strict=True
+            )
+            if weapon is not None
+        }
+        if scripted:
+            self.attach(ScriptedAttacks(self, MappingProxyType(scripted)))
 
 
 def build_dummies(spec: DummySpec) -> tuple[TargetDummy, ...]:
@@ -369,7 +525,7 @@ def _saves(knob: str, raw: object) -> dict[Ability, int]:
     }
 
 
-_ATTACK_KEYS: Final = frozenset({"to_hit", "dice", "type", "flat", "targets"})
+_ATTACK_KEYS: Final = frozenset({"to_hit", "save", "dice", "type", "flat", "targets"})
 
 
 def _attack(knob: str, raw: object) -> DummyAttack:
@@ -381,14 +537,17 @@ def _attack(knob: str, raw: object) -> DummyAttack:
         raise ValueError(
             f"unknown {knob} key {key!r}{_suggest(key, sorted(_ATTACK_KEYS))}"
         )
-    missing = sorted(key for key in ("to_hit", "dice", "type") if key not in raw)
+    missing = sorted(key for key in ("dice", "type") if key not in raw)
     if missing:
         raise ValueError(f"a {knob} entry needs {missing}, got {raw!r}")
+    if ("to_hit" in raw) == ("save" in raw):
+        raise ValueError(f"a {knob} entry has a to_hit or a save, got {raw!r}")
     dice = raw["dice"]
     if not isinstance(dice, str):
         raise ValueError(f"{knob}.dice is notation like '2d6', got {dice!r}")
     return DummyAttack(
-        to_hit=_int(f"{knob}.to_hit", raw["to_hit"]),
+        to_hit=_int(f"{knob}.to_hit", raw["to_hit"]) if "to_hit" in raw else None,
+        save=_member(Ability, raw["save"], f"{knob}.save") if "save" in raw else None,
         dice=Dice.parse(dice),
         damage_type=_member(DamageType, raw["type"], f"{knob}.type"),
         flat=_int(f"{knob}.flat", raw.get("flat", 0)),

@@ -79,7 +79,7 @@ def test_every_knob_reads_from_a_mapping() -> None:
             "save_dc": 13,
             "damage_per_round": [
                 {"to_hit": 6, "dice": "2d8", "flat": 4, "type": "bludgeoning"},
-                {"to_hit": 6, "dice": "1d6", "type": "fire", "targets": 2},
+                {"save": "dex", "dice": "1d6", "type": "fire", "targets": 2},
             ],
             "resistances": ["cold"],
             "immunities": ["poison"],
@@ -87,7 +87,7 @@ def test_every_knob_reads_from_a_mapping() -> None:
             "legendary_resistances": 3,
             "regeneration": 10,
             "threat_profile": "lowest_hp",
-            "movement_profile": "kites_at(30)",
+            "movement_profile": "kites_at(5)",
         }
     )
     assert spec == DummySpec(
@@ -102,7 +102,9 @@ def test_every_knob_reads_from_a_mapping() -> None:
         save_dc=13,
         damage_per_round=(
             DummyAttack(6, Dice(2, 8), DamageType.BLUDGEONING, flat=4),
-            DummyAttack(6, Dice(1, 6), DamageType.FIRE, targets=2),
+            DummyAttack(
+                None, Dice(1, 6), DamageType.FIRE, targets=2, save=Ability.DEXTERITY
+            ),
         ),
         resistances=frozenset({DamageType.COLD}),
         immunities=frozenset({DamageType.POISON}),
@@ -110,7 +112,7 @@ def test_every_knob_reads_from_a_mapping() -> None:
         legendary_resistances=3,
         regeneration=10,
         threat_profile=ThreatProfile.LOWEST_HP,
-        movement_profile=MovementProfile.kites_at(30),
+        movement_profile=MovementProfile.kites_at(5),
     )
 
 
@@ -251,6 +253,14 @@ def test_a_misspelt_damage_type_is_refused_with_a_suggestion() -> None:
         {"damage_per_round": [{"to_hit": 5, "dice": "1d6"}]},
         {"damage_per_round": [{"to_hit": 5, "dice": "1d6", "type": "fire", "x": 1}]},
         {"damage_per_round": [{"to_hit": 5, "dice": "1d6+2", "type": "fire"}]},
+        {"damage_per_round": [{"dice": "1d6", "type": "fire"}]},
+        {
+            "damage_per_round": [
+                {"to_hit": 5, "save": "dex", "dice": "1d6", "type": "fire"}
+            ],
+            "save_dc": 13,
+        },
+        {"damage_per_round": [{"save": "dexterity", "dice": "1d6", "type": "fire"}]},
         {"movement_profile": "kites_at"},
     ],
 )
