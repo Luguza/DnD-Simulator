@@ -324,8 +324,8 @@ class LegendaryResistance(HookSource):
 
 class ScriptedAttacks(HookSource):
     """Makes a scripted attack's total exactly d20 + `to_hit` and its damage
-    exactly `dice` + `flat`, by taking back the ability modifier and the
-    proficiency `resolve_attack()` adds (`docs/decisions.md` § w2g2)."""
+    exactly `dice` + `flat`, by taking back the owner's ability modifier and
+    proficiency bonus (`docs/decisions.md` § w2g2)."""
 
     __slots__ = ("_creature", "_entries")
 
@@ -345,12 +345,11 @@ class ScriptedAttacks(HookSource):
         if entry is None or entry.to_hit is None:
             return R.SKIPPED
         creature = self._creature
-        added = creature.modifier(ctx.ability)
-        # The engine's own test for adding proficiency (`engine/attack.py`).
-        trained = creature.stats.trained_weapons
-        if trained is None or weapon.name in trained:
-            added += creature.proficiency_bonus
-        adjustment = entry.to_hit - added
+        # A dummy's stat block names no `trained_weapons`: it is proficient
+        # with every weapon, these included.
+        adjustment = (
+            entry.to_hit - creature.modifier(ctx.ability) - creature.proficiency_bonus
+        )
         if not adjustment:
             return R.SKIPPED
         ctx.bonus.add(flat=adjustment)

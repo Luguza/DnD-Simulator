@@ -7164,11 +7164,13 @@ each entry does is the `w2g` spec correction's, above; this section is how.
 ### The exact numbers, without editing `engine/attack.py`
 
 `resolve_attack()` totals d20 + the attack ability's modifier + proficiency
-(when trained) + `ctx.bonus`, and puts the modifier in the damage's `flat`.
+with a weapon the attacker is trained in + `ctx.bonus`, and puts the modifier in the damage's `flat`.
 A dummy's ability scores are an encoding of its save bonuses (§ w2d), so
 both additions are numbers nobody chose for its attack. `ScriptedAttacks`, a
 `HookSource` the dummy carries when it has an attack entry, takes them back
-out: at `on_declare_attack` it adds `to_hit` less what the engine adds, and at
+out: at `on_declare_attack` it adds `to_hit` less the modifier and the
+proficiency bonus — a dummy's stat block names no `trained_weapons`, so it is
+trained with every weapon and the engine always adds it — and at
 `on_hit` it adds `flat` less the modifier, as a `flat` of the entry's type, so
 `roll_damage()`'s per-type sum comes to exactly `dice` + `flat` and a Critical
 Hit doubles only the dice. It recognises its attacks by weapon: each attack
