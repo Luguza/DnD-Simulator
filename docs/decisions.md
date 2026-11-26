@@ -7214,5 +7214,12 @@ routine is its Action, and nothing in the row makes a scripted entry its
 reaction. A ranged entry and a placed area are knobs for whoever first needs
 them (the `w2g` spec correction).
 
+### Left at the round cap
+
+PR #93's fourth verdict found two docstring sentences that describe code
+outside their own (CODING_STANDARDS.md § Citations and comments): debt #81,
+owned by the M1 / W2 milestone review. Its one CONFIRMED finding, a routine
+that picked enemies at 0 hit points, was fixed before the cap.
+
 Sources: `ROADMAP.md` `w2g2`, debt #59; § The `w2g` spec correction, § w2d,
 § w1g, § w2e; `docs/questions.md` #34, #35.
