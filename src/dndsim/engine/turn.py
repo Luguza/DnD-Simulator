@@ -22,6 +22,7 @@ from dndsim.actions.disengage import Disengage
 from dndsim.actions.dodge import Dodge
 from dndsim.actions.move import Move, Walk
 from dndsim.actions.pick_up import PickUpWeapon
+from dndsim.actions.routine import Routine
 from dndsim.actions.stabilize import Stabilize
 from dndsim.actions.stand_up import StandUp
 from dndsim.actions.unarmed import endings, loosen_grapples, unarmed_options
@@ -29,6 +30,7 @@ from dndsim.core.errors import EngineAssemblyError
 from dndsim.core.rng import Rng
 from dndsim.core.timeline import InitiativeKey, TimeKey, TurnPhase
 from dndsim.creatures.creature import Creature
+from dndsim.creatures.dummy import TargetDummy
 from dndsim.creatures.stats import Weapon
 from dndsim.engine.d20 import modifier_total, roll_d20, settle
 from dndsim.engine.dying import death_save, dying
@@ -137,7 +139,8 @@ def offers(world: World, actor: Creature) -> list[Action[Any]]:
     and a Light attack against each enemy with each weapon held or carried,
     the Unarmed Strike's options against each enemy, an escape from each
     grapple `actor` is held in and a release of each it holds, a pick-up of
-    each weapon dropped — then filtered by `is_legal()`. Spends nothing.
+    each weapon dropped, and a target dummy's scripted `Routine` — then
+    filtered by `is_legal()`. Spends nothing.
     """
     log = world.log
     enemies = enemies_of(world, actor)
@@ -155,6 +158,8 @@ def offers(world: World, actor: Creature) -> list[Action[Any]]:
             if weapon.has(WeaponProperty.LIGHT)
         )
     attacks = len(candidates)
+    if isinstance(actor, TargetDummy) and actor.spec.damage_per_round:
+        candidates.append(Routine(actor, world=world, log=log))
     candidates.extend(Stabilize(actor, ally) for ally in allies_of(world, actor))
     candidates.extend((Dodge(actor), Disengage(actor), Dash(actor)))
     candidates.extend(

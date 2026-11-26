@@ -7155,3 +7155,71 @@ that read neither the test nor this section, and matched in every number.
 
 Sources: `ROADMAP.md` `w2g`, debts #65, #66; DESIGN.md § Performance, § What
 is a file, and what is not, § APL derivation; § w2c, § w2e, § w0i.
+
+## w2g2 — the dummy's turn routine, and Regeneration
+
+Debt #59 retired: `damage_per_round`, `save_dc` and `regeneration` act. What
+each entry does is the `w2g` spec correction's, above; this section is how.
+
+### The exact numbers, without editing `engine/attack.py`
+
+`resolve_attack()` totals d20 + the attack ability's modifier + proficiency
+with a weapon the attacker is trained in + `ctx.bonus`, and puts the modifier in the damage's `flat`.
+A dummy's ability scores are an encoding of its save bonuses (§ w2d), so
+both additions are numbers nobody chose for its attack. `ScriptedAttacks`, a
+`HookSource` the dummy carries when it has an attack entry, takes them back
+out: at `on_declare_attack` it adds `to_hit` less the modifier and the
+proficiency bonus — a dummy's stat block names no `trained_weapons`, so it is
+trained with every weapon and the engine always adds it — and at
+`on_hit` it adds `flat` less the modifier, as a `flat` of the entry's type, so
+`roll_damage()`'s per-type sum comes to exactly `dice` + `flat` and a Critical
+Hit doubles only the dice. It recognises its attacks by weapon: each attack
+entry is made with a 5-foot melee `Weapon` the dummy builds for it, named
+`<dummy> attack <n>`, which is also what the log shows. The attack is
+resolved with `ROUTINE_ABILITY` (Strength) passed explicitly, so the ability
+the hook subtracts at `on_hit`, where the context does not carry it, is the
+one the engine added. The alternatives were a new `to_hit` parameter on
+`resolve_attack()` — a hot-path file the row rules out — or a dummy whose
+attack modifier is zero, which its saves do not allow.
+
+### The Command, its offer and its id
+
+`Routine` (`actions/routine.py`, id `routine`) is the dummy's Action. It is
+legal while some entry has an enemy to act on: an attack entry an enemy within
+its reach, a save entry any enemy at all; an entry with nobody this turn is
+skipped. Targets are the standing enemies, ranked afresh for each entry —
+`nearest` by distance, `lowest_hp` by hit points, ties in seating order, the
+same picks the APL's `enemies` groups make, which leave out a creature at 0
+hit points — so an entry after a kill does not swing at the dead; a dummy a defender's
+handler drops partway stops there. A save
+entry forces every target's save through `force_save()` first, so
+`on_forced_save` fires once for the set, then rolls each target's damage and
+deals it through `save_for_half()`.
+
+`offers()` offers it to a `TargetDummy` with a routine. Its id is in
+`COMMAND_IDS`, so a scenario's override of a dummy's list may name it;
+`dummy_apl()` puts it between the opportunity attack and the attack, with the
+movement profile's `move:` and no `target:`, since the routine picks its own.
+
+### Regeneration
+
+A `HookSource` on `on_turn_start`, attached by `arm_dummy()`, which holds the
+generator `heal()` needs; it heals through `heal()`, so a feature that stops
+healing stops it, and skips a dummy at 0 hit points.
+
+### What was not done
+
+The dummy's opportunity attack is still the Unarmed Strike `w2k` gave it; the
+routine is its Action, and nothing in the row makes a scripted entry its
+reaction. A ranged entry and a placed area are knobs for whoever first needs
+them (the `w2g` spec correction).
+
+### Left at the round cap
+
+PR #93's fourth verdict found two docstring sentences that describe code
+outside their own (CODING_STANDARDS.md § Citations and comments): debt #81,
+owned by the M1 / W2 milestone review. Its one CONFIRMED finding, a routine
+that picked enemies at 0 hit points, was fixed before the cap.
+
+Sources: `ROADMAP.md` `w2g2`, debt #59; § The `w2g` spec correction, § w2d,
+§ w1g, § w2e; `docs/questions.md` #34, #35.
