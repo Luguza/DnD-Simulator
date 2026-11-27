@@ -7223,3 +7223,38 @@ that picked enemies at 0 hit points, was fixed before the cap.
 
 Sources: `ROADMAP.md` `w2g2`, debt #59; § The `w2g` spec correction, § w2d,
 § w1g, § w2e; `docs/questions.md` #34, #35.
+
+## The `w2h` spec correction — three commands moved to the tasks that build them
+
+`w2h`'s done-when was "every command in DESIGN.md § Verification runs", and
+its scope listed `day`, `compare` and `check`. None of the three can run in W2
+without the cell's other clause failing, that no simulation logic lives in
+`cli.py`: `day` drives rests and encounter chaining, which are `w6a`'s
+`engine/adventuring_day.py`; `compare` and `--sweep` are `w6b`'s harness and
+adaptive stopping; `check` is `w3b`'s linter and no-op detector. A stub command
+that exits zero would pass the done-when while proving nothing, and one that
+exits non-zero would fail it. Each command moves to the row that builds what it
+wraps; `derive` was already `w8k`'s.
+
+The Produces cell named `cli.py` alone. Three more files are needed:
+
+- **`api.py`**. `trace` replays one seed with its event log, and `inspect`
+  reports a loaded build. `run_sim()` returns neither — `sim/runner.py` keeps a
+  log only when asked, and `SimConfig` never asks — so a CLI that reached past
+  `api.py` into `sim/` would be the leak DESIGN.md § Boundaries forbids.
+- **`reporting/render_trace.py`**. The log holds records, and `core/log.py`
+  leaves formatting to the reporter (§ w1i); rendering them in `cli.py` would
+  put reporting there.
+- **`pyproject.toml` and `uv.lock`**, for `typer`. `rich` is named beside it in
+  DESIGN.md § Libraries before reimplementing for reports; no report here needs
+  it, so it is not added (YAGNI).
+
+Two clauses of DESIGN.md § CLI surface describe data the code does not hold,
+and are registered rather than built here: a `trace` line attributed to its
+handler (#82 — the dispatcher stamps the context, and no record carries the
+stamp) and `inspect`'s unreachable APL entries (#83 — nothing decides
+reachability). Both go to the M1 / W2 milestone review to place.
+
+`bench` wraps `tools/spike.py`'s measurement and its verdict against
+`BUDGET_PER_SECOND`; it is the one command that is not over `api.py`, because
+what it measures is the hot path below it.
