@@ -7241,7 +7241,7 @@ The Produces cell named `cli.py` alone. Three more files are needed:
 - **`api.py`**. `trace` replays one seed with its event log, and `inspect`
   reports a loaded build. `run_sim()` returns neither — `sim/runner.py` keeps a
   log only when asked, and `SimConfig` never asks — so a CLI that reached past
-  `api.py` into `sim/` would be the leak DESIGN.md § Boundaries forbids.
+  `api.py` into `sim/` would be the leak DESIGN.md § Interfaces: library, CLI, and files forbids.
 - **`reporting/render_trace.py`**. The log holds records, and `core/log.py`
   leaves formatting to the reporter (§ w1i); rendering them in `cli.py` would
   put reporting there.
@@ -7253,7 +7253,9 @@ Two clauses of DESIGN.md § CLI surface describe data the code does not hold,
 and are registered rather than built here: a `trace` line attributed to its
 handler (#82 — the dispatcher stamps the context, and no record carries the
 stamp) and `inspect`'s unreachable APL entries (#83 — nothing decides
-reachability). Both go to the M1 / W2 milestone review to place.
+reachability). #82 goes to `w3f`, the batched `core/` and `hooks/` change
+that a stamp reaching a record is; #83 to `w3b`, whose no-op detector is the
+feature-side counterpart of a dead APL entry.
 
 `bench` reaches `tools/spike.py`'s measurement and its verdict against
 `BUDGET_PER_SECOND` through an `api.py` entry point like every other command,
@@ -7262,4 +7264,4 @@ CLI, and files) with no exception to state.
 
 A row that writes `cli.py` depends on `w2h`, which creates it, as `w8k`
 already does: `check`, `day` and `compare` moving add `w2h` to `w3b`'s, `w6a`'s
-and `w6b`'s Depends.
+and `w6b`'s Depends, and `w8f`, which writes `dndsim fit`, gains it too.
