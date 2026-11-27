@@ -7260,5 +7260,6 @@ reachability). Both go to the M1 / W2 milestone review to place.
 so the CLI stays a thin adapter over `api.py` (DESIGN.md § Interfaces: library,
 CLI, and files) with no exception to state.
 
-`check` moving to `w3b` adds `w2h` to that row's Depends, as `w3i` and `w8k`
-already carry it for the same file.
+A row that writes `cli.py` depends on `w2h`, which creates it, as `w8k`
+already does: `check`, `day` and `compare` moving add `w2h` to `w3b`'s, `w6a`'s
+and `w6b`'s Depends.
