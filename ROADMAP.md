@@ -311,7 +311,7 @@ correction has opened one (#68), and `w2f2` has retired three (#13, #24,
 #63) and opened one (#69), and the `w2f` spec correction opened one (#70),
 and `w2f` has retired four (#12, #25, #27, #36), opened four (#71–#74) and
 left one at its round cap (#75), and `w2i2` has narrowed one (#67), and the
-`w2j` spec correction split one (#57), re-owned one (#60) and opened one (#76), and `w2j` has retired two (#61, #62), narrowed one (#57) to the drag and opened two (#77 for the owner's answer to `docs/questions.md` #20, #78), and `w2j2` has retired three (#57, #60, #78) and left one at its round cap (#79), and the `w2k` spec correction opened one (#80), and `w2k` has retired three (#68, #69, #74), and the `w2g` spec correction re-owned one (#59), and `w2g` has retired two (#65, #66), and `w2g2` has retired one (#59) and left one at its round cap (#81), so the table stands at thirty-two.
+`w2j` spec correction split one (#57), re-owned one (#60) and opened one (#76), and `w2j` has retired two (#61, #62), narrowed one (#57) to the drag and opened two (#77 for the owner's answer to `docs/questions.md` #20, #78), and `w2j2` has retired three (#57, #60, #78) and left one at its round cap (#79), and the `w2k` spec correction opened one (#80), and `w2k` has retired three (#68, #69, #74), and the `w2g` spec correction re-owned one (#59), and `w2g` has retired two (#65, #66), and `w2g2` has retired one (#59) and left one at its round cap (#81), and the `w2h` spec correction opened one (#82), so the table stands at thirty-three.
 Every one of them was the right thing to write — a hostile spike needs real
 machinery now, not finished machinery later — and every one of them is invisible
 six months from now, when the file around it has grown and the paragraph
