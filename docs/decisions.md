@@ -7255,6 +7255,10 @@ handler (#82 — the dispatcher stamps the context, and no record carries the
 stamp) and `inspect`'s unreachable APL entries (#83 — nothing decides
 reachability). Both go to the M1 / W2 milestone review to place.
 
-`bench` wraps `tools/spike.py`'s measurement and its verdict against
-`BUDGET_PER_SECOND`; it is the one command that is not over `api.py`, because
-what it measures is the hot path below it.
+`bench` reaches `tools/spike.py`'s measurement and its verdict against
+`BUDGET_PER_SECOND` through an `api.py` entry point like every other command,
+so the CLI stays a thin adapter over `api.py` (DESIGN.md § Interfaces: library,
+CLI, and files) with no exception to state.
+
+`check` moving to `w3b` adds `w2h` to that row's Depends, as `w3i` and `w8k`
+already carry it for the same file.
