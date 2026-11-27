@@ -7223,3 +7223,50 @@ that picked enemies at 0 hit points, was fixed before the cap.
 
 Sources: `ROADMAP.md` `w2g2`, debt #59; § The `w2g` spec correction, § w2d,
 § w1g, § w2e; `docs/questions.md` #34, #35.
+
+## The `w2h` spec correction — the commands whose engine has not landed
+
+`w2h` as it stood named nine commands and was done when "every command in
+DESIGN.md § Verification runs". Read against the code that done-when has to
+reach, three of those commands run something no task has built yet, a fourth
+command the done-when reaches is not in the row at all, and the Produces cell
+named one file where the row needs five.
+
+### What the row could not do
+
+- **`day`** runs an adventuring day: rests, encounter chaining, the stop
+  condition. That is `w6a`'s `engine/adventuring_day.py`, and `api.py` has no
+  `run_day` to adapt.
+- **`compare`** with `--sweep` is `w6b`'s `sim/compare.py` and `sweep.py`.
+- **`check`** is the feature linter and the no-op detector, `w3b`'s
+  `tools/check_features.py` and `noop_report.py`, which read `features/` —
+  a package that does not exist before `w3`.
+- **`derive`**, the fourth, is in § Verification but not in the row; it is
+  `w8k`'s.
+
+A thin adapter over a function that does not exist is either a stub that exits
+non-zero — a command that "runs" only by the letter of the done-when — or the
+missing engine written into `cli.py`, which the row's other clause forbids. So
+each moves to the task that builds what it runs, as one line in that row's
+Produces cell; `w2h` builds the Typer app they register on
+(`docs/questions.md` #38).
+
+### What the Produces cell omitted
+
+- **`pyproject.toml` and `uv.lock`.** Typer is not a dependency, and the
+  `uv lock --check` hook refuses one added without the lock.
+- **`api.py`.** `run_sim` keeps no event log and hands back no resolved build,
+  so `trace`, `inspect` and `validate` each need an entry point there, or their
+  logic lands in `cli.py`.
+- **`reporting/`.** `trace` renders one fight's log and `inspect` renders a
+  resolved build; § Interfaces puts every renderer there, beside
+  `render_text` and `render_json`.
+
+### What stays out
+
+`inspect`'s report of unreachable APL entries has nothing to call: nothing in
+`apl/` computes reachability. It is debt #82, owned by `w3b`, the task that
+already does static analysis over authored files.
+
+Sources: `ROADMAP.md` `w2h`, `w3b`, `w6a`, `w6b`, debt #82; DESIGN.md
+§ Verification, § CLI surface, § Interfaces: library, CLI, and files.
