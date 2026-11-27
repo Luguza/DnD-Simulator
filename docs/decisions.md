@@ -7243,6 +7243,7 @@ named one file where the row needs five.
   a package that does not exist before `w3`.
 - **`derive`**, the fourth, is in § Verification but not in the row; it is
   `w8k`'s.
+- **`fit`** is in § CLI surface and in neither; it is `w8f`'s.
 
 A thin adapter over a function that does not exist is either a stub that exits
 non-zero — a command that "runs" only by the letter of the done-when — or the
