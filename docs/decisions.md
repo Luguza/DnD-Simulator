@@ -7228,8 +7228,9 @@ Sources: `ROADMAP.md` `w2g2`, debt #59; § The `w2g` spec correction, § w2d,
 
 `w2h` as it stood named nine commands and was done when "every command in
 DESIGN.md § Verification runs". Read against the code that done-when has to
-reach, four of those commands run something no task has built yet, and the
-Produces cell named one file where the row needs four.
+reach, three of those commands run something no task has built yet, a fourth
+command the done-when reaches is not in the row at all, and the Produces cell
+named one file where the row needs four.
 
 ### What the row could not do
 
@@ -7240,7 +7241,8 @@ Produces cell named one file where the row needs four.
 - **`check`** is the feature linter and the no-op detector, `w3b`'s
   `tools/check_features.py` and `noop_report.py`, which read `features/` —
   a package that does not exist before `w3`.
-- **`derive`** is in § Verification but not in the row; it is `w8k`'s.
+- **`derive`**, the fourth, is in § Verification but not in the row; it is
+  `w8k`'s.
 
 A thin adapter over a function that does not exist is either a stub that exits
 non-zero — a command that "runs" only by the letter of the done-when — or the
