@@ -7230,7 +7230,7 @@ Sources: `ROADMAP.md` `w2g2`, debt #59; § The `w2g` spec correction, § w2d,
 DESIGN.md § Verification runs". Read against the code that done-when has to
 reach, three of those commands run something no task has built yet, a fourth
 command the done-when reaches is not in the row at all, and the Produces cell
-named one file where the row needs four.
+named one file where the row needs five.
 
 ### What the row could not do
 

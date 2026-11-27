@@ -100,7 +100,7 @@ exactly the lockfile-pinned versions. `uv lock --check` is a hook — a
 The `dndsim` CLI described in `DESIGN.md` is planned for W2 (`sim`, `inspect`,
 `validate`, `trace`, `bench`, `content fetch`), with `check`, `day` and
 `compare` added by `w3b`, `w6a` and `w6b` (`docs/decisions.md` § The `w2h`
-spec correction); it is not
+spec correction), and `derive` and `fit` by `w8k` and `w8f`; it is not
 yet implemented.
 
 ## Architecture: the load-bearing decisions
