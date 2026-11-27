@@ -1,0 +1,230 @@
+{
+  "$defs": {
+    "BuildProvenance": {
+      "additionalProperties": false,
+      "description": "A build by name, the SHA-256 of its spec, and of the policy it ran.",
+      "properties": {
+        "apl_hash": {
+          "title": "Apl Hash",
+          "type": "string"
+        },
+        "build_hash": {
+          "title": "Build Hash",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "build_hash",
+        "apl_hash"
+      ],
+      "title": "BuildProvenance",
+      "type": "object"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "description": "What reproduces the run: the engine and content versions, each build,\nthe scenario's knobs, and the master seed (`None` when the seeds were\ngiven as a list, which `SimResult.per_seed` holds).",
+      "properties": {
+        "builds": {
+          "items": {
+            "$ref": "#/$defs/BuildProvenance"
+          },
+          "title": "Builds",
+          "type": "array"
+        },
+        "content_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content Version"
+        },
+        "engine_version": {
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "scenario": {
+          "additionalProperties": true,
+          "title": "Scenario",
+          "type": "object"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Seed"
+        }
+      },
+      "required": [
+        "engine_version",
+        "content_version",
+        "builds",
+        "scenario",
+        "seed"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "SeedResult": {
+      "additionalProperties": false,
+      "description": "One iteration: the seed its generator was started from, the rounds\nbegun, the side left standing (`None` for none or several), the damage the\nparty dealt its enemies, that damage per round, and the Commands the party\ncarried out and the attacks it resolved in each round.",
+      "properties": {
+        "actions_per_round": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Actions Per Round",
+          "type": "array"
+        },
+        "attacks_per_round": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Attacks Per Round",
+          "type": "array"
+        },
+        "damage": {
+          "title": "Damage",
+          "type": "integer"
+        },
+        "dpr": {
+          "title": "Dpr",
+          "type": "number"
+        },
+        "rounds": {
+          "title": "Rounds",
+          "type": "integer"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "winner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Winner"
+        }
+      },
+      "required": [
+        "seed",
+        "rounds",
+        "winner",
+        "damage",
+        "dpr",
+        "actions_per_round",
+        "attacks_per_round"
+      ],
+      "title": "SeedResult",
+      "type": "object"
+    },
+    "Stat": {
+      "additionalProperties": false,
+      "description": "A sample's size, mean, sample standard deviation, and the normal\napproximation's 95% confidence interval for the mean.",
+      "properties": {
+        "ci_high": {
+          "title": "Ci High",
+          "type": "number"
+        },
+        "ci_low": {
+          "title": "Ci Low",
+          "type": "number"
+        },
+        "mean": {
+          "title": "Mean",
+          "type": "number"
+        },
+        "n": {
+          "title": "N",
+          "type": "integer"
+        },
+        "stdev": {
+          "title": "Stdev",
+          "type": "number"
+        }
+      },
+      "required": [
+        "n",
+        "mean",
+        "stdev",
+        "ci_low",
+        "ci_high"
+      ],
+      "title": "Stat",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A run: its provenance, the per-seed results in iteration order, and\neach per-seed quantity summarised.",
+  "properties": {
+    "actions_per_round": {
+      "$ref": "#/$defs/Stat"
+    },
+    "attacks_per_round": {
+      "$ref": "#/$defs/Stat"
+    },
+    "damage": {
+      "$ref": "#/$defs/Stat"
+    },
+    "dpr": {
+      "$ref": "#/$defs/Stat"
+    },
+    "iterations": {
+      "title": "Iterations",
+      "type": "integer"
+    },
+    "per_seed": {
+      "items": {
+        "$ref": "#/$defs/SeedResult"
+      },
+      "title": "Per Seed",
+      "type": "array"
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    },
+    "rounds": {
+      "$ref": "#/$defs/Stat"
+    },
+    "schema_version": {
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "win_rate": {
+      "title": "Win Rate",
+      "type": "number"
+    }
+  },
+  "required": [
+    "schema_version",
+    "provenance",
+    "iterations",
+    "win_rate",
+    "rounds",
+    "damage",
+    "dpr",
+    "actions_per_round",
+    "attacks_per_round",
+    "per_seed"
+  ],
+  "title": "SimResult",
+  "type": "object"
+}

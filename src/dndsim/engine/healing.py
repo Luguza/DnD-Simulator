@@ -17,7 +17,11 @@ from dndsim.engine.d20 import modifier_total, settle
 from dndsim.hooks.contexts import HealContext, TempHpContext
 from dndsim.hooks.definitions import ON_HEAL, ON_TEMP_HP_GAINED
 
-__all__ = ["Downed", "grant_temp_hp", "heal"]
+__all__ = ["HEAL", "Downed", "grant_temp_hp", "heal"]
+
+HEAL: Final = "heal"
+"""`(HEAL, healer, creature, regained)`, at every level, `healer` `None` when
+nobody healed; written to the log the creature's effect store holds."""
 
 
 class Downed(Unconscious):
@@ -68,6 +72,11 @@ def heal(
     if regained <= 0:
         return 0
     creature.hp += regained
+    log = creature.effects.log
+    if log is not None:
+        log.write(
+            (HEAL, None if healer is None else healer.name, creature.name, regained)
+        )
     if was_down:
         _wake(creature)
     return regained

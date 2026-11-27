@@ -5,6 +5,11 @@ description: Take the next task off docs/progress.md and drive it to a merged PR
 Work the queue. One task, one branch, one PR, reviewed until clean.
 `docs/workflow.md` is the procedure; this is the checklist.
 
+**If something stops you, resolve it — do not just report it.** A conflict, a
+missing verdict, a PR whose session died: each is yours to fix, and only a
+`held` row, a workflow edit or a refused permission waits for the human
+(`docs/workflow.md` § When the loop is stuck).
+
 **Read only what you need.** `DESIGN.md`, `ROADMAP.md` and `docs/decisions.md`
 are each well over 100KB — grep them for the claim you need, never read them end
 to end. Budget your reading to: the queue row, the ROADMAP row for your id, the
@@ -20,6 +25,8 @@ touch, and the files themselves.
 - Never stop to ask the user. Where CLAUDE.md says to ask, take the most
   conservative reading, proceed, and record it in `docs/questions.md` in this
   PR (`docs/workflow.md` § Questions for the human).
+- List the open issues titled `Answer #<n>: …` and record the owner's in this
+  PR (`docs/workflow.md` § Answers from the dashboard).
 - `docs/progress.md` on M → the `next` row. A `⏸` row means run `/plan-review`
   instead, in this session. A `held` row means stop and report.
 - `grep -n "^| <id> " ROADMAP.md` → the task row: scope, depends, produces,
@@ -48,7 +55,7 @@ it through steps 5 and 6 like a task PR.
   you push, every time. A push that turns CI red costs a review round.
 - Add the `docs/decisions.md` § `<id>` section: the *why*, not the what.
 - Retire the `ROADMAP.md` § The W0 debt register rows this task owns.
-- Flip your queue row to `done` and the row below to `next`.
+- Flip your queue row to `done` and the first row below it that is not `done` to `next` (`docs/progress.md`).
 
 ## 4. Open the PR
 
@@ -67,6 +74,11 @@ Each wake: read the sticky verdict comment and CI.
 - **PLAUSIBLE** → fix, or reply on the thread saying why it is not a defect.
 - A verdict saying the review did not run or did not finish is not a pass.
 - CI red or a merge conflict is work now, whatever the review says.
+- **After every push, read the PR's mergeable state.** A PR that conflicts
+  with M runs no CI and no review, so no event will ever wake you: merge M
+  into the branch, resolve, validate, push. No verdict and no check runs on
+  your head commit means look for the conflict first (`docs/workflow.md`
+  § The milestone branch).
 - **Fourth non-clean verdict:** stop pushing and comment naming what is
   contested. If CI is green and every CONFIRMED finding is fixed, record the
   contested findings in `ROADMAP.md` § The W0 debt register, owned by the next

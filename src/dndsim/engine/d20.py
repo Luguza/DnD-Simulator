@@ -5,10 +5,13 @@ extracted, and which copy stays inline, is `docs/decisions.md` § w1j.
 
 from dndsim.core.errors import FeatureContractError
 from dndsim.core.rng import Rng
+from dndsim.creatures.creature import Creature
 from dndsim.creatures.effects import Holder, apply_pending
-from dndsim.hooks.contexts import Context, ModifierBag
+from dndsim.hooks.contexts import AbilityCheckContext, Context, ModifierBag
+from dndsim.hooks.definitions import ON_ABILITY_CHECK
+from dndsim.rules.enums import Ability
 
-__all__ = ["modifier_total", "roll_d20", "settle"]
+__all__ = ["ability_check", "check_bonus", "modifier_total", "roll_d20", "settle"]
 
 
 def modifier_total(bag: ModifierBag, rng: Rng) -> int:
@@ -44,3 +47,44 @@ def settle(ctx: Context, refusal: str, *among: Holder | None) -> None:
     apply_pending(ctx, *among)
     if ctx.vetoed:
         raise FeatureContractError(f"{ctx.veto_reason} {refusal}")
+
+
+def ability_check(
+    creature: Creature,
+    ability: Ability,
+    *,
+    skill: str,
+    dc: int,
+    rng: Rng,
+    among: tuple[Holder | None, ...] = (),
+) -> int:
+    """Roll one ability check for `creature` after `on_ability_check`, and
+    return its total: the d20, the ability modifier, the Proficiency Bonus
+    with a skill it has, and what handlers added. `among` is the event's other
+    participants, for `settle()`. Raises `FeatureContractError` on a veto."""
+    check = AbilityCheckContext(creature=creature, ability=ability, skill=skill, dc=dc)
+    creature.dispatch(ON_ABILITY_CHECK, check)
+    settle(
+        check,
+        "vetoed at on_ability_check, which cannot be called off. A feature "
+        "that means to change a check grants advantage or adds to the total "
+        "through ctx.bonus.",
+        creature,
+        *among,
+    )
+    had_advantage = check.had_advantage
+    had_disadvantage = check.had_disadvantage
+    bonus = modifier_total(check.bonus, rng)
+    check.close()
+    natural = roll_d20(rng, advantage=had_advantage, disadvantage=had_disadvantage)
+    return natural + check_bonus(creature, ability, skill) + bonus
+
+
+def check_bonus(creature: Creature, ability: Ability, skill: str) -> int:
+    """What `creature` adds to a check of `ability` with `skill` before any
+    handler: the ability modifier, and the Proficiency Bonus with a skill it
+    has."""
+    bonus = creature.modifier(ability)
+    if skill in creature.stats.skills:
+        bonus += creature.proficiency_bonus
+    return bonus

@@ -13,13 +13,14 @@ Sources:
   own — the same entry (`docs/decisions.md` § w1g)
 - half damage on a successful save, in the halvings step of `engine/damage.py`
   — `docs/decisions.md` § w1g
-
-One first cut: a saving throw adds the bare ability modifier (debt #36).
+- the proficiency bonus on a save the creature is proficient in — XPHB, "D20
+  Tests" -> Saving Throws; `docs/decisions.md` § w2f
 """
 
 from collections.abc import Mapping, Sequence
 from typing import Final, NamedTuple
 
+from dndsim.core.log import EventLog
 from dndsim.core.rng import Rng
 from dndsim.creatures.creature import Creature
 from dndsim.engine.d20 import modifier_total, roll_d20, settle
@@ -38,6 +39,7 @@ from dndsim.rules.constants import SPELL_SAVE_DC_BASE
 from dndsim.rules.enums import Ability, DamageType, SaveOutcome
 
 __all__ = [
+    "SAVE",
     "SaveResult",
     "force_save",
     "save_bonus",
@@ -45,6 +47,10 @@ __all__ = [
     "save_for_half",
     "saving_throw",
 ]
+
+SAVE: Final = "save"
+"""`(SAVE, creature, ability, dc, total, outcome)`, at every level: one saving
+throw as it resolved, a declared success included."""
 
 HALVED_BY_SAVE: Final = "a successful saving throw halves it"
 """The reason `save_for_half()` records beside its halving in the ledger."""
@@ -74,11 +80,12 @@ def save_dc(creature: Creature, ability: Ability) -> int:
 
 
 def save_bonus(creature: Creature, ability: Ability) -> int:
-    """What `creature` adds to a saving throw of `ability` before any handler.
-
-    The ability modifier, and nothing else: debt #36. Why this is a function is
-    `docs/decisions.md` § w1g.
+    """What `creature` adds to a saving throw of `ability` before any handler:
+    the ability modifier, and the proficiency bonus for a save it is
+    proficient in. Why this is a function is `docs/decisions.md` § w1g.
     """
+    if ability in creature.stats.saving_throws:
+        return creature.modifier(ability) + creature.proficiency_bonus
     return creature.modifier(ability)
 
 
@@ -89,11 +96,13 @@ def saving_throw(
     dc: int,
     rng: Rng,
     imposed_by: Creature | None = None,
+    log: EventLog | None = None,
 ) -> SaveResult:
     """Roll one saving throw for `creature` and return how it resolved.
 
     `imposed_by` is whoever forced it, for the handlers that read it; a save
     nothing in the encounter imposed — a trap, a hazard — passes `None`.
+    `log`, when given, is written a `SAVE` record.
     """
     rolling = SavingThrowContext(
         creature=creature, ability=ability, dc=dc, imposed_by=imposed_by
@@ -122,6 +131,8 @@ def saving_throw(
     if resolved.forced_success:
         outcome = SaveOutcome.SUCCESS
     resolved.close()
+    if log is not None:
+        log.write((SAVE, creature.name, ability, dc, total, outcome))
     return SaveResult(outcome=outcome, total=total, dc=dc, forced_by=forced_by)
 
 
@@ -132,6 +143,7 @@ def force_save(
     ability: Ability,
     dc: int,
     rng: Rng,
+    log: EventLog | None = None,
 ) -> tuple[SaveResult, ...]:
     """Make each of `targets` save against `dc`, and return one result each.
 
@@ -139,7 +151,7 @@ def force_save(
     and a bonus to the DC applies to every save; with no targets it does not
     fire at all.
     `dc` is the imposer's own — `save_dc()` derives a spellcaster's, and a
-    monster's is printed.
+    monster's is printed. `log` is handed to each `saving_throw()`.
     """
     if not targets:
         # Nobody is forced to save, so the imposer's hook does not fire: a
@@ -154,7 +166,12 @@ def force_save(
     forced.close()
     return tuple(
         saving_throw(
-            target, ability=ability, dc=dc + dc_bonus, rng=rng, imposed_by=imposer
+            target,
+            ability=ability,
+            dc=dc + dc_bonus,
+            rng=rng,
+            imposed_by=imposer,
+            log=log,
         )
         for target in targets
     )
@@ -168,11 +185,12 @@ def save_for_half(
     outcome: SaveOutcome,
     attacker: Creature | None = None,
     contexts: DamageContexts = FRESH_DAMAGE,
+    log: EventLog | None = None,
 ) -> int:
     """Deal `amounts` to `defender`, halved on a successful save.
 
     The halving is applied in `engine/damage.py`'s halvings step
-    (`docs/decisions.md` § w1g).
+    (`docs/decisions.md` § w1g). `log` is handed to `resolve_damage()`.
     """
     return resolve_damage(
         defender,
@@ -181,6 +199,7 @@ def save_for_half(
         attacker=attacker,
         contexts=contexts,
         halved_by=HALVED_BY_SAVE if outcome is SaveOutcome.SUCCESS else None,
+        log=log,
     )
 
 

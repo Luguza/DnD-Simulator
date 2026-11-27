@@ -15,11 +15,7 @@ class Restrained(Condition):
     __slots__ = ()
 
     CONDITION = enums.Condition.RESTRAINED
-    NEEDS_HOOK = (
-        "nothing can change a creature's Speed: "
-        '"Your Speed is 0 and can\'t increase." '
-        "(ROADMAP.md § The W0 debt register #47)",
-    )
+    SPEED_ZERO = True
 
     @hook("on_declare_attack")
     def own_attacks(self, ctx: AttackDeclaredContext) -> R:

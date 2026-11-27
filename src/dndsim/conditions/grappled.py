@@ -1,6 +1,7 @@
 """Grappled (XPHB, Rules Glossary). See `docs/decisions.md` § w1h."""
 
 from dndsim.conditions.base import SourcedCondition
+from dndsim.creatures.effects import Stacking
 from dndsim.hooks.contexts import AttackDeclaredContext
 from dndsim.hooks.decorator import R, hook
 from dndsim.rules import enums
@@ -10,20 +11,14 @@ __all__ = ["Grappled"]
 
 class Grappled(SourcedCondition):
     """Held: Speed 0, and Disadvantage against anything but the grappler, who is
-    this effect's `caster`."""
+    this effect's `caster`. One per grappler, so a second grapple by another
+    creature holds alongside the first (`docs/decisions.md` § w2j, § w2j2)."""
 
     __slots__ = ()
 
     CONDITION = enums.Condition.GRAPPLED
-    NEEDS_HOOK = (
-        "nothing can change a creature's Speed: "
-        '"Your Speed is 0 and can\'t increase." '
-        "(ROADMAP.md § The W0 debt register #47)",
-        "nothing moves a creature with another creature, and no movement is "
-        'charged against the economy yet: "The grappler can drag or carry you '
-        'when it moves, but every foot of movement costs it 1 extra foot." '
-        "(ROADMAP.md § The W0 debt register #28)",
-    )
+    STACKING = Stacking.UNIQUE_PER_SOURCE
+    SPEED_ZERO = True
 
     @hook("on_declare_attack")
     def attacks(self, ctx: AttackDeclaredContext) -> R:

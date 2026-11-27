@@ -17,13 +17,7 @@ class Prone(Condition):
     __slots__ = ()
 
     CONDITION = enums.Condition.PRONE
-    NEEDS_HOOK: ClassVar[tuple[str, ...]] = (
-        "nothing spends movement and no condition can be ended by its own "
-        'owner: "Your only movement options are to crawl or to spend an amount '
-        "of movement equal to half your Speed (round down) to right yourself "
-        'and thereby end the condition." '
-        "(ROADMAP.md § The W0 debt register #28)",
-    )
+    CRAWLS = True
     APPROXIMATED: ClassVar[tuple[str, ...]] = (
         "an attack on a prone creature is always given Advantage, where "
         '"An attack roll against you has Advantage if the attacker is within 5 '
